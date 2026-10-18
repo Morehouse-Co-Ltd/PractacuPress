@@ -1,0 +1,130 @@
+package media
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func validImage() UploadRequest {
+	return UploadRequest{
+		FileName:     "photo.png",
+		DeclaredMIME: "image/png",
+		Size:         1024,
+		Purpose:      PurposeContent,
+	}
+}
+
+func TestValidateRequestAcceptsImages(t *testing.T) {
+	got, err := ValidateRequest(validImage())
+	require.NoError(t, err)
+	require.Equal(t, "image/png", got.DeclaredMIME)
+}
+
+func TestValidateRequestRejectsMismatchedPurpose(t *testing.T) {
+	req := validImage()
+	req.Purpose = PurposeAttachment
+	_, err := ValidateRequest(req)
+	require.Error(t, err, "an image is not an attachment type")
+
+	req = validImage()
+	req.DeclaredMIME = "application/pdf"
+	_, err = ValidateRequest(req)
+	require.Error(t, err, "a pdf is not an image type")
+}
+
+func TestValidateRequestRejectsExecutables(t *testing.T) {
+	for _, mime := range []string{
+		"application/x-msdownload",
+		"application/x-sh",
+		"text/html",
+		"image/svg+xml",
+	} {
+		req := validImage()
+		req.DeclaredMIME = mime
+		req.Purpose = PurposeAttachment
+		_, err := ValidateRequest(req)
+		require.Error(t, err, mime)
+	}
+}
+
+func TestValidateRequestEnforcesSizeLimits(t *testing.T) {
+	req := validImage()
+	req.Size = MaxImageBytes + 1
+	_, err := ValidateRequest(req)
+	require.Error(t, err)
+
+	req = validImage()
+	req.Purpose = PurposeAttachment
+	req.DeclaredMIME = "application/pdf"
+	req.Size = MaxImageBytes + 1
+	_, err = ValidateRequest(req)
+	require.NoError(t, err, "attachments have a larger ceiling")
+
+	req.Size = MaxAttachmentBytes + 1
+	_, err = ValidateRequest(req)
+	require.Error(t, err)
+
+	req.Size = 0
+	_, err = ValidateRequest(req)
+	require.Error(t, err)
+}
+
+func TestValidateRequestRejectsNullByteInName(t *testing.T) {
+	req := validImage()
+	req.FileName = "photo\x00.png"
+	_, err := ValidateRequest(req)
+	require.Error(t, err)
+}
+
+func TestValidateRequestRequiresKnownPurpose(t *testing.T) {
+	req := validImage()
+	req.Purpose = "executable"
+	_, err := ValidateRequest(req)
+	require.Error(t, err)
+}
+
+// TestStorageKeyIgnoresUserPath is the traversal guard: the declared name never
+// influences the key, so "../../etc/passwd" cannot escape the storage root.
+func TestStorageKeyIgnoresUserPath(t *testing.T) {
+	for _, name := range []string{"photo.png", "../../etc/passwd", "..\\windows\\system32\\cmd.exe"} {
+		key := NewStorageKey(name)
+		require.NotContains(t, key, "..")
+		require.NotContains(t, key, "\\")
+		require.NotContains(t, key, "etc")
+		require.Len(t, key, len(key))
+		require.Contains(t, key, "/", "keys are namespaced in a prefix directory")
+	}
+}
+
+func TestStorageKeyIsUnique(t *testing.T) {
+	seen := map[string]struct{}{}
+	for i := 0; i < 200; i++ {
+		key := NewStorageKey("photo.png")
+		_, dup := seen[key]
+		require.False(t, dup, "storage keys must not collide")
+		seen[key] = struct{}{}
+	}
+}
+
+func TestStorageKeyKeepsSafeExtension(t *testing.T) {
+	require.Contains(t, NewStorageKey("a.PNG"), ".png")
+	require.NotContains(t, NewStorageKey("a.verylongextension"), "verylongextension")
+}
+
+func TestAssetIsReferenceableOnlyWhenClean(t *testing.T) {
+	require.True(t, Asset{ScanStatus: ScanClean}.Referenceable())
+	require.False(t, Asset{ScanStatus: ScanPending}.Referenceable())
+	require.False(t, Asset{ScanStatus: ScanRejected}.Referenceable())
+	require.False(t, Asset{ScanStatus: ScanNeedsManualReview}.Referenceable())
+	require.False(t, Asset{}.Referenceable(), "an unknown state must never be treated as clean")
+}
+
+func TestUploadExpiry(t *testing.T) {
+	now := time.Now().UTC()
+	upload := Upload{ExpiresAt: now.Add(time.Minute)}
+
+	require.False(t, upload.Expired(now))
+	require.True(t, upload.Expired(now.Add(2*time.Minute)))
+}
