@@ -33,10 +33,12 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 }
 
 // Routes mounts the media endpoints under /api/v1.
-func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
+func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFunc) {
+	// Images embedded in a published article must load for a reader without a session.
+	r.GET("/media/:assetID", optionalAuth, h.DownloadAsset)
+
 	group := r.Group("/media", requireAuth)
 	group.POST("/uploads", h.CreateUpload)
-	group.GET("/:assetID", h.DownloadAsset)
 	group.POST("/uploads/:uploadID/content", h.UploadContent)
 	group.POST("/uploads/:uploadID/complete", h.CompleteUpload)
 }

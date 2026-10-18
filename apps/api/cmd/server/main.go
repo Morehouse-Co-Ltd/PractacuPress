@@ -186,6 +186,7 @@ func run() error {
 					Role:   principal.Role,
 				}, true
 			},
+			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
 		}),
 	})
 

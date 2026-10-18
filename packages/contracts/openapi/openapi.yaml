@@ -319,7 +319,11 @@ paths:
     get:
       tags: [content]
       summary: List articles
-      description: Readers only ever see published items; editors also see the review queue.
+      description: |
+        Readers only ever see published items; editors also see the review queue.
+        Anonymous visitors may read a site whose visibility mode is `public`; on a
+        `members_only` site the call is refused with 401.
+      security: []
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -362,6 +366,8 @@ paths:
     get:
       tags: [content]
       summary: Read an article
+      description: Anonymous reads are allowed on a public site, and only for published items.
+      security: []
       parameters:
         - $ref: '#/components/parameters/ContentID'
       responses:
@@ -447,6 +453,8 @@ paths:
     get:
       tags: [content]
       summary: List posts
+      description: Anonymous reads follow the same visibility rule as articles.
+      security: []
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -483,6 +491,8 @@ paths:
     get:
       tags: [content]
       summary: Read a post
+      description: Anonymous reads are allowed on a public site, and only for published items.
+      security: []
       parameters:
         - $ref: '#/components/parameters/ContentID'
       responses:
@@ -724,6 +734,7 @@ paths:
     get:
       tags: [media]
       summary: Download a clean asset
+      security: []
       description: |
         Only assets that passed inspection are reachable. A rejected object is answered
         as not found, because confirming its existence is already a disclosure. The

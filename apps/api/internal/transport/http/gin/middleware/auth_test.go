@@ -176,3 +176,39 @@ func TestBearerTokenParsing(t *testing.T) {
 
 // guard against the verifier interface drifting away from the issuer.
 var _ AccessTokenVerifier = (*auth.TokenIssuer)(nil)
+
+// TestOptionalAuthNeverRejects is the property public reads depend on: a missing or
+// stale token must not break a page that is readable anonymously.
+func TestOptionalAuthNeverRejects(t *testing.T) {
+	issuer := testIssuer(t)
+	token, _, err := issuer.IssueAccess(auth.Principal{
+		UserID: "user_1", SiteID: "site_1", Role: site.RoleMember,
+	})
+	require.NoError(t, err)
+
+	build := func(header string) *gin.Engine {
+		r := gin.New()
+		r.Use(RequestID(), ErrorHandler(nil), OptionalAuth(issuer))
+		r.GET("/x", func(c *gin.Context) {
+			if p, ok := PrincipalFrom(c); ok {
+				c.JSON(http.StatusOK, gin.H{"user": p.UserID})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"user": ""})
+		})
+		return r
+	}
+
+	// No header: anonymous, still 200.
+	require.JSONEq(t, `{"user":""}`, serve(build(""), httptest.NewRequest(http.MethodGet, "/x", nil)).Body.String())
+
+	// Valid token: principal attached.
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	require.JSONEq(t, `{"user":"user_1"}`, serve(build(""), req).Body.String())
+
+	// Garbage token: anonymous, not an error.
+	bad := httptest.NewRequest(http.MethodGet, "/x", nil)
+	bad.Header.Set("Authorization", "Bearer not-a-token")
+	require.Equal(t, http.StatusOK, serve(build(""), bad).Code)
+}

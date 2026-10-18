@@ -43,6 +43,24 @@ func RequireAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
 	}
 }
 
+// OptionalAuth attaches a principal when a valid bearer token is present and lets the
+// request continue anonymously otherwise.
+//
+// Reading a public site must work without a session, but a reader who does present a
+// token still gets their own view (their drafts, their role). A malformed or expired
+// token is treated as anonymous rather than as an error, so a stale tab can still read
+// public pages.
+func OptionalAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw, ok := bearerToken(c.GetHeader("Authorization"))
+		if ok && verifier != nil {
+			if principal, err := verifier.VerifyAccess(raw); err == nil {
+				withPrincipal(c, principal)
+			}
+		}
+		c.Next()
+	}
+}
 // RequireSiteMatch rejects a principal whose token was issued for another site.
 //
 // This is the check that stops a token minted on site A from acting on site B when

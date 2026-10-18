@@ -66,15 +66,17 @@ func New(deps Dependencies) *gin.Engine {
 	v1.GET("/openapi.json", openAPIDocument)
 
 	if deps.Auth != nil || deps.Sites != nil || deps.Content != nil || deps.Community != nil || deps.Media != nil || deps.Events != nil {
-		var guard gin.HandlerFunc
+		var guard, optionalAuth gin.HandlerFunc
 		if deps.AccessTokens != nil {
 			guard = middleware.RequireAuth(deps.AccessTokens)
+			optionalAuth = middleware.OptionalAuth(deps.AccessTokens)
 		} else {
 			guard = func(c *gin.Context) {
 				middleware.AbortProblem(c, apperr.Unauthenticated().
 					WithDetail("reason", "auth_not_configured").
 					WithRequestID(middleware.RequestIDFrom(c)))
 			}
+			optionalAuth = func(c *gin.Context) { c.Next() }
 		}
 		if deps.Auth != nil {
 			deps.Auth.Routes(v1, guard)
@@ -83,13 +85,13 @@ func New(deps Dependencies) *gin.Engine {
 			deps.Sites.Routes(v1, guard)
 		}
 		if deps.Content != nil {
-			deps.Content.Routes(v1, guard)
+			deps.Content.Routes(v1, guard, optionalAuth)
 		}
 		if deps.Community != nil {
 			deps.Community.Routes(v1, guard)
 		}
 		if deps.Media != nil {
-			deps.Media.Routes(v1, guard)
+			deps.Media.Routes(v1, guard, optionalAuth)
 		}
 		if deps.Events != nil {
 			deps.Events.Routes(v1, guard)

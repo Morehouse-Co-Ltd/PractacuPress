@@ -10,21 +10,28 @@ import (
 	"github.com/gin-gonic/gin"
 
 		"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 )
 
 // PrincipalFunc returns the authenticated caller's id, site and role.
 type PrincipalFunc func(*gin.Context) (Actor, bool)
 
+// SiteFunc returns the site resolved for the request.
+type SiteFunc func(*gin.Context) (site.Site, bool)
+
 // HandlerConfig configures a Handler.
 type HandlerConfig struct {
 	Principal PrincipalFunc
+	// Site exposes the resolved site so public reads can be served anonymously.
+	Site SiteFunc
 }
 
 // Handler exposes content authoring and moderation over HTTP.
 type Handler struct {
 	service   *Service
 	principal PrincipalFunc
+	site      SiteFunc
 }
 
 // NewHandler builds a Handler.
@@ -33,23 +40,59 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 	if principal == nil {
 		principal = func(*gin.Context) (Actor, bool) { return Actor{}, false }
 	}
-	return &Handler{service: service, principal: principal}
+	siteOf := cfg.Site
+	if siteOf == nil {
+		siteOf = func(*gin.Context) (site.Site, bool) { return site.Site{}, false }
+	}
+	return &Handler{service: service, principal: principal, site: siteOf}
+}
+
+// actor resolves the caller, falling back to an anonymous reader on a public site.
+//
+// A members-only site refuses the request outright, so the difference between the two
+// visibility modes lives in exactly one place.
+func (h *Handler) actor(c *gin.Context) (Actor, bool) {
+	if principal, ok := h.principal(c); ok {
+		return principal, true
+	}
+
+	resolved, ok := h.site(c)
+	if !ok || resolved.IsMembersOnly() {
+		return Actor{}, false
+	}
+	// The zero role carries no authority, so an anonymous reader can only ever see
+	// what the service exposes to everyone.
+	return Actor{SiteID: resolved.ID}, true
+}
+
+// requireActor resolves the caller or writes the rejection.
+func (h *Handler) requireActor(c *gin.Context) (Actor, bool) {
+	actor, ok := h.actor(c)
+	if !ok {
+		h.unauthenticated(c)
+		return Actor{}, false
+	}
+	return actor, true
 }
 
 // Routes mounts the article and post endpoints under /api/v1.
 //
 // The two kinds share one handler: the only difference is the path segment, and
 // duplicating the surface would guarantee they drift apart.
-func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
+func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFunc) {
 	for _, kind := range []Kind{KindArticle, KindPost} {
-		group := r.Group("/"+string(kind)+"s", requireAuth)
+		base := "/" + string(kind) + "s"
 		contentKind := kind
 
-		group.POST("", func(c *gin.Context) { h.create(c, contentKind) })
-		group.GET("", func(c *gin.Context) { h.list(c, contentKind) })
-		group.GET("/:contentID", h.get)
-		group.PATCH("/:contentID", h.update)
-		group.POST("/:contentID/:action", h.action)
+		// Reads are open to anonymous visitors on a public site; the handler decides
+		// per request using the resolved site's visibility mode.
+		r.GET(base, optionalAuth, func(c *gin.Context) { h.list(c, contentKind) })
+		r.GET(base+"/:contentID", optionalAuth, h.get)
+
+		writes := r.Group(base, requireAuth)
+		writes.POST("", func(c *gin.Context) { h.create(c, contentKind) })
+		writes.PATCH("/:contentID", h.update)
+		writes.POST("/:contentID/:action", h.action)
 	}
 }
 
@@ -83,9 +126,8 @@ type actionRequest struct {
 }
 
 func (h *Handler) create(c *gin.Context, kind Kind) {
-	actor, ok := h.principal(c)
+	actor, ok := h.requireActor(c)
 	if !ok {
-		h.unauthenticated(c)
 		return
 	}
 
@@ -111,9 +153,8 @@ func (h *Handler) create(c *gin.Context, kind Kind) {
 
 // list returns the items of a site the caller may see.
 func (h *Handler) list(c *gin.Context, kind Kind) {
-	actor, ok := h.principal(c)
+	actor, ok := h.requireActor(c)
 	if !ok {
-		h.unauthenticated(c)
 		return
 	}
 
@@ -148,9 +189,8 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 	})
 }
 
-func (h *Handler) get(c *gin.Context) {	actor, ok := h.principal(c)
+func (h *Handler) get(c *gin.Context) {	actor, ok := h.requireActor(c)
 	if !ok {
-		h.unauthenticated(c)
 		return
 	}
 
@@ -163,9 +203,8 @@ func (h *Handler) get(c *gin.Context) {	actor, ok := h.principal(c)
 }
 
 func (h *Handler) update(c *gin.Context) {
-	actor, ok := h.principal(c)
+	actor, ok := h.requireActor(c)
 	if !ok {
-		h.unauthenticated(c)
 		return
 	}
 
@@ -189,9 +228,8 @@ func (h *Handler) update(c *gin.Context) {
 }
 
 func (h *Handler) action(c *gin.Context) {
-	actor, ok := h.principal(c)
+	actor, ok := h.requireActor(c)
 	if !ok {
-		h.unauthenticated(c)
 		return
 	}
 
