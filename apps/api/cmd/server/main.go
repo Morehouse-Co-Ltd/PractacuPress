@@ -77,7 +77,10 @@ func run() error {
 		}
 	}()
 
-	authHandler, issuer, err := buildAuth(cfg, logger, handle)
+	securityClient, closeSecurity := dialSecurity(ctx, cfg, logger)
+	defer closeSecurity()
+
+	authHandler, issuer, err := buildAuth(cfg, logger, handle, securityClient)
 	if err != nil {
 		return err
 	}
@@ -96,7 +99,7 @@ func run() error {
 
 	mediaService, err := media.NewService(media.ServiceConfig{
 		Repository: mediastore.New(handle.Client),
-		Scanner:    media.UnavailableScanner{},
+		Scanner:    securityScanner{client: securityClient},
 	})
 	if err != nil {
 		return fmt.Errorf("build media service: %w", err)
@@ -109,7 +112,7 @@ func run() error {
 
 	contentService, err := content.NewService(content.ServiceConfig{
 		Repository: contentstore.New(handle.Client),
-		Sanitizer:  securitySanitizer{client: securityclient.Unavailable{}},
+		Sanitizer:  securitySanitizer{client: securityClient},
 		PublishMode: func(ctx context.Context, siteID string) (site.PublishMode, error) {
 			return siteService.PublishMode(ctx, siteID)
 		},
@@ -214,7 +217,7 @@ func run() error {
 }
 
 // buildAuth wires the authentication module.
-func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB) (*auth.Handler, *auth.TokenIssuer, error) {
+func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client) (*auth.Handler, *auth.TokenIssuer, error) {
 	issuer, ephemeral, err := auth.NewTokenIssuer(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build token issuer: %w", err)
@@ -226,7 +229,7 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB) (*auth.Han
 
 	service, err := auth.NewService(auth.ServiceConfig{
 		Repository: authstore.New(handle.Client),
-		Hasher:     choosePasswordHasher(cfg, logger),
+		Hasher:     choosePasswordHasher(cfg, logger, security),
 		Tokens:     issuer,
 	})
 	if err != nil {
@@ -283,12 +286,68 @@ func (s securitySanitizer) Sanitize(
 // Production always delegates to the Rust security service. Until that service is
 // deployed the stub fails every call, so a production login fails closed instead of
 // silently falling back to a weaker local implementation.
-func choosePasswordHasher(cfg config.Config, logger *slog.Logger) auth.PasswordHasher {
-	if cfg.AppEnv == config.EnvProduction {
+func choosePasswordHasher(cfg config.Config, logger *slog.Logger, security securityclient.Client) auth.PasswordHasher {
+	if _, unavailable := security.(securityclient.Unavailable); !unavailable {
 		logger.Info("password hashing delegates to the security service")
+		return auth.NewSecurityPasswordHasher(security)
+	}
+
+	if cfg.AppEnv == config.EnvProduction {
+		// No local fallback in production: an unreachable service must fail closed.
+		logger.Warn("security service unreachable; password operations fail closed")
 		return auth.NewSecurityPasswordHasher(securityclient.Unavailable{})
 	}
 
 	logger.Warn("using local Argon2id password hashing: development and test only")
 	return auth.NewArgon2idHasher(auth.DefaultArgon2Params())
+}
+
+// dialSecurity connects to the security service.
+//
+// A failed connection is not fatal: the API keeps serving and every operation that
+// needs a security verdict fails closed, which is the behaviour the design asks for
+// during an outage.
+func dialSecurity(ctx context.Context, cfg config.Config, logger *slog.Logger) (securityclient.Client, func()) {
+	dialCtx, cancel := context.WithTimeout(ctx, startupTimeout)
+	defer cancel()
+
+	client, err := securityclient.Dial(dialCtx, securityclient.GRPCConfig{Addr: cfg.SecurityGRPCAddr})
+	if err != nil {
+		logger.Warn("security service unavailable; content publishing and uploads will be held",
+			"addr", cfg.SecurityGRPCAddr, "error", err)
+		return securityclient.Unavailable{}, func() {}
+	}
+
+	if pingErr := client.Ping(dialCtx); pingErr != nil {
+		logger.Warn("security service did not answer; content publishing and uploads will be held",
+			"addr", cfg.SecurityGRPCAddr, "error", pingErr)
+		_ = client.Close()
+		return securityclient.Unavailable{}, func() {}
+	}
+
+	logger.Info("security service connected", "addr", cfg.SecurityGRPCAddr)
+	return client, func() { _ = client.Close() }
+}
+
+// securityScanner adapts the security client to the media module's Scanner port.
+type securityScanner struct {
+	client securityclient.Client
+}
+
+// Inspect delegates upload inspection to the security service.
+func (s securityScanner) Inspect(ctx context.Context, in media.ScanInput) (media.ScanResult, error) {
+	result, err := s.client.InspectUpload(ctx, securityclient.UploadInput{
+		FileName:     in.FileName,
+		DeclaredMIME: in.DeclaredMIME,
+		Size:         in.Size,
+		StorageKey:   in.StorageKey,
+		Content:      in.Head,
+	})
+	if err != nil {
+		return media.ScanResult{}, err
+	}
+	return media.ScanResult{
+		Status:     media.ScanStatus(result.Status),
+		ReasonCode: result.ReasonCode,
+	}, nil
 }

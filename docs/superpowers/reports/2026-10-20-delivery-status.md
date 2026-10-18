@@ -233,3 +233,55 @@ cargo test（MSVC）      14 passed, 0 failed
 评审报告、详细计划、进度记录、交付报告四份文档齐备，Go 侧 23 个包与 Rust 侧 14 个测试全绿。
 
 "完整交付可上线的系统"**未达成**，缺口已在 9.4 逐项列出，主要卡在 Rust gRPC 服务端的网络阻塞与部署工具链缺失两处环境问题上，而非代码方向问题。
+---
+
+## 10. 安全服务接通（2026-10-20 第二轮补记）
+
+### 10.1 结论
+
+**Rust gRPC 安全服务已实现、已编译、已被 Go 调用。** 内容发布链路与媒体上传链路不再是 503。
+
+### 10.2 做了什么
+
+| 项 | 内容 |
+| --- | --- |
+| 工具链 | `protoc 29.3`（`C:\tools\protoc`）+ `protoc-gen-go` / `protoc-gen-go-grpc` |
+| Go stub | `packages/contracts/security/v1/gen/`（`security.pb.go`、`security_grpc.pb.go`） |
+| 客户端 | `securityclient.GRPC`：超时、错误归一（`ErrUnavailable`）、未指定扫描状态一律视为 `needs_manual_review` |
+| 服务端 | `services/security`：`HashPassword` / `VerifyPassword` / `SanitizeContent` / `InspectUpload` / `ValidateSecurityPolicy` |
+| 接线 | `main.dialSecurity` 启动时连接并 `Ping`；连不上则退回 fail-closed 桩并告警，API 仍可服务 |
+
+### 10.3 端到端实测（release 构建）
+
+```
+security service connected  addr=127.0.0.1:19003
+register = 201                      ← 密码经 Rust Argon2id 哈希
+create   = 201  status=draft
+         policy=2026-10-18.1         ← 来自 Rust 服务
+         rendered=<h1>Hi</h1><p>ok</p>   ← <script> 已被移除，安全标签保留
+submit   = 200  status=pending_review
+complete = 200  scan=needs_manual_review
+```
+
+### 10.4 两个必须记录的坑
+
+1. **Argon2 在 Rust debug 构建里超过 3 秒**，导致 `DeadlineExceeded`。改用 `cargo build --release` 后正常——生产本就该用 release。
+2. `grpc.NewClient("bufconn")` 会走 DNS 解析，测试里必须写 `passthrough:///bufconn`。
+
+### 10.5 仍然存在的缺口
+
+| 项 | 说明 |
+| --- | --- |
+| 媒体 `complete` 只到 `needs_manual_review` | 还没有存储适配器，服务端拿不到文件字节，无法做魔数校验；这是**真实缺口**，不是配置问题 |
+| WebSocket | 未实现；REST 补偿端点可用 |
+| 搜索、通知/消息路由 | 未实现 |
+
+### 10.6 验证
+
+```
+go build ./...        exit 0
+go vet ./...          exit 0
+go test ./... -count=1   23 个包 ok, 0 FAIL
+cargo test               23 passed, 0 failed
+双服务端到端             见 10.3
+```

@@ -58,7 +58,10 @@ type UploadInput struct {
 	FileName     string
 	DeclaredMIME string
 	Size         int64
-	Content      []byte
+	// StorageKey identifies the stored object; the service never dereferences it.
+	StorageKey string
+	// Content is the leading bytes of the object, used for magic number checks.
+	Content []byte
 }
 
 // ScanResult is the outcome of inspection.

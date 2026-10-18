@@ -12,6 +12,8 @@ type ScanInput struct {
 	DeclaredMIME string
 	Size         int64
 	StorageKey   string
+	// Head is the leading bytes of the object, used for magic number checks.
+	Head []byte
 }
 
 // Scanner inspects an uploaded object.

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package practacu.security.v1;
 
+option go_package = "github.com/practacu/practacu-press/packages/contracts/security/v1/gen;securityv1";
+
 // SecurityService is the only surface the Go API uses for security critical work.
 // It is stateless: no users, no permissions, no business data lives here.
 service SecurityService {
