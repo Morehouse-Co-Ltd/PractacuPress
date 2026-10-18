@@ -281,6 +281,43 @@ var (
 			},
 		},
 	}
+	// ModerationReportsColumns holds the columns for the "moderation_reports" table.
+	ModerationReportsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "reporter_id", Type: field.TypeString, Size: 36},
+		{Name: "target_type", Type: field.TypeString, Size: 20},
+		{Name: "target_id", Type: field.TypeString, Size: 36},
+		{Name: "reason", Type: field.TypeString, Size: 20},
+		{Name: "note", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "status", Type: field.TypeString, Default: "open"},
+		{Name: "assignee_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ModerationReportsTable holds the schema information for the "moderation_reports" table.
+	ModerationReportsTable = &schema.Table{
+		Name:       "moderation_reports",
+		Columns:    ModerationReportsColumns,
+		PrimaryKey: []*schema.Column{ModerationReportsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "moderationreport_site_id_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModerationReportsColumns[1], ModerationReportsColumns[7], ModerationReportsColumns[9]},
+			},
+			{
+				Name:    "moderationreport_reporter_id_target_type_target_id",
+				Unique:  true,
+				Columns: []*schema.Column{ModerationReportsColumns[2], ModerationReportsColumns[3], ModerationReportsColumns[4]},
+			},
+			{
+				Name:    "moderationreport_assignee_id",
+				Unique:  false,
+				Columns: []*schema.Column{ModerationReportsColumns[8]},
+			},
+		},
+	}
 	// OutboxEventsColumns holds the columns for the "outbox_events" table.
 	OutboxEventsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -576,6 +613,7 @@ var (
 		IdempotencyKeysTable,
 		MediaAssetsTable,
 		MediaUploadsTable,
+		ModerationReportsTable,
 		OutboxEventsTable,
 		ReactionsTable,
 		SessionsTable,

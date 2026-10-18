@@ -105,6 +105,18 @@ func (f MediaUploadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MediaUploadMutation", m)
 }
 
+// The ModerationReportFunc type is an adapter to allow the use of ordinary
+// function as ModerationReport mutator.
+type ModerationReportFunc func(context.Context, *ent.ModerationReportMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModerationReportFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ModerationReportMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ModerationReportMutation", m)
+}
+
 // The OutboxEventFunc type is an adapter to allow the use of ordinary
 // function as OutboxEvent mutator.
 type OutboxEventFunc func(context.Context, *ent.OutboxEventMutation) (ent.Value, error)

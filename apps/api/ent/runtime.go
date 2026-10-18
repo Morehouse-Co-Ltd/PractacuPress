@@ -13,6 +13,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/schema"
@@ -778,6 +779,124 @@ func init() {
 	mediaupload.DefaultID = mediauploadDescID.Default.(func() string)
 	// mediaupload.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	mediaupload.IDValidator = mediauploadDescID.Validators[0].(func(string) error)
+	moderationreportFields := schema.ModerationReport{}.Fields()
+	_ = moderationreportFields
+	// moderationreportDescSiteID is the schema descriptor for site_id field.
+	moderationreportDescSiteID := moderationreportFields[1].Descriptor()
+	// moderationreport.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	moderationreport.SiteIDValidator = func() func(string) error {
+		validators := moderationreportDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// moderationreportDescReporterID is the schema descriptor for reporter_id field.
+	moderationreportDescReporterID := moderationreportFields[2].Descriptor()
+	// moderationreport.ReporterIDValidator is a validator for the "reporter_id" field. It is called by the builders before save.
+	moderationreport.ReporterIDValidator = func() func(string) error {
+		validators := moderationreportDescReporterID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(reporter_id string) error {
+			for _, fn := range fns {
+				if err := fn(reporter_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// moderationreportDescTargetType is the schema descriptor for target_type field.
+	moderationreportDescTargetType := moderationreportFields[3].Descriptor()
+	// moderationreport.TargetTypeValidator is a validator for the "target_type" field. It is called by the builders before save.
+	moderationreport.TargetTypeValidator = func() func(string) error {
+		validators := moderationreportDescTargetType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(target_type string) error {
+			for _, fn := range fns {
+				if err := fn(target_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// moderationreportDescTargetID is the schema descriptor for target_id field.
+	moderationreportDescTargetID := moderationreportFields[4].Descriptor()
+	// moderationreport.TargetIDValidator is a validator for the "target_id" field. It is called by the builders before save.
+	moderationreport.TargetIDValidator = func() func(string) error {
+		validators := moderationreportDescTargetID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(target_id string) error {
+			for _, fn := range fns {
+				if err := fn(target_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// moderationreportDescReason is the schema descriptor for reason field.
+	moderationreportDescReason := moderationreportFields[5].Descriptor()
+	// moderationreport.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	moderationreport.ReasonValidator = func() func(string) error {
+		validators := moderationreportDescReason.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(reason string) error {
+			for _, fn := range fns {
+				if err := fn(reason); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// moderationreportDescStatus is the schema descriptor for status field.
+	moderationreportDescStatus := moderationreportFields[7].Descriptor()
+	// moderationreport.DefaultStatus holds the default value on creation for the status field.
+	moderationreport.DefaultStatus = moderationreportDescStatus.Default.(string)
+	// moderationreport.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	moderationreport.StatusValidator = moderationreportDescStatus.Validators[0].(func(string) error)
+	// moderationreportDescAssigneeID is the schema descriptor for assignee_id field.
+	moderationreportDescAssigneeID := moderationreportFields[8].Descriptor()
+	// moderationreport.AssigneeIDValidator is a validator for the "assignee_id" field. It is called by the builders before save.
+	moderationreport.AssigneeIDValidator = moderationreportDescAssigneeID.Validators[0].(func(string) error)
+	// moderationreportDescCreatedAt is the schema descriptor for created_at field.
+	moderationreportDescCreatedAt := moderationreportFields[9].Descriptor()
+	// moderationreport.DefaultCreatedAt holds the default value on creation for the created_at field.
+	moderationreport.DefaultCreatedAt = moderationreportDescCreatedAt.Default.(func() time.Time)
+	// moderationreportDescUpdatedAt is the schema descriptor for updated_at field.
+	moderationreportDescUpdatedAt := moderationreportFields[10].Descriptor()
+	// moderationreport.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	moderationreport.DefaultUpdatedAt = moderationreportDescUpdatedAt.Default.(func() time.Time)
+	// moderationreport.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	moderationreport.UpdateDefaultUpdatedAt = moderationreportDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// moderationreportDescID is the schema descriptor for id field.
+	moderationreportDescID := moderationreportFields[0].Descriptor()
+	// moderationreport.DefaultID holds the default value on creation for the id field.
+	moderationreport.DefaultID = moderationreportDescID.Default.(func() string)
+	// moderationreport.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	moderationreport.IDValidator = moderationreportDescID.Validators[0].(func(string) error)
 	outboxeventFields := schema.OutboxEvent{}.Fields()
 	_ = outboxeventFields
 	// outboxeventDescEventID is the schema descriptor for event_id field.

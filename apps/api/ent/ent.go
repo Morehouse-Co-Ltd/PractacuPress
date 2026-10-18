@@ -20,6 +20,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
@@ -96,6 +97,7 @@ func checkColumn(t, c string) error {
 			idempotencykey.Table:    idempotencykey.ValidColumn,
 			mediaasset.Table:        mediaasset.ValidColumn,
 			mediaupload.Table:       mediaupload.ValidColumn,
+			moderationreport.Table:  moderationreport.ValidColumn,
 			outboxevent.Table:       outboxevent.ValidColumn,
 			reaction.Table:          reaction.ValidColumn,
 			session.Table:           session.ValidColumn,

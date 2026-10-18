@@ -30,6 +30,9 @@ type MediaAsset func(*sql.Selector)
 // MediaUpload is the predicate function for mediaupload builders.
 type MediaUpload func(*sql.Selector)
 
+// ModerationReport is the predicate function for moderationreport builders.
+type ModerationReport func(*sql.Selector)
+
 // OutboxEvent is the predicate function for outboxevent builders.
 type OutboxEvent func(*sql.Selector)
 
