@@ -19,8 +19,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/community"
 		"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/communitystore"
 		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
@@ -83,6 +85,11 @@ func run() error {
 		return fmt.Errorf("build site service: %w", err)
 	}
 
+	communityService, err := community.NewService(communitystore.New(handle.Client))
+	if err != nil {
+		return fmt.Errorf("build community service: %w", err)
+	}
+
 	contentService, err := content.NewService(content.ServiceConfig{
 		Repository: contentstore.New(handle.Client),
 		Sanitizer:  securitySanitizer{client: securityclient.Unavailable{}},
@@ -107,6 +114,19 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		Community: community.NewHandler(communityService, community.HandlerConfig{
+			Principal: func(c *gin.Context) (community.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return community.Actor{}, false
+				}
+				return community.Actor{
+					UserID: principal.UserID,
+					SiteID: principal.SiteID,
+					Role:   principal.Role,
+				}, true
+			},
 		}),
 		Content: content.NewHandler(contentService, content.HandlerConfig{
 			Principal: func(c *gin.Context) (content.Actor, bool) {

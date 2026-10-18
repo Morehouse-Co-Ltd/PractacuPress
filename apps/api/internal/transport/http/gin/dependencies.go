@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
@@ -37,4 +38,6 @@ type Dependencies struct {
 	Sites *site.Handler
 	// Content mounts the article and post endpoints when non nil.
 	Content *content.Handler
+	// Community mounts the comment and interaction endpoints when non nil.
+	Community *community.Handler
 }
