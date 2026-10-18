@@ -60,10 +60,23 @@
 
 尚未完成：
 
-- `Session` 的 Ent 仓储（写入/轮换/重放吊销 `family_id`）
-- `AuthService`：注册、登录、刷新、登出
-- `/auth/*` 与 `/me` 路由及集成测试
+- `/auth/*` 与 `/me` 路由及 HTTP 集成测试
+- Cookie/CSRF 下发（service 已产出 CSRF token，尚未落到响应头）
 - 幂等中间件（依赖已认证 principal 才能接线）
+
+已完成（本轮新增）：
+
+- `auth.Repository` 端口 + `authstore.Store`（Ent 实现），写账号/身份/成员、轮换会话、吊销族全部在事务内完成
+- `AuthService`：注册、登录、刷新、登出；密码哈希在事务外完成，避免长事务
+- **重放检测**：已轮换 token 再次出现 → 吊销整个 `family_id` 并返回 `ErrRefreshReuse`
+- **轮换竞态安全**：`UPDATE ... WHERE rotated_at IS NULL AND revoked_at IS NULL`，两个并发刷新只有一个成功
+- **会话绑定站点**：跨站点刷新直接 `ErrSessionRevoked`
+- **角色实时性**：每次签发都读当前成员角色，改角色在下一次刷新生效
+- **账号枚举防护**：未知邮箱与错误密码返回完全相同的错误
+
+### 代码生成限制（重要）
+
+本机无法在仓库内直接跑 `ent generate`：文件一旦在工作区出现就会被扫描器映射，Windows 拒绝以写方式打开（`user-mapped section open`）。`scripts\gen.ps1` 改为**在 `%TEMP%` 的临时模块内生成再拷回**，已验证可用。改动 schema 后请用该脚本，不要直接 `go generate`。
 
 ### 偏差
 

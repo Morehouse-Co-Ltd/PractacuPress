@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // Sentinel errors produced by the persistence layer.
@@ -40,12 +42,13 @@ func (u UserAccount) View() UserView {
 
 // Identity is a login method bound to one account.
 type Identity struct {
-	ID         string
-	UserID     string
-	Provider   string
-	Subject    string
-	Email      string
-	VerifiedAt *time.Time
+	ID           string
+	UserID       string
+	Provider     string
+	Subject      string
+	Email        string
+	PasswordHash string
+	VerifiedAt   *time.Time
 }
 
 // IsVerified reports whether the identity has proven ownership.
@@ -55,9 +58,12 @@ func (i Identity) IsVerified() bool { return i.VerifiedAt != nil }
 type SessionRecord struct {
 	ID        string
 	UserID    string
+	SiteID    string
 	TokenHash string
 	FamilyID  string
 	ParentID  string
+	UserAgent string
+	IPAddress string
 	ExpiresAt time.Time
 	RotatedAt *time.Time
 	RevokedAt *time.Time
@@ -92,6 +98,11 @@ type Repository interface {
 	FindEmailIdentity(ctx context.Context, email string) (Identity, error)
 	// FindUser loads an account by id.
 	FindUser(ctx context.Context, userID string) (UserAccount, error)
+	// FindMembershipRole returns the current role of a user on a site.
+	//
+	// It is read on every session issue so a role change takes effect at the next
+	// refresh instead of being frozen in a token minted days ago.
+	FindMembershipRole(ctx context.Context, siteID, userID string) (site.Role, error)
 	// CreateSession persists a new refresh session.
 	CreateSession(ctx context.Context, record SessionRecord) error
 	// FindSessionByHash loads a session by the hash of its refresh token.

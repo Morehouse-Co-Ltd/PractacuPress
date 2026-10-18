@@ -33,6 +33,16 @@ var (
 	ErrInvalidToken = errors.New("auth: invalid access token")
 	// ErrTokenExpired means the access token is well formed but past its expiry.
 	ErrTokenExpired = errors.New("auth: access token expired")
+	// ErrInvalidInput means a caller supplied value failed validation.
+	ErrInvalidInput = errors.New("auth: invalid input")
+	// ErrPermissionToSite means the account is not a member of the target site.
+	ErrPermissionToSite = errors.New("auth: not a member of this site")
+)
+
+// Account status values mirrored from the persistence schema.
+const (
+	// AccountStatusActive is the only status allowed to authenticate.
+	AccountStatusActive = "active"
 )
 
 // Principal is an authenticated caller bound to one site.
