@@ -16,10 +16,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
+	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/logging"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
 // Timeouts. There is deliberately no global WriteTimeout: WebSocket connections
@@ -61,10 +67,17 @@ func run() error {
 		}
 	}()
 
+	authHandler, issuer, err := buildAuth(cfg, logger, handle)
+	if err != nil {
+		return err
+	}
+
 	router := ginrouter.New(ginrouter.Dependencies{
-		Config:    cfg,
-		Logger:    logger,
-		Readiness: handle.Ping,
+		Config:       cfg,
+		Logger:       logger,
+		Readiness:    handle.Ping,
+		AccessTokens: issuer,
+		Auth:         authHandler,
 	})
 
 	srv := &http.Server{
@@ -100,4 +113,55 @@ func run() error {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
 	return nil
+}
+
+// buildAuth wires the authentication module.
+func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB) (*auth.Handler, *auth.TokenIssuer, error) {
+	issuer, ephemeral, err := auth.NewTokenIssuer(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build token issuer: %w", err)
+	}
+	if ephemeral {
+		logger.Warn("using an ephemeral JWT signing key: tokens will not survive a restart " +
+			"and will not verify on another replica; set AUTH_JWT_ED25519_PRIVATE_KEY")
+	}
+
+	service, err := auth.NewService(auth.ServiceConfig{
+		Repository: authstore.New(handle.Client),
+		Hasher:     choosePasswordHasher(cfg, logger),
+		Tokens:     issuer,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("build auth service: %w", err)
+	}
+
+	handler := auth.NewHandler(service, auth.HandlerConfig{
+		SecureCookies: cfg.CookieSecure,
+		CookieDomain:  cfg.CookieDomain,
+		SiteID: func(c *gin.Context) string {
+			if resolved, ok := middleware.SiteFrom(c); ok {
+				return resolved.ID
+			}
+			// Windows single site deployments do not configure host resolution.
+			return cfg.DefaultSiteID
+		},
+		Principal: middleware.PrincipalFrom,
+	})
+
+	return handler, issuer, nil
+}
+
+// choosePasswordHasher picks the password hashing implementation.
+//
+// Production always delegates to the Rust security service. Until that service is
+// deployed the stub fails every call, so a production login fails closed instead of
+// silently falling back to a weaker local implementation.
+func choosePasswordHasher(cfg config.Config, logger *slog.Logger) auth.PasswordHasher {
+	if cfg.AppEnv == config.EnvProduction {
+		logger.Info("password hashing delegates to the security service")
+		return auth.NewSecurityPasswordHasher(securityclient.Unavailable{})
+	}
+
+	logger.Warn("using local Argon2id password hashing: development and test only")
+	return auth.NewArgon2idHasher(auth.DefaultArgon2Params())
 }

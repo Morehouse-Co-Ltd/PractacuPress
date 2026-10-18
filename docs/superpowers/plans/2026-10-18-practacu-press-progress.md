@@ -60,9 +60,20 @@
 
 尚未完成：
 
-- `/auth/*` 与 `/me` 路由及 HTTP 集成测试
-- Cookie/CSRF 下发（service 已产出 CSRF token，尚未落到响应头）
+- **站点服务**（Task 6）：`SiteService`、成员列表、角色变更端点、基于 Host 的站点解析实现（当前依赖 `DEFAULT_SITE_ID`）
 - 幂等中间件（依赖已认证 principal 才能接线）
+- OAuth / 手机验证码适配器、邮箱验证发送
+
+已完成（本轮新增）：认证 HTTP 层
+
+- 路由：`POST /api/v1/auth/register/email`、`POST /auth/login/password`、`POST /auth/token/refresh`、`POST /auth/logout`、`GET /api/v1/me`
+- **Cookie 策略**：refresh token 只进 `HttpOnly` cookie，`Path=/api/v1/auth`（不随普通 API 请求发送）；CSRF token 进可读 cookie；生产环境自动 `Secure` + `SameSite=None`，本地开发 `Lax`
+- **双提交 CSRF**：刷新接口校验 header 与 cookie 常量时间相等，且在触达数据库之前就拒绝
+- 响应体**永不包含** refresh token（有测试断言）
+- 注册返回 201、登录 200、登出 204 并清 Cookie
+- `cmd/seed`：幂等创建默认站点并输出 ID，供本地/Windows 初始化使用
+
+实测证据：真实启动服务后 `POST /auth/register/email` 返回 201（480 字节 access token、43 字符 CSRF），带 Bearer 调 `GET /me` 返回 200 且 `role=member`。
 
 已完成（本轮新增）：
 

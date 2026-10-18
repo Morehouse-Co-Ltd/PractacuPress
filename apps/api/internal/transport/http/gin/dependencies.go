@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
@@ -26,4 +27,8 @@ type Dependencies struct {
 	// SiteResolver resolves the request hostname to a site. Nil disables host
 	// resolution, which is correct until the site service exists.
 	SiteResolver middleware.SiteResolver
+	// AccessTokens verifies bearer tokens for guarded routes. Nil disables auth.
+	AccessTokens middleware.AccessTokenVerifier
+	// Auth mounts the authentication endpoints when non nil.
+	Auth *auth.Handler
 }

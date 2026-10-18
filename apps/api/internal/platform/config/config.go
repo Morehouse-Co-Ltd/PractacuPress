@@ -59,6 +59,15 @@ type Config struct {
 	AuthJWTKeyID string
 	// AuthJWTIssuer is the expected "iss" claim.
 	AuthJWTIssuer string
+
+	// CookieSecure marks the refresh and CSRF cookies Secure. It defaults to true
+	// in production, where the API is served over TLS.
+	CookieSecure bool
+	// CookieDomain optionally scopes the cookies to a parent domain.
+	CookieDomain string
+	// DefaultSiteID is used when host resolution is not configured, which is the
+	// Windows single site deployment mode.
+	DefaultSiteID string
 }
 
 // DefaultJWTIssuer is the issuer used when AUTH_JWT_ISSUER is unset.
@@ -158,6 +167,14 @@ func Load() (Config, error) {
 	cfg.AuthJWTIssuer = env("AUTH_JWT_ISSUER")
 	if cfg.AuthJWTIssuer == "" {
 		cfg.AuthJWTIssuer = DefaultJWTIssuer
+	}
+
+	cfg.CookieDomain = env("COOKIE_DOMAIN")
+	cfg.DefaultSiteID = env("DEFAULT_SITE_ID")
+	if raw := env("COOKIE_SECURE"); raw != "" {
+		cfg.CookieSecure = envBool("COOKIE_SECURE")
+	} else {
+		cfg.CookieSecure = cfg.AppEnv == EnvProduction
 	}
 
 	return cfg, nil

@@ -285,6 +285,15 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	return s.repo.RevokeSession(ctx, record.ID, "logout", s.now())
 }
 
+// Me returns the account behind an authenticated principal.
+func (s *Service) Me(ctx context.Context, userID string) (UserView, error) {
+	user, err := s.repo.FindUser(ctx, userID)
+	if err != nil {
+		return UserView{}, err
+	}
+	return user.View(), nil
+}
+
 // buildSession mints the token material for a session but does not persist it, so
 // the caller can join the write to an existing transaction.
 func (s *Service) buildSession(
