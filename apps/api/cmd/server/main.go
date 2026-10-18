@@ -39,6 +39,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/platform/logging"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
@@ -122,6 +123,9 @@ func run() error {
 	}
 
 
+	hub := ws.NewHub()
+	tickets := ws.NewTicketStore(nil)
+
 	messageService, err := messaging.NewService(messagingstore.New(handle.Client))
 	if err != nil {
 		return fmt.Errorf("build messaging service: %w", err)
@@ -156,6 +160,16 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		WS: ws.NewHandler(tickets, hub, ws.HandlerConfig{
+			Principal: func(c *gin.Context) (string, string, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return "", "", false
+				}
+				return principal.SiteID, principal.UserID, true
+			},
+			OriginPatterns: cfg.CORSAllowedOrigins,
 		}),
 		Messages: messaging.NewHandler(messageService, messaging.HandlerConfig{
 			Principal: func(c *gin.Context) (messaging.Actor, bool) {

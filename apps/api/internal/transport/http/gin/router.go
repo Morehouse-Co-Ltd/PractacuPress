@@ -65,7 +65,7 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	v1.GET("/openapi.json", openAPIDocument)
 
-	if deps.Auth != nil || deps.Sites != nil || deps.Content != nil || deps.Community != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil {
+	if deps.Auth != nil || deps.Sites != nil || deps.Content != nil || deps.Community != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil {
 		var guard, optionalAuth gin.HandlerFunc
 		if deps.AccessTokens != nil {
 			guard = middleware.RequireAuth(deps.AccessTokens)
@@ -92,6 +92,9 @@ func New(deps Dependencies) *gin.Engine {
 		}
 		if deps.Media != nil {
 			deps.Media.Routes(v1, guard, optionalAuth)
+		}
+		if deps.WS != nil {
+			deps.WS.Routes(v1, guard)
 		}
 		if deps.Messages != nil {
 			deps.Messages.Routes(v1, guard)

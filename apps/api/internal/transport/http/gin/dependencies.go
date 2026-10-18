@@ -14,7 +14,8 @@ import (
 		"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
-	"github.com/practacu/practacu-press/apps/api/internal/site"
+		"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
@@ -46,6 +47,8 @@ type Dependencies struct {
 	Community *community.Handler
 	// Media mounts the upload endpoints when non nil.
 	Media *media.Handler
+	// WS mounts the ticket endpoint and the socket when non nil.
+	WS *ws.Handler
 	// Messages mounts the conversation endpoints when non nil.
 	Messages *messaging.Handler
 	// Notifications mounts the inbox endpoints when non nil.

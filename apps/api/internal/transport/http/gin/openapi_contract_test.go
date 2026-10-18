@@ -28,6 +28,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
 )
 
@@ -119,6 +120,7 @@ func buildRouter() *gin.Engine {
 		Events:  outbox.NewEventsHandler(nil, outbox.HandlerConfig{}),
 		Notifications: notifications.NewHandler(nil, notifications.HandlerConfig{}),
 		Messages: messaging.NewHandler(nil, messaging.HandlerConfig{}),
+		WS:       ws.NewHandler(ws.NewTicketStore(nil), ws.NewHub(), ws.HandlerConfig{}),
 	})
 }
 
@@ -207,6 +209,7 @@ func TestEveryOperationDocumentsResponses(t *testing.T) {
 
 	valid := map[int]struct{}{
 		http.StatusOK: {}, http.StatusCreated: {}, http.StatusNoContent: {},
+		http.StatusSwitchingProtocols: {},
 		http.StatusBadRequest: {}, http.StatusUnauthorized: {}, http.StatusForbidden: {},
 		http.StatusNotFound: {}, http.StatusConflict: {}, http.StatusUnprocessableEntity: {},
 		http.StatusTooManyRequests: {}, http.StatusInternalServerError: {},

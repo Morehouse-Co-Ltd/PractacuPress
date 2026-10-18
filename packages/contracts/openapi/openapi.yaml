@@ -1058,6 +1058,47 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+  /auth/ws-ticket:
+    post:
+      tags: [events]
+      summary: Mint a one time WebSocket ticket
+      description: |
+        The ticket is the credential for the socket, which is what lets a browser connect
+        without putting an access token in a URL that ends up in logs and history. It is
+        valid for 60 seconds and is redeemed exactly once.
+      responses:
+        '200':
+          description: A ticket and the URL to connect to
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticket, expires_at, url]
+                properties:
+                  ticket: { type: string }
+                  expires_at: { type: string, format: date-time }
+                  url: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /ws:
+    get:
+      tags: [events]
+      summary: Live event stream
+      description: |
+        Upgrades to a WebSocket after redeeming the `ticket` query parameter. Delivery is
+        best effort; after a reconnect the client catches up through `GET /events`.
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '101':
+          description: Switching protocols
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
   /events:
     get:
       tags: [events]
