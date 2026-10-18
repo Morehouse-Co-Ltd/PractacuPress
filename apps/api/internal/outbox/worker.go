@@ -28,6 +28,26 @@ type Event struct {
 	Attempts       int
 }
 
+// Entry is an event to append.
+type Entry struct {
+	EventID string
+	SiteID  string
+	// AudienceUserID empty means the whole site.
+	AudienceUserID string
+	Type           string
+	AggregateType  string
+	AggregateID    string
+	Payload        map[string]any
+	OccurredAt     time.Time
+}
+
+// Writer appends events.
+//
+// Callers that already hold a business transaction must write the row inside it; this
+// port is for code with no transaction to join.
+type Writer interface {
+	Append(ctx context.Context, entry Entry) (Event, error)
+}
 // Repository is the persistence contract for the outbox.
 type Repository interface {
 	// Claim locks up to limit due events for this worker.

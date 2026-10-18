@@ -2,6 +2,7 @@
 package messagingstore
 
 import (
+	"github.com/google/uuid"
 	"context"
 	"time"
 
@@ -126,9 +127,24 @@ func (s *Store) ListForUser(ctx context.Context, siteID, userID string, limit in
 	return items, nil
 }
 
-// InsertMessage stores one message.
+// InsertMessage stores one message and its delivery events in one transaction.
+//
+// The event rows are written here rather than in the service because this is the only
+// place the transaction exists: an outbox event that is not committed with its message
+// is exactly the lost notification the outbox pattern exists to prevent.
 func (s *Store) InsertMessage(ctx context.Context, item messaging.Message) (messaging.Message, error) {
-	created, err := s.client.Message.Create().
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return messaging.Message{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	created, err := tx.Message.Create().
 		SetSiteID(item.SiteID).
 		SetConversationID(item.ConversationID).
 		SetSenderID(item.SenderID).
@@ -139,10 +155,48 @@ func (s *Store) InsertMessage(ctx context.Context, item messaging.Message) (mess
 		return messaging.Message{}, err
 	}
 
+	members, err := tx.ConversationMember.Query().
+		Where(conversationmember.ConversationIDEQ(item.ConversationID)).
+		All(ctx)
+	if err != nil {
+		return messaging.Message{}, err
+	}
+
+	for _, member := range members {
+		if member.UserID == item.SenderID {
+			continue
+		}
+		builder := tx.OutboxEvent.Create().
+			SetEventID(newEventID()).
+			SetSiteID(item.SiteID).
+			SetEventType("message.created").
+			SetAggregateType("message").
+			SetAggregateID(created.ID).
+			SetAudienceUserID(member.UserID).
+			SetOccurredAt(item.CreatedAt).
+			SetPayload(map[string]any{
+				"conversation_id": item.ConversationID,
+				"message_id":      created.ID,
+				"sender_id":       item.SenderID,
+				"occurred_at":     item.CreatedAt.Format(time.RFC3339Nano),
+			})
+		if _, err := builder.Save(ctx); err != nil {
+			return messaging.Message{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return messaging.Message{}, err
+	}
+	committed = true
+
 	result := item
 	result.ID = created.ID
 	return result, nil
 }
+
+// newEventID returns a time ordered id so replay can rely on ordering.
+func newEventID() string { return uuid.Must(uuid.NewV7()).String() }
 
 // ListMessages returns messages in creation order.
 func (s *Store) ListMessages(ctx context.Context, siteID, conversationID string, limit int) ([]messaging.Message, error) {

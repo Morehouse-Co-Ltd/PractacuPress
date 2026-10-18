@@ -126,6 +126,17 @@ func run() error {
 	hub := ws.NewHub()
 	tickets := ws.NewTicketStore(nil)
 
+	// The worker turns committed outbox rows into live pushes. Delivery stays best
+	// effort: a missed push is recovered through GET /events, which is authoritative.
+	worker, err := outbox.NewWorker(outbox.Config{
+		Repository: outboxstore.New(handle.Client),
+		Handler:    outboxHandler{hub: hub},
+	})
+	if err != nil {
+		return fmt.Errorf("build outbox worker: %w", err)
+	}
+	go runOutbox(ctx, logger, worker)
+
 	messageService, err := messaging.NewService(messagingstore.New(handle.Client))
 	if err != nil {
 		return fmt.Errorf("build messaging service: %w", err)
@@ -409,4 +420,55 @@ func (s securityScanner) Inspect(ctx context.Context, in media.ScanInput) (media
 		Status:     media.ScanStatus(result.Status),
 		ReasonCode: result.ReasonCode,
 	}, nil
+}
+
+// outboxHandler forwards a published event to live subscribers.
+type outboxHandler struct {
+	hub *ws.Hub
+}
+
+// Handle implements outbox.Handler.
+func (h outboxHandler) Handle(ctx context.Context, event outbox.Event) error {
+	occurred := time.Now().UTC()
+	if raw, ok := event.Payload["occurred_at"].(string); ok {
+		if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+			occurred = parsed
+		}
+	}
+
+	h.hub.Publish(ctx, ws.Event{
+		ID:             event.EventID,
+		Type:           event.Type,
+		OccurredAt:     occurred,
+		SiteID:         event.SiteID,
+		AudienceUserID: event.AudienceUserID,
+		Payload:        event.Payload,
+	})
+	return nil
+}
+
+// runOutbox drains the outbox on a fixed interval until the process stops.
+func runOutbox(ctx context.Context, logger *slog.Logger, worker *outbox.Worker) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			result, err := worker.RunOnce(ctx, outbox.DefaultBatch)
+			if err != nil {
+				logger.Error("outbox pass failed", "error", err)
+				continue
+			}
+			if result.Claimed > 0 {
+				logger.Info("outbox pass",
+					"claimed", result.Claimed,
+					"published", result.Published,
+					"failed", result.Failed,
+				)
+			}
+		}
+	}
 }

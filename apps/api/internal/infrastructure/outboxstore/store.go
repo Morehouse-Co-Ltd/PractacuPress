@@ -21,6 +21,36 @@ func New(client *entgen.Client) *Store { return &Store{client: client} }
 
 var _ outbox.Repository = (*Store)(nil)
 
+// Append stores a new event and returns it.
+func (s *Store) Append(ctx context.Context, entry outbox.Entry) (outbox.Event, error) {
+	builder := s.client.OutboxEvent.Create().
+		SetEventID(entry.EventID).
+		SetSiteID(entry.SiteID).
+		SetEventType(entry.Type).
+		SetAggregateType(entry.AggregateType).
+		SetAggregateID(entry.AggregateID).
+		SetOccurredAt(entry.OccurredAt)
+	if entry.AudienceUserID != "" {
+		builder.SetAudienceUserID(entry.AudienceUserID)
+	}
+	if entry.Payload != nil {
+		builder.SetPayload(entry.Payload)
+	}
+
+	created, err := builder.Save(ctx)
+	if err != nil {
+		return outbox.Event{}, err
+	}
+	return outbox.Event{
+		ID:             created.ID,
+		EventID:        created.EventID,
+		SiteID:         created.SiteID,
+		AudienceUserID: deref(created.AudienceUserID),
+		Type:           created.EventType,
+		AggregateID:    created.AggregateID,
+		Payload:        created.Payload,
+	}, nil
+}
 // Claim locks up to limit due events for this worker.
 //
 // Claiming is a conditional update per row rather than a "select then update": the
