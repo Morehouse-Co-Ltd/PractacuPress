@@ -60,9 +60,21 @@
 
 尚未完成：
 
-- **站点服务**（Task 6）：`SiteService`、成员列表、角色变更端点、基于 Host 的站点解析实现（当前依赖 `DEFAULT_SITE_ID`）
+- 站点管理的 HTTP 端点（`/sites`、成员列表、角色变更）——领域服务与存储已就绪，只差路由
 - 幂等中间件（依赖已认证 principal 才能接线）
 - OAuth / 手机验证码适配器、邮箱验证发送
+
+已完成（本轮新增）：站点服务与真实站点解析
+
+- `site.Service`：`Resolve` / `DefaultSite` / `Membership` / `ListMembers` / `ChangeMemberRole` / `UpdateSettings`
+- **解析严格性**：未知 Host 一律 `ErrNotFound`，绝不回退到"第一个站点"；唯一例外是单站点部署（库中仅一个站点且未配置域名）
+- **权限矩阵**：`Can(member, action)` 单点定义，4 角色 × 4 动作全部表驱动测试
+- **提权防护**：只有平台管理员能授予或撤销 `platform_admin`；站点管理员不能降级别人的平台管理员身份
+- **跨站防护**：`authorize` 先校验 `actor.SiteID == siteID`，跨站直接 `ErrCrossSite`
+- 角色变更与站点设置变更**在同一事务内写审计日志**
+- `main` 现在注入真实 `site.Service` 作为站点解析器；`DEFAULT_SITE_ID` 不再是生效路径
+
+实测证据：**不设置 `DEFAULT_SITE_ID`** 启动服务，注册返回 201，`/me` 返回 200 且 `site_id` 与 seed 出来的站点一致——说明解析走的是真实解析链路。
 
 已完成（本轮新增）：认证 HTTP 层
 

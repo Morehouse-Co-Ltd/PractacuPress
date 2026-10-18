@@ -22,8 +22,10 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/logging"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
@@ -72,10 +74,18 @@ func run() error {
 		return err
 	}
 
+	// Site resolution is always on: without it every request would fall back to a
+	// default site, which breaks tenant isolation the moment a second site exists.
+	siteService, err := site.NewService(sitestore.New(handle.Client))
+	if err != nil {
+		return fmt.Errorf("build site service: %w", err)
+	}
+
 	router := ginrouter.New(ginrouter.Dependencies{
 		Config:       cfg,
 		Logger:       logger,
 		Readiness:    handle.Ping,
+		SiteResolver: siteService,
 		AccessTokens: issuer,
 		Auth:         authHandler,
 	})
