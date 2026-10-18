@@ -9,6 +9,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
+	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
@@ -40,4 +41,6 @@ type Dependencies struct {
 	Content *content.Handler
 	// Community mounts the comment and interaction endpoints when non nil.
 	Community *community.Handler
+	// Media mounts the upload endpoints when non nil.
+	Media *media.Handler
 }

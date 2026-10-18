@@ -20,10 +20,12 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
+	"github.com/practacu/practacu-press/apps/api/internal/media"
 		"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/communitystore"
 		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
@@ -85,6 +87,14 @@ func run() error {
 		return fmt.Errorf("build site service: %w", err)
 	}
 
+	mediaService, err := media.NewService(media.ServiceConfig{
+		Repository: mediastore.New(handle.Client),
+		Scanner:    media.UnavailableScanner{},
+	})
+	if err != nil {
+		return fmt.Errorf("build media service: %w", err)
+	}
+
 	communityService, err := community.NewService(communitystore.New(handle.Client))
 	if err != nil {
 		return fmt.Errorf("build community service: %w", err)
@@ -114,6 +124,15 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		Media: media.NewHandler(mediaService, media.HandlerConfig{
+			Principal: func(c *gin.Context) (media.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return media.Actor{}, false
+				}
+				return media.Actor{UserID: principal.UserID, SiteID: principal.SiteID}, true
+			},
 		}),
 		Community: community.NewHandler(communityService, community.HandlerConfig{
 			Principal: func(c *gin.Context) (community.Actor, bool) {
