@@ -8,6 +8,7 @@ package media
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -117,19 +118,19 @@ func ValidateRequest(in UploadRequest) (UploadRequest, error) {
 	in.DeclaredMIME = strings.ToLower(strings.TrimSpace(in.DeclaredMIME))
 
 	if !in.Purpose.Valid() {
-		return UploadRequest{}, errors.New("media: unknown purpose")
+		return UploadRequest{}, fmt.Errorf("%w: unknown purpose", ErrInvalidInput)
 	}
 	if in.FileName == "" {
-		return UploadRequest{}, errors.New("media: file name is required")
+		return UploadRequest{}, fmt.Errorf("%w: file name is required", ErrInvalidInput)
 	}
 	if len(in.FileName) > MaxFileNameLength {
-		return UploadRequest{}, errors.New("media: file name is too long")
+		return UploadRequest{}, fmt.Errorf("%w: file name is too long", ErrInvalidInput)
 	}
 	if strings.ContainsAny(in.FileName, "\x00") {
-		return UploadRequest{}, errors.New("media: file name contains a null byte")
+		return UploadRequest{}, fmt.Errorf("%w: file name contains a null byte", ErrInvalidInput)
 	}
 	if in.Size <= 0 {
-		return UploadRequest{}, errors.New("media: size must be positive")
+		return UploadRequest{}, fmt.Errorf("%w: size must be positive", ErrInvalidInput)
 	}
 
 	limit := MaxAttachmentBytes
@@ -137,17 +138,17 @@ func ValidateRequest(in UploadRequest) (UploadRequest, error) {
 		limit = MaxImageBytes
 	}
 	if in.Size > limit {
-		return UploadRequest{}, errors.New("media: file is too large")
+		return UploadRequest{}, fmt.Errorf("%w: file is too large", ErrInvalidInput)
 	}
 
 	switch in.Purpose {
 	case PurposeContent, PurposeAvatar:
 		if _, ok := allowedImageTypes[in.DeclaredMIME]; !ok {
-			return UploadRequest{}, errors.New("media: unsupported image type")
+			return UploadRequest{}, fmt.Errorf("%w: unsupported image type", ErrInvalidInput)
 		}
 	case PurposeAttachment:
 		if _, ok := allowedAttachmentTypes[in.DeclaredMIME]; !ok {
-			return UploadRequest{}, errors.New("media: unsupported attachment type")
+			return UploadRequest{}, fmt.Errorf("%w: unsupported attachment type", ErrInvalidInput)
 		}
 	}
 
