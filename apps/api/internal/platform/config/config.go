@@ -50,7 +50,19 @@ type Config struct {
 	TrustedProxies []string
 	// RateLimitPerMinute caps requests per client per minute. Zero disables it.
 	RateLimitPerMinute int
+
+	// AuthJWTPrivateKey is the base64 PKCS#8 Ed25519 signing key. It is optional at
+	// load time so development can run with an ephemeral key; production refuses to
+	// start without it, which is enforced when the issuer is constructed.
+	AuthJWTPrivateKey string
+	// AuthJWTKeyID names the signing key so a rotation can be staged.
+	AuthJWTKeyID string
+	// AuthJWTIssuer is the expected "iss" claim.
+	AuthJWTIssuer string
 }
+
+// DefaultJWTIssuer is the issuer used when AUTH_JWT_ISSUER is unset.
+const DefaultJWTIssuer = "practacu-press"
 
 // DefaultRateLimitPerMinute is the global per client budget.
 const DefaultRateLimitPerMinute = 240
@@ -140,6 +152,13 @@ func Load() (Config, error) {
 		}
 	}
 	cfg.RateLimitPerMinute = rate
+
+	cfg.AuthJWTPrivateKey = env("AUTH_JWT_ED25519_PRIVATE_KEY")
+	cfg.AuthJWTKeyID = env("AUTH_JWT_KID")
+	cfg.AuthJWTIssuer = env("AUTH_JWT_ISSUER")
+	if cfg.AuthJWTIssuer == "" {
+		cfg.AuthJWTIssuer = DefaultJWTIssuer
+	}
 
 	return cfg, nil
 }

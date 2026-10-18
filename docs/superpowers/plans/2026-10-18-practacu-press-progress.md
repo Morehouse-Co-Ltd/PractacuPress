@@ -46,8 +46,29 @@
 
 ## 待办与偏差
 
-- **幂等中间件推迟到 M1**：幂等键必须以已认证 principal 为作用域，且存储要 Ent 落地。在 Task 5 之前它只能是无法接线的死代码。计划文档中的 4 项偏差记录已更新。
-- **M1 尚未开始**：下一步实现 `auth` 域的令牌原语（Ed25519 JWT + opaque refresh + 重放检测），再补 service 与 handler。
+### Task 5 身份与会话（进行中）
+
+已完成（可独立测试，不依赖数据库）：
+
+- `auth` 域：`Principal`、`UserView`、`Session`、9 个哨兵错误
+- `auth.TokenIssuer`：Ed25519 签名 JWT，15 分钟有效期，header 带 `kid`；验证时**固定算法为 EdDSA** 并校验 `kid` 与 `iss`，拒绝 `alg: none` 与未知签名
+- 生产环境缺 `AUTH_JWT_ED25519_PRIVATE_KEY` 直接失败；开发环境退回临时密钥并通过返回值报告（调用方须告警）
+- `GenerateSigningKey`/`EncodeSigningKey` 供运维生成密钥，避免手写 DER
+- Refresh 原语：32 字节随机、只存 SHA-256、`TokensEqual` 常量时间比较
+- `securityclient.Client` 接口 + `Unavailable` 实现：**所有方法 fail-closed**，不会返回 clean 或可渲染 HTML
+- `middleware.RequireAuth`/`RequireSiteMatch`/`RequireRole`：Bearer 解析、401 原因细化、跨站令牌拒绝、角色门槛
+
+尚未完成：
+
+- `Session` 的 Ent 仓储（写入/轮换/重放吊销 `family_id`）
+- `AuthService`：注册、登录、刷新、登出
+- `/auth/*` 与 `/me` 路由及集成测试
+- 幂等中间件（依赖已认证 principal 才能接线）
+
+### 偏差
+
+- **幂等中间件推迟到 M1 后半**：幂等键必须以已认证 principal 为作用域，且存储要 Ent 落地。在 Task 5 之前它只能是无法接线的死代码。
+- 计划文档中的 4 项偏差记录已更新。
 
 ## 环境约束提醒
 
