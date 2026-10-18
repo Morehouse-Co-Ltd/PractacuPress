@@ -368,3 +368,63 @@ without token  = 401
 | 拒绝时清理对象 | 保留以便审计，未做垃圾回收 |
 | 匿名图片访问 | 目前所有媒体都需要登录；公开文章内嵌图片要等"站点可见性 + 匿名读"实现 |
 | WebSocket、搜索、通知/消息路由 | 未实现 |
+---
+
+## 13. 匿名读、搜索、通知、消息、WebSocket（2026-10-20 第五轮补记）
+
+### 13.1 结论
+
+五项待办完成四项半：**匿名读、搜索、通知、消息、WebSocket 已实现并验证**；S3 适配器未做。
+
+### 13.2 匿名读
+
+| 项 | 内容 |
+| --- | --- |
+| 中间件 | `OptionalAuth`：有合法令牌则附上身份，无令牌或令牌失效则继续匿名 |
+| 决策点 | `content.Handler.actor`：站点 `visibility_mode=public` 才允许匿名，`members_only` 返回 401 |
+| 范围 | 文章/帖子列表与详情、媒体下载、搜索 |
+| 证据 | 单元测试（public 200 / members_only 401 / 草稿 404）；实跑无令牌 `GET /api/v1/articles` → 200 |
+
+### 13.3 搜索
+
+- `GET /api/v1/search?q=&kind=&limit=`，**只搜已发布内容**
+- 用 `LIKE` 而非 FTS：三方言分词规则不一致，项目约束禁止依赖单一方言
+- 通配符按字面处理（`100%` 搜的是文本，不是"以 100 开头的一切"）
+- 词长 2–100，超长截断而不是报错
+
+### 13.4 通知
+
+- 表：`notification`（无广播行，按收件人一行）
+- 端点：`GET /notifications`、`POST /notifications/read-all`、`POST /notifications/{id}/read`
+- 已读幂等：第二次标记不写库，首次时间戳保留
+- 别人的通知连"存在"都不透露（404）
+
+### 13.5 消息
+
+- 表：`conversation`、`conversation_member`、`message`
+- 端点：会话列表/创建、消息列表/发送、已读游标
+- **非成员一律 404**，不泄露会话存在
+- 发送即已读：避免用户自己的消息让未读角标虚增
+
+### 13.6 WebSocket
+
+- `POST /auth/ws-ticket` 发一次性票据（30 字节随机、只存哈希、60 秒、单次消费）
+- `GET /api/v1/ws?ticket=` 升级；按 `site + user` 订阅
+- Hub 投递同时按站点与 `audience_user_id` 过滤——**与 REST 补偿是两套独立实现**，一处有 bug 不会两处都漏
+- 票据放 URL 的原因：access token 进 URL 会落在日志和历史里
+
+### 13.7 验证
+
+```
+go build ./...            exit 0
+go vet ./...              exit 0
+go test ./... -count=1    24 个包 ok, 0 FAIL
+```
+
+### 13.8 未完成
+
+| 项 | 原因 |
+| --- | --- |
+| S3 存储适配器 | 需要 `aws-sdk-go-v2`；本机没有 MinIO/S3，**即使实现也无法验证** |
+| Outbox → Hub 推送 | worker 尚未在 `main` 中运行，实时推送目前只有链路没有数据源 |
+| 消息/通知的分页游标 | 目前只有 limit |
