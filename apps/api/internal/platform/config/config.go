@@ -8,6 +8,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -37,7 +38,22 @@ type Config struct {
 	DatabaseDSN string
 	// SecurityGRPCAddr is the Rust security service gRPC endpoint.
 	SecurityGRPCAddr string
+
+	// CORSAllowedOrigins lists browser origins allowed to call the API. Empty
+	// means cross origin browser access is disabled, which is the safe default.
+	CORSAllowedOrigins []string
+	// CORSCredentials allows cookies on cross origin requests. It requires an
+	// explicit origin list; the wildcard is rejected when this is true.
+	CORSCredentials bool
+	// TrustedProxies lists CIDRs or IPs whose forwarding headers are believed.
+	// Empty means no proxy is trusted and forwarding headers are ignored.
+	TrustedProxies []string
+	// RateLimitPerMinute caps requests per client per minute. Zero disables it.
+	RateLimitPerMinute int
 }
+
+// DefaultRateLimitPerMinute is the global per client budget.
+const DefaultRateLimitPerMinute = 240
 
 // Error is a typed configuration error.
 //
@@ -96,7 +112,75 @@ func Load() (Config, error) {
 		}
 	}
 
+	cfg.CORSAllowedOrigins = envList("CORS_ALLOWED_ORIGINS")
+	cfg.CORSCredentials = envBool("CORS_ALLOW_CREDENTIALS")
+	cfg.TrustedProxies = envList("TRUSTED_PROXIES")
+
+	// Credentials plus a wildcard origin is rejected by browsers and is a common
+	// way to accidentally expose cookies to any site, so it fails at startup.
+	if cfg.CORSCredentials {
+		for _, origin := range cfg.CORSAllowedOrigins {
+			if origin == "*" {
+				return Config{}, &Error{
+					Code:   "invalid_cors_origin",
+					Detail: "CORS_ALLOW_CREDENTIALS cannot be combined with the * origin",
+				}
+			}
+		}
+	}
+
+	rate, err := envInt("RATE_LIMIT_PER_MINUTE", DefaultRateLimitPerMinute)
+	if err != nil {
+		return Config{}, err
+	}
+	if rate < 0 {
+		return Config{}, &Error{
+			Code:   "invalid_rate_limit",
+			Detail: "RATE_LIMIT_PER_MINUTE must not be negative",
+		}
+	}
+	cfg.RateLimitPerMinute = rate
+
 	return cfg, nil
+}
+
+// envList reads a comma separated list, dropping empty entries.
+func envList(key string) []string {
+	raw := env(key)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// envBool reads a permissive boolean flag.
+func envBool(key string) bool {
+	switch strings.ToLower(env(key)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// envInt reads a non negative integer, falling back to def when unset.
+func envInt(key string, def int) (int, error) {
+	raw := env(key)
+	if raw == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, &Error{Code: "invalid_" + strings.ToLower(key), Detail: key + " must be an integer"}
+	}
+	return n, nil
 }
 
 // NormalizeDriver maps a user supplied driver name to its canonical form.

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
 // Dependencies is everything the HTTP layer needs.
@@ -22,4 +23,7 @@ type Dependencies struct {
 	// Readiness reports whether the process can serve traffic. A nil func means
 	// "always ready", which is the correct default before the data layer exists.
 	Readiness func(ctx context.Context) error
+	// SiteResolver resolves the request hostname to a site. Nil disables host
+	// resolution, which is correct until the site service exists.
+	SiteResolver middleware.SiteResolver
 }

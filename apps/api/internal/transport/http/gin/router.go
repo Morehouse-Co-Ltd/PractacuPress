@@ -2,9 +2,11 @@ package ginrouter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,8 +17,10 @@ import (
 
 // New builds the HTTP engine.
 //
-// Routes mounted here are only the ones that exist today; feature modules add
-// their own route groups as they land.
+// Middleware order matters and is fixed here: request id first so every later
+// component can correlate, then the error translator so failures from any inner
+// middleware are formatted, then CORS (browsers must get a preflight answer before
+// being rate limited), then rate limiting.
 func New(deps Dependencies) *gin.Engine {
 	setGinMode(deps.Config.AppEnv)
 	if deps.Logger == nil {
@@ -24,17 +28,57 @@ func New(deps Dependencies) *gin.Engine {
 	}
 
 	r := gin.New()
-	r.Use(gin.Recovery())
+	configureTrustedProxies(r, deps.Config.TrustedProxies)
+
+	r.Use(
+		middleware.RequestID(),
+		middleware.ErrorHandler(deps.Logger),
+	)
+
+	if len(deps.Config.CORSAllowedOrigins) > 0 {
+		r.Use(middleware.CORS(middleware.CORSConfig{
+			AllowedOrigins:   deps.Config.CORSAllowedOrigins,
+			AllowCredentials: deps.Config.CORSCredentials,
+		}))
+	}
+
+	if deps.Config.RateLimitPerMinute > 0 {
+		r.Use(middleware.RateLimit(
+			middleware.NewMemoryRateLimitStore(nil),
+			middleware.Policy{Limit: deps.Config.RateLimitPerMinute, Window: time.Minute},
+		))
+	}
 
 	r.GET("/healthz", healthz)
 	r.GET("/readyz", readyz(deps.Readiness))
 
 	v1 := r.Group("/api/v1")
+	if deps.SiteResolver != nil {
+		trusted, err := middleware.NewTrustedProxies(deps.Config.TrustedProxies)
+		if err != nil {
+			// Load validates this at startup; reaching here means the caller built
+			// Config by hand, which is a programming error worth failing loudly.
+			panic(fmt.Sprintf("ginrouter: %v", err))
+		}
+		v1.Use(middleware.ResolveSite(trusted, deps.SiteResolver))
+	}
 	v1.GET("/openapi.json", openAPIDocument)
 
 	r.NoRoute(noRoute)
 
 	return r
+}
+
+// configureTrustedProxies tells Gin which peers may supply the client IP.
+//
+// With no configured proxy every forwarding header is ignored and ClientIP falls
+// back to the socket address, which is the only safe default.
+func configureTrustedProxies(r *gin.Engine, trusted []string) {
+	if len(trusted) == 0 {
+		_ = r.SetTrustedProxies(nil)
+		return
+	}
+	_ = r.SetTrustedProxies(trusted)
 }
 
 func setGinMode(appEnv string) {
@@ -83,6 +127,8 @@ func openAPIDocument(c *gin.Context) {
 }
 
 func noRoute(c *gin.Context) {
-	p := apperr.NotFound("route").WithDetail("path", c.Request.URL.Path)
-	middleware.AbortProblem(c, p)
+	problem := apperr.NotFound("route").
+		WithDetail("path", c.Request.URL.Path).
+		WithRequestID(middleware.RequestIDFrom(c))
+	middleware.AbortProblem(c, problem)
 }
