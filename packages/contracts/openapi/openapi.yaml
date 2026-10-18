@@ -1,0 +1,1062 @@
+openapi: 3.1.0
+info:
+  title: Practacu Press API
+  version: 0.1.0
+  description: |
+    Multi-site community CMS API.
+
+    Contract rules:
+    - Every resource is scoped to the site resolved from the request host.
+    - Access tokens are Ed25519 signed JWTs carried as `Authorization: Bearer`.
+    - The refresh token lives only in an HttpOnly cookie scoped to `/api/v1/auth`;
+      refresh calls additionally require the `X-CSRF-Token` header to match the
+      `pp_csrf` cookie.
+    - Every error is `application/problem+json` with a stable `code`.
+servers:
+  - url: /api/v1
+    description: Versioned API root. Health endpoints sit outside this prefix.
+security:
+  - bearerAuth: []
+tags:
+  - name: system
+  - name: auth
+  - name: sites
+  - name: content
+  - name: community
+  - name: media
+  - name: events
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      summary: Liveness probe
+      description: Reports process liveness only. Never depends on the database or upstream services.
+      security: []
+      servers:
+        - url: /
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  /readyz:
+    get:
+      tags: [system]
+      summary: Readiness probe
+      description: Checks dependencies, currently the database connection.
+      security: []
+      servers:
+        - url: /
+      responses:
+        '200':
+          description: Ready to serve traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ready }
+        '503':
+          description: A dependency is unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: unready }
+
+  /openapi.json:
+    get:
+      tags: [system]
+      summary: OpenAPI document
+      description: Served without a session so tooling can fetch it.
+      security: []
+      responses:
+        '200':
+          description: The contract document
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /auth/register/email:
+    post:
+      tags: [auth]
+      summary: Register with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name]
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+                password: { type: string, minLength: 8, maxLength: 128 }
+                display_name: { type: string, maxLength: 120 }
+      responses:
+        '201':
+          description: Account created and session started
+          headers:
+            Set-Cookie:
+              description: Sets the HttpOnly `pp_refresh` cookie and the readable `pp_csrf` cookie.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login/password:
+    post:
+      tags: [auth]
+      summary: Log in with email and password
+      description: An unknown account and a wrong password return the same 401 body, so the endpoint cannot be used to enumerate accounts.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Session started
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /auth/token/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate the session
+      description: |
+        Requires the `pp_refresh` cookie and a matching `X-CSRF-Token` header.
+        The refresh token rotates on every success. Presenting an already rotated
+        token revokes the whole token family, so both the client and an attacker holding
+        the stolen token are logged out.
+      security: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: New access token and rotated refresh cookie
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session
+      description: Safe to retry; an unknown or already revoked token is not an error.
+      security: []
+      responses:
+        '204':
+          description: Session revoked and cookies cleared
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /me:
+    get:
+      tags: [auth]
+      summary: Current user
+      responses:
+        '200':
+          description: The authenticated account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, role, site_id]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  role: { $ref: '#/components/schemas/Role' }
+                  site_id: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /sites/{siteID}:
+    get:
+      tags: [sites]
+      summary: Site details for a member
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: The site
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Site' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /sites/{siteID}/members:
+    get:
+      tags: [sites]
+      summary: List site members
+      description: Requires site administrator authority.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: Members of the site
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Member' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /sites/{siteID}/members/{userID}/role:
+    patch:
+      tags: [sites]
+      summary: Change a member role
+      description: |
+        Requires site administrator authority. Only a platform administrator may grant
+        or revoke the `platform_admin` role, or demote an existing platform administrator.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: userID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '204':
+          description: Role changed and audited
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteID}/settings:
+    patch:
+      tags: [sites]
+      summary: Update site settings
+      description: Partial update; omitted fields are left unchanged. Requires site administrator authority.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 160 }
+                description: { type: string, maxLength: 2000 }
+                visibility_mode: { $ref: '#/components/schemas/VisibilityMode' }
+                publish_mode: { $ref: '#/components/schemas/PublishMode' }
+                domain: { type: string }
+      responses:
+        '204':
+          description: Settings updated and audited
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /articles:
+    get:
+      tags: [content]
+      summary: List articles
+      description: Readers only ever see published items; editors also see the review queue.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of articles
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentPage' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [content]
+      summary: Create a draft
+      description: |
+        The body is sanitized by the security service. If that service is unavailable the
+        draft is stored in `pending_security_check` and the response is 503: content is
+        preserved but cannot be published.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftInput' }
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /articles/{contentID}:
+    get:
+      tags: [content]
+      summary: Read an article
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      responses:
+        '200':
+          description: The article
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [content]
+      summary: Edit a draft
+      description: Published content is immutable; a correction must go through review again.
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftInput' }
+      responses:
+        '200':
+          description: Draft updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/ContentStateInvalid'
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /articles/{contentID}/{action}:
+    post:
+      tags: [content]
+      summary: Apply a workflow action
+      description: |
+        `action` is one of `submit`, `publish`, `reject`, `archive`, `restore` or
+        `security-retry`. The site publish mode decides whether an author may publish
+        directly; authors can never approve their own pending content.
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [submit, publish, reject, archive, restore, security-retry]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: New state of the item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ContentStateInvalid'
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /posts:
+    get:
+      tags: [content]
+      summary: List posts
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of posts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentPage' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [content]
+      summary: Create a post draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftInput' }
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /posts/{contentID}:
+    get:
+      tags: [content]
+      summary: Read a post
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      responses:
+        '200':
+          description: The post
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [content]
+      summary: Edit a post draft
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftInput' }
+      responses:
+        '200':
+          description: Draft updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '409':
+          $ref: '#/components/responses/ContentStateInvalid'
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /posts/{contentID}/{action}:
+    post:
+      tags: [content]
+      summary: Apply a workflow action to a post
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [submit, publish, reject, archive, restore, security-retry]
+      responses:
+        '200':
+          description: New state of the item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '409':
+          $ref: '#/components/responses/ContentStateInvalid'
+
+  /comments:
+    post:
+      tags: [community]
+      summary: Comment on a target
+      description: Replies are created by targeting a comment. Nesting is capped server side; a deeper reply is refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id, body]
+              properties:
+                target_type: { $ref: '#/components/schemas/TargetType' }
+                target_id: { type: string }
+                parent_id: { type: string, description: Required when target_type is comment. }
+                body: { type: string, maxLength: 5000 }
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /comments/{commentID}:
+    patch:
+      tags: [community]
+      summary: Edit your comment
+      description: Only the author may edit, and only while the comment is visible.
+      parameters:
+        - $ref: '#/components/parameters/CommentID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 5000 }
+      responses:
+        '200':
+          description: Comment updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [community]
+      summary: Delete a comment
+      description: Allowed for the author or a moderator. Deleting twice is not an error.
+      parameters:
+        - $ref: '#/components/parameters/CommentID'
+      responses:
+        '204':
+          description: Comment soft deleted
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reactions/{targetType}/{targetID}:
+    post:
+      tags: [community]
+      summary: Toggle a reaction
+      description: |
+        Idempotent. With `active` omitted the current state flips; with `active` set the
+        call is a no-op when the state already matches, so a retried like produces one
+        write and one notification.
+      parameters:
+        - $ref: '#/components/parameters/TargetType'
+        - $ref: '#/components/parameters/TargetID'
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [like, love, insightful]
+            default: like
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ToggleInput' }
+      responses:
+        '200':
+          description: Resulting state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ToggleResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /bookmarks/{targetType}/{targetID}:
+    post:
+      tags: [community]
+      summary: Toggle a bookmark
+      parameters:
+        - $ref: '#/components/parameters/TargetType'
+        - $ref: '#/components/parameters/TargetID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ToggleInput' }
+      responses:
+        '200':
+          description: Resulting state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ToggleResult' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /follows/{userID}:
+    post:
+      tags: [community]
+      summary: Toggle following a user
+      description: Following yourself is refused.
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ToggleInput' }
+      responses:
+        '200':
+          description: Resulting state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ToggleResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /media/uploads:
+    post:
+      tags: [media]
+      summary: Open an upload session
+      description: |
+        Phase one of the two phase upload. The declared name and MIME are claims only;
+        the storage key is generated server side and never contains the user's path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_name, mime_type, size, purpose]
+              properties:
+                file_name: { type: string, maxLength: 200 }
+                mime_type:
+                  type: string
+                  enum: [image/png, image/jpeg, image/webp, image/gif, application/pdf, text/plain]
+                size: { type: integer, format: int64, minimum: 1 }
+                purpose:
+                  type: string
+                  enum: [content, avatar, attachment]
+      responses:
+        '201':
+          description: Upload session opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Upload' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /media/uploads/{uploadID}/complete:
+    post:
+      tags: [media]
+      summary: Complete an upload
+      description: |
+        Phase two: the stored object is inspected. Only a `clean` verdict yields a
+        referenceable asset. A rejected file returns 422 with the asset recorded for the
+        audit trail; an inspection outage returns 503 and leaves the session pending.
+      parameters:
+        - name: uploadID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Asset accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: The file was rejected by inspection
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Asset' }
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /events:
+    get:
+      tags: [events]
+      summary: Catch up on missed events
+      description: |
+        The authoritative recovery path after a reconnect; live WebSocket delivery is
+        best effort. Only events published to this site are returned, and an event
+        addressed to a specific user is returned only to that user.
+      parameters:
+        - name: after_id
+          in: query
+          required: false
+          description: Last event id the client has processed. Results resume strictly after it.
+          schema: { type: string, maxLength: 64 }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of events
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor, has_more]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Event' }
+                  next_cursor: { type: string }
+                  has_more: { type: boolean }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SiteID:
+      name: siteID
+      in: path
+      required: true
+      schema: { type: string }
+    ContentID:
+      name: contentID
+      in: path
+      required: true
+      schema: { type: string }
+    CommentID:
+      name: commentID
+      in: path
+      required: true
+      schema: { type: string }
+    TargetType:
+      name: targetType
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/TargetType' }
+    TargetID:
+      name: targetID
+      in: path
+      required: true
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor from a previous page. Malformed values are rejected, never ignored.
+      schema: { type: string }
+
+  responses:
+    ValidationFailed:
+      description: The request body or parameters failed validation
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: Missing, expired or invalid credentials
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PermissionDenied:
+      description: The caller is authenticated but not allowed, or not a member of the site
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: The resource does not exist in the resolved site
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: The resource already exists or conflicts with current state
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ContentStateInvalid:
+      description: The requested workflow move is not available from the current state
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    SecurityUnavailable:
+      description: The security service could not run, so the operation was held rather than allowed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, message, details, request_id]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        code:
+          type: string
+          enum:
+            - validation_failed
+            - unauthenticated
+            - permission_denied
+            - not_found
+            - conflict
+            - rate_limited
+            - internal
+            - invalid_cursor
+            - idempotency_key_reuse
+            - site_not_found
+            - site_domain_unverified
+            - content_state_invalid
+            - security_unavailable
+            - provider_not_configured
+            - invalid_database_driver
+        message: { type: string, description: Localised, may change. Clients branch on `code`. }
+        details: { type: object, additionalProperties: true }
+        request_id: { type: string }
+
+    Role:
+      type: string
+      enum: [platform_admin, site_admin, editor, member]
+
+    VisibilityMode:
+      type: string
+      enum: [public, members_only]
+
+    PublishMode:
+      type: string
+      enum: [open, review, role_based]
+
+    TargetType:
+      type: string
+      enum: [article, post, comment, user]
+
+    User:
+      type: object
+      required: [id, display_name, locale, status, created_at]
+      properties:
+        id: { type: string }
+        display_name: { type: string }
+        locale: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        created_at: { type: string, format: date-time }
+
+    Session:
+      type: object
+      required: [user, token_type, access_token, access_expires_at, refresh_expires_at, csrf_token]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        token_type: { type: string, const: Bearer }
+        access_token: { type: string, description: Ed25519 signed JWT, 15 minutes. Never returned in a cookie. }
+        access_expires_at: { type: string, format: date-time }
+        refresh_expires_at: { type: string, format: date-time }
+        csrf_token: { type: string, description: Must be echoed in X-CSRF-Token when refreshing. }
+
+    Site:
+      type: object
+      required: [id, slug, name, domain, visibility_mode, publish_mode, disabled]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        domain: { type: string }
+        visibility_mode: { $ref: '#/components/schemas/VisibilityMode' }
+        publish_mode: { $ref: '#/components/schemas/PublishMode' }
+        disabled: { type: boolean }
+
+    Member:
+      type: object
+      required: [user_id, display_name, role, status]
+      properties:
+        user_id: { type: string }
+        display_name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [active, invited, suspended] }
+
+    DraftInput:
+      type: object
+      required: [title, source_body]
+      properties:
+        title: { type: string, maxLength: 200 }
+        slug: { type: string, maxLength: 120, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+        summary: { type: string, maxLength: 500 }
+        source_format: { type: string, enum: [markdown, html, plain], default: markdown }
+        source_body: { type: string, maxLength: 200000 }
+        category_id: { type: string }
+
+    Content:
+      type: object
+      required: [id, kind, status, title, slug, source_format, rendered_html, policy_version, created_at, updated_at, actions]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [article, post] }
+        status:
+          type: string
+          enum: [draft, pending_review, published, rejected, archived, pending_security_check]
+        title: { type: string }
+        slug: { type: string }
+        summary: { type: string }
+        source_format: { type: string, enum: [markdown, html, plain] }
+        rendered_html:
+          type: string
+          description: The only representation a client may render. Produced by the security service.
+        policy_version: { type: string }
+        published_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        actions:
+          type: array
+          description: Workflow actions this caller may take right now.
+          items: { type: string, enum: [submit, publish, reject, archive, restore] }
+
+    ContentPage:
+      type: object
+      required: [items, next_cursor, has_more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Content' }
+        next_cursor: { type: string }
+        has_more: { type: boolean }
+
+    Comment:
+      type: object
+      required: [id, target_type, target_id, depth, body, status]
+      properties:
+        id: { type: string }
+        target_type: { $ref: '#/components/schemas/TargetType' }
+        target_id: { type: string }
+        parent_id: { type: string }
+        depth: { type: integer, description: 0 for a top level comment. }
+        body: { type: string }
+        status: { type: string, enum: [visible, hidden, deleted, pending_review] }
+
+    ToggleInput:
+      type: object
+      properties:
+        active:
+          type: boolean
+          description: Desired state. Omit to flip the current state.
+
+    ToggleResult:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+
+    Upload:
+      type: object
+      required: [id, file_name, storage_key, status, expires_at]
+      properties:
+        id: { type: string }
+        file_name: { type: string }
+        storage_key: { type: string }
+        status: { type: string, enum: [pending, uploaded, completed, expired] }
+        expires_at: { type: string, format: date-time }
+
+    Asset:
+      type: object
+      required: [id, storage_key, mime_type, size, scan_status]
+      properties:
+        id: { type: string }
+        storage_key: { type: string }
+        mime_type: { type: string }
+        size: { type: integer, format: int64 }
+        scan_status: { type: string, enum: [pending, clean, rejected, needs_manual_review] }
+        scan_reason: { type: string }
+
+    Event:
+      type: object
+      required: [id, type, site_id, payload]
+      properties:
+        id: { type: string, description: UUIDv7, ordered by creation time. }
+        type: { type: string }
+        occurred_at: { type: string, format: date-time }
+        site_id: { type: string }
+        payload: { type: object, additionalProperties: true }

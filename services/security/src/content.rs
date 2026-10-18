@@ -135,6 +135,79 @@ fn escape_html(source: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Maximum accepted upload size in bytes.
+pub const MAX_UPLOAD_BYTES: i64 = 25 * 1024 * 1024;
+
+/// The verdict of upload inspection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanDecision {
+    Clean,
+    Rejected,
+    NeedsManualReview,
+}
+
+/// One inspection verdict with its machine readable reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadVerdict {
+    pub decision: ScanDecision,
+    pub reason_code: &'static str,
+}
+
+/// MIME types the application accepts at all.
+const ALLOWED_UPLOAD_MIME: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+    "text/plain",
+];
+
+/// Inspect an upload from its declared metadata and leading bytes.
+///
+/// The declared MIME is only a claim: the leading bytes decide whether it is
+/// believable. A file whose content does not match its declared type is rejected,
+/// which is what stops an executable renamed to `.png`.
+pub fn inspect_upload(
+    declared_mime: &str,
+    size: i64,
+    head: &[u8],
+) -> Result<UploadVerdict, ContentError> {
+    let mime = declared_mime.trim().to_lowercase();
+
+    if size <= 0 || size > MAX_UPLOAD_BYTES {
+        return Ok(UploadVerdict { decision: ScanDecision::Rejected, reason_code: "size_out_of_range" });
+    }
+    if !ALLOWED_UPLOAD_MIME.contains(&mime.as_str()) {
+        return Ok(UploadVerdict { decision: ScanDecision::Rejected, reason_code: "mime_not_allowed" });
+    }
+    if head.is_empty() {
+        // Without a sample no claim can be verified, so it goes to a human rather than
+        // being called clean on trust.
+        return Ok(UploadVerdict { decision: ScanDecision::NeedsManualReview, reason_code: "no_content_sample" });
+    }
+
+    let matches_declared = match mime.as_str() {
+        "image/png" => head.starts_with(&[0x89, 0x50, 0x4E, 0x47]),
+        "image/jpeg" => head.starts_with(&[0xFF, 0xD8, 0xFF]),
+        "image/gif" => head.starts_with(b"GIF8"),
+        "image/webp" => head.len() >= 12 && &head[0..4] == b"RIFF" && &head[8..12] == b"WEBP",
+        "application/pdf" => head.starts_with(b"%PDF"),
+        "text/plain" => is_plain_text(head),
+        _ => false,
+    };
+
+    if !matches_declared {
+        return Ok(UploadVerdict { decision: ScanDecision::Rejected, reason_code: "magic_mismatch" });
+    }
+
+    Ok(UploadVerdict { decision: ScanDecision::Clean, reason_code: "ok" })
+}
+
+/// Report whether a sample looks like plain text: valid UTF-8 without NUL bytes.
+fn is_plain_text(head: &[u8]) -> bool {
+    !head.contains(&0) && std::str::from_utf8(head).is_ok()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +269,72 @@ mod tests {
         let b = sanitize("html", "<p>x</p>").unwrap();
         assert_eq!(a, b);
         assert_eq!(a.policy_version, crate::POLICY_VERSION);
+    }
+}
+
+#[cfg(test)]
+mod upload_tests {
+    use super::*;
+
+    const PNG: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A];
+    const PDF: &[u8] = b"%PDF-1.7";
+
+    #[test]
+    fn accepts_matching_magic_bytes() {
+        assert_eq!(inspect_upload("image/png", 1024, PNG).unwrap().decision, ScanDecision::Clean);
+    }
+
+    #[test]
+    fn rejects_executable_disguised_as_image() {
+        let verdict = inspect_upload("image/png", 1024, b"MZ\x90\x00").unwrap();
+        assert_eq!(verdict.decision, ScanDecision::Rejected);
+        assert_eq!(verdict.reason_code, "magic_mismatch");
+    }
+
+    #[test]
+    fn rejects_disallowed_mimes() {
+        for mime in ["application/x-msdownload", "image/svg+xml", "text/html", "application/x-sh"] {
+            let verdict = inspect_upload(mime, 10, PNG).unwrap();
+            assert_eq!(verdict.decision, ScanDecision::Rejected, "{mime}");
+            assert_eq!(verdict.reason_code, "mime_not_allowed", "{mime}");
+        }
+    }
+
+    #[test]
+    fn rejects_oversized_and_empty() {
+        assert_eq!(
+            inspect_upload("image/png", MAX_UPLOAD_BYTES + 1, PNG).unwrap().reason_code,
+            "size_out_of_range"
+        );
+        assert_eq!(inspect_upload("image/png", 0, PNG).unwrap().reason_code, "size_out_of_range");
+    }
+
+    #[test]
+    fn without_a_sample_it_asks_a_human() {
+        let verdict = inspect_upload("image/png", 1024, b"").unwrap();
+        assert_eq!(verdict.decision, ScanDecision::NeedsManualReview);
+        assert_eq!(verdict.reason_code, "no_content_sample");
+    }
+
+    #[test]
+    fn accepts_pdf_and_plain_text() {
+        assert_eq!(inspect_upload("application/pdf", 10, PDF).unwrap().decision, ScanDecision::Clean);
+        assert_eq!(inspect_upload("text/plain", 10, b"hello").unwrap().decision, ScanDecision::Clean);
+    }
+
+    #[test]
+    fn rejects_binary_declared_as_text() {
+        assert_eq!(inspect_upload("text/plain", 10, &[0x00, 0x01]).unwrap().decision, ScanDecision::Rejected);
+    }
+
+    #[test]
+    fn webp_needs_both_markers() {
+        assert_eq!(inspect_upload("image/webp", 20, b"RIFF____WEBPVP8").unwrap().decision, ScanDecision::Clean);
+        assert_eq!(inspect_upload("image/webp", 20, b"RIFF____XXXX").unwrap().decision, ScanDecision::Rejected);
+    }
+
+    #[test]
+    fn declared_case_and_spacing_are_ignored() {
+        assert_eq!(inspect_upload("  IMAGE/PNG ", 10, PNG).unwrap().decision, ScanDecision::Clean);
     }
 }

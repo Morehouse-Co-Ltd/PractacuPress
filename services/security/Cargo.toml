@@ -2,10 +2,17 @@
 name = "practacu-security"
 version = "0.1.0"
 edition = "2021"
-description = "Security primitives for Practacu Press: password hashing and content sanitization."
+description = "Security primitives for Practacu Press: password hashing, content sanitization and upload inspection."
 
 [dependencies]
 argon2 = "0.5"
 ammonia = "4"
 zeroize = "1"
 rand_core = { version = "0.6", features = ["getrandom"] }
+tonic = "0.12"
+prost = "0.13"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+tonic-build = "0.12"
+protoc-bin-vendored = "3"

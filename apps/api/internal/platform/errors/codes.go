@@ -1,6 +1,9 @@
 package apperr
 
-import "net/http"
+import (
+	"net/http"
+	"sort"
+)
 
 // Code is a stable, machine readable error identifier.
 //
@@ -110,4 +113,17 @@ var specs = map[Code]spec{
 		title:   "Invalid database driver",
 		message: "数据库驱动配置无效",
 	},
+}
+
+// AllCodes returns every error code the API can emit.
+//
+// It exists so contract tests can prove the documented enum and the implementation
+// stay in step; a code that is added here without a document entry fails the build.
+func AllCodes() []Code {
+	codes := make([]Code, 0, len(specs))
+	for code := range specs {
+		codes = append(codes, code)
+	}
+	sort.Slice(codes, func(i, j int) bool { return codes[i] < codes[j] })
+	return codes
 }

@@ -17,3 +17,4 @@ Thumbs.db
 
 # Rust build artifacts
 target/
+.tmpbuild/

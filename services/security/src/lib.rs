@@ -8,6 +8,7 @@
 //! input, because a caller that has already validated is still just a caller.
 
 pub mod content;
+pub mod transport;
 pub mod password;
 
 /// Policy version identifies the rules that produced a result.
