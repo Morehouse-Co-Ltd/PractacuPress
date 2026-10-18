@@ -44,6 +44,7 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 		contentKind := kind
 
 		group.POST("", func(c *gin.Context) { h.create(c, contentKind) })
+		group.GET("", func(c *gin.Context) { h.list(c, contentKind) })
 		group.GET("/:contentID", h.get)
 		group.PATCH("/:contentID", h.update)
 		group.POST("/:contentID/:action", h.action)
@@ -106,8 +107,29 @@ func (h *Handler) create(c *gin.Context, kind Kind) {
 	c.JSON(status, h.view(item, actor))
 }
 
-func (h *Handler) get(c *gin.Context) {
+// list returns the items of a site the caller may see.
+func (h *Handler) list(c *gin.Context, kind Kind) {
 	actor, ok := h.principal(c)
+	if !ok {
+		h.unauthenticated(c)
+		return
+	}
+
+	items, err := h.service.List(c.Request.Context(), actor, kind, 0)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	views := make([]contentResponse, 0, len(items))
+	for _, item := range items {
+		views = append(views, h.view(item, actor))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": views})
+}
+
+func (h *Handler) get(c *gin.Context) {	actor, ok := h.principal(c)
 	if !ok {
 		h.unauthenticated(c)
 		return

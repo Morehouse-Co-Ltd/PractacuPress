@@ -58,6 +58,35 @@ func (f *fakeRepo) Transition(_ context.Context, item Content, from Status, audi
 	return item, nil
 }
 
+func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error) {
+	out := make([]Content, 0, len(f.items))
+	for _, item := range f.items {
+		if item.SiteID != filter.SiteID {
+			continue
+		}
+		if filter.Kind != "" && item.Kind != filter.Kind {
+			continue
+		}
+		if filter.AuthorID != "" && item.AuthorID != filter.AuthorID {
+			continue
+		}
+		if len(filter.Statuses) > 0 {
+			allowed := false
+			for _, status := range filter.Statuses {
+				if item.Status == status {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
 type fakeSanitizer struct {
 	err     error
 	html    string
@@ -331,4 +360,37 @@ func TestDefaultPolicyIsReview(t *testing.T) {
 	mode, err := service.publishMode(context.Background(), "s1")
 	require.NoError(t, err)
 	require.Equal(t, site.PublishModeReview, mode)
+}
+
+// TestListHidesUnpublishedFromReaders is the listing side of the same rule the read
+// endpoint enforces: a member must not discover another author's draft through a list.
+func TestListHidesUnpublishedFromReaders(t *testing.T) {
+	repo := newFakeRepo()
+	repo.items["published"] = Content{ID: "published", SiteID: "s1", AuthorID: "someone",
+		Kind: KindArticle, Status: StatusPublished}
+	repo.items["draft"] = Content{ID: "draft", SiteID: "s1", AuthorID: "someone",
+		Kind: KindArticle, Status: StatusDraft}
+
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	ctx := context.Background()
+
+	visible, err := service.List(ctx, actor("reader", site.RoleMember), KindArticle, 10)
+	require.NoError(t, err)
+	require.Len(t, visible, 1)
+	require.Equal(t, "published", visible[0].ID)
+
+	moderated, err := service.List(ctx, actor("mod", site.RoleEditor), KindArticle, 10)
+	require.NoError(t, err)
+	require.Len(t, moderated, 2, "a moderator sees the review queue")
+
+	own, err := service.ListOwn(ctx, actor("someone", site.RoleMember), KindArticle, 10)
+	require.NoError(t, err)
+	require.Len(t, own, 2, "an author sees their own work in every state")
+}
+
+func TestListRejectsUnknownKind(t *testing.T) {
+	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
+
+	_, err := service.List(context.Background(), actor("u", site.RoleMember), Kind("comment"), 10)
+	require.ErrorIs(t, err, ErrInvalidInput)
 }

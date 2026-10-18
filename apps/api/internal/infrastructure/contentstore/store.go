@@ -139,6 +139,40 @@ func (s *Store) FindByID(ctx context.Context, siteID, contentID string) (content
 	return toContent(row), nil
 }
 
+// List returns items of a site filtered by status and author.
+func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.Content, error) {
+	query := s.client.ContentItem.Query().
+		Where(contentitem.SiteIDEQ(filter.SiteID))
+
+	if filter.Kind != "" {
+		query = query.Where(contentitem.KindEQ(string(filter.Kind)))
+	}
+	if filter.AuthorID != "" {
+		query = query.Where(contentitem.AuthorIDEQ(filter.AuthorID))
+	}
+	if len(filter.Statuses) > 0 {
+		statuses := make([]string, 0, len(filter.Statuses))
+		for _, status := range filter.Statuses {
+			statuses = append(statuses, string(status))
+		}
+		query = query.Where(contentitem.StatusIn(statuses...))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(contentitem.FieldPublishedAt), entgen.Desc(contentitem.FieldCreatedAt)).
+		Limit(filter.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]content.Content, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, toContent(row))
+	}
+	return items, nil
+}
+
 // Transition applies a status change only when the stored status still matches from.
 //
 // The conditional update is the concurrency guard: two moderators acting on stale

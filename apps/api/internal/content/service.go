@@ -30,6 +30,8 @@ type Repository interface {
 	SaveDraft(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
 	// FindByID loads an item inside a site scope.
 	FindByID(ctx context.Context, siteID, contentID string) (Content, error)
+	// List returns items of a site filtered by what the caller may see.
+	List(ctx context.Context, filter ListFilter) ([]Content, error)
 	// Transition applies a status change only when the stored status still equals
 	// from, which makes concurrent moderator decisions safe.
 	Transition(ctx context.Context, item Content, from Status, audit site.AuditEntry) (Content, error)
@@ -267,6 +269,61 @@ func (s *Service) Actions(ctx context.Context, actor Actor, item Content) ([]Act
 		return nil, err
 	}
 	return Policy{PublishMode: mode}.AvailableActions(item, actor), nil
+}
+
+// ListFilter narrows a listing query.
+type ListFilter struct {
+	SiteID string
+	Kind   Kind
+	// Statuses restricts the result; empty means every status the caller may see.
+	Statuses []Status
+	// AuthorID restricts the result to one author.
+	AuthorID string
+	Limit    int
+}
+
+// List returns the items of a site that the actor is allowed to see.
+//
+// Visibility is decided here, not by the caller: anonymous and ordinary readers only
+// ever get published items, while an author additionally sees their own work and a
+// moderator sees everything on the site.
+func (s *Service) List(ctx context.Context, actor Actor, kind Kind, limit int) ([]Content, error) {
+	if kind != "" && !kind.Valid() {
+		return nil, ErrInvalidInput
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	filter := ListFilter{SiteID: actor.SiteID, Kind: kind, Limit: limit}
+	switch {
+	case actor.Role.AtLeast(site.RoleEditor):
+		// Moderators see the queue as well as published content.
+	case actor.UserID != "":
+		// Authors see their own drafts plus public content.
+		filter.Statuses = []Status{StatusPublished}
+		filter.AuthorID = ""
+	default:
+		filter.Statuses = []Status{StatusPublished}
+	}
+
+	return s.repo.List(ctx, filter)
+}
+
+// ListOwn returns the caller's own items in every state.
+func (s *Service) ListOwn(ctx context.Context, actor Actor, kind Kind, limit int) ([]Content, error) {
+	if kind != "" && !kind.Valid() {
+		return nil, ErrInvalidInput
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	return s.repo.List(ctx, ListFilter{
+		SiteID:   actor.SiteID,
+		Kind:     kind,
+		AuthorID: actor.UserID,
+		Limit:    limit,
+	})
 }
 
 // Get returns one item, restricted to what the actor may read.
