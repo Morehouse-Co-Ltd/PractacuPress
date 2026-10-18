@@ -26,6 +26,8 @@ type Storage interface {
 	Put(ctx context.Context, key string, reader io.Reader, size int64) error
 	// ReadHead returns up to n leading bytes of the object.
 	ReadHead(ctx context.Context, key string, n int) ([]byte, error)
+	// Open returns the object for streaming. The caller owns the reader.
+	Open(ctx context.Context, key string) (io.ReadCloser, error)
 	// Delete removes the object. Deleting a missing object is not an error.
 	Delete(ctx context.Context, key string) error
 }
@@ -124,6 +126,26 @@ func (s *LocalStorage) ReadHead(ctx context.Context, key string, n int) ([]byte,
 	return buffer[:read], nil
 }
 
+// Open returns the stored object for streaming.
+func (s *LocalStorage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	path, err := s.resolve(key)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrStorageObjectMissing
+		}
+		return nil, err
+	}
+	return file, nil
+}
 // Delete removes the object.
 func (s *LocalStorage) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {

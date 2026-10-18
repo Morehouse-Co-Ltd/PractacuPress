@@ -36,6 +36,7 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/media", requireAuth)
 	group.POST("/uploads", h.CreateUpload)
+	group.GET("/:assetID", h.DownloadAsset)
 	group.POST("/uploads/:uploadID/content", h.UploadContent)
 	group.POST("/uploads/:uploadID/complete", h.CompleteUpload)
 }
@@ -98,6 +99,33 @@ func (h *Handler) CreateUpload(c *gin.Context) {
 	})
 }
 
+// DownloadAsset streams a clean asset.
+//
+// Only clean assets are reachable: an object that failed inspection must not be
+// served even to its uploader, because serving it is exactly the outcome the scan
+// exists to prevent.
+func (h *Handler) DownloadAsset(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
+		return
+	}
+
+	asset, reader, err := h.service.OpenAsset(c.Request.Context(), actor, c.Param("assetID"))
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	defer reader.Close()
+
+	// The type comes from the stored asset, never from the request, and the browser is
+	// told not to sniff a different one.
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Disposition", "inline")
+	c.Header("Cache-Control", "private, max-age=300")
+
+	c.DataFromReader(http.StatusOK, asset.Size, asset.MIME, reader, nil)
+}
 // UploadContent accepts the bytes for an open session.
 func (h *Handler) UploadContent(c *gin.Context) {
 	actor, ok := h.principal(c)

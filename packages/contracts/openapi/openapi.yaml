@@ -720,6 +720,36 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /media/{assetID}:
+    get:
+      tags: [media]
+      summary: Download a clean asset
+      description: |
+        Only assets that passed inspection are reachable. A rejected object is answered
+        as not found, because confirming its existence is already a disclosure. The
+        response type comes from the stored asset and `nosniff` is always set.
+      parameters:
+        - name: assetID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The stored object
+          headers:
+            X-Content-Type-Options:
+              schema: { type: string, const: nosniff }
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+            text/plain: { schema: { type: string, format: binary } }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /media/uploads/{uploadID}/content:
     post:
       tags: [media]

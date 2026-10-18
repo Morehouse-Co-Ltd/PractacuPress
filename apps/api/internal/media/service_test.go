@@ -1,6 +1,7 @@
 package media
 
 import (
+	"io"
 	"bytes"
 	"context"
 	"errors"
@@ -53,6 +54,14 @@ func (f *fakeRepo) MarkUploadCompleted(_ context.Context, uploadID string, _ tim
 	return nil
 }
 
+func (f *fakeRepo) FindAsset(_ context.Context, siteID, assetID string) (Asset, error) {
+	for _, asset := range f.assets {
+		if asset.ID == assetID && asset.SiteID == siteID {
+			return asset, nil
+		}
+	}
+	return Asset{}, ErrNotFound
+}
 func (f *fakeRepo) InsertAsset(_ context.Context, asset Asset) (Asset, error) {
 	f.seq++
 	asset.ID = fmt.Sprintf("a%d", f.seq)
@@ -321,4 +330,73 @@ type capturingScanner struct {
 func (c *capturingScanner) Inspect(_ context.Context, in ScanInput) (ScanResult, error) {
 	c.last = in
 	return c.result, nil
+}
+// TestOpenAssetRefusesUncleanObjects is the property that matters: a file that failed
+// inspection must not be downloadable, not even by the account that uploaded it.
+func TestOpenAssetRefusesUncleanObjects(t *testing.T) {
+	repo := newFakeRepo()
+	service := serviceWithStorage(t, repo, &fakeScanner{result: ScanResult{Status: ScanRejected}})
+	ctx := context.Background()
+
+	payload := []byte("MZ\x90\x00")
+	req := imageRequest()
+	req.Size = int64(len(payload))
+
+	upload, err := service.CreateUpload(ctx, owner(), req)
+	require.NoError(t, err)
+	_, err = service.StoreContent(ctx, owner(), upload.ID, bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.ErrorIs(t, err, ErrScanRejected)
+
+	_, _, err = service.OpenAsset(ctx, owner(), asset.ID)
+	require.ErrorIs(t, err, ErrNotFound, "a rejected asset is not downloadable")
+}
+
+func TestOpenAssetReturnsBytes(t *testing.T) {
+	repo := newFakeRepo()
+	service := serviceWithStorage(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}})
+	ctx := context.Background()
+
+	payload := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	req := imageRequest()
+	req.Size = int64(len(payload))
+
+	upload, err := service.CreateUpload(ctx, owner(), req)
+	require.NoError(t, err)
+	_, err = service.StoreContent(ctx, owner(), upload.ID, bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.NoError(t, err)
+
+	found, reader, err := service.OpenAsset(ctx, owner(), asset.ID)
+	require.NoError(t, err)
+	defer reader.Close()
+
+	read, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, payload, read)
+	require.Equal(t, "image/png", found.MIME)
+}
+
+func TestOpenAssetIsSiteScoped(t *testing.T) {
+	repo := newFakeRepo()
+	service := serviceWithStorage(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}})
+	ctx := context.Background()
+
+	payload := []byte{0x89, 0x50, 0x4E, 0x47}
+	req := imageRequest()
+	req.Size = int64(len(payload))
+
+	upload, err := service.CreateUpload(ctx, owner(), req)
+	require.NoError(t, err)
+	_, err = service.StoreContent(ctx, owner(), upload.ID, bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.NoError(t, err)
+
+	outsider := Actor{UserID: "u1", SiteID: "other-site"}
+	_, _, err = service.OpenAsset(ctx, outsider, asset.ID)
+	require.ErrorIs(t, err, ErrNotFound)
 }

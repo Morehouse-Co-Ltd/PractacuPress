@@ -124,6 +124,19 @@ func (s *Store) InsertAsset(ctx context.Context, asset media.Asset) (media.Asset
 	return toAsset(created), nil
 }
 
+// FindAsset loads an asset inside a site scope.
+func (s *Store) FindAsset(ctx context.Context, siteID, assetID string) (media.Asset, error) {
+	row, err := s.client.MediaAsset.Query().
+		Where(mediaasset.IDEQ(assetID), mediaasset.SiteIDEQ(siteID)).
+		Only(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return media.Asset{}, media.ErrNotFound
+		}
+		return media.Asset{}, err
+	}
+	return toAsset(row), nil
+}
 func toUpload(row *entgen.MediaUpload) media.Upload {
 	return media.Upload{
 		ID:           row.ID,

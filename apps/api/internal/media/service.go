@@ -32,6 +32,8 @@ type Repository interface {
 	// MarkUploadUploaded records that the bytes arrived and are waiting for inspection.
 	MarkUploadUploaded(ctx context.Context, uploadID string, at time.Time) error
 	MarkUploadCompleted(ctx context.Context, uploadID string, at time.Time) error
+	// FindAsset loads an inspected asset inside a site scope.
+	FindAsset(ctx context.Context, siteID, assetID string) (Asset, error)
 	InsertAsset(ctx context.Context, asset Asset) (Asset, error)
 }
 
@@ -207,6 +209,35 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 	return stored, nil
 }
 
+// OpenAsset returns a clean asset and a reader over its bytes.
+//
+// Assets that failed inspection are reported as not found: telling a caller that a
+// rejected file exists is already a disclosure.
+func (s *Service) OpenAsset(
+	ctx context.Context,
+	actor Actor,
+	assetID string,
+) (Asset, io.ReadCloser, error) {
+	asset, err := s.repo.FindAsset(ctx, actor.SiteID, assetID)
+	if err != nil {
+		return Asset{}, nil, err
+	}
+	if !asset.Referenceable() {
+		return Asset{}, nil, ErrNotFound
+	}
+	if s.storage == nil {
+		return Asset{}, nil, ErrStorageMissing
+	}
+
+	reader, err := s.storage.Open(ctx, asset.StorageKey)
+	if err != nil {
+		if errors.Is(err, ErrStorageObjectMissing) {
+			return Asset{}, nil, ErrNotFound
+		}
+		return Asset{}, nil, err
+	}
+	return asset, reader, nil
+}
 // Referenceable reports whether an asset may be linked from content.
 //
 // It exists so callers ask a question rather than inspecting the status themselves:
