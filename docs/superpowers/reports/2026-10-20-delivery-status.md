@@ -181,3 +181,55 @@ powershell -ExecutionPolicy Bypass -File scripts\gen.ps1
 2. **Outbox + WebSocket**：M3 的核心，事件补偿端点依赖 `outbox_events.audience_user_id`（表已就绪）。
 3. **OpenAPI 契约**：前端团队开工的前提，且能让契约测试有输入。
 4. **CI 三库矩阵**：本地无法验证，必须在 CI 上跑。
+
+---
+
+## 9. 最终验收（2026-10-20 收尾补记）
+
+### 9.1 命令与结果
+
+```text
+go build ./...        exit 0
+go vet ./...          exit 0
+go test ./... -count=1  23 个包 ok，0 FAIL
+cargo test（MSVC）      14 passed, 0 failed
+提交数 44，工作树干净，跟踪 267 个文件
+```
+
+### 9.2 自第 8 节以来新增并已验证
+
+| 模块 | 内容 | 证据 |
+| --- | --- | --- |
+| Outbox worker | 指数退避、上限放弃、毒事件不阻塞批次 | `go test ./apps/api/internal/outbox` |
+| Outbox 存储 | 条件更新实现独占租约，租约过期可重claim | `.../outboxstore -run TestClaimMarksEventsInvisible` |
+| **事件补偿** | `GET /api/v1/events?after_id=&limit=`，按 `audience_user_id` 隔离 | `.../outboxstore -run TestReplayHidesOtherUsersEvents`；实跑 200 / 无令牌 401 |
+| 消息领域 | 站点隔离先于成员校验，游标只前进 | `go test ./apps/api/internal/messaging` |
+| 通知领域 | 单收件人、已读幂等、payload 受限 | `go test ./apps/api/internal/notifications` |
+
+### 9.3 评审提出的 P0 漏洞闭环情况
+
+| 编号 | 问题 | 状态 |
+| --- | --- | --- |
+| P0-1 | 缺 sessions 表，无法做轮换与重放检测 | ✅ 已建表并实现，回归测试覆盖 |
+| P0-2 | outbox 无收件人维度，事件补偿会跨用户泄露 | ✅ 已加 `audience_user_id`，查询层过滤，回归测试覆盖 |
+| P0-5 | 缺 media_uploads 表，两阶段上传无法实现 | ✅ 已建表并实现两阶段流程 |
+
+### 9.4 仍然未完成（明确清单）
+
+| 项 | 原因 |
+| --- | --- |
+| Rust gRPC 服务端 | cargo 无法经代理访问 `index.crates.io`（PowerShell 直连为 200）；协议已定稿 |
+| 内容发布 / 媒体完成上传的真实路径 | 依赖上一条；当前按设计返回 503 |
+| WebSocket 实时推送与一次性票据 | 未开始；REST 补偿已可用，可作为其回退 |
+| 搜索模块 | 未开始 |
+| 通知 / 消息的存储与 HTTP 路由 | 仅领域层 |
+| OpenAPI 3.1 契约文件 | 未开始 |
+| Docker 三 profile、Windows 安装包、备份恢复 | 未开始；本机无 Docker/WiX，即使实现也无法验收 |
+| MySQL / PostgreSQL 实跑 | 本机无数据库，代码无方言依赖但未验证 |
+
+### 9.5 结论
+
+目标中"审查计划 → 评估可行度 → 详细分步策划 → 开始实现 Go 后端并保证编译与测试通过"**已达成**：
+评审报告、详细计划、进度记录、交付报告四份文档齐备，Go 侧 23 个包与 Rust 侧 14 个测试全绿。
+
+"完整交付可上线的系统"**未达成**，缺口已在 9.4 逐项列出，主要卡在 Rust gRPC 服务端的网络阻塞与部署工具链缺失两处环境问题上，而非代码方向问题。
