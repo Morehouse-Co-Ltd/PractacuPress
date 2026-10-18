@@ -24,6 +24,10 @@ type Tx struct {
 	Follow *FollowClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
 	IdempotencyKey *IdempotencyKeyClient
+	// MediaAsset is the client for interacting with the MediaAsset builders.
+	MediaAsset *MediaAssetClient
+	// MediaUpload is the client for interacting with the MediaUpload builders.
+	MediaUpload *MediaUploadClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
 	// Reaction is the client for interacting with the Reaction builders.
@@ -177,6 +181,8 @@ func (tx *Tx) init() {
 	tx.ContentItem = NewContentItemClient(tx.config)
 	tx.Follow = NewFollowClient(tx.config)
 	tx.IdempotencyKey = NewIdempotencyKeyClient(tx.config)
+	tx.MediaAsset = NewMediaAssetClient(tx.config)
+	tx.MediaUpload = NewMediaUploadClient(tx.config)
 	tx.OutboxEvent = NewOutboxEventClient(tx.config)
 	tx.Reaction = NewReactionClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)

@@ -207,6 +207,80 @@ var (
 			},
 		},
 	}
+	// MediaAssetsColumns holds the columns for the "media_assets" table.
+	MediaAssetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "owner_id", Type: field.TypeString, Size: 36},
+		{Name: "storage_key", Type: field.TypeString, Size: 200},
+		{Name: "mime_type", Type: field.TypeString, Size: 120},
+		{Name: "size", Type: field.TypeInt64},
+		{Name: "scan_status", Type: field.TypeString, Default: "pending"},
+		{Name: "scan_reason", Type: field.TypeString, Nullable: true, Size: 120},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// MediaAssetsTable holds the schema information for the "media_assets" table.
+	MediaAssetsTable = &schema.Table{
+		Name:       "media_assets",
+		Columns:    MediaAssetsColumns,
+		PrimaryKey: []*schema.Column{MediaAssetsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediaasset_storage_key",
+				Unique:  true,
+				Columns: []*schema.Column{MediaAssetsColumns[3]},
+			},
+			{
+				Name:    "mediaasset_site_id_owner_id",
+				Unique:  false,
+				Columns: []*schema.Column{MediaAssetsColumns[1], MediaAssetsColumns[2]},
+			},
+			{
+				Name:    "mediaasset_site_id_scan_status",
+				Unique:  false,
+				Columns: []*schema.Column{MediaAssetsColumns[1], MediaAssetsColumns[6]},
+			},
+		},
+	}
+	// MediaUploadsColumns holds the columns for the "media_uploads" table.
+	MediaUploadsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "owner_id", Type: field.TypeString, Size: 36},
+		{Name: "file_name", Type: field.TypeString, Size: 200},
+		{Name: "declared_mime", Type: field.TypeString, Size: 120},
+		{Name: "size", Type: field.TypeInt64},
+		{Name: "purpose", Type: field.TypeString, Size: 20},
+		{Name: "storage_key", Type: field.TypeString, Size: 200},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// MediaUploadsTable holds the schema information for the "media_uploads" table.
+	MediaUploadsTable = &schema.Table{
+		Name:       "media_uploads",
+		Columns:    MediaUploadsColumns,
+		PrimaryKey: []*schema.Column{MediaUploadsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediaupload_site_id_owner_id",
+				Unique:  false,
+				Columns: []*schema.Column{MediaUploadsColumns[1], MediaUploadsColumns[2]},
+			},
+			{
+				Name:    "mediaupload_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{MediaUploadsColumns[9]},
+			},
+			{
+				Name:    "mediaupload_storage_key",
+				Unique:  false,
+				Columns: []*schema.Column{MediaUploadsColumns[7]},
+			},
+		},
+	}
 	// OutboxEventsColumns holds the columns for the "outbox_events" table.
 	OutboxEventsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -500,6 +574,8 @@ var (
 		ContentItemsTable,
 		FollowsTable,
 		IdempotencyKeysTable,
+		MediaAssetsTable,
+		MediaUploadsTable,
 		OutboxEventsTable,
 		ReactionsTable,
 		SessionsTable,

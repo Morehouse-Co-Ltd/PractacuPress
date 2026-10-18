@@ -11,6 +11,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/schema"
@@ -536,6 +538,246 @@ func init() {
 	idempotencykey.DefaultID = idempotencykeyDescID.Default.(func() string)
 	// idempotencykey.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	idempotencykey.IDValidator = idempotencykeyDescID.Validators[0].(func(string) error)
+	mediaassetFields := schema.MediaAsset{}.Fields()
+	_ = mediaassetFields
+	// mediaassetDescSiteID is the schema descriptor for site_id field.
+	mediaassetDescSiteID := mediaassetFields[1].Descriptor()
+	// mediaasset.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	mediaasset.SiteIDValidator = func() func(string) error {
+		validators := mediaassetDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediaassetDescOwnerID is the schema descriptor for owner_id field.
+	mediaassetDescOwnerID := mediaassetFields[2].Descriptor()
+	// mediaasset.OwnerIDValidator is a validator for the "owner_id" field. It is called by the builders before save.
+	mediaasset.OwnerIDValidator = func() func(string) error {
+		validators := mediaassetDescOwnerID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(owner_id string) error {
+			for _, fn := range fns {
+				if err := fn(owner_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediaassetDescStorageKey is the schema descriptor for storage_key field.
+	mediaassetDescStorageKey := mediaassetFields[3].Descriptor()
+	// mediaasset.StorageKeyValidator is a validator for the "storage_key" field. It is called by the builders before save.
+	mediaasset.StorageKeyValidator = func() func(string) error {
+		validators := mediaassetDescStorageKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(storage_key string) error {
+			for _, fn := range fns {
+				if err := fn(storage_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediaassetDescMimeType is the schema descriptor for mime_type field.
+	mediaassetDescMimeType := mediaassetFields[4].Descriptor()
+	// mediaasset.MimeTypeValidator is a validator for the "mime_type" field. It is called by the builders before save.
+	mediaasset.MimeTypeValidator = func() func(string) error {
+		validators := mediaassetDescMimeType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(mime_type string) error {
+			for _, fn := range fns {
+				if err := fn(mime_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediaassetDescSize is the schema descriptor for size field.
+	mediaassetDescSize := mediaassetFields[5].Descriptor()
+	// mediaasset.SizeValidator is a validator for the "size" field. It is called by the builders before save.
+	mediaasset.SizeValidator = mediaassetDescSize.Validators[0].(func(int64) error)
+	// mediaassetDescScanStatus is the schema descriptor for scan_status field.
+	mediaassetDescScanStatus := mediaassetFields[6].Descriptor()
+	// mediaasset.DefaultScanStatus holds the default value on creation for the scan_status field.
+	mediaasset.DefaultScanStatus = mediaassetDescScanStatus.Default.(string)
+	// mediaasset.ScanStatusValidator is a validator for the "scan_status" field. It is called by the builders before save.
+	mediaasset.ScanStatusValidator = mediaassetDescScanStatus.Validators[0].(func(string) error)
+	// mediaassetDescScanReason is the schema descriptor for scan_reason field.
+	mediaassetDescScanReason := mediaassetFields[7].Descriptor()
+	// mediaasset.ScanReasonValidator is a validator for the "scan_reason" field. It is called by the builders before save.
+	mediaasset.ScanReasonValidator = mediaassetDescScanReason.Validators[0].(func(string) error)
+	// mediaassetDescCreatedAt is the schema descriptor for created_at field.
+	mediaassetDescCreatedAt := mediaassetFields[8].Descriptor()
+	// mediaasset.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mediaasset.DefaultCreatedAt = mediaassetDescCreatedAt.Default.(func() time.Time)
+	// mediaassetDescUpdatedAt is the schema descriptor for updated_at field.
+	mediaassetDescUpdatedAt := mediaassetFields[9].Descriptor()
+	// mediaasset.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mediaasset.DefaultUpdatedAt = mediaassetDescUpdatedAt.Default.(func() time.Time)
+	// mediaasset.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mediaasset.UpdateDefaultUpdatedAt = mediaassetDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// mediaassetDescID is the schema descriptor for id field.
+	mediaassetDescID := mediaassetFields[0].Descriptor()
+	// mediaasset.DefaultID holds the default value on creation for the id field.
+	mediaasset.DefaultID = mediaassetDescID.Default.(func() string)
+	// mediaasset.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	mediaasset.IDValidator = mediaassetDescID.Validators[0].(func(string) error)
+	mediauploadFields := schema.MediaUpload{}.Fields()
+	_ = mediauploadFields
+	// mediauploadDescSiteID is the schema descriptor for site_id field.
+	mediauploadDescSiteID := mediauploadFields[1].Descriptor()
+	// mediaupload.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	mediaupload.SiteIDValidator = func() func(string) error {
+		validators := mediauploadDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediauploadDescOwnerID is the schema descriptor for owner_id field.
+	mediauploadDescOwnerID := mediauploadFields[2].Descriptor()
+	// mediaupload.OwnerIDValidator is a validator for the "owner_id" field. It is called by the builders before save.
+	mediaupload.OwnerIDValidator = func() func(string) error {
+		validators := mediauploadDescOwnerID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(owner_id string) error {
+			for _, fn := range fns {
+				if err := fn(owner_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediauploadDescFileName is the schema descriptor for file_name field.
+	mediauploadDescFileName := mediauploadFields[3].Descriptor()
+	// mediaupload.FileNameValidator is a validator for the "file_name" field. It is called by the builders before save.
+	mediaupload.FileNameValidator = func() func(string) error {
+		validators := mediauploadDescFileName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(file_name string) error {
+			for _, fn := range fns {
+				if err := fn(file_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediauploadDescDeclaredMime is the schema descriptor for declared_mime field.
+	mediauploadDescDeclaredMime := mediauploadFields[4].Descriptor()
+	// mediaupload.DeclaredMimeValidator is a validator for the "declared_mime" field. It is called by the builders before save.
+	mediaupload.DeclaredMimeValidator = func() func(string) error {
+		validators := mediauploadDescDeclaredMime.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(declared_mime string) error {
+			for _, fn := range fns {
+				if err := fn(declared_mime); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediauploadDescSize is the schema descriptor for size field.
+	mediauploadDescSize := mediauploadFields[5].Descriptor()
+	// mediaupload.SizeValidator is a validator for the "size" field. It is called by the builders before save.
+	mediaupload.SizeValidator = mediauploadDescSize.Validators[0].(func(int64) error)
+	// mediauploadDescPurpose is the schema descriptor for purpose field.
+	mediauploadDescPurpose := mediauploadFields[6].Descriptor()
+	// mediaupload.PurposeValidator is a validator for the "purpose" field. It is called by the builders before save.
+	mediaupload.PurposeValidator = func() func(string) error {
+		validators := mediauploadDescPurpose.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(purpose string) error {
+			for _, fn := range fns {
+				if err := fn(purpose); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediauploadDescStorageKey is the schema descriptor for storage_key field.
+	mediauploadDescStorageKey := mediauploadFields[7].Descriptor()
+	// mediaupload.StorageKeyValidator is a validator for the "storage_key" field. It is called by the builders before save.
+	mediaupload.StorageKeyValidator = func() func(string) error {
+		validators := mediauploadDescStorageKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(storage_key string) error {
+			for _, fn := range fns {
+				if err := fn(storage_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediauploadDescStatus is the schema descriptor for status field.
+	mediauploadDescStatus := mediauploadFields[8].Descriptor()
+	// mediaupload.DefaultStatus holds the default value on creation for the status field.
+	mediaupload.DefaultStatus = mediauploadDescStatus.Default.(string)
+	// mediaupload.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	mediaupload.StatusValidator = mediauploadDescStatus.Validators[0].(func(string) error)
+	// mediauploadDescCreatedAt is the schema descriptor for created_at field.
+	mediauploadDescCreatedAt := mediauploadFields[10].Descriptor()
+	// mediaupload.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mediaupload.DefaultCreatedAt = mediauploadDescCreatedAt.Default.(func() time.Time)
+	// mediauploadDescUpdatedAt is the schema descriptor for updated_at field.
+	mediauploadDescUpdatedAt := mediauploadFields[11].Descriptor()
+	// mediaupload.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mediaupload.DefaultUpdatedAt = mediauploadDescUpdatedAt.Default.(func() time.Time)
+	// mediaupload.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mediaupload.UpdateDefaultUpdatedAt = mediauploadDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// mediauploadDescID is the schema descriptor for id field.
+	mediauploadDescID := mediauploadFields[0].Descriptor()
+	// mediaupload.DefaultID holds the default value on creation for the id field.
+	mediaupload.DefaultID = mediauploadDescID.Default.(func() string)
+	// mediaupload.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	mediaupload.IDValidator = mediauploadDescID.Validators[0].(func(string) error)
 	outboxeventFields := schema.OutboxEvent{}.Fields()
 	_ = outboxeventFields
 	// outboxeventDescEventID is the schema descriptor for event_id field.

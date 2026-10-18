@@ -18,6 +18,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
@@ -92,6 +94,8 @@ func checkColumn(t, c string) error {
 			contentitem.Table:       contentitem.ValidColumn,
 			follow.Table:            follow.ValidColumn,
 			idempotencykey.Table:    idempotencykey.ValidColumn,
+			mediaasset.Table:        mediaasset.ValidColumn,
+			mediaupload.Table:       mediaupload.ValidColumn,
 			outboxevent.Table:       outboxevent.ValidColumn,
 			reaction.Table:          reaction.ValidColumn,
 			session.Table:           session.ValidColumn,
