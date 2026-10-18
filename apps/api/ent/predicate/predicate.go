@@ -18,6 +18,12 @@ type Comment func(*sql.Selector)
 // ContentItem is the predicate function for contentitem builders.
 type ContentItem func(*sql.Selector)
 
+// Conversation is the predicate function for conversation builders.
+type Conversation func(*sql.Selector)
+
+// ConversationMember is the predicate function for conversationmember builders.
+type ConversationMember func(*sql.Selector)
+
 // Follow is the predicate function for follow builders.
 type Follow func(*sql.Selector)
 
@@ -30,8 +36,14 @@ type MediaAsset func(*sql.Selector)
 // MediaUpload is the predicate function for mediaupload builders.
 type MediaUpload func(*sql.Selector)
 
+// Message is the predicate function for message builders.
+type Message func(*sql.Selector)
+
 // ModerationReport is the predicate function for moderationreport builders.
 type ModerationReport func(*sql.Selector)
+
+// Notification is the predicate function for notification builders.
+type Notification func(*sql.Selector)
 
 // OutboxEvent is the predicate function for outboxevent builders.
 type OutboxEvent func(*sql.Selector)

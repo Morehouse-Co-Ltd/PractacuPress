@@ -22,6 +22,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
+		"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
@@ -115,6 +116,7 @@ func buildRouter() *gin.Engine {
 		Community: community.NewHandler(nil, community.HandlerConfig{}),
 		Media:   media.NewHandler(nil, media.HandlerConfig{}),
 		Events:  outbox.NewEventsHandler(nil, outbox.HandlerConfig{}),
+		Notifications: notifications.NewHandler(nil, notifications.HandlerConfig{}),
 	})
 }
 

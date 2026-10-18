@@ -20,6 +20,10 @@ type Tx struct {
 	Comment *CommentClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// Conversation is the client for interacting with the Conversation builders.
+	Conversation *ConversationClient
+	// ConversationMember is the client for interacting with the ConversationMember builders.
+	ConversationMember *ConversationMemberClient
 	// Follow is the client for interacting with the Follow builders.
 	Follow *FollowClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
@@ -28,8 +32,12 @@ type Tx struct {
 	MediaAsset *MediaAssetClient
 	// MediaUpload is the client for interacting with the MediaUpload builders.
 	MediaUpload *MediaUploadClient
+	// Message is the client for interacting with the Message builders.
+	Message *MessageClient
 	// ModerationReport is the client for interacting with the ModerationReport builders.
 	ModerationReport *ModerationReportClient
+	// Notification is the client for interacting with the Notification builders.
+	Notification *NotificationClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
 	// Reaction is the client for interacting with the Reaction builders.
@@ -181,11 +189,15 @@ func (tx *Tx) init() {
 	tx.Bookmark = NewBookmarkClient(tx.config)
 	tx.Comment = NewCommentClient(tx.config)
 	tx.ContentItem = NewContentItemClient(tx.config)
+	tx.Conversation = NewConversationClient(tx.config)
+	tx.ConversationMember = NewConversationMemberClient(tx.config)
 	tx.Follow = NewFollowClient(tx.config)
 	tx.IdempotencyKey = NewIdempotencyKeyClient(tx.config)
 	tx.MediaAsset = NewMediaAssetClient(tx.config)
 	tx.MediaUpload = NewMediaUploadClient(tx.config)
+	tx.Message = NewMessageClient(tx.config)
 	tx.ModerationReport = NewModerationReportClient(tx.config)
+	tx.Notification = NewNotificationClient(tx.config)
 	tx.OutboxEvent = NewOutboxEventClient(tx.config)
 	tx.Reaction = NewReactionClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)

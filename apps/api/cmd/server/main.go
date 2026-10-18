@@ -20,12 +20,14 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
+		"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 		"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/communitystore"
 		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
+		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/notificationstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/outboxstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
@@ -118,6 +120,11 @@ func run() error {
 	}
 
 
+	notificationService, err := notifications.NewService(notificationstore.New(handle.Client))
+	if err != nil {
+		return fmt.Errorf("build notification service: %w", err)
+	}
+
 	contentService, err := content.NewService(content.ServiceConfig{
 		Repository: contentstore.New(handle.Client),
 		Sanitizer:  securitySanitizer{client: securityClient},
@@ -142,6 +149,15 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		Notifications: notifications.NewHandler(notificationService, notifications.HandlerConfig{
+			Principal: func(c *gin.Context) (notifications.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return notifications.Actor{}, false
+				}
+				return notifications.Actor{UserID: principal.UserID, SiteID: principal.SiteID}, true
+			},
 		}),
 		Events: outbox.NewEventsHandler(replayer, outbox.HandlerConfig{
 			Principal: func(c *gin.Context) (string, string, bool) {

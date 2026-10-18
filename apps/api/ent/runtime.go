@@ -9,11 +9,15 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
+	"github.com/practacu/practacu-press/apps/api/ent/conversation"
+	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	"github.com/practacu/practacu-press/apps/api/ent/message"
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
+	"github.com/practacu/practacu-press/apps/api/ent/notification"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/schema"
@@ -389,6 +393,156 @@ func init() {
 	contentitem.DefaultID = contentitemDescID.Default.(func() string)
 	// contentitem.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	contentitem.IDValidator = contentitemDescID.Validators[0].(func(string) error)
+	conversationFields := schema.Conversation{}.Fields()
+	_ = conversationFields
+	// conversationDescSiteID is the schema descriptor for site_id field.
+	conversationDescSiteID := conversationFields[1].Descriptor()
+	// conversation.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	conversation.SiteIDValidator = func() func(string) error {
+		validators := conversationDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationDescKind is the schema descriptor for kind field.
+	conversationDescKind := conversationFields[2].Descriptor()
+	// conversation.DefaultKind holds the default value on creation for the kind field.
+	conversation.DefaultKind = conversationDescKind.Default.(string)
+	// conversation.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	conversation.KindValidator = func() func(string) error {
+		validators := conversationDescKind.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(kind string) error {
+			for _, fn := range fns {
+				if err := fn(kind); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationDescCreatedBy is the schema descriptor for created_by field.
+	conversationDescCreatedBy := conversationFields[3].Descriptor()
+	// conversation.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	conversation.CreatedByValidator = func() func(string) error {
+		validators := conversationDescCreatedBy.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(created_by string) error {
+			for _, fn := range fns {
+				if err := fn(created_by); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationDescCreatedAt is the schema descriptor for created_at field.
+	conversationDescCreatedAt := conversationFields[4].Descriptor()
+	// conversation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	conversation.DefaultCreatedAt = conversationDescCreatedAt.Default.(func() time.Time)
+	// conversationDescUpdatedAt is the schema descriptor for updated_at field.
+	conversationDescUpdatedAt := conversationFields[5].Descriptor()
+	// conversation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	conversation.DefaultUpdatedAt = conversationDescUpdatedAt.Default.(func() time.Time)
+	// conversation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	conversation.UpdateDefaultUpdatedAt = conversationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// conversationDescID is the schema descriptor for id field.
+	conversationDescID := conversationFields[0].Descriptor()
+	// conversation.DefaultID holds the default value on creation for the id field.
+	conversation.DefaultID = conversationDescID.Default.(func() string)
+	// conversation.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	conversation.IDValidator = conversationDescID.Validators[0].(func(string) error)
+	conversationmemberFields := schema.ConversationMember{}.Fields()
+	_ = conversationmemberFields
+	// conversationmemberDescSiteID is the schema descriptor for site_id field.
+	conversationmemberDescSiteID := conversationmemberFields[1].Descriptor()
+	// conversationmember.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	conversationmember.SiteIDValidator = func() func(string) error {
+		validators := conversationmemberDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationmemberDescConversationID is the schema descriptor for conversation_id field.
+	conversationmemberDescConversationID := conversationmemberFields[2].Descriptor()
+	// conversationmember.ConversationIDValidator is a validator for the "conversation_id" field. It is called by the builders before save.
+	conversationmember.ConversationIDValidator = func() func(string) error {
+		validators := conversationmemberDescConversationID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(conversation_id string) error {
+			for _, fn := range fns {
+				if err := fn(conversation_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationmemberDescUserID is the schema descriptor for user_id field.
+	conversationmemberDescUserID := conversationmemberFields[3].Descriptor()
+	// conversationmember.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	conversationmember.UserIDValidator = func() func(string) error {
+		validators := conversationmemberDescUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(user_id string) error {
+			for _, fn := range fns {
+				if err := fn(user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// conversationmemberDescLastReadMessageID is the schema descriptor for last_read_message_id field.
+	conversationmemberDescLastReadMessageID := conversationmemberFields[4].Descriptor()
+	// conversationmember.LastReadMessageIDValidator is a validator for the "last_read_message_id" field. It is called by the builders before save.
+	conversationmember.LastReadMessageIDValidator = conversationmemberDescLastReadMessageID.Validators[0].(func(string) error)
+	// conversationmemberDescCreatedAt is the schema descriptor for created_at field.
+	conversationmemberDescCreatedAt := conversationmemberFields[5].Descriptor()
+	// conversationmember.DefaultCreatedAt holds the default value on creation for the created_at field.
+	conversationmember.DefaultCreatedAt = conversationmemberDescCreatedAt.Default.(func() time.Time)
+	// conversationmemberDescUpdatedAt is the schema descriptor for updated_at field.
+	conversationmemberDescUpdatedAt := conversationmemberFields[6].Descriptor()
+	// conversationmember.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	conversationmember.DefaultUpdatedAt = conversationmemberDescUpdatedAt.Default.(func() time.Time)
+	// conversationmember.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	conversationmember.UpdateDefaultUpdatedAt = conversationmemberDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// conversationmemberDescID is the schema descriptor for id field.
+	conversationmemberDescID := conversationmemberFields[0].Descriptor()
+	// conversationmember.DefaultID holds the default value on creation for the id field.
+	conversationmember.DefaultID = conversationmemberDescID.Default.(func() string)
+	// conversationmember.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	conversationmember.IDValidator = conversationmemberDescID.Validators[0].(func(string) error)
 	followFields := schema.Follow{}.Fields()
 	_ = followFields
 	// followDescSiteID is the schema descriptor for site_id field.
@@ -779,6 +933,72 @@ func init() {
 	mediaupload.DefaultID = mediauploadDescID.Default.(func() string)
 	// mediaupload.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	mediaupload.IDValidator = mediauploadDescID.Validators[0].(func(string) error)
+	messageFields := schema.Message{}.Fields()
+	_ = messageFields
+	// messageDescSiteID is the schema descriptor for site_id field.
+	messageDescSiteID := messageFields[1].Descriptor()
+	// message.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	message.SiteIDValidator = func() func(string) error {
+		validators := messageDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// messageDescConversationID is the schema descriptor for conversation_id field.
+	messageDescConversationID := messageFields[2].Descriptor()
+	// message.ConversationIDValidator is a validator for the "conversation_id" field. It is called by the builders before save.
+	message.ConversationIDValidator = func() func(string) error {
+		validators := messageDescConversationID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(conversation_id string) error {
+			for _, fn := range fns {
+				if err := fn(conversation_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// messageDescSenderID is the schema descriptor for sender_id field.
+	messageDescSenderID := messageFields[3].Descriptor()
+	// message.SenderIDValidator is a validator for the "sender_id" field. It is called by the builders before save.
+	message.SenderIDValidator = func() func(string) error {
+		validators := messageDescSenderID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(sender_id string) error {
+			for _, fn := range fns {
+				if err := fn(sender_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// messageDescCreatedAt is the schema descriptor for created_at field.
+	messageDescCreatedAt := messageFields[5].Descriptor()
+	// message.DefaultCreatedAt holds the default value on creation for the created_at field.
+	message.DefaultCreatedAt = messageDescCreatedAt.Default.(func() time.Time)
+	// messageDescID is the schema descriptor for id field.
+	messageDescID := messageFields[0].Descriptor()
+	// message.DefaultID holds the default value on creation for the id field.
+	message.DefaultID = messageDescID.Default.(func() string)
+	// message.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	message.IDValidator = messageDescID.Validators[0].(func(string) error)
 	moderationreportFields := schema.ModerationReport{}.Fields()
 	_ = moderationreportFields
 	// moderationreportDescSiteID is the schema descriptor for site_id field.
@@ -897,6 +1117,80 @@ func init() {
 	moderationreport.DefaultID = moderationreportDescID.Default.(func() string)
 	// moderationreport.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	moderationreport.IDValidator = moderationreportDescID.Validators[0].(func(string) error)
+	notificationFields := schema.Notification{}.Fields()
+	_ = notificationFields
+	// notificationDescSiteID is the schema descriptor for site_id field.
+	notificationDescSiteID := notificationFields[1].Descriptor()
+	// notification.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	notification.SiteIDValidator = func() func(string) error {
+		validators := notificationDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// notificationDescUserID is the schema descriptor for user_id field.
+	notificationDescUserID := notificationFields[2].Descriptor()
+	// notification.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	notification.UserIDValidator = func() func(string) error {
+		validators := notificationDescUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(user_id string) error {
+			for _, fn := range fns {
+				if err := fn(user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// notificationDescType is the schema descriptor for type field.
+	notificationDescType := notificationFields[3].Descriptor()
+	// notification.TypeValidator is a validator for the "type" field. It is called by the builders before save.
+	notification.TypeValidator = func() func(string) error {
+		validators := notificationDescType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(_type string) error {
+			for _, fn := range fns {
+				if err := fn(_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// notificationDescActorID is the schema descriptor for actor_id field.
+	notificationDescActorID := notificationFields[4].Descriptor()
+	// notification.ActorIDValidator is a validator for the "actor_id" field. It is called by the builders before save.
+	notification.ActorIDValidator = notificationDescActorID.Validators[0].(func(string) error)
+	// notificationDescSubjectID is the schema descriptor for subject_id field.
+	notificationDescSubjectID := notificationFields[5].Descriptor()
+	// notification.SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
+	notification.SubjectIDValidator = notificationDescSubjectID.Validators[0].(func(string) error)
+	// notificationDescCreatedAt is the schema descriptor for created_at field.
+	notificationDescCreatedAt := notificationFields[8].Descriptor()
+	// notification.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notification.DefaultCreatedAt = notificationDescCreatedAt.Default.(func() time.Time)
+	// notificationDescID is the schema descriptor for id field.
+	notificationDescID := notificationFields[0].Descriptor()
+	// notification.DefaultID holds the default value on creation for the id field.
+	notification.DefaultID = notificationDescID.Default.(func() string)
+	// notification.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	notification.IDValidator = notificationDescID.Validators[0].(func(string) error)
 	outboxeventFields := schema.OutboxEvent{}.Fields()
 	_ = outboxeventFields
 	// outboxeventDescEventID is the schema descriptor for event_id field.

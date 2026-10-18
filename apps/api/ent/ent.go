@@ -16,11 +16,15 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
+	"github.com/practacu/practacu-press/apps/api/ent/conversation"
+	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	"github.com/practacu/practacu-press/apps/api/ent/message"
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
+	"github.com/practacu/practacu-press/apps/api/ent/notification"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
@@ -89,23 +93,27 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditlog.Table:          auditlog.ValidColumn,
-			bookmark.Table:          bookmark.ValidColumn,
-			comment.Table:           comment.ValidColumn,
-			contentitem.Table:       contentitem.ValidColumn,
-			follow.Table:            follow.ValidColumn,
-			idempotencykey.Table:    idempotencykey.ValidColumn,
-			mediaasset.Table:        mediaasset.ValidColumn,
-			mediaupload.Table:       mediaupload.ValidColumn,
-			moderationreport.Table:  moderationreport.ValidColumn,
-			outboxevent.Table:       outboxevent.ValidColumn,
-			reaction.Table:          reaction.ValidColumn,
-			session.Table:           session.ValidColumn,
-			site.Table:              site.ValidColumn,
-			sitemember.Table:        sitemember.ValidColumn,
-			user.Table:              user.ValidColumn,
-			useridentity.Table:      useridentity.ValidColumn,
-			verificationtoken.Table: verificationtoken.ValidColumn,
+			auditlog.Table:           auditlog.ValidColumn,
+			bookmark.Table:           bookmark.ValidColumn,
+			comment.Table:            comment.ValidColumn,
+			contentitem.Table:        contentitem.ValidColumn,
+			conversation.Table:       conversation.ValidColumn,
+			conversationmember.Table: conversationmember.ValidColumn,
+			follow.Table:             follow.ValidColumn,
+			idempotencykey.Table:     idempotencykey.ValidColumn,
+			mediaasset.Table:         mediaasset.ValidColumn,
+			mediaupload.Table:        mediaupload.ValidColumn,
+			message.Table:            message.ValidColumn,
+			moderationreport.Table:   moderationreport.ValidColumn,
+			notification.Table:       notification.ValidColumn,
+			outboxevent.Table:        outboxevent.ValidColumn,
+			reaction.Table:           reaction.ValidColumn,
+			session.Table:            session.ValidColumn,
+			site.Table:               site.ValidColumn,
+			sitemember.Table:         sitemember.ValidColumn,
+			user.Table:               user.ValidColumn,
+			useridentity.Table:       useridentity.ValidColumn,
+			verificationtoken.Table:  verificationtoken.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

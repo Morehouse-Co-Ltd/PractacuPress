@@ -871,6 +871,65 @@ paths:
         '503':
           $ref: '#/components/responses/SecurityUnavailable'
 
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: List the caller's notifications
+      description: Newest first. Only the caller's own notifications are ever returned.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: The inbox page with its unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, unread]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  unread: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /notifications/read-all:
+    post:
+      tags: [notifications]
+      summary: Mark every notification read
+      responses:
+        '200':
+          description: Number of notifications that changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /notifications/{notificationID}/read:
+    post:
+      tags: [notifications]
+      summary: Mark one notification read
+      description: Retrying is safe; the first read timestamp is the one that counts.
+      parameters:
+        - name: notificationID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The notification after the update
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /events:
     get:
       tags: [events]
@@ -1167,6 +1226,21 @@ components:
         scan_status: { type: string, enum: [pending, clean, rejected, needs_manual_review] }
         scan_reason: { type: string }
 
+    Notification:
+      type: object
+      required: [id, type, payload, read, created_at]
+      properties:
+        id: { type: string }
+        type: { type: string, description: For example comment.created or follow.created. }
+        actor_id: { type: string }
+        subject_id: { type: string }
+        payload:
+          type: object
+          description: Flat string map, bounded in size; never queried.
+          additionalProperties: { type: string }
+        read: { type: boolean }
+        read_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
     Event:
       type: object
       required: [id, type, site_id, payload]

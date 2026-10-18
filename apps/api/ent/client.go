@@ -18,11 +18,15 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
+	"github.com/practacu/practacu-press/apps/api/ent/conversation"
+	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	"github.com/practacu/practacu-press/apps/api/ent/message"
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
+	"github.com/practacu/practacu-press/apps/api/ent/notification"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
@@ -46,6 +50,10 @@ type Client struct {
 	Comment *CommentClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// Conversation is the client for interacting with the Conversation builders.
+	Conversation *ConversationClient
+	// ConversationMember is the client for interacting with the ConversationMember builders.
+	ConversationMember *ConversationMemberClient
 	// Follow is the client for interacting with the Follow builders.
 	Follow *FollowClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
@@ -54,8 +62,12 @@ type Client struct {
 	MediaAsset *MediaAssetClient
 	// MediaUpload is the client for interacting with the MediaUpload builders.
 	MediaUpload *MediaUploadClient
+	// Message is the client for interacting with the Message builders.
+	Message *MessageClient
 	// ModerationReport is the client for interacting with the ModerationReport builders.
 	ModerationReport *ModerationReportClient
+	// Notification is the client for interacting with the Notification builders.
+	Notification *NotificationClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
 	// Reaction is the client for interacting with the Reaction builders.
@@ -87,11 +99,15 @@ func (c *Client) init() {
 	c.Bookmark = NewBookmarkClient(c.config)
 	c.Comment = NewCommentClient(c.config)
 	c.ContentItem = NewContentItemClient(c.config)
+	c.Conversation = NewConversationClient(c.config)
+	c.ConversationMember = NewConversationMemberClient(c.config)
 	c.Follow = NewFollowClient(c.config)
 	c.IdempotencyKey = NewIdempotencyKeyClient(c.config)
 	c.MediaAsset = NewMediaAssetClient(c.config)
 	c.MediaUpload = NewMediaUploadClient(c.config)
+	c.Message = NewMessageClient(c.config)
 	c.ModerationReport = NewModerationReportClient(c.config)
+	c.Notification = NewNotificationClient(c.config)
 	c.OutboxEvent = NewOutboxEventClient(c.config)
 	c.Reaction = NewReactionClient(c.config)
 	c.Session = NewSessionClient(c.config)
@@ -190,25 +206,29 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:               ctx,
-		config:            cfg,
-		AuditLog:          NewAuditLogClient(cfg),
-		Bookmark:          NewBookmarkClient(cfg),
-		Comment:           NewCommentClient(cfg),
-		ContentItem:       NewContentItemClient(cfg),
-		Follow:            NewFollowClient(cfg),
-		IdempotencyKey:    NewIdempotencyKeyClient(cfg),
-		MediaAsset:        NewMediaAssetClient(cfg),
-		MediaUpload:       NewMediaUploadClient(cfg),
-		ModerationReport:  NewModerationReportClient(cfg),
-		OutboxEvent:       NewOutboxEventClient(cfg),
-		Reaction:          NewReactionClient(cfg),
-		Session:           NewSessionClient(cfg),
-		Site:              NewSiteClient(cfg),
-		SiteMember:        NewSiteMemberClient(cfg),
-		User:              NewUserClient(cfg),
-		UserIdentity:      NewUserIdentityClient(cfg),
-		VerificationToken: NewVerificationTokenClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		AuditLog:           NewAuditLogClient(cfg),
+		Bookmark:           NewBookmarkClient(cfg),
+		Comment:            NewCommentClient(cfg),
+		ContentItem:        NewContentItemClient(cfg),
+		Conversation:       NewConversationClient(cfg),
+		ConversationMember: NewConversationMemberClient(cfg),
+		Follow:             NewFollowClient(cfg),
+		IdempotencyKey:     NewIdempotencyKeyClient(cfg),
+		MediaAsset:         NewMediaAssetClient(cfg),
+		MediaUpload:        NewMediaUploadClient(cfg),
+		Message:            NewMessageClient(cfg),
+		ModerationReport:   NewModerationReportClient(cfg),
+		Notification:       NewNotificationClient(cfg),
+		OutboxEvent:        NewOutboxEventClient(cfg),
+		Reaction:           NewReactionClient(cfg),
+		Session:            NewSessionClient(cfg),
+		Site:               NewSiteClient(cfg),
+		SiteMember:         NewSiteMemberClient(cfg),
+		User:               NewUserClient(cfg),
+		UserIdentity:       NewUserIdentityClient(cfg),
+		VerificationToken:  NewVerificationTokenClient(cfg),
 	}, nil
 }
 
@@ -226,25 +246,29 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:               ctx,
-		config:            cfg,
-		AuditLog:          NewAuditLogClient(cfg),
-		Bookmark:          NewBookmarkClient(cfg),
-		Comment:           NewCommentClient(cfg),
-		ContentItem:       NewContentItemClient(cfg),
-		Follow:            NewFollowClient(cfg),
-		IdempotencyKey:    NewIdempotencyKeyClient(cfg),
-		MediaAsset:        NewMediaAssetClient(cfg),
-		MediaUpload:       NewMediaUploadClient(cfg),
-		ModerationReport:  NewModerationReportClient(cfg),
-		OutboxEvent:       NewOutboxEventClient(cfg),
-		Reaction:          NewReactionClient(cfg),
-		Session:           NewSessionClient(cfg),
-		Site:              NewSiteClient(cfg),
-		SiteMember:        NewSiteMemberClient(cfg),
-		User:              NewUserClient(cfg),
-		UserIdentity:      NewUserIdentityClient(cfg),
-		VerificationToken: NewVerificationTokenClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		AuditLog:           NewAuditLogClient(cfg),
+		Bookmark:           NewBookmarkClient(cfg),
+		Comment:            NewCommentClient(cfg),
+		ContentItem:        NewContentItemClient(cfg),
+		Conversation:       NewConversationClient(cfg),
+		ConversationMember: NewConversationMemberClient(cfg),
+		Follow:             NewFollowClient(cfg),
+		IdempotencyKey:     NewIdempotencyKeyClient(cfg),
+		MediaAsset:         NewMediaAssetClient(cfg),
+		MediaUpload:        NewMediaUploadClient(cfg),
+		Message:            NewMessageClient(cfg),
+		ModerationReport:   NewModerationReportClient(cfg),
+		Notification:       NewNotificationClient(cfg),
+		OutboxEvent:        NewOutboxEventClient(cfg),
+		Reaction:           NewReactionClient(cfg),
+		Session:            NewSessionClient(cfg),
+		Site:               NewSiteClient(cfg),
+		SiteMember:         NewSiteMemberClient(cfg),
+		User:               NewUserClient(cfg),
+		UserIdentity:       NewUserIdentityClient(cfg),
+		VerificationToken:  NewVerificationTokenClient(cfg),
 	}, nil
 }
 
@@ -274,8 +298,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.Follow, c.IdempotencyKey,
-		c.MediaAsset, c.MediaUpload, c.ModerationReport, c.OutboxEvent, c.Reaction,
+		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.Conversation,
+		c.ConversationMember, c.Follow, c.IdempotencyKey, c.MediaAsset, c.MediaUpload,
+		c.Message, c.ModerationReport, c.Notification, c.OutboxEvent, c.Reaction,
 		c.Session, c.Site, c.SiteMember, c.User, c.UserIdentity, c.VerificationToken,
 	} {
 		n.Use(hooks...)
@@ -286,8 +311,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.Follow, c.IdempotencyKey,
-		c.MediaAsset, c.MediaUpload, c.ModerationReport, c.OutboxEvent, c.Reaction,
+		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.Conversation,
+		c.ConversationMember, c.Follow, c.IdempotencyKey, c.MediaAsset, c.MediaUpload,
+		c.Message, c.ModerationReport, c.Notification, c.OutboxEvent, c.Reaction,
 		c.Session, c.Site, c.SiteMember, c.User, c.UserIdentity, c.VerificationToken,
 	} {
 		n.Intercept(interceptors...)
@@ -305,6 +331,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Comment.mutate(ctx, m)
 	case *ContentItemMutation:
 		return c.ContentItem.mutate(ctx, m)
+	case *ConversationMutation:
+		return c.Conversation.mutate(ctx, m)
+	case *ConversationMemberMutation:
+		return c.ConversationMember.mutate(ctx, m)
 	case *FollowMutation:
 		return c.Follow.mutate(ctx, m)
 	case *IdempotencyKeyMutation:
@@ -313,8 +343,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.MediaAsset.mutate(ctx, m)
 	case *MediaUploadMutation:
 		return c.MediaUpload.mutate(ctx, m)
+	case *MessageMutation:
+		return c.Message.mutate(ctx, m)
 	case *ModerationReportMutation:
 		return c.ModerationReport.mutate(ctx, m)
+	case *NotificationMutation:
+		return c.Notification.mutate(ctx, m)
 	case *OutboxEventMutation:
 		return c.OutboxEvent.mutate(ctx, m)
 	case *ReactionMutation:
@@ -868,6 +902,272 @@ func (c *ContentItemClient) mutate(ctx context.Context, m *ContentItemMutation) 
 	}
 }
 
+// ConversationClient is a client for the Conversation schema.
+type ConversationClient struct {
+	config
+}
+
+// NewConversationClient returns a client for the Conversation from the given config.
+func NewConversationClient(c config) *ConversationClient {
+	return &ConversationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `conversation.Hooks(f(g(h())))`.
+func (c *ConversationClient) Use(hooks ...Hook) {
+	c.hooks.Conversation = append(c.hooks.Conversation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `conversation.Intercept(f(g(h())))`.
+func (c *ConversationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Conversation = append(c.inters.Conversation, interceptors...)
+}
+
+// Create returns a builder for creating a Conversation entity.
+func (c *ConversationClient) Create() *ConversationCreate {
+	mutation := newConversationMutation(c.config, OpCreate)
+	return &ConversationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Conversation entities.
+func (c *ConversationClient) CreateBulk(builders ...*ConversationCreate) *ConversationCreateBulk {
+	return &ConversationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConversationClient) MapCreateBulk(slice any, setFunc func(*ConversationCreate, int)) *ConversationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConversationCreateBulk{err: fmt.Errorf("calling to ConversationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConversationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConversationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Conversation.
+func (c *ConversationClient) Update() *ConversationUpdate {
+	mutation := newConversationMutation(c.config, OpUpdate)
+	return &ConversationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConversationClient) UpdateOne(_m *Conversation) *ConversationUpdateOne {
+	mutation := newConversationMutation(c.config, OpUpdateOne, withConversation(_m))
+	return &ConversationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConversationClient) UpdateOneID(id string) *ConversationUpdateOne {
+	mutation := newConversationMutation(c.config, OpUpdateOne, withConversationID(id))
+	return &ConversationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Conversation.
+func (c *ConversationClient) Delete() *ConversationDelete {
+	mutation := newConversationMutation(c.config, OpDelete)
+	return &ConversationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConversationClient) DeleteOne(_m *Conversation) *ConversationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConversationClient) DeleteOneID(id string) *ConversationDeleteOne {
+	builder := c.Delete().Where(conversation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConversationDeleteOne{builder}
+}
+
+// Query returns a query builder for Conversation.
+func (c *ConversationClient) Query() *ConversationQuery {
+	return &ConversationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConversation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Conversation entity by its id.
+func (c *ConversationClient) Get(ctx context.Context, id string) (*Conversation, error) {
+	return c.Query().Where(conversation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConversationClient) GetX(ctx context.Context, id string) *Conversation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConversationClient) Hooks() []Hook {
+	return c.hooks.Conversation
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConversationClient) Interceptors() []Interceptor {
+	return c.inters.Conversation
+}
+
+func (c *ConversationClient) mutate(ctx context.Context, m *ConversationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConversationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConversationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConversationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConversationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Conversation mutation op: %q", m.Op())
+	}
+}
+
+// ConversationMemberClient is a client for the ConversationMember schema.
+type ConversationMemberClient struct {
+	config
+}
+
+// NewConversationMemberClient returns a client for the ConversationMember from the given config.
+func NewConversationMemberClient(c config) *ConversationMemberClient {
+	return &ConversationMemberClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `conversationmember.Hooks(f(g(h())))`.
+func (c *ConversationMemberClient) Use(hooks ...Hook) {
+	c.hooks.ConversationMember = append(c.hooks.ConversationMember, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `conversationmember.Intercept(f(g(h())))`.
+func (c *ConversationMemberClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConversationMember = append(c.inters.ConversationMember, interceptors...)
+}
+
+// Create returns a builder for creating a ConversationMember entity.
+func (c *ConversationMemberClient) Create() *ConversationMemberCreate {
+	mutation := newConversationMemberMutation(c.config, OpCreate)
+	return &ConversationMemberCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConversationMember entities.
+func (c *ConversationMemberClient) CreateBulk(builders ...*ConversationMemberCreate) *ConversationMemberCreateBulk {
+	return &ConversationMemberCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConversationMemberClient) MapCreateBulk(slice any, setFunc func(*ConversationMemberCreate, int)) *ConversationMemberCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConversationMemberCreateBulk{err: fmt.Errorf("calling to ConversationMemberClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConversationMemberCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConversationMemberCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConversationMember.
+func (c *ConversationMemberClient) Update() *ConversationMemberUpdate {
+	mutation := newConversationMemberMutation(c.config, OpUpdate)
+	return &ConversationMemberUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConversationMemberClient) UpdateOne(_m *ConversationMember) *ConversationMemberUpdateOne {
+	mutation := newConversationMemberMutation(c.config, OpUpdateOne, withConversationMember(_m))
+	return &ConversationMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConversationMemberClient) UpdateOneID(id string) *ConversationMemberUpdateOne {
+	mutation := newConversationMemberMutation(c.config, OpUpdateOne, withConversationMemberID(id))
+	return &ConversationMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConversationMember.
+func (c *ConversationMemberClient) Delete() *ConversationMemberDelete {
+	mutation := newConversationMemberMutation(c.config, OpDelete)
+	return &ConversationMemberDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConversationMemberClient) DeleteOne(_m *ConversationMember) *ConversationMemberDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConversationMemberClient) DeleteOneID(id string) *ConversationMemberDeleteOne {
+	builder := c.Delete().Where(conversationmember.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConversationMemberDeleteOne{builder}
+}
+
+// Query returns a query builder for ConversationMember.
+func (c *ConversationMemberClient) Query() *ConversationMemberQuery {
+	return &ConversationMemberQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConversationMember},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConversationMember entity by its id.
+func (c *ConversationMemberClient) Get(ctx context.Context, id string) (*ConversationMember, error) {
+	return c.Query().Where(conversationmember.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConversationMemberClient) GetX(ctx context.Context, id string) *ConversationMember {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConversationMemberClient) Hooks() []Hook {
+	return c.hooks.ConversationMember
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConversationMemberClient) Interceptors() []Interceptor {
+	return c.inters.ConversationMember
+}
+
+func (c *ConversationMemberClient) mutate(ctx context.Context, m *ConversationMemberMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConversationMemberCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConversationMemberUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConversationMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConversationMemberDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConversationMember mutation op: %q", m.Op())
+	}
+}
+
 // FollowClient is a client for the Follow schema.
 type FollowClient struct {
 	config
@@ -1400,6 +1700,139 @@ func (c *MediaUploadClient) mutate(ctx context.Context, m *MediaUploadMutation) 
 	}
 }
 
+// MessageClient is a client for the Message schema.
+type MessageClient struct {
+	config
+}
+
+// NewMessageClient returns a client for the Message from the given config.
+func NewMessageClient(c config) *MessageClient {
+	return &MessageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `message.Hooks(f(g(h())))`.
+func (c *MessageClient) Use(hooks ...Hook) {
+	c.hooks.Message = append(c.hooks.Message, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `message.Intercept(f(g(h())))`.
+func (c *MessageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Message = append(c.inters.Message, interceptors...)
+}
+
+// Create returns a builder for creating a Message entity.
+func (c *MessageClient) Create() *MessageCreate {
+	mutation := newMessageMutation(c.config, OpCreate)
+	return &MessageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Message entities.
+func (c *MessageClient) CreateBulk(builders ...*MessageCreate) *MessageCreateBulk {
+	return &MessageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MessageClient) MapCreateBulk(slice any, setFunc func(*MessageCreate, int)) *MessageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MessageCreateBulk{err: fmt.Errorf("calling to MessageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MessageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MessageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Message.
+func (c *MessageClient) Update() *MessageUpdate {
+	mutation := newMessageMutation(c.config, OpUpdate)
+	return &MessageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MessageClient) UpdateOne(_m *Message) *MessageUpdateOne {
+	mutation := newMessageMutation(c.config, OpUpdateOne, withMessage(_m))
+	return &MessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MessageClient) UpdateOneID(id string) *MessageUpdateOne {
+	mutation := newMessageMutation(c.config, OpUpdateOne, withMessageID(id))
+	return &MessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Message.
+func (c *MessageClient) Delete() *MessageDelete {
+	mutation := newMessageMutation(c.config, OpDelete)
+	return &MessageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MessageClient) DeleteOne(_m *Message) *MessageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MessageClient) DeleteOneID(id string) *MessageDeleteOne {
+	builder := c.Delete().Where(message.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MessageDeleteOne{builder}
+}
+
+// Query returns a query builder for Message.
+func (c *MessageClient) Query() *MessageQuery {
+	return &MessageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMessage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Message entity by its id.
+func (c *MessageClient) Get(ctx context.Context, id string) (*Message, error) {
+	return c.Query().Where(message.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MessageClient) GetX(ctx context.Context, id string) *Message {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MessageClient) Hooks() []Hook {
+	return c.hooks.Message
+}
+
+// Interceptors returns the client interceptors.
+func (c *MessageClient) Interceptors() []Interceptor {
+	return c.inters.Message
+}
+
+func (c *MessageClient) mutate(ctx context.Context, m *MessageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MessageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MessageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Message mutation op: %q", m.Op())
+	}
+}
+
 // ModerationReportClient is a client for the ModerationReport schema.
 type ModerationReportClient struct {
 	config
@@ -1530,6 +1963,139 @@ func (c *ModerationReportClient) mutate(ctx context.Context, m *ModerationReport
 		return (&ModerationReportDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ModerationReport mutation op: %q", m.Op())
+	}
+}
+
+// NotificationClient is a client for the Notification schema.
+type NotificationClient struct {
+	config
+}
+
+// NewNotificationClient returns a client for the Notification from the given config.
+func NewNotificationClient(c config) *NotificationClient {
+	return &NotificationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `notification.Hooks(f(g(h())))`.
+func (c *NotificationClient) Use(hooks ...Hook) {
+	c.hooks.Notification = append(c.hooks.Notification, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `notification.Intercept(f(g(h())))`.
+func (c *NotificationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Notification = append(c.inters.Notification, interceptors...)
+}
+
+// Create returns a builder for creating a Notification entity.
+func (c *NotificationClient) Create() *NotificationCreate {
+	mutation := newNotificationMutation(c.config, OpCreate)
+	return &NotificationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Notification entities.
+func (c *NotificationClient) CreateBulk(builders ...*NotificationCreate) *NotificationCreateBulk {
+	return &NotificationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *NotificationClient) MapCreateBulk(slice any, setFunc func(*NotificationCreate, int)) *NotificationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &NotificationCreateBulk{err: fmt.Errorf("calling to NotificationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*NotificationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &NotificationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Notification.
+func (c *NotificationClient) Update() *NotificationUpdate {
+	mutation := newNotificationMutation(c.config, OpUpdate)
+	return &NotificationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *NotificationClient) UpdateOne(_m *Notification) *NotificationUpdateOne {
+	mutation := newNotificationMutation(c.config, OpUpdateOne, withNotification(_m))
+	return &NotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *NotificationClient) UpdateOneID(id string) *NotificationUpdateOne {
+	mutation := newNotificationMutation(c.config, OpUpdateOne, withNotificationID(id))
+	return &NotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Notification.
+func (c *NotificationClient) Delete() *NotificationDelete {
+	mutation := newNotificationMutation(c.config, OpDelete)
+	return &NotificationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *NotificationClient) DeleteOne(_m *Notification) *NotificationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *NotificationClient) DeleteOneID(id string) *NotificationDeleteOne {
+	builder := c.Delete().Where(notification.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &NotificationDeleteOne{builder}
+}
+
+// Query returns a query builder for Notification.
+func (c *NotificationClient) Query() *NotificationQuery {
+	return &NotificationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeNotification},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Notification entity by its id.
+func (c *NotificationClient) Get(ctx context.Context, id string) (*Notification, error) {
+	return c.Query().Where(notification.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *NotificationClient) GetX(ctx context.Context, id string) *Notification {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *NotificationClient) Hooks() []Hook {
+	return c.hooks.Notification
+}
+
+// Interceptors returns the client interceptors.
+func (c *NotificationClient) Interceptors() []Interceptor {
+	return c.inters.Notification
+}
+
+func (c *NotificationClient) mutate(ctx context.Context, m *NotificationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&NotificationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&NotificationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&NotificationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&NotificationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Notification mutation op: %q", m.Op())
 	}
 }
 
@@ -2600,13 +3166,15 @@ func (c *VerificationTokenClient) mutate(ctx context.Context, m *VerificationTok
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, Bookmark, Comment, ContentItem, Follow, IdempotencyKey, MediaAsset,
-		MediaUpload, ModerationReport, OutboxEvent, Reaction, Session, Site,
-		SiteMember, User, UserIdentity, VerificationToken []ent.Hook
+		AuditLog, Bookmark, Comment, ContentItem, Conversation, ConversationMember,
+		Follow, IdempotencyKey, MediaAsset, MediaUpload, Message, ModerationReport,
+		Notification, OutboxEvent, Reaction, Session, Site, SiteMember, User,
+		UserIdentity, VerificationToken []ent.Hook
 	}
 	inters struct {
-		AuditLog, Bookmark, Comment, ContentItem, Follow, IdempotencyKey, MediaAsset,
-		MediaUpload, ModerationReport, OutboxEvent, Reaction, Session, Site,
-		SiteMember, User, UserIdentity, VerificationToken []ent.Interceptor
+		AuditLog, Bookmark, Comment, ContentItem, Conversation, ConversationMember,
+		Follow, IdempotencyKey, MediaAsset, MediaUpload, Message, ModerationReport,
+		Notification, OutboxEvent, Reaction, Session, Site, SiteMember, User,
+		UserIdentity, VerificationToken []ent.Interceptor
 	}
 )
