@@ -135,3 +135,54 @@ func TestWorkerAgainstRealStore(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, result.Claimed)
 }
+
+// TestReplayHidesOtherUsersEvents is the review P0-2 regression: a site wide query must
+// not hand a user another user's private events.
+func TestReplayHidesOtherUsersEvents(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	broadcast := seed(t, handle, siteID, "e1")
+	_, err := handle.Client.OutboxEvent.UpdateOneID(broadcast).SetPublishedAt(now).Save(ctx)
+	require.NoError(t, err)
+
+	addressed, err := handle.Client.OutboxEvent.Create().
+		SetEventID("e2").SetSiteID(siteID).SetEventType("message.created").
+		SetAggregateType("message").SetAggregateID("m1").
+		SetAudienceUserID("u2").SetPublishedAt(now).Save(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, addressed.ID)
+
+	replayer, err := outbox.NewReplayer(store)
+	require.NoError(t, err)
+
+	mine, err := replayer.After(ctx, siteID, "u1", "", 100)
+	require.NoError(t, err)
+	require.Len(t, mine, 1, "a message addressed to u2 must not appear for u1")
+	require.Equal(t, "e1", mine[0].EventID)
+
+	theirs, err := replayer.After(ctx, siteID, "u2", "", 100)
+	require.NoError(t, err)
+	require.Len(t, theirs, 2)
+
+	// The cursor resumes strictly after the given id.
+	after, err := replayer.After(ctx, siteID, "u2", "e1", 100)
+	require.NoError(t, err)
+	require.Len(t, after, 1)
+	require.Equal(t, "e2", after[0].EventID)
+}
+
+func TestReplayOnlyReturnsPublishedEvents(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+
+	seed(t, handle, siteID, "e1") // stays unpublished
+
+	replayer, err := outbox.NewReplayer(store)
+	require.NoError(t, err)
+
+	events, err := replayer.After(ctx, siteID, "u1", "", 100)
+	require.NoError(t, err)
+	require.Empty(t, events, "undelivered events are not replayable")
+}

@@ -84,6 +84,48 @@ func (s *Store) Claim(ctx context.Context, limit int, now time.Time, lease time.
 	return claimed, nil
 }
 
+// Replay returns published events a user may observe after a cursor.
+//
+// The audience condition is part of the query, not a post filter: an event with an
+// audience is visible only to that user, while an empty audience is site wide.
+func (s *Store) Replay(ctx context.Context, siteID, userID, afterEventID string, limit int) ([]outbox.Event, error) {
+	query := s.client.OutboxEvent.Query().
+		Where(
+			outboxevent.SiteIDEQ(siteID),
+			outboxevent.PublishedAtNotNil(),
+			outboxevent.Or(
+				outboxevent.AudienceUserIDIsNil(),
+				outboxevent.AudienceUserIDEQ(userID),
+			),
+		)
+
+	if afterEventID != "" {
+		query = query.Where(outboxevent.EventIDGT(afterEventID))
+	}
+
+	rows, err := query.
+		Order(entgen.Asc(outboxevent.FieldEventID)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]outbox.Event, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, outbox.Event{
+			ID:             row.ID,
+			EventID:        row.EventID,
+			SiteID:         row.SiteID,
+			AudienceUserID: deref(row.AudienceUserID),
+			Type:           row.EventType,
+			AggregateID:    row.AggregateID,
+			Payload:        row.Payload,
+			Attempts:       row.Attempts,
+		})
+	}
+	return events, nil
+}
 // MarkPublished records successful delivery and releases the claim.
 func (s *Store) MarkPublished(ctx context.Context, eventID string, at time.Time) error {
 	_, err := s.client.OutboxEvent.Update().
