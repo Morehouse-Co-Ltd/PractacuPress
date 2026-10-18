@@ -17,7 +17,7 @@ import (
 func newEngine(repo Repository, actor Actor) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
-	service, err := NewService(repo)
+	service, err := NewService(repo, nil)
 	if err != nil {
 		panic(err)
 	}

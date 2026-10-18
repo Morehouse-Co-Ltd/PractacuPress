@@ -8,7 +8,10 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 
+		"github.com/google/uuid"
+
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
@@ -40,7 +43,12 @@ func (s *Store) FindComment(ctx context.Context, siteID, commentID string) (comm
 }
 
 // InsertComment stores a comment and records its audit entry in one transaction.
-func (s *Store) InsertComment(ctx context.Context, item community.Comment, audit site.AuditEntry) (community.Comment, error) {
+func (s *Store) InsertComment(
+	ctx context.Context,
+	item community.Comment,
+	notifyUserID string,
+	audit site.AuditEntry,
+) (community.Comment, error) {
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
 		return community.Comment{}, err
@@ -72,6 +80,26 @@ func (s *Store) InsertComment(ctx context.Context, item community.Comment, audit
 	}
 	if err := insertAudit(ctx, tx.Client(), audit); err != nil {
 		return community.Comment{}, err
+	}
+	if notifyUserID != "" {
+		if _, err := tx.OutboxEvent.Create().
+			SetEventID(uuid.Must(uuid.NewV7()).String()).
+			SetSiteID(item.SiteID).
+			SetEventType("comment.created").
+			SetAggregateType("comment").
+			SetAggregateID(created.ID).
+			SetAudienceUserID(notifyUserID).
+			SetOccurredAt(item.CreatedAt).
+			SetPayload(map[string]any{
+				"comment_id":  created.ID,
+				"target_type": string(item.TargetType),
+				"target_id":   item.TargetID,
+				"author_id":   item.AuthorID,
+				"occurred_at": item.CreatedAt.Format(time.RFC3339Nano),
+			}).
+			Save(ctx); err != nil {
+			return community.Comment{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return community.Comment{}, err
@@ -121,6 +149,35 @@ func (s *Store) UpdateComment(ctx context.Context, item community.Comment, audit
 	return toComment(updated), nil
 }
 
+// AuthorOf resolves the author of a comment, article or post.
+func (s *Store) AuthorOf(ctx context.Context, siteID string, targetType community.TargetType, targetID string) (string, error) {
+	switch targetType {
+	case community.TargetComment:
+		row, err := s.client.Comment.Query().
+			Where(comment.IDEQ(targetID), comment.SiteIDEQ(siteID)).
+			Only(ctx)
+		if err != nil {
+			if entgen.IsNotFound(err) {
+				return "", community.ErrNotFound
+			}
+			return "", err
+		}
+		return row.AuthorID, nil
+	case community.TargetArticle, community.TargetPost:
+		row, err := s.client.ContentItem.Query().
+			Where(contentitem.IDEQ(targetID), contentitem.SiteIDEQ(siteID)).
+			Only(ctx)
+		if err != nil {
+			if entgen.IsNotFound(err) {
+				return "", community.ErrNotFound
+			}
+			return "", err
+		}
+		return row.AuthorID, nil
+	default:
+		return "", community.ErrNotFound
+	}
+}
 // HasReaction reports whether the user already reacted with this kind.
 func (s *Store) HasReaction(ctx context.Context, userID, targetType, targetID, kind string) (bool, error) {
 	return s.client.Reaction.Query().Where(
@@ -135,7 +192,7 @@ func (s *Store) HasReaction(ctx context.Context, userID, targetType, targetID, k
 //
 // Deleting a missing row is not an error: the caller already knows the desired state,
 // so a retry must converge rather than fail.
-func (s *Store) SetReaction(ctx context.Context, item community.Reaction, active bool) error {
+func (s *Store) SetReaction(ctx context.Context, item community.Reaction, active bool, notifyUserID string) error {
 	if !active {
 		_, err := s.client.Reaction.Delete().Where(
 			reaction.UserIDEQ(item.UserID),
@@ -146,7 +203,18 @@ func (s *Store) SetReaction(ctx context.Context, item community.Reaction, active
 		return err
 	}
 
-	return s.client.Reaction.Create().
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if err := tx.Reaction.Create().
 		SetSiteID(item.SiteID).
 		SetUserID(item.UserID).
 		SetTargetType(string(item.TargetType)).
@@ -154,7 +222,37 @@ func (s *Store) SetReaction(ctx context.Context, item community.Reaction, active
 		SetKind(item.Kind).
 		OnConflict().
 		Ignore().
-		Exec(ctx)
+		Exec(ctx); err != nil {
+		return err
+	}
+
+	if notifyUserID != "" {
+		now := time.Now().UTC()
+		if _, err := tx.OutboxEvent.Create().
+			SetEventID(uuid.Must(uuid.NewV7()).String()).
+			SetSiteID(item.SiteID).
+			SetEventType("reaction.created").
+			SetAggregateType("reaction").
+			SetAggregateID(item.TargetID).
+			SetAudienceUserID(notifyUserID).
+			SetOccurredAt(now).
+			SetPayload(map[string]any{
+				"target_type": string(item.TargetType),
+				"target_id":   item.TargetID,
+				"kind":        item.Kind,
+				"user_id":     item.UserID,
+				"occurred_at": now.Format(time.RFC3339Nano),
+			}).
+			Save(ctx); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 // HasBookmark reports whether the user bookmarked the target.

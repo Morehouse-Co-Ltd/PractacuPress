@@ -38,7 +38,7 @@ func TestCommentRoundTrip(t *testing.T) {
 		SiteID: siteID, AuthorID: "u1", TargetType: community.TargetArticle,
 		TargetID: "a1", Body: "hello", Status: community.CommentStatusVisible,
 		CreatedAt: now, UpdatedAt: now,
-	}, site.AuditEntry{SiteID: siteID, ActorID: "u1", Action: "community.comment.created"})
+	}, "", site.AuditEntry{SiteID: siteID, ActorID: "u1", Action: "community.comment.created"})
 	require.NoError(t, err)
 	require.NotEmpty(t, created.ID)
 
@@ -67,15 +67,15 @@ func TestReactionIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, active)
 
-	require.NoError(t, store.SetReaction(ctx, item, true))
-	require.NoError(t, store.SetReaction(ctx, item, true), "a retried like must not fail")
+	require.NoError(t, store.SetReaction(ctx, item, true, ""))
+	require.NoError(t, store.SetReaction(ctx, item, true, ""), "a retried like must not fail")
 
 	active, err = store.HasReaction(ctx, "u1", "article", "a1", "like")
 	require.NoError(t, err)
 	require.True(t, active)
 
-	require.NoError(t, store.SetReaction(ctx, item, false))
-	require.NoError(t, store.SetReaction(ctx, item, false), "removing twice must not fail")
+	require.NoError(t, store.SetReaction(ctx, item, false, ""))
+	require.NoError(t, store.SetReaction(ctx, item, false, ""), "removing twice must not fail")
 
 	active, err = store.HasReaction(ctx, "u1", "article", "a1", "like")
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestServiceAgainstRealStore(t *testing.T) {
 	store, _, siteID := newStore(t)
 	ctx := context.Background()
 
-	service, err := community.NewService(store)
+	service, err := community.NewService(store, store)
 	require.NoError(t, err)
 	author := community.Actor{UserID: "u1", SiteID: siteID, Role: site.RoleMember}
 
@@ -134,4 +134,73 @@ func TestServiceAgainstRealStore(t *testing.T) {
 	active, err = service.ToggleReaction(ctx, author, community.TargetArticle, "a1", "like", &want)
 	require.NoError(t, err)
 	require.True(t, active)
+}
+
+// TestReplyNotifiesParentAuthor is the end to end reason the notification wiring exists:
+// replying to a comment must leave exactly one outbox event addressed to its author.
+func TestReplyNotifiesParentAuthor(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	parent, err := store.InsertComment(ctx, community.Comment{
+		SiteID: siteID, AuthorID: "alice", TargetType: community.TargetArticle,
+		TargetID: "a1", Body: "root", Status: community.CommentStatusVisible,
+		CreatedAt: now, UpdatedAt: now,
+	}, "", site.AuditEntry{SiteID: siteID, Action: "community.comment.created"})
+	require.NoError(t, err)
+
+	author, err := store.AuthorOf(ctx, siteID, community.TargetComment, parent.ID)
+	require.NoError(t, err)
+	require.Equal(t, "alice", author)
+
+	// Bob replies through the service, which resolves the parent author for him.
+	service, err := community.NewService(store, store)
+	require.NoError(t, err)
+
+	_, err = service.AddComment(ctx, community.Actor{UserID: "bob", SiteID: siteID},
+		community.NewCommentInput{
+			TargetType: community.TargetComment, TargetID: parent.ID, ParentID: parent.ID, Body: "reply",
+		})
+	require.NoError(t, err)
+
+	events, err := handle.Client.OutboxEvent.Query().All(ctx)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "comment.created", events[0].EventType)
+	require.NotNil(t, events[0].AudienceUserID)
+	require.Equal(t, "alice", *events[0].AudienceUserID, "the parent author is the audience")
+}
+
+// TestSelfReplyDoesNotNotify keeps a user from being told about their own comment.
+func TestSelfReplyDoesNotNotify(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	parent, err := store.InsertComment(ctx, community.Comment{
+		SiteID: siteID, AuthorID: "alice", TargetType: community.TargetArticle,
+		TargetID: "a1", Body: "root", Status: community.CommentStatusVisible,
+		CreatedAt: now, UpdatedAt: now,
+	}, "", site.AuditEntry{SiteID: siteID, Action: "community.comment.created"})
+	require.NoError(t, err)
+
+	ensureNoEvents(t, handle)
+
+	service, err := community.NewService(store, store)
+	require.NoError(t, err)
+
+	_, err = service.AddComment(ctx, community.Actor{UserID: "alice", SiteID: siteID},
+		community.NewCommentInput{
+			TargetType: community.TargetComment, TargetID: parent.ID, ParentID: parent.ID, Body: "self",
+		})
+	require.NoError(t, err)
+	ensureNoEvents(t, handle)
+}
+
+func ensureNoEvents(t *testing.T, handle *db.DB) {
+	t.Helper()
+	count, err := handle.Client.OutboxEvent.Query().Count(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, count, "no notification event must be written")
 }

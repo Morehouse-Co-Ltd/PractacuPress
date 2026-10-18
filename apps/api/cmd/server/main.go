@@ -117,7 +117,8 @@ func run() error {
 		return fmt.Errorf("build media service: %w", err)
 	}
 
-	communityService, err := community.NewService(communitystore.New(handle.Client))
+	communityStore := communitystore.New(handle.Client)
+	communityService, err := community.NewService(communityStore, communityStore)
 	if err != nil {
 		return fmt.Errorf("build community service: %w", err)
 	}

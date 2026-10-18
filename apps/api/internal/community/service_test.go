@@ -36,7 +36,7 @@ func (f *fakeRepo) FindComment(_ context.Context, siteID, commentID string) (Com
 	return comment, nil
 }
 
-func (f *fakeRepo) InsertComment(_ context.Context, comment Comment, _ site.AuditEntry) (Comment, error) {
+func (f *fakeRepo) InsertComment(_ context.Context, comment Comment, _ string, _ site.AuditEntry) (Comment, error) {
 	f.seq++
 	f.writes++
 	comment.ID = fmt.Sprintf("c%d", f.seq)
@@ -54,7 +54,7 @@ func (f *fakeRepo) HasReaction(_ context.Context, userID, targetType, targetID, 
 	return f.reactions[userID+targetType+targetID+kind], nil
 }
 
-func (f *fakeRepo) SetReaction(_ context.Context, reaction Reaction, active bool) error {
+func (f *fakeRepo) SetReaction(_ context.Context, reaction Reaction, active bool, _ string) error {
 	f.writes++
 	f.reactions[reaction.UserID+string(reaction.TargetType)+reaction.TargetID+reaction.Kind] = active
 	return nil
@@ -82,13 +82,13 @@ func (f *fakeRepo) SetFollow(_ context.Context, _, followerID, followeeID string
 
 func newService(t *testing.T, repo Repository) *Service {
 	t.Helper()
-	service, err := NewService(repo)
+	service, err := NewService(repo, nil)
 	require.NoError(t, err)
 	return service
 }
 
 func TestNewServiceRequiresRepository(t *testing.T) {
-	_, err := NewService(nil)
+	_, err := NewService(nil, nil)
 	require.Error(t, err)
 }
 

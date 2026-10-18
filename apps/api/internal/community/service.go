@@ -12,14 +12,16 @@ import (
 type Repository interface {
 	// FindComment loads a comment inside a site scope.
 	FindComment(ctx context.Context, siteID, commentID string) (Comment, error)
-	// InsertComment stores a comment and records the audit entry.
-	InsertComment(ctx context.Context, comment Comment, audit site.AuditEntry) (Comment, error)
+	// InsertComment stores a comment, the notification event for its target author and
+	// the audit entry in one transaction. notifyUserID empty means nobody is told.
+	InsertComment(ctx context.Context, comment Comment, notifyUserID string, audit site.AuditEntry) (Comment, error)
 	// UpdateComment stores a status or body change and records the audit entry.
 	UpdateComment(ctx context.Context, comment Comment, audit site.AuditEntry) (Comment, error)
 	// HasReaction reports whether the user already reacted with this kind.
 	HasReaction(ctx context.Context, userID, targetType, targetID, kind string) (bool, error)
-	// SetReaction inserts or deletes a reaction row.
-	SetReaction(ctx context.Context, reaction Reaction, active bool) error
+	// SetReaction inserts or deletes a reaction row. When active and notifyUserID is
+	// non empty, a notification event is written in the same transaction.
+	SetReaction(ctx context.Context, reaction Reaction, active bool, notifyUserID string) error
 	// HasBookmark reports whether the user bookmarked the target.
 	HasBookmark(ctx context.Context, userID, targetType, targetID string) (bool, error)
 	// SetBookmark inserts or deletes a bookmark row.
@@ -30,18 +32,50 @@ type Repository interface {
 	SetFollow(ctx context.Context, siteID, followerID, followeeID string, active bool) error
 }
 
+// AuthorLookup resolves the author of an interaction target.
+//
+// It is a port rather than a direct query so the module does not depend on the content
+// package: comments, reactions and bookmarks share one notion of "who owns this".
+type AuthorLookup interface {
+	AuthorOf(ctx context.Context, siteID string, targetType TargetType, targetID string) (string, error)
+}
+
 // Service implements comments and idempotent interactions.
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo    Repository
+	authors AuthorLookup
+	now     func() time.Time
 }
 
 // NewService builds a Service.
-func NewService(repo Repository) (*Service, error) {
+func NewService(repo Repository, authors AuthorLookup) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("community: repository is required")
 	}
-	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}, nil
+	if authors == nil {
+		// Without a lookup nothing can be notified. That is a valid degraded mode: the
+		// interaction still lands, only the notification is skipped.
+		authors = missingLookup{}
+	}
+	return &Service{repo: repo, authors: authors, now: func() time.Time { return time.Now().UTC() }}, nil
+}
+
+type missingLookup struct{}
+
+func (missingLookup) AuthorOf(context.Context, string, TargetType, string) (string, error) {
+	return "", ErrNotFound
+}
+
+// notifyFor decides who should hear about an interaction.
+//
+// Self interaction never notifies, and an unresolvable author is not an error: the
+// comment or reaction is the user visible outcome, the notification is secondary.
+func (s *Service) notifyFor(ctx context.Context, actor Actor, targetType TargetType, targetID string) string {
+	author, err := s.authors.AuthorOf(ctx, actor.SiteID, targetType, targetID)
+	if err != nil || author == "" || author == actor.UserID {
+		return ""
+	}
+	return author
 }
 
 // AddComment stores a comment or reply.
@@ -82,7 +116,8 @@ func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInpu
 		UpdatedAt:  now,
 	}
 
-	return s.repo.InsertComment(ctx, comment, site.AuditEntry{
+	notification := s.notifyFor(ctx, actor, validated.TargetType, validated.TargetID)
+	return s.repo.InsertComment(ctx, comment, notification, site.AuditEntry{
 		SiteID:  actor.SiteID,
 		ActorID: actor.UserID,
 		Action:  "community.comment.created",
@@ -177,10 +212,24 @@ func (s *Service) ToggleReaction(
 		TargetType: targetType,
 		TargetID:   targetID,
 		Kind:       normalizedKind,
-	}, decision.Active); err != nil {
+	}, decision.Active, s.reactionRecipient(ctx, actor, targetType, targetID, decision)); err != nil {
 		return false, err
 	}
 	return decision.Active, nil
+}
+
+// reactionRecipient returns the target author only when the reaction switched on.
+func (s *Service) reactionRecipient(
+	ctx context.Context,
+	actor Actor,
+	targetType TargetType,
+	targetID string,
+	decision ToggleDecision,
+) string {
+	if !decision.Active {
+		return ""
+	}
+	return s.notifyFor(ctx, actor, targetType, targetID)
 }
 
 // ToggleBookmark adds or removes a bookmark.
