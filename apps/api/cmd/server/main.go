@@ -88,6 +88,13 @@ func run() error {
 		SiteResolver: siteService,
 		AccessTokens: issuer,
 		Auth:         authHandler,
+		Sites: site.NewHandler(siteService, site.HandlerConfig{
+			UserID: func(c *gin.Context) (string, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				return principal.UserID, ok
+			},
+			RequestID: middleware.RequestIDFrom,
+		}),
 	})
 
 	srv := &http.Server{

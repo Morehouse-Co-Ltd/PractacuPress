@@ -119,6 +119,17 @@ func (s *Service) DefaultSite(ctx context.Context) (Site, error) {
 	return solo, nil
 }
 
+// Get returns a site to a caller who is a member of it.
+//
+// Non members get ErrMemberNotFound rather than ErrNotFound so the endpoint does not
+// double as a site discovery oracle.
+func (s *Service) Get(ctx context.Context, siteID, userID string) (Site, error) {
+	if _, err := s.Membership(ctx, siteID, userID); err != nil {
+		return Site{}, err
+	}
+	return s.repo.FindByID(ctx, siteID)
+}
+
 // Membership returns the actor's membership of a site.
 func (s *Service) Membership(ctx context.Context, siteID, userID string) (Member, error) {
 	member, err := s.repo.FindMember(ctx, siteID, userID)

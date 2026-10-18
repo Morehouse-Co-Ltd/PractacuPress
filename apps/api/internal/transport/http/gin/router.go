@@ -64,7 +64,7 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	v1.GET("/openapi.json", openAPIDocument)
 
-	if deps.Auth != nil {
+	if deps.Auth != nil || deps.Sites != nil {
 		var guard gin.HandlerFunc
 		if deps.AccessTokens != nil {
 			guard = middleware.RequireAuth(deps.AccessTokens)
@@ -75,7 +75,12 @@ func New(deps Dependencies) *gin.Engine {
 					WithRequestID(middleware.RequestIDFrom(c)))
 			}
 		}
-		deps.Auth.Routes(v1, guard)
+		if deps.Auth != nil {
+			deps.Auth.Routes(v1, guard)
+		}
+		if deps.Sites != nil {
+			deps.Sites.Routes(v1, guard)
+		}
 	}
 
 	r.NoRoute(noRoute)

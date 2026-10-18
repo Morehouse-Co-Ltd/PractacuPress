@@ -8,6 +8,7 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
@@ -31,4 +32,6 @@ type Dependencies struct {
 	AccessTokens middleware.AccessTokenVerifier
 	// Auth mounts the authentication endpoints when non nil.
 	Auth *auth.Handler
+	// Sites mounts the site administration endpoints when non nil.
+	Sites *site.Handler
 }
