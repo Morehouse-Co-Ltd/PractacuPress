@@ -32,6 +32,7 @@ func New(deps Dependencies) *gin.Engine {
 
 	r.Use(
 		middleware.RequestID(),
+		middleware.Recovery(deps.Logger),
 		middleware.ErrorHandler(deps.Logger),
 	)
 
