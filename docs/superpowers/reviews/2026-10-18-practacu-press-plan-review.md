@@ -48,7 +48,7 @@
 | E5 | 无 `make` | 计划 Task 1 的 `Makefile` 在本机不可用 | 以 `scripts/*.ps1` 为主入口，`Makefile` 仅供 Linux CI |
 | E6 | 无 Docker、无 MySQL/PostgreSQL 服务、3306/5432 未监听 | 三方言矩阵**无法本地验收**，只能靠 CI | 本阶段仅保证 SQLite 全绿 + 方言无关代码审查；MySQL/PG 作为 CI 门禁 |
 | E7 | 外壳是 Windows PowerShell 5.1（无 `pwsh`） | 计划中的 `pwsh -File ...` 命令会失败 | 脚本用 `& script.ps1`；或在脚本内自检版本 |
-| E8 | 无 `protoc`；Rust 仅有 `x86_64-pc-windows-gnu` 且缺 mingw gcc | 安全服务计划的 `cargo build` 会链接失败 | 需 `rustup toolchain install stable-x86_64-pc-windows-msvc` + 安装 `protoc`（或用 `prost-build` 的 vendored protoc） |
+| E8 | ~~Rust 缺链接器~~ **已更正（2026-10-18）**：`cargo build` 实测成功 | 无 | 原判断有误：`rust-mingw` 组件自带链接所需文件，不需要系统 gcc。仅 `protoc` 仍缺，用 `protoc-bin-vendored` 解决 |
 | E9 | 无 WiX Toolset | 部署计划 Task 4 的 `.wxs` 无法编译验证 | 只交付文件，标注"未在本机验收" |
 | E10 | 无 `bash`/`sh` | 部署计划 Task 5 的 `restore_smoke.sh` 不可运行 | 备份/恢复脚本以 PowerShell 为主，`*.sh` 只进 CI |
 | E11 | `ent generate` 需要 `ariga.io/atlas` 在 `go.sum` 中 | 首次 `go generate` 会因缺 `go.sum` 条目报错 | 生成前先 `go mod tidy`（或 `go get entgo.io/ent/dialect/sql/schema`）；好消息是 **Atlas 库随 Ent 一起进入依赖图**，因此"用 Atlas 生成受控 SQL"不需要额外安装 CLI |
@@ -126,7 +126,7 @@
 
 ### P0-6 计划顺序存在循环依赖：Task 5 依赖尚未实现的 Rust 服务
 
-- **现象：** 后端核心 Task 5 Step 4（第 261 行）要求"Add Rust security calls"；而 Rust 服务在另一份计划里，且本机尚不能编译（E8）。
+- **现象：** 后端核心 Task 5 Step 4（第 261 行）要求"Add Rust security calls"；而 Rust 服务在另一份计划里，（注：原判断"本机不能编译 Rust"已被实测推翻，见 §2.2 E8 更正）。
 - **影响：** 若严格按后端计划执行，Task 5 会卡住，整个后端停摆。
 - **修订：** 在 `apps/api` 内先定义 **`SecurityClient` 接口**（`SanitizeContent`/`InspectUpload`/`HashPassword`/`VerifyPassword`/`Ping`），并提供两个实现：
   - `securityclient.Stub`：始终返回 `ErrSecurityUnavailable` → 触发 fail-closed 语义（内容停留 `pending_security_check`，上传停留 `scan_status=pending`）。这样 Task 5 可完整实现并测试"不可用即暂停"这条主路径。
@@ -200,7 +200,7 @@
 
 | Task | 可行性 | 说明 |
 | --- | --- | --- |
-| 1–4 | ⚠️ 需先补环境 | `rustup toolchain install stable-x86_64-pc-windows-msvc`；`protoc` 缺失（建议 `protoc-bin-vendored` crate，避免要求全局安装） |
+| 1–4 | ✅ 可做 | **更正**：Rust 工具链实测可编译，无需安装 msvc toolchain；仅 `protoc` 需用 `protoc-bin-vendored` crate 提供 |
 | 5 | ✅ | 纯 Go 客户端 + fake gRPC server 可测 |
 | 6 | ⚠️ | `cargo fuzz` 需 nightly，本机未装 |
 
@@ -271,5 +271,5 @@ M4 并行推进（部分不可本机验收）
 
 - **架构无需重做**，可直接进入实现。
 - **必须修订 9 项 P0**，其中 **P0-1（会话表）、P0-2（事件 audience）、P0-5（上传会话）** 属于"不改就必然返工或出安全事故"的级别。
-- **本机可完整验收 Go 后端**（已实测技术栈全部可用）；Rust 与部署两份计划只能在补齐工具链后验收，报告中应如实标注，不要把"写了文件"当作"验证通过"。
+- **本机可完整验收 Go 后端**（已实测技术栈全部可用）；**Rust 服务同样可在本机编译验收**（2026-10-18 更正，`cargo build` 实测通过，仅 `protoc` 需用 vendored crate）；部署包因缺 Docker/WiX 仍不可本机验收。
 - 按 §9 的四个里程碑推进，每个里程碑以"可运行 + 测试全绿"作为交付边界。
