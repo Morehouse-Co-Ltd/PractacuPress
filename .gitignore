@@ -1,0 +1,16 @@
+# Build artifacts
+*.exe
+*.test
+*.out
+
+# Local runtime state
+*.db
+*.db-shm
+*.db-wal
+/data/
+/backups/
+
+# Dependencies and generated caches
+node_modules/
+.DS_Store
+Thumbs.db
