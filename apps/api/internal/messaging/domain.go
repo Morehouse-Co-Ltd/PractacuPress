@@ -101,6 +101,7 @@ func (c Conversation) Authorize(actor Actor) error {
 // Message is one message in a conversation.
 type Message struct {
 	ID             string
+	SiteID         string
 	ConversationID string
 	SenderID       string
 	Body           string

@@ -25,6 +25,8 @@ tags:
   - name: community
   - name: media
   - name: events
+  - name: messaging
+  - name: notifications
 
 paths:
   /healthz:
@@ -871,6 +873,132 @@ paths:
         '503':
           $ref: '#/components/responses/SecurityUnavailable'
 
+  /conversations:
+    get:
+      tags: [messaging]
+      summary: List the caller's conversations
+      responses:
+        '200':
+          description: Conversations the caller belongs to
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Conversation' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [messaging]
+      summary: Start a conversation
+      description: The caller is always a member. A direct thread requires exactly one other member.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [members]
+              properties:
+                kind: { type: string, enum: [direct, group], default: direct }
+                members:
+                  type: array
+                  items: { type: string }
+                  minItems: 1
+                  maxItems: 99
+      responses:
+        '201':
+          description: Conversation created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /conversations/{conversationID}/messages:
+    get:
+      tags: [messaging]
+      summary: List messages
+      description: Members only. A non member is answered as not found so the conversation's existence does not leak.
+      parameters:
+        - $ref: '#/components/parameters/ConversationID'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Messages in creation order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Message' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [messaging]
+      summary: Send a message
+      parameters:
+        - $ref: '#/components/parameters/ConversationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 5000 }
+      responses:
+        '201':
+          description: Message stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{conversationID}/read:
+    post:
+      tags: [messaging]
+      summary: Advance the read cursor
+      parameters:
+        - $ref: '#/components/parameters/ConversationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message_id]
+              properties:
+                message_id: { type: string }
+      responses:
+        '200':
+          description: Whether the cursor moved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  advanced: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /notifications:
     get:
       tags: [notifications]
@@ -994,6 +1122,11 @@ components:
       schema: { $ref: '#/components/schemas/TargetType' }
     TargetID:
       name: targetID
+      in: path
+      required: true
+      schema: { type: string }
+    ConversationID:
+      name: conversationID
       in: path
       required: true
       schema: { type: string }
@@ -1226,6 +1359,26 @@ components:
         scan_status: { type: string, enum: [pending, clean, rejected, needs_manual_review] }
         scan_reason: { type: string }
 
+    Conversation:
+      type: object
+      required: [id, kind, created_by, members]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [direct, group] }
+        created_by: { type: string }
+        members:
+          type: array
+          items: { type: string }
+
+    Message:
+      type: object
+      required: [id, conversation_id, sender_id, body, created_at]
+      properties:
+        id: { type: string }
+        conversation_id: { type: string }
+        sender_id: { type: string }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
     Notification:
       type: object
       required: [id, type, payload, read, created_at]

@@ -20,14 +20,16 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
-		"github.com/practacu/practacu-press/apps/api/internal/notifications"
+			"github.com/practacu/practacu-press/apps/api/internal/messaging"
+	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 		"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/communitystore"
 		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
-		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/notificationstore"
+			"github.com/practacu/practacu-press/apps/api/internal/infrastructure/messagingstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/notificationstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/outboxstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
@@ -120,6 +122,11 @@ func run() error {
 	}
 
 
+	messageService, err := messaging.NewService(messagingstore.New(handle.Client))
+	if err != nil {
+		return fmt.Errorf("build messaging service: %w", err)
+	}
+
 	notificationService, err := notifications.NewService(notificationstore.New(handle.Client))
 	if err != nil {
 		return fmt.Errorf("build notification service: %w", err)
@@ -149,6 +156,19 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		Messages: messaging.NewHandler(messageService, messaging.HandlerConfig{
+			Principal: func(c *gin.Context) (messaging.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return messaging.Actor{}, false
+				}
+				return messaging.Actor{
+					UserID: principal.UserID,
+					SiteID: principal.SiteID,
+					Role:   principal.Role,
+				}, true
+			},
 		}),
 		Notifications: notifications.NewHandler(notificationService, notifications.HandlerConfig{
 			Principal: func(c *gin.Context) (notifications.Actor, bool) {
