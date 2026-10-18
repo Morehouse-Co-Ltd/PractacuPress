@@ -7,7 +7,8 @@
 package community
 
 import (
-	"errors"
+		"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -134,19 +135,19 @@ func ValidateComment(in NewCommentInput) (NewCommentInput, error) {
 	in.ParentID = strings.TrimSpace(in.ParentID)
 
 	if !in.TargetType.Valid() {
-		return NewCommentInput{}, errors.New("community: unknown target type")
+		return NewCommentInput{}, fmt.Errorf("%w: unknown target type", ErrInvalidInput)
 	}
 	if in.TargetID == "" {
-		return NewCommentInput{}, errors.New("community: target is required")
+		return NewCommentInput{}, fmt.Errorf("%w: target is required", ErrInvalidInput)
 	}
 	if in.Body == "" {
-		return NewCommentInput{}, errors.New("community: body is required")
+		return NewCommentInput{}, fmt.Errorf("%w: body is required", ErrInvalidInput)
 	}
 	if len([]rune(in.Body)) > MaxCommentLength {
-		return NewCommentInput{}, errors.New("community: body is too long")
+		return NewCommentInput{}, fmt.Errorf("%w: body is too long", ErrInvalidInput)
 	}
 	if in.TargetType == TargetComment && in.ParentID == "" {
-		return NewCommentInput{}, errors.New("community: reply target is required")
+		return NewCommentInput{}, fmt.Errorf("%w: reply target is required", ErrInvalidInput)
 	}
 	return in, nil
 }
