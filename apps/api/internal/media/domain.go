@@ -194,6 +194,8 @@ type Asset struct {
 	MIME       string
 	Size       int64
 	ScanStatus ScanStatus
+	// ReasonCode is the security service's stable explanation for a non clean verdict.
+	ReasonCode string
 	CreatedAt  time.Time
 }
 

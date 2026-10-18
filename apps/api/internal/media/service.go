@@ -126,6 +126,7 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 		MIME:       upload.DeclaredMIME,
 		Size:       upload.Size,
 		ScanStatus: result.Status,
+		ReasonCode: result.ReasonCode,
 		CreatedAt:  now,
 	}
 
