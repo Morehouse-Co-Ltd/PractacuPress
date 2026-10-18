@@ -1,0 +1,316 @@
+package content
+
+import (
+	"context"
+	"time"
+
+	"github.com/practacu/practacu-press/apps/api/internal/site"
+)
+
+// Sanitized is the security service's verdict on a revision.
+type Sanitized struct {
+	HTML          string
+	PolicyVersion string
+	Violations    []string
+}
+
+// Sanitizer turns author supplied source into safe HTML.
+//
+// It is a narrow interface so this package does not depend on the security client or
+// on gRPC, and so a test can control exactly when sanitization fails.
+type Sanitizer interface {
+	Sanitize(ctx context.Context, format SourceFormat, source string) (Sanitized, error)
+}
+
+// Repository is the persistence contract for content.
+type Repository interface {
+	// Insert stores a new item and its audit entry.
+	Insert(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
+	// SaveDraft updates an editable item and its audit entry.
+	SaveDraft(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
+	// FindByID loads an item inside a site scope.
+	FindByID(ctx context.Context, siteID, contentID string) (Content, error)
+	// Transition applies a status change only when the stored status still equals
+	// from, which makes concurrent moderator decisions safe.
+	Transition(ctx context.Context, item Content, from Status, audit site.AuditEntry) (Content, error)
+}
+
+// PublishModeFunc resolves the publishing rule of a site.
+type PublishModeFunc func(ctx context.Context, siteID string) (site.PublishMode, error)
+
+// Service implements the content use cases.
+type Service struct {
+	repo       Repository
+	sanitizer  Sanitizer
+	publishMode PublishModeFunc
+	now        func() time.Time
+}
+
+// ServiceConfig configures a Service.
+type ServiceConfig struct {
+	Repository  Repository
+	Sanitizer   Sanitizer
+	PublishMode PublishModeFunc
+	Now         func() time.Time
+}
+
+// NewService builds a Service.
+func NewService(cfg ServiceConfig) (*Service, error) {
+	if cfg.Repository == nil {
+		return nil, ErrInvalidInput
+	}
+	if cfg.Sanitizer == nil {
+		return nil, ErrInvalidInput
+	}
+
+	service := &Service{
+		repo:        cfg.Repository,
+		sanitizer:   cfg.Sanitizer,
+		publishMode: cfg.PublishMode,
+		now:         cfg.Now,
+	}
+	if service.publishMode == nil {
+		// The safe default is review: content never publishes without a human.
+		service.publishMode = func(context.Context, string) (site.PublishMode, error) {
+			return site.PublishModeReview, nil
+		}
+	}
+	if service.now == nil {
+		service.now = func() time.Time { return time.Now().UTC() }
+	}
+	return service, nil
+}
+
+// CreateDraft stores a new draft after sanitizing it.
+//
+// If the security service is unavailable the item is stored in
+// pending_security_check and the error is returned: the content is preserved for the
+// author, but it cannot be published until a real sanitization succeeds.
+func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in DraftInput) (Content, error) {
+	if !kind.Valid() {
+		return Content{}, ErrInvalidInput
+	}
+	validated, err := ValidateDraft(in)
+	if err != nil {
+		return Content{}, err
+	}
+
+	now := s.now()
+	item := Content{
+		SiteID:       actor.SiteID,
+		AuthorID:     actor.UserID,
+		Kind:         kind,
+		Status:       StatusDraft,
+		Title:        validated.Title,
+		Slug:         validated.Slug,
+		Summary:      validated.Summary,
+		SourceFormat: validated.SourceFormat,
+		SourceBody:   validated.SourceBody,
+		CategoryID:   validated.CategoryID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if item.Slug == "" {
+		item.Slug = SlugFromTitle(item.Title)
+	}
+
+	securityErr := s.applySanitization(ctx, &item)
+
+	audit := site.AuditEntry{
+		SiteID:  item.SiteID,
+		ActorID: actor.UserID,
+		Action:  "content.created",
+		Detail:  map[string]any{"kind": string(kind)},
+		At:      now,
+	}
+	saved, err := s.repo.Insert(ctx, item, audit)
+	if err != nil {
+		return Content{}, err
+	}
+	return saved, securityErr
+}
+
+// UpdateDraft edits an item that has not been published yet.
+//
+// Published content is immutable: a correction is a new revision that goes through
+// review again, so an editor cannot silently rewrite something readers already saw.
+func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string, in DraftInput) (Content, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return Content{}, err
+	}
+	if !editable(item.Status) {
+		return Content{}, ErrInvalidTransition
+	}
+	if !item.IsAuthor(actor) && !actor.Role.AtLeast(site.RoleEditor) {
+		return Content{}, ErrPermissionDenied
+	}
+
+	validated, err := ValidateDraft(in)
+	if err != nil {
+		return Content{}, err
+	}
+
+	item.Title = validated.Title
+	item.Slug = validated.Slug
+	if item.Slug == "" {
+		item.Slug = SlugFromTitle(item.Title)
+	}
+	item.Summary = validated.Summary
+	item.SourceFormat = validated.SourceFormat
+	item.SourceBody = validated.SourceBody
+	item.CategoryID = validated.CategoryID
+	item.UpdatedAt = s.now()
+
+	securityErr := s.applySanitization(ctx, &item)
+
+	saved, err := s.repo.SaveDraft(ctx, item, site.AuditEntry{
+		SiteID:  item.SiteID,
+		ActorID: actor.UserID,
+		Action:  "content.updated",
+		At:      s.now(),
+	})
+	if err != nil {
+		return Content{}, err
+	}
+	return saved, securityErr
+}
+
+// Apply performs a workflow action on an item.
+func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, action Action, reason string) (Content, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return Content{}, err
+	}
+
+	mode, err := s.publishMode(ctx, item.SiteID)
+	if err != nil {
+		return Content{}, err
+	}
+
+	next, err := Policy{PublishMode: mode}.Next(item, action, actor)
+	if err != nil {
+		return Content{}, err
+	}
+
+	// Publication requires a revision that passed sanitization under the current
+	// policy. Without it, publishing would serve unaudited HTML.
+	if next == StatusPublished && !item.IsSanitized() {
+		return Content{}, ErrSecurityUnavailable
+	}
+
+	now := s.now()
+	updated := item
+	updated.Status = next
+	updated.UpdatedAt = now
+	switch next {
+	case StatusPublished:
+		updated.PublishedAt = &now
+	case StatusArchived:
+		updated.ArchivedAt = &now
+	case StatusDraft:
+		updated.PublishedAt = nil
+		updated.ArchivedAt = nil
+	}
+
+	detail := map[string]any{
+		"from": string(item.Status),
+		"to":   string(next),
+	}
+	if reason != "" {
+		detail["reason"] = reason
+	}
+
+	return s.repo.Transition(ctx, updated, item.Status, site.AuditEntry{
+		SiteID:  item.SiteID,
+		ActorID: actor.UserID,
+		Action:  "content." + string(action),
+		Target:  item.ID,
+		Detail:  detail,
+		At:      now,
+	})
+}
+
+// RetrySecurityCheck re-runs sanitization on an item held for security review.
+//
+// On success the item returns to draft; on failure it stays held, so a retry loop
+// cannot accidentally publish something that never passed the check.
+func (s *Service) RetrySecurityCheck(ctx context.Context, actor Actor, contentID string) (Content, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return Content{}, err
+	}
+	if item.Status != StatusPendingSecurityCheck {
+		return Content{}, ErrInvalidTransition
+	}
+	if !item.IsAuthor(actor) && !actor.Role.AtLeast(site.RoleEditor) {
+		return Content{}, ErrPermissionDenied
+	}
+
+	return s.UpdateDraft(ctx, actor, contentID, DraftInput{
+		Title:        item.Title,
+		Slug:         item.Slug,
+		Summary:      item.Summary,
+		SourceFormat: item.SourceFormat,
+		SourceBody:   item.SourceBody,
+		CategoryID:   item.CategoryID,
+	})
+}
+
+// Get returns one item, restricted to what the actor may read.
+func (s *Service) Get(ctx context.Context, actor Actor, contentID string) (Content, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return Content{}, err
+	}
+	// Unpublished content is visible to its author and to moderators only.
+	if !item.Status.IsPublic() && !item.IsAuthor(actor) && !actor.Role.AtLeast(site.RoleEditor) {
+		return Content{}, ErrNotFound
+	}
+	return item, nil
+}
+
+// applySanitization fills the rendered HTML or marks the item as held.
+func (s *Service) applySanitization(ctx context.Context, item *Content) error {
+	result, err := s.sanitizer.Sanitize(ctx, item.SourceFormat, item.SourceBody)
+	if err != nil {
+		// Fail closed: keep the item, drop any previously rendered HTML, and hold it.
+		item.Status = StatusPendingSecurityCheck
+		item.RenderedHTML = ""
+		item.PolicyVersion = ""
+		return ErrSecurityUnavailable
+	}
+
+	item.RenderedHTML = result.HTML
+	item.PolicyVersion = result.PolicyVersion
+	if item.Status == StatusPendingSecurityCheck {
+		item.Status = StatusDraft
+	}
+	return nil
+}
+
+func (s *Service) load(ctx context.Context, actor Actor, contentID string) (Content, error) {
+	item, err := s.repo.FindByID(ctx, actor.SiteID, contentID)
+	if err != nil {
+		return Content{}, err
+	}
+	if item.SiteID != actor.SiteID {
+		// The repository already scopes by site; this is defence in depth.
+		return Content{}, ErrCrossSite
+	}
+	return item, nil
+}
+
+// IsSanitized reports whether the item carries HTML produced by a security policy.
+func (c Content) IsSanitized() bool {
+	return c.RenderedHTML != "" && c.PolicyVersion != ""
+}
+
+func editable(status Status) bool {
+	switch status {
+	case StatusDraft, StatusRejected, StatusPendingSecurityCheck:
+		return true
+	default:
+		return false
+	}
+}

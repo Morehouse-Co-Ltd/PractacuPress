@@ -8,8 +8,8 @@
 | 里程碑 | 状态 | 门禁证据 |
 | --- | --- | --- |
 | M0 骨架与数据层 | ✅ 完成 | `go build`/`vet`/`test` 全绿；SQLite 空库建表 + CRUD 往返；`/healthz`、`/readyz`、404 problem+json 实跑通过 |
-| M1 身份与会话 | 🚧 进行中 | — |
-| M2 内容与社区 | ⬜ 未开始 | — |
+| M1 身份与站点 | 🚧 认证完成，站点 HTTP 端点待补 | 注册→登录→刷新→重放吊销→跨站拒绝 全链路测试通过；站点解析实测生效 |
+| M2 内容与社区 | 🚧 内容领域层完成 | 状态机 4 角色 × 5 动作表驱动测试；fail-closed 安全管线测试 |
 | M3 消息与实时 | ⬜ 未开始 | — |
 | M4 契约与部署 | ⬜ 未开始 | — |
 
@@ -111,3 +111,15 @@
 - 一律使用 `C:\Program Files\Go\bin\go.exe`（PATH 上是 32 位）
 - `go`/`cargo` 需 `HTTP_PROXY`/`HTTPS_PROXY`；用 `scripts\test.ps1` 一步搞定
 - 三库矩阵、Docker、Windows 安装包在当前机器**无法验收**，只能交付文件
+
+### Task 7 内容状态机与安全管线（领域层完成）
+
+- `content` 域：`Kind`/`Status`/`SourceFormat`/`Action`、`Content` 聚合、`Actor`
+- **状态机是数据不是分支**：`workflow` 表列出全部合法迁移，`Policy.Next` 依次校验站点隔离 → 迁移存在性 → 发布模式 → 角色权限
+- 发布模式：`open` 允许成员直发；`review`/`role_based` 需要编辑及以上；**作者不能审批自己的内容**
+- **published 不可编辑**：已发布内容的修正必须走新修订重新过审，避免静默改写读者已看到的内容
+- **fail-closed 安全管线**：清洗失败 → 内容以 `pending_security_check` 落库、清空 `rendered_html`、返回可重试错误；恢复后可 `RetrySecurityCheck` 转回 draft
+- **发布前强校验**：`IsSanitized()` 为假时拒绝发布，防止服务在清洗缺席时发布未审计 HTML
+- **乐观并发**：`Transition` 带 `WHERE status = <from>`，两个审核员同时操作只有一个成功
+
+证据：`go test ./apps/api/internal/content` 通过（含 fail-closed、自我审批阻断、跨站、并发冲突用例）。
