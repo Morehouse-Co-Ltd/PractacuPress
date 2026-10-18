@@ -91,6 +91,22 @@ func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error)
 	return out, nil
 }
 
+func (f *fakeRepo) Search(_ context.Context, siteID, term string, kind Kind, limit int) ([]Content, error) {
+	out := make([]Content, 0)
+	for _, item := range f.items {
+		if item.SiteID != siteID || item.Status != StatusPublished {
+			continue
+		}
+		if kind != "" && item.Kind != kind {
+			continue
+		}
+		out = append(out, item)
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
 type fakeSanitizer struct {
 	err     error
 	html    string
@@ -425,4 +441,42 @@ func TestListAfterRejectsBadKind(t *testing.T) {
 	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
 	_, _, err := service.ListAfter(context.Background(), actor("u", site.RoleMember), Kind("x"), 5, page.Cursor{})
 	require.ErrorIs(t, err, ErrInvalidInput)
+}
+func TestSearchOnlyReturnsPublished(t *testing.T) {
+	repo := newFakeRepo()
+	repo.items["pub"] = Content{ID: "pub", SiteID: "s1", Kind: KindArticle,
+		Status: StatusPublished, Title: "Go testing"}
+	repo.items["draft"] = Content{ID: "draft", SiteID: "s1", Kind: KindArticle,
+		Status: StatusDraft, Title: "Go draft"}
+
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	items, err := service.Search(context.Background(), actor("reader", site.RoleMember), "Go", KindArticle, 10)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "pub", items[0].ID, "a draft must never surface in search")
+}
+
+func TestSearchValidatesTerm(t *testing.T) {
+	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
+	ctx := context.Background()
+
+	_, err := service.Search(ctx, actor("u", site.RoleMember), " a ", KindArticle, 10)
+	require.ErrorIs(t, err, ErrInvalidInput, "a one character term is refused")
+
+	_, err = service.Search(ctx, actor("u", site.RoleMember), "go", Kind("comment"), 10)
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestSearchBoundsLongTerms(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+
+	long := make([]rune, MaxSearchTerm+50)
+	for i := range long {
+		long[i] = 'a'
+	}
+
+	items, err := service.Search(context.Background(), actor("u", site.RoleMember), string(long), KindArticle, 10)
+	require.NoError(t, err)
+	require.Empty(t, items)
 }

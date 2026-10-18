@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"net/http/httptest"
 	"time"
 	"testing"
@@ -61,6 +62,24 @@ func (s *stubRepo) List(_ context.Context, filter content.ListFilter) ([]content
 	return out, nil
 }
 
+func (s *stubRepo) Search(_ context.Context, siteID, term string, kind content.Kind, limit int) ([]content.Content, error) {
+	out := make([]content.Content, 0)
+	for _, item := range s.items {
+		if item.SiteID != siteID || item.Status != content.StatusPublished {
+			continue
+		}
+		if kind != "" && item.Kind != kind {
+			continue
+		}
+		if strings.Contains(strings.ToLower(item.Title), strings.ToLower(term)) {
+			out = append(out, item)
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
 func (s *stubRepo) Transition(context.Context, content.Content, content.Status, site.AuditEntry) (content.Content, error) {
 	return content.Content{}, content.ErrInvalidTransition
 }

@@ -94,6 +94,9 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFun
 		writes.PATCH("/:contentID", h.update)
 		writes.POST("/:contentID/:action", h.action)
 	}
+
+	// Search spans both kinds, so it lives outside the per kind groups.
+	r.GET("/search", optionalAuth, h.search)
 }
 
 type contentResponse struct {
@@ -151,6 +154,32 @@ func (h *Handler) create(c *gin.Context, kind Kind) {
 	c.JSON(status, h.view(item, actor))
 }
 
+// search returns published content matching a term.
+func (h *Handler) search(c *gin.Context) {
+	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+
+	limit := 0
+	if raw := c.Query("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			limit = parsed
+		}
+	}
+
+	items, err := h.service.Search(c.Request.Context(), actor, c.Query("q"), Kind(c.Query("kind")), limit)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	views := make([]contentResponse, 0, len(items))
+	for _, item := range items {
+		views = append(views, h.view(item, actor))
+	}
+	c.JSON(http.StatusOK, gin.H{"items": views, "next_cursor": "", "has_more": false})
+}
 // list returns the items of a site the caller may see.
 func (h *Handler) list(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)

@@ -362,6 +362,36 @@ paths:
         '503':
           $ref: '#/components/responses/SecurityUnavailable'
 
+  /search:
+    get:
+      tags: [content]
+      summary: Search published content
+      description: |
+        Matches the title or summary of published items only, so a draft can never be
+        discovered through search. Wildcard characters in the term are treated as
+        literal text. Anonymous reads follow the site visibility rule.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search term, 2 to 100 characters.
+          schema: { type: string, minLength: 2, maxLength: 100 }
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [article, post] }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Matching items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentPage' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
   /articles/{contentID}:
     get:
       tags: [content]

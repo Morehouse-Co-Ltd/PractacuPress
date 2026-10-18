@@ -3,6 +3,7 @@ package contentstore
 
 import (
 		"context"
+	"strings"
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/content"
@@ -184,6 +185,45 @@ func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.
 	return items, nil
 }
 
+// Search returns published items whose title or summary contains the term.
+//
+// LIKE is used deliberately: SQLite FTS5, MySQL FULLTEXT and PostgreSQL tsvector do not
+// agree on tokenisation, and the portability rule for this project forbids depending on
+// one dialect. Wildcards are stripped from the term rather than escaped, because a
+// search for "100%" should look for the text, not for everything starting with 100.
+func (s *Store) Search(ctx context.Context, siteID, term string, kind content.Kind, limit int) ([]content.Content, error) {
+	literal := strings.NewReplacer("%", "", "_", "").Replace(term)
+	if literal == "" {
+		return nil, content.ErrInvalidInput
+	}
+
+	query := s.client.ContentItem.Query().
+		Where(
+			contentitem.SiteIDEQ(siteID),
+			contentitem.StatusEQ(string(content.StatusPublished)),
+			contentitem.Or(
+				contentitem.TitleContainsFold(literal),
+				contentitem.SummaryContainsFold(literal),
+			),
+		)
+	if kind != "" {
+		query = query.Where(contentitem.KindEQ(string(kind)))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(contentitem.FieldPublishedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]content.Content, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, toContent(row))
+	}
+	return items, nil
+}
 // Transition applies a status change only when the stored status still matches from.
 //
 // The conditional update is the concurrency guard: two moderators acting on stale

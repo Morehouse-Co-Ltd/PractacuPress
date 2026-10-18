@@ -1,6 +1,7 @@
 package content
 
 import (
+	"strings"
 	"context"
 	"time"
 
@@ -33,6 +34,8 @@ type Repository interface {
 	FindByID(ctx context.Context, siteID, contentID string) (Content, error)
 	// List returns items of a site filtered by what the caller may see.
 	List(ctx context.Context, filter ListFilter) ([]Content, error)
+	// Search returns published items whose title or summary matches a term.
+	Search(ctx context.Context, siteID, term string, kind Kind, limit int) ([]Content, error)
 	// Transition applies a status change only when the stored status still equals
 	// from, which makes concurrent moderator decisions safe.
 	Transition(ctx context.Context, item Content, from Status, audit site.AuditEntry) (Content, error)
@@ -364,6 +367,45 @@ func (s *Service) ListOwn(ctx context.Context, actor Actor, kind Kind, limit int
 	})
 }
 
+// SearchQuery bounds a search term.
+const (
+	// MinSearchTerm is the shortest term worth a query.
+	MinSearchTerm = 2
+	// MaxSearchTerm bounds the term so a pathological input cannot be indexed.
+	MaxSearchTerm = 100
+	// DefaultSearchLimit is the page size for search.
+	DefaultSearchLimit = 20
+)
+
+// Search finds published content by title or summary.
+//
+// Only published items are searched: a draft leaking through search would be the same
+// disclosure the read endpoint exists to prevent. The term is trimmed and bounded here
+// so the repository never receives an unbounded pattern.
+func (s *Service) Search(
+	ctx context.Context,
+	actor Actor,
+	term string,
+	kind Kind,
+	limit int,
+) ([]Content, error) {
+	if kind != "" && !kind.Valid() {
+		return nil, ErrInvalidInput
+	}
+
+	term = strings.TrimSpace(term)
+	if len([]rune(term)) < MinSearchTerm {
+		return nil, ErrInvalidInput
+	}
+	if len([]rune(term)) > MaxSearchTerm {
+		term = string([]rune(term)[:MaxSearchTerm])
+	}
+	if limit <= 0 || limit > 100 {
+		limit = DefaultSearchLimit
+	}
+
+	return s.repo.Search(ctx, actor.SiteID, term, kind, limit)
+}
 // Get returns one item, restricted to what the actor may read.
 func (s *Service) Get(ctx context.Context, actor Actor, contentID string) (Content, error) {
 	item, err := s.load(ctx, actor, contentID)
