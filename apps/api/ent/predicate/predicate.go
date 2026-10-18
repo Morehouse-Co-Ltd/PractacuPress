@@ -9,14 +9,26 @@ import (
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
+// Bookmark is the predicate function for bookmark builders.
+type Bookmark func(*sql.Selector)
+
+// Comment is the predicate function for comment builders.
+type Comment func(*sql.Selector)
+
 // ContentItem is the predicate function for contentitem builders.
 type ContentItem func(*sql.Selector)
+
+// Follow is the predicate function for follow builders.
+type Follow func(*sql.Selector)
 
 // IdempotencyKey is the predicate function for idempotencykey builders.
 type IdempotencyKey func(*sql.Selector)
 
 // OutboxEvent is the predicate function for outboxevent builders.
 type OutboxEvent func(*sql.Selector)
+
+// Reaction is the predicate function for reaction builders.
+type Reaction func(*sql.Selector)
 
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)

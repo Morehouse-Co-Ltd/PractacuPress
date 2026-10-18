@@ -14,12 +14,20 @@ type Tx struct {
 	config
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// Bookmark is the client for interacting with the Bookmark builders.
+	Bookmark *BookmarkClient
+	// Comment is the client for interacting with the Comment builders.
+	Comment *CommentClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// Follow is the client for interacting with the Follow builders.
+	Follow *FollowClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
 	IdempotencyKey *IdempotencyKeyClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
+	// Reaction is the client for interacting with the Reaction builders.
+	Reaction *ReactionClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// Site is the client for interacting with the Site builders.
@@ -164,9 +172,13 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.AuditLog = NewAuditLogClient(tx.config)
+	tx.Bookmark = NewBookmarkClient(tx.config)
+	tx.Comment = NewCommentClient(tx.config)
 	tx.ContentItem = NewContentItemClient(tx.config)
+	tx.Follow = NewFollowClient(tx.config)
 	tx.IdempotencyKey = NewIdempotencyKeyClient(tx.config)
 	tx.OutboxEvent = NewOutboxEventClient(tx.config)
+	tx.Reaction = NewReactionClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.Site = NewSiteClient(tx.config)
 	tx.SiteMember = NewSiteMemberClient(tx.config)

@@ -21,6 +21,30 @@ func (f AuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditLogMutation", m)
 }
 
+// The BookmarkFunc type is an adapter to allow the use of ordinary
+// function as Bookmark mutator.
+type BookmarkFunc func(context.Context, *ent.BookmarkMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BookmarkFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BookmarkMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BookmarkMutation", m)
+}
+
+// The CommentFunc type is an adapter to allow the use of ordinary
+// function as Comment mutator.
+type CommentFunc func(context.Context, *ent.CommentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CommentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CommentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CommentMutation", m)
+}
+
 // The ContentItemFunc type is an adapter to allow the use of ordinary
 // function as ContentItem mutator.
 type ContentItemFunc func(context.Context, *ent.ContentItemMutation) (ent.Value, error)
@@ -31,6 +55,18 @@ func (f ContentItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ContentItemMutation", m)
+}
+
+// The FollowFunc type is an adapter to allow the use of ordinary
+// function as Follow mutator.
+type FollowFunc func(context.Context, *ent.FollowMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FollowFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FollowMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FollowMutation", m)
 }
 
 // The IdempotencyKeyFunc type is an adapter to allow the use of ordinary
@@ -55,6 +91,18 @@ func (f OutboxEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OutboxEventMutation", m)
+}
+
+// The ReactionFunc type is an adapter to allow the use of ordinary
+// function as Reaction mutator.
+type ReactionFunc func(context.Context, *ent.ReactionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ReactionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ReactionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReactionMutation", m)
 }
 
 // The SessionFunc type is an adapter to allow the use of ordinary

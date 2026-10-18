@@ -13,9 +13,13 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/practacu/practacu-press/apps/api/ent/auditlog"
+	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
+	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
+	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
+	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
@@ -83,9 +87,13 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			auditlog.Table:          auditlog.ValidColumn,
+			bookmark.Table:          bookmark.ValidColumn,
+			comment.Table:           comment.ValidColumn,
 			contentitem.Table:       contentitem.ValidColumn,
+			follow.Table:            follow.ValidColumn,
 			idempotencykey.Table:    idempotencykey.ValidColumn,
 			outboxevent.Table:       outboxevent.ValidColumn,
+			reaction.Table:          reaction.ValidColumn,
 			session.Table:           session.ValidColumn,
 			site.Table:              site.ValidColumn,
 			sitemember.Table:        sitemember.ValidColumn,
