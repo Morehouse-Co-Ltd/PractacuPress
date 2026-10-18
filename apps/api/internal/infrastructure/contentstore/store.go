@@ -2,7 +2,7 @@
 package contentstore
 
 import (
-	"context"
+		"context"
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/content"
@@ -158,8 +158,19 @@ func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.
 		query = query.Where(contentitem.StatusIn(statuses...))
 	}
 
+	if !filter.After.IsZero() {
+		boundary, parseErr := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if parseErr != nil {
+			return nil, content.ErrInvalidInput
+		}
+		query = query.Where(contentitem.Or(
+			contentitem.CreatedAtLT(boundary),
+			contentitem.And(contentitem.CreatedAtEQ(boundary), contentitem.IDLT(filter.After.ID)),
+		))
+	}
+
 	rows, err := query.
-		Order(entgen.Desc(contentitem.FieldPublishedAt), entgen.Desc(contentitem.FieldCreatedAt)).
+		Order(entgen.Desc(contentitem.FieldCreatedAt), entgen.Desc(contentitem.FieldID)).
 		Limit(filter.Limit).
 		All(ctx)
 	if err != nil {

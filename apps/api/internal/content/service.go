@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+		"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -279,9 +280,46 @@ type ListFilter struct {
 	Statuses []Status
 	// AuthorID restricts the result to one author.
 	AuthorID string
-	Limit    int
+	// After is the page boundary; zero means the first page.
+	After page.Cursor
+	Limit int
 }
 
+// ListAfter returns one page of visible items plus the cursor for the next page.
+//
+// The cursor is only issued when a full page came back: a short page means the end,
+// and handing out a cursor there would make the client ask for an empty page.
+func (s *Service) ListAfter(
+	ctx context.Context,
+	actor Actor,
+	kind Kind,
+	limit int,
+	after page.Cursor,
+) ([]Content, string, error) {
+	if kind != "" && !kind.Valid() {
+		return nil, "", ErrInvalidInput
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	filter := ListFilter{SiteID: actor.SiteID, Kind: kind, Limit: limit, After: after}
+	if !actor.Role.AtLeast(site.RoleEditor) {
+		filter.Statuses = []Status{StatusPublished}
+	}
+
+	items, err := s.repo.List(ctx, filter)
+	if err != nil {
+		return nil, "", err
+	}
+
+	next := ""
+	if len(items) == limit && len(items) > 0 {
+		last := items[len(items)-1]
+		next = page.Cursor{Key: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID}.Encode()
+	}
+	return items, next, nil
+}
 // List returns the items of a site that the actor is allowed to see.
 //
 // Visibility is decided here, not by the caller: anonymous and ordinary readers only

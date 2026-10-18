@@ -4,11 +4,13 @@ import (
 	"errors"
 		"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+		"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 )
 
 // PrincipalFunc returns the authenticated caller's id, site and role.
@@ -115,7 +117,20 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 		return
 	}
 
-	items, err := h.service.List(c.Request.Context(), actor, kind, 0)
+	limit := 0
+	if raw := c.Query("limit"); raw != "" {
+		if parsed, convErr := strconv.Atoi(raw); convErr == nil {
+			limit = parsed
+		}
+	}
+
+	cursor, err := page.Decode(c.Query("cursor"))
+	if err != nil {
+		_ = c.Error(apperr.New(apperr.CodeInvalidCursor).WithRequestID(c.GetHeader("X-Request-ID")))
+		return
+	}
+
+	items, next, err := h.service.ListAfter(c.Request.Context(), actor, kind, limit, cursor)
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
@@ -126,7 +141,11 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 		views = append(views, h.view(item, actor))
 	}
 
-	c.JSON(http.StatusOK, gin.H{"items": views})
+	c.JSON(http.StatusOK, gin.H{
+		"items":       views,
+		"next_cursor": next,
+		"has_more":    next != "",
+	})
 }
 
 func (h *Handler) get(c *gin.Context) {	actor, ok := h.principal(c)

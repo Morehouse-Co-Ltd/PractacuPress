@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+		"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -83,6 +84,9 @@ func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error)
 			}
 		}
 		out = append(out, item)
+	}
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
 	}
 	return out, nil
 }
@@ -392,5 +396,33 @@ func TestListRejectsUnknownKind(t *testing.T) {
 	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
 
 	_, err := service.List(context.Background(), actor("u", site.RoleMember), Kind("comment"), 10)
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestListAfterIssuesCursorOnlyOnFullPage(t *testing.T) {
+	repo := newFakeRepo()
+	for i := 0; i < 3; i++ {
+		id := string(rune('a' + i))
+		repo.items[id] = Content{ID: id, SiteID: "s1", AuthorID: "u", Kind: KindArticle,
+			Status: StatusPublished}
+	}
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	ctx := context.Background()
+
+	page1, next, err := service.ListAfter(ctx, actor("mod", site.RoleEditor), KindArticle, 2, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, page1, 2)
+	require.NotEmpty(t, next, "a full page must hand out a cursor")
+
+	// A short page ends the listing; no cursor means the client stops asking.
+	all, last, err := service.ListAfter(ctx, actor("mod", site.RoleEditor), KindArticle, 5, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	require.Empty(t, last)
+}
+
+func TestListAfterRejectsBadKind(t *testing.T) {
+	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
+	_, _, err := service.ListAfter(context.Background(), actor("u", site.RoleMember), Kind("x"), 5, page.Cursor{})
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
