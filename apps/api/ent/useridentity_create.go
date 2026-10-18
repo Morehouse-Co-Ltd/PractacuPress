@@ -69,6 +69,20 @@ func (_c *UserIdentityCreate) SetNillablePhone(v *string) *UserIdentityCreate {
 	return _c
 }
 
+// SetPasswordHash sets the "password_hash" field.
+func (_c *UserIdentityCreate) SetPasswordHash(v string) *UserIdentityCreate {
+	_c.mutation.SetPasswordHash(v)
+	return _c
+}
+
+// SetNillablePasswordHash sets the "password_hash" field if the given value is not nil.
+func (_c *UserIdentityCreate) SetNillablePasswordHash(v *string) *UserIdentityCreate {
+	if v != nil {
+		_c.SetPasswordHash(*v)
+	}
+	return _c
+}
+
 // SetVerifiedAt sets the "verified_at" field.
 func (_c *UserIdentityCreate) SetVerifiedAt(v time.Time) *UserIdentityCreate {
 	_c.mutation.SetVerifiedAt(v)
@@ -210,6 +224,11 @@ func (_c *UserIdentityCreate) check() error {
 			return &ValidationError{Name: "phone", err: fmt.Errorf(`ent: validator failed for field "UserIdentity.phone": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.PasswordHash(); ok {
+		if err := useridentity.PasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "password_hash", err: fmt.Errorf(`ent: validator failed for field "UserIdentity.password_hash": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UserIdentity.created_at"`)}
 	}
@@ -276,6 +295,10 @@ func (_c *UserIdentityCreate) createSpec() (*UserIdentity, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Phone(); ok {
 		_spec.SetField(useridentity.FieldPhone, field.TypeString, value)
 		_node.Phone = &value
+	}
+	if value, ok := _c.mutation.PasswordHash(); ok {
+		_spec.SetField(useridentity.FieldPasswordHash, field.TypeString, value)
+		_node.PasswordHash = &value
 	}
 	if value, ok := _c.mutation.VerifiedAt(); ok {
 		_spec.SetField(useridentity.FieldVerifiedAt, field.TypeTime, value)
@@ -410,6 +433,24 @@ func (u *UserIdentityUpsert) UpdatePhone() *UserIdentityUpsert {
 // ClearPhone clears the value of the "phone" field.
 func (u *UserIdentityUpsert) ClearPhone() *UserIdentityUpsert {
 	u.SetNull(useridentity.FieldPhone)
+	return u
+}
+
+// SetPasswordHash sets the "password_hash" field.
+func (u *UserIdentityUpsert) SetPasswordHash(v string) *UserIdentityUpsert {
+	u.Set(useridentity.FieldPasswordHash, v)
+	return u
+}
+
+// UpdatePasswordHash sets the "password_hash" field to the value that was provided on create.
+func (u *UserIdentityUpsert) UpdatePasswordHash() *UserIdentityUpsert {
+	u.SetExcluded(useridentity.FieldPasswordHash)
+	return u
+}
+
+// ClearPasswordHash clears the value of the "password_hash" field.
+func (u *UserIdentityUpsert) ClearPasswordHash() *UserIdentityUpsert {
+	u.SetNull(useridentity.FieldPasswordHash)
 	return u
 }
 
@@ -575,6 +616,27 @@ func (u *UserIdentityUpsertOne) UpdatePhone() *UserIdentityUpsertOne {
 func (u *UserIdentityUpsertOne) ClearPhone() *UserIdentityUpsertOne {
 	return u.Update(func(s *UserIdentityUpsert) {
 		s.ClearPhone()
+	})
+}
+
+// SetPasswordHash sets the "password_hash" field.
+func (u *UserIdentityUpsertOne) SetPasswordHash(v string) *UserIdentityUpsertOne {
+	return u.Update(func(s *UserIdentityUpsert) {
+		s.SetPasswordHash(v)
+	})
+}
+
+// UpdatePasswordHash sets the "password_hash" field to the value that was provided on create.
+func (u *UserIdentityUpsertOne) UpdatePasswordHash() *UserIdentityUpsertOne {
+	return u.Update(func(s *UserIdentityUpsert) {
+		s.UpdatePasswordHash()
+	})
+}
+
+// ClearPasswordHash clears the value of the "password_hash" field.
+func (u *UserIdentityUpsertOne) ClearPasswordHash() *UserIdentityUpsertOne {
+	return u.Update(func(s *UserIdentityUpsert) {
+		s.ClearPasswordHash()
 	})
 }
 
@@ -912,6 +974,27 @@ func (u *UserIdentityUpsertBulk) UpdatePhone() *UserIdentityUpsertBulk {
 func (u *UserIdentityUpsertBulk) ClearPhone() *UserIdentityUpsertBulk {
 	return u.Update(func(s *UserIdentityUpsert) {
 		s.ClearPhone()
+	})
+}
+
+// SetPasswordHash sets the "password_hash" field.
+func (u *UserIdentityUpsertBulk) SetPasswordHash(v string) *UserIdentityUpsertBulk {
+	return u.Update(func(s *UserIdentityUpsert) {
+		s.SetPasswordHash(v)
+	})
+}
+
+// UpdatePasswordHash sets the "password_hash" field to the value that was provided on create.
+func (u *UserIdentityUpsertBulk) UpdatePasswordHash() *UserIdentityUpsertBulk {
+	return u.Update(func(s *UserIdentityUpsert) {
+		s.UpdatePasswordHash()
+	})
+}
+
+// ClearPasswordHash clears the value of the "password_hash" field.
+func (u *UserIdentityUpsertBulk) ClearPasswordHash() *UserIdentityUpsertBulk {
+	return u.Update(func(s *UserIdentityUpsert) {
+		s.ClearPasswordHash()
 	})
 }
 

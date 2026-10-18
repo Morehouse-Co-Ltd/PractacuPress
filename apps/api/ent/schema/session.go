@@ -18,6 +18,9 @@ func (Session) Fields() []ent.Field {
 	return []ent.Field{
 		idField(),
 		field.String("user_id").MaxLen(36).NotEmpty(),
+		// The session is bound to one site: a refresh performed on site A must never
+		// mint a token that acts on site B, where the user may have a different role.
+		siteIDField(),
 		field.String("token_hash").MaxLen(64).NotEmpty(),
 		field.String("family_id").MaxLen(36).NotEmpty(),
 		field.String("parent_id").MaxLen(36).Optional().Nillable(),

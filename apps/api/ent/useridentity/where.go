@@ -89,6 +89,11 @@ func Phone(v string) predicate.UserIdentity {
 	return predicate.UserIdentity(sql.FieldEQ(FieldPhone, v))
 }
 
+// PasswordHash applies equality check predicate on the "password_hash" field. It's identical to PasswordHashEQ.
+func PasswordHash(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldEQ(FieldPasswordHash, v))
+}
+
 // VerifiedAt applies equality check predicate on the "verified_at" field. It's identical to VerifiedAtEQ.
 func VerifiedAt(v time.Time) predicate.UserIdentity {
 	return predicate.UserIdentity(sql.FieldEQ(FieldVerifiedAt, v))
@@ -447,6 +452,81 @@ func PhoneEqualFold(v string) predicate.UserIdentity {
 // PhoneContainsFold applies the ContainsFold predicate on the "phone" field.
 func PhoneContainsFold(v string) predicate.UserIdentity {
 	return predicate.UserIdentity(sql.FieldContainsFold(FieldPhone, v))
+}
+
+// PasswordHashEQ applies the EQ predicate on the "password_hash" field.
+func PasswordHashEQ(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldEQ(FieldPasswordHash, v))
+}
+
+// PasswordHashNEQ applies the NEQ predicate on the "password_hash" field.
+func PasswordHashNEQ(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldNEQ(FieldPasswordHash, v))
+}
+
+// PasswordHashIn applies the In predicate on the "password_hash" field.
+func PasswordHashIn(vs ...string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldIn(FieldPasswordHash, vs...))
+}
+
+// PasswordHashNotIn applies the NotIn predicate on the "password_hash" field.
+func PasswordHashNotIn(vs ...string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldNotIn(FieldPasswordHash, vs...))
+}
+
+// PasswordHashGT applies the GT predicate on the "password_hash" field.
+func PasswordHashGT(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldGT(FieldPasswordHash, v))
+}
+
+// PasswordHashGTE applies the GTE predicate on the "password_hash" field.
+func PasswordHashGTE(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldGTE(FieldPasswordHash, v))
+}
+
+// PasswordHashLT applies the LT predicate on the "password_hash" field.
+func PasswordHashLT(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldLT(FieldPasswordHash, v))
+}
+
+// PasswordHashLTE applies the LTE predicate on the "password_hash" field.
+func PasswordHashLTE(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldLTE(FieldPasswordHash, v))
+}
+
+// PasswordHashContains applies the Contains predicate on the "password_hash" field.
+func PasswordHashContains(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldContains(FieldPasswordHash, v))
+}
+
+// PasswordHashHasPrefix applies the HasPrefix predicate on the "password_hash" field.
+func PasswordHashHasPrefix(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldHasPrefix(FieldPasswordHash, v))
+}
+
+// PasswordHashHasSuffix applies the HasSuffix predicate on the "password_hash" field.
+func PasswordHashHasSuffix(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldHasSuffix(FieldPasswordHash, v))
+}
+
+// PasswordHashIsNil applies the IsNil predicate on the "password_hash" field.
+func PasswordHashIsNil() predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldIsNull(FieldPasswordHash))
+}
+
+// PasswordHashNotNil applies the NotNil predicate on the "password_hash" field.
+func PasswordHashNotNil() predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldNotNull(FieldPasswordHash))
+}
+
+// PasswordHashEqualFold applies the EqualFold predicate on the "password_hash" field.
+func PasswordHashEqualFold(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldEqualFold(FieldPasswordHash, v))
+}
+
+// PasswordHashContainsFold applies the ContainsFold predicate on the "password_hash" field.
+func PasswordHashContainsFold(v string) predicate.UserIdentity {
+	return predicate.UserIdentity(sql.FieldContainsFold(FieldPasswordHash, v))
 }
 
 // VerifiedAtEQ applies the EQ predicate on the "verified_at" field.

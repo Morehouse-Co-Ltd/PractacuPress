@@ -19,6 +19,8 @@ type Session struct {
 	ID string `json:"id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID string `json:"user_id,omitempty"`
+	// SiteID holds the value of the "site_id" field.
+	SiteID string `json:"site_id,omitempty"`
 	// TokenHash holds the value of the "token_hash" field.
 	TokenHash string `json:"token_hash,omitempty"`
 	// FamilyID holds the value of the "family_id" field.
@@ -49,7 +51,7 @@ func (*Session) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case session.FieldID, session.FieldUserID, session.FieldTokenHash, session.FieldFamilyID, session.FieldParentID, session.FieldUserAgent, session.FieldIPAddress, session.FieldRevokedReason:
+		case session.FieldID, session.FieldUserID, session.FieldSiteID, session.FieldTokenHash, session.FieldFamilyID, session.FieldParentID, session.FieldUserAgent, session.FieldIPAddress, session.FieldRevokedReason:
 			values[i] = new(sql.NullString)
 		case session.FieldExpiresAt, session.FieldRotatedAt, session.FieldRevokedAt, session.FieldCreatedAt, session.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -79,6 +81,12 @@ func (_m *Session) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.String
+			}
+		case session.FieldSiteID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field site_id", values[i])
+			} else if value.Valid {
+				_m.SiteID = value.String
 			}
 		case session.FieldTokenHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -190,6 +198,9 @@ func (_m *Session) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("user_id=")
 	builder.WriteString(_m.UserID)
+	builder.WriteString(", ")
+	builder.WriteString("site_id=")
+	builder.WriteString(_m.SiteID)
 	builder.WriteString(", ")
 	builder.WriteString("token_hash=")
 	builder.WriteString(_m.TokenHash)

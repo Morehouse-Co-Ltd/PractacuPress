@@ -125,6 +125,7 @@ var (
 	SessionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
 		{Name: "user_id", Type: field.TypeString, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
 		{Name: "token_hash", Type: field.TypeString, Size: 64},
 		{Name: "family_id", Type: field.TypeString, Size: 36},
 		{Name: "parent_id", Type: field.TypeString, Nullable: true, Size: 36},
@@ -146,7 +147,7 @@ var (
 			{
 				Name:    "session_token_hash",
 				Unique:  true,
-				Columns: []*schema.Column{SessionsColumns[2]},
+				Columns: []*schema.Column{SessionsColumns[3]},
 			},
 			{
 				Name:    "session_user_id",
@@ -156,12 +157,12 @@ var (
 			{
 				Name:    "session_family_id",
 				Unique:  false,
-				Columns: []*schema.Column{SessionsColumns[3]},
+				Columns: []*schema.Column{SessionsColumns[4]},
 			},
 			{
 				Name:    "session_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{SessionsColumns[7]},
+				Columns: []*schema.Column{SessionsColumns[8]},
 			},
 		},
 	}
@@ -263,6 +264,7 @@ var (
 		{Name: "provider_subject", Type: field.TypeString, Size: 255},
 		{Name: "email", Type: field.TypeString, Nullable: true, Size: 320},
 		{Name: "phone", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "password_hash", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "verified_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},

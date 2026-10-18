@@ -2940,6 +2940,7 @@ type SessionMutation struct {
 	typ            string
 	id             *string
 	user_id        *string
+	site_id        *string
 	token_hash     *string
 	family_id      *string
 	parent_id      *string
@@ -3095,6 +3096,42 @@ func (m *SessionMutation) OldUserID(ctx context.Context) (v string, err error) {
 // ResetUserID resets all changes to the "user_id" field.
 func (m *SessionMutation) ResetUserID() {
 	m.user_id = nil
+}
+
+// SetSiteID sets the "site_id" field.
+func (m *SessionMutation) SetSiteID(s string) {
+	m.site_id = &s
+}
+
+// SiteID returns the value of the "site_id" field in the mutation.
+func (m *SessionMutation) SiteID() (r string, exists bool) {
+	v := m.site_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSiteID returns the old "site_id" field's value of the Session entity.
+// If the Session object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionMutation) OldSiteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSiteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSiteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSiteID: %w", err)
+	}
+	return oldValue.SiteID, nil
+}
+
+// ResetSiteID resets all changes to the "site_id" field.
+func (m *SessionMutation) ResetSiteID() {
+	m.site_id = nil
 }
 
 // SetTokenHash sets the "token_hash" field.
@@ -3605,9 +3642,12 @@ func (m *SessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SessionMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.user_id != nil {
 		fields = append(fields, session.FieldUserID)
+	}
+	if m.site_id != nil {
+		fields = append(fields, session.FieldSiteID)
 	}
 	if m.token_hash != nil {
 		fields = append(fields, session.FieldTokenHash)
@@ -3652,6 +3692,8 @@ func (m *SessionMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case session.FieldUserID:
 		return m.UserID()
+	case session.FieldSiteID:
+		return m.SiteID()
 	case session.FieldTokenHash:
 		return m.TokenHash()
 	case session.FieldFamilyID:
@@ -3685,6 +3727,8 @@ func (m *SessionMutation) OldField(ctx context.Context, name string) (ent.Value,
 	switch name {
 	case session.FieldUserID:
 		return m.OldUserID(ctx)
+	case session.FieldSiteID:
+		return m.OldSiteID(ctx)
 	case session.FieldTokenHash:
 		return m.OldTokenHash(ctx)
 	case session.FieldFamilyID:
@@ -3722,6 +3766,13 @@ func (m *SessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case session.FieldSiteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSiteID(v)
 		return nil
 	case session.FieldTokenHash:
 		v, ok := value.(string)
@@ -3890,6 +3941,9 @@ func (m *SessionMutation) ResetField(name string) error {
 	switch name {
 	case session.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case session.FieldSiteID:
+		m.ResetSiteID()
 		return nil
 	case session.FieldTokenHash:
 		m.ResetTokenHash()
@@ -6237,6 +6291,7 @@ type UserIdentityMutation struct {
 	provider_subject *string
 	email            *string
 	phone            *string
+	password_hash    *string
 	verified_at      *time.Time
 	created_at       *time.Time
 	updated_at       *time.Time
@@ -6556,6 +6611,55 @@ func (m *UserIdentityMutation) ResetPhone() {
 	delete(m.clearedFields, useridentity.FieldPhone)
 }
 
+// SetPasswordHash sets the "password_hash" field.
+func (m *UserIdentityMutation) SetPasswordHash(s string) {
+	m.password_hash = &s
+}
+
+// PasswordHash returns the value of the "password_hash" field in the mutation.
+func (m *UserIdentityMutation) PasswordHash() (r string, exists bool) {
+	v := m.password_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPasswordHash returns the old "password_hash" field's value of the UserIdentity entity.
+// If the UserIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserIdentityMutation) OldPasswordHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPasswordHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPasswordHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPasswordHash: %w", err)
+	}
+	return oldValue.PasswordHash, nil
+}
+
+// ClearPasswordHash clears the value of the "password_hash" field.
+func (m *UserIdentityMutation) ClearPasswordHash() {
+	m.password_hash = nil
+	m.clearedFields[useridentity.FieldPasswordHash] = struct{}{}
+}
+
+// PasswordHashCleared returns if the "password_hash" field was cleared in this mutation.
+func (m *UserIdentityMutation) PasswordHashCleared() bool {
+	_, ok := m.clearedFields[useridentity.FieldPasswordHash]
+	return ok
+}
+
+// ResetPasswordHash resets all changes to the "password_hash" field.
+func (m *UserIdentityMutation) ResetPasswordHash() {
+	m.password_hash = nil
+	delete(m.clearedFields, useridentity.FieldPasswordHash)
+}
+
 // SetVerifiedAt sets the "verified_at" field.
 func (m *UserIdentityMutation) SetVerifiedAt(t time.Time) {
 	m.verified_at = &t
@@ -6711,7 +6815,7 @@ func (m *UserIdentityMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserIdentityMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.user_id != nil {
 		fields = append(fields, useridentity.FieldUserID)
 	}
@@ -6726,6 +6830,9 @@ func (m *UserIdentityMutation) Fields() []string {
 	}
 	if m.phone != nil {
 		fields = append(fields, useridentity.FieldPhone)
+	}
+	if m.password_hash != nil {
+		fields = append(fields, useridentity.FieldPasswordHash)
 	}
 	if m.verified_at != nil {
 		fields = append(fields, useridentity.FieldVerifiedAt)
@@ -6754,6 +6861,8 @@ func (m *UserIdentityMutation) Field(name string) (ent.Value, bool) {
 		return m.Email()
 	case useridentity.FieldPhone:
 		return m.Phone()
+	case useridentity.FieldPasswordHash:
+		return m.PasswordHash()
 	case useridentity.FieldVerifiedAt:
 		return m.VerifiedAt()
 	case useridentity.FieldCreatedAt:
@@ -6779,6 +6888,8 @@ func (m *UserIdentityMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldEmail(ctx)
 	case useridentity.FieldPhone:
 		return m.OldPhone(ctx)
+	case useridentity.FieldPasswordHash:
+		return m.OldPasswordHash(ctx)
 	case useridentity.FieldVerifiedAt:
 		return m.OldVerifiedAt(ctx)
 	case useridentity.FieldCreatedAt:
@@ -6828,6 +6939,13 @@ func (m *UserIdentityMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPhone(v)
+		return nil
+	case useridentity.FieldPasswordHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPasswordHash(v)
 		return nil
 	case useridentity.FieldVerifiedAt:
 		v, ok := value.(time.Time)
@@ -6886,6 +7004,9 @@ func (m *UserIdentityMutation) ClearedFields() []string {
 	if m.FieldCleared(useridentity.FieldPhone) {
 		fields = append(fields, useridentity.FieldPhone)
 	}
+	if m.FieldCleared(useridentity.FieldPasswordHash) {
+		fields = append(fields, useridentity.FieldPasswordHash)
+	}
 	if m.FieldCleared(useridentity.FieldVerifiedAt) {
 		fields = append(fields, useridentity.FieldVerifiedAt)
 	}
@@ -6908,6 +7029,9 @@ func (m *UserIdentityMutation) ClearField(name string) error {
 		return nil
 	case useridentity.FieldPhone:
 		m.ClearPhone()
+		return nil
+	case useridentity.FieldPasswordHash:
+		m.ClearPasswordHash()
 		return nil
 	case useridentity.FieldVerifiedAt:
 		m.ClearVerifiedAt()
@@ -6934,6 +7058,9 @@ func (m *UserIdentityMutation) ResetField(name string) error {
 		return nil
 	case useridentity.FieldPhone:
 		m.ResetPhone()
+		return nil
+	case useridentity.FieldPasswordHash:
+		m.ResetPasswordHash()
 		return nil
 	case useridentity.FieldVerifiedAt:
 		m.ResetVerifiedAt()

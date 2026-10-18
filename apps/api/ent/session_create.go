@@ -29,6 +29,12 @@ func (_c *SessionCreate) SetUserID(v string) *SessionCreate {
 	return _c
 }
 
+// SetSiteID sets the "site_id" field.
+func (_c *SessionCreate) SetSiteID(v string) *SessionCreate {
+	_c.mutation.SetSiteID(v)
+	return _c
+}
+
 // SetTokenHash sets the "token_hash" field.
 func (_c *SessionCreate) SetTokenHash(v string) *SessionCreate {
 	_c.mutation.SetTokenHash(v)
@@ -232,6 +238,14 @@ func (_c *SessionCreate) check() error {
 			return &ValidationError{Name: "user_id", err: fmt.Errorf(`ent: validator failed for field "Session.user_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.SiteID(); !ok {
+		return &ValidationError{Name: "site_id", err: errors.New(`ent: missing required field "Session.site_id"`)}
+	}
+	if v, ok := _c.mutation.SiteID(); ok {
+		if err := session.SiteIDValidator(v); err != nil {
+			return &ValidationError{Name: "site_id", err: fmt.Errorf(`ent: validator failed for field "Session.site_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.TokenHash(); !ok {
 		return &ValidationError{Name: "token_hash", err: errors.New(`ent: missing required field "Session.token_hash"`)}
 	}
@@ -321,6 +335,10 @@ func (_c *SessionCreate) createSpec() (*Session, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(session.FieldUserID, field.TypeString, value)
 		_node.UserID = value
+	}
+	if value, ok := _c.mutation.SiteID(); ok {
+		_spec.SetField(session.FieldSiteID, field.TypeString, value)
+		_node.SiteID = value
 	}
 	if value, ok := _c.mutation.TokenHash(); ok {
 		_spec.SetField(session.FieldTokenHash, field.TypeString, value)
@@ -602,6 +620,9 @@ func (u *SessionUpsertOne) UpdateNewValues() *SessionUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(session.FieldID)
+		}
+		if _, exists := u.create.mutation.SiteID(); exists {
+			s.SetIgnore(session.FieldSiteID)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(session.FieldCreatedAt)
@@ -1015,6 +1036,9 @@ func (u *SessionUpsertBulk) UpdateNewValues() *SessionUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(session.FieldID)
+			}
+			if _, exists := b.mutation.SiteID(); exists {
+				s.SetIgnore(session.FieldSiteID)
 			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(session.FieldCreatedAt)

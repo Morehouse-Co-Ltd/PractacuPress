@@ -15,6 +15,8 @@ const (
 	FieldID = "id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldSiteID holds the string denoting the site_id field in the database.
+	FieldSiteID = "site_id"
 	// FieldTokenHash holds the string denoting the token_hash field in the database.
 	FieldTokenHash = "token_hash"
 	// FieldFamilyID holds the string denoting the family_id field in the database.
@@ -45,6 +47,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldUserID,
+	FieldSiteID,
 	FieldTokenHash,
 	FieldFamilyID,
 	FieldParentID,
@@ -71,6 +74,8 @@ func ValidColumn(column string) bool {
 var (
 	// UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
 	UserIDValidator func(string) error
+	// SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	SiteIDValidator func(string) error
 	// TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
 	TokenHashValidator func(string) error
 	// FamilyIDValidator is a validator for the "family_id" field. It is called by the builders before save.
@@ -106,6 +111,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// BySiteID orders the results by the site_id field.
+func BySiteID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSiteID, opts...).ToFunc()
 }
 
 // ByTokenHash orders the results by the token_hash field.

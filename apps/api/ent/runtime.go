@@ -307,8 +307,26 @@ func init() {
 			return nil
 		}
 	}()
+	// sessionDescSiteID is the schema descriptor for site_id field.
+	sessionDescSiteID := sessionFields[2].Descriptor()
+	// session.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	session.SiteIDValidator = func() func(string) error {
+		validators := sessionDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// sessionDescTokenHash is the schema descriptor for token_hash field.
-	sessionDescTokenHash := sessionFields[2].Descriptor()
+	sessionDescTokenHash := sessionFields[3].Descriptor()
 	// session.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
 	session.TokenHashValidator = func() func(string) error {
 		validators := sessionDescTokenHash.Validators
@@ -326,7 +344,7 @@ func init() {
 		}
 	}()
 	// sessionDescFamilyID is the schema descriptor for family_id field.
-	sessionDescFamilyID := sessionFields[3].Descriptor()
+	sessionDescFamilyID := sessionFields[4].Descriptor()
 	// session.FamilyIDValidator is a validator for the "family_id" field. It is called by the builders before save.
 	session.FamilyIDValidator = func() func(string) error {
 		validators := sessionDescFamilyID.Validators
@@ -344,27 +362,27 @@ func init() {
 		}
 	}()
 	// sessionDescParentID is the schema descriptor for parent_id field.
-	sessionDescParentID := sessionFields[4].Descriptor()
+	sessionDescParentID := sessionFields[5].Descriptor()
 	// session.ParentIDValidator is a validator for the "parent_id" field. It is called by the builders before save.
 	session.ParentIDValidator = sessionDescParentID.Validators[0].(func(string) error)
 	// sessionDescUserAgent is the schema descriptor for user_agent field.
-	sessionDescUserAgent := sessionFields[5].Descriptor()
+	sessionDescUserAgent := sessionFields[6].Descriptor()
 	// session.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	session.UserAgentValidator = sessionDescUserAgent.Validators[0].(func(string) error)
 	// sessionDescIPAddress is the schema descriptor for ip_address field.
-	sessionDescIPAddress := sessionFields[6].Descriptor()
+	sessionDescIPAddress := sessionFields[7].Descriptor()
 	// session.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	session.IPAddressValidator = sessionDescIPAddress.Validators[0].(func(string) error)
 	// sessionDescRevokedReason is the schema descriptor for revoked_reason field.
-	sessionDescRevokedReason := sessionFields[10].Descriptor()
+	sessionDescRevokedReason := sessionFields[11].Descriptor()
 	// session.RevokedReasonValidator is a validator for the "revoked_reason" field. It is called by the builders before save.
 	session.RevokedReasonValidator = sessionDescRevokedReason.Validators[0].(func(string) error)
 	// sessionDescCreatedAt is the schema descriptor for created_at field.
-	sessionDescCreatedAt := sessionFields[11].Descriptor()
+	sessionDescCreatedAt := sessionFields[12].Descriptor()
 	// session.DefaultCreatedAt holds the default value on creation for the created_at field.
 	session.DefaultCreatedAt = sessionDescCreatedAt.Default.(func() time.Time)
 	// sessionDescUpdatedAt is the schema descriptor for updated_at field.
-	sessionDescUpdatedAt := sessionFields[12].Descriptor()
+	sessionDescUpdatedAt := sessionFields[13].Descriptor()
 	// session.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	session.DefaultUpdatedAt = sessionDescUpdatedAt.Default.(func() time.Time)
 	// session.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -629,12 +647,16 @@ func init() {
 	useridentityDescPhone := useridentityFields[5].Descriptor()
 	// useridentity.PhoneValidator is a validator for the "phone" field. It is called by the builders before save.
 	useridentity.PhoneValidator = useridentityDescPhone.Validators[0].(func(string) error)
+	// useridentityDescPasswordHash is the schema descriptor for password_hash field.
+	useridentityDescPasswordHash := useridentityFields[6].Descriptor()
+	// useridentity.PasswordHashValidator is a validator for the "password_hash" field. It is called by the builders before save.
+	useridentity.PasswordHashValidator = useridentityDescPasswordHash.Validators[0].(func(string) error)
 	// useridentityDescCreatedAt is the schema descriptor for created_at field.
-	useridentityDescCreatedAt := useridentityFields[7].Descriptor()
+	useridentityDescCreatedAt := useridentityFields[8].Descriptor()
 	// useridentity.DefaultCreatedAt holds the default value on creation for the created_at field.
 	useridentity.DefaultCreatedAt = useridentityDescCreatedAt.Default.(func() time.Time)
 	// useridentityDescUpdatedAt is the schema descriptor for updated_at field.
-	useridentityDescUpdatedAt := useridentityFields[8].Descriptor()
+	useridentityDescUpdatedAt := useridentityFields[9].Descriptor()
 	// useridentity.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	useridentity.DefaultUpdatedAt = useridentityDescUpdatedAt.Default.(func() time.Time)
 	// useridentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

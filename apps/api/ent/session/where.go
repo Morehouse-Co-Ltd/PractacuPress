@@ -69,6 +69,11 @@ func UserID(v string) predicate.Session {
 	return predicate.Session(sql.FieldEQ(FieldUserID, v))
 }
 
+// SiteID applies equality check predicate on the "site_id" field. It's identical to SiteIDEQ.
+func SiteID(v string) predicate.Session {
+	return predicate.Session(sql.FieldEQ(FieldSiteID, v))
+}
+
 // TokenHash applies equality check predicate on the "token_hash" field. It's identical to TokenHashEQ.
 func TokenHash(v string) predicate.Session {
 	return predicate.Session(sql.FieldEQ(FieldTokenHash, v))
@@ -187,6 +192,71 @@ func UserIDEqualFold(v string) predicate.Session {
 // UserIDContainsFold applies the ContainsFold predicate on the "user_id" field.
 func UserIDContainsFold(v string) predicate.Session {
 	return predicate.Session(sql.FieldContainsFold(FieldUserID, v))
+}
+
+// SiteIDEQ applies the EQ predicate on the "site_id" field.
+func SiteIDEQ(v string) predicate.Session {
+	return predicate.Session(sql.FieldEQ(FieldSiteID, v))
+}
+
+// SiteIDNEQ applies the NEQ predicate on the "site_id" field.
+func SiteIDNEQ(v string) predicate.Session {
+	return predicate.Session(sql.FieldNEQ(FieldSiteID, v))
+}
+
+// SiteIDIn applies the In predicate on the "site_id" field.
+func SiteIDIn(vs ...string) predicate.Session {
+	return predicate.Session(sql.FieldIn(FieldSiteID, vs...))
+}
+
+// SiteIDNotIn applies the NotIn predicate on the "site_id" field.
+func SiteIDNotIn(vs ...string) predicate.Session {
+	return predicate.Session(sql.FieldNotIn(FieldSiteID, vs...))
+}
+
+// SiteIDGT applies the GT predicate on the "site_id" field.
+func SiteIDGT(v string) predicate.Session {
+	return predicate.Session(sql.FieldGT(FieldSiteID, v))
+}
+
+// SiteIDGTE applies the GTE predicate on the "site_id" field.
+func SiteIDGTE(v string) predicate.Session {
+	return predicate.Session(sql.FieldGTE(FieldSiteID, v))
+}
+
+// SiteIDLT applies the LT predicate on the "site_id" field.
+func SiteIDLT(v string) predicate.Session {
+	return predicate.Session(sql.FieldLT(FieldSiteID, v))
+}
+
+// SiteIDLTE applies the LTE predicate on the "site_id" field.
+func SiteIDLTE(v string) predicate.Session {
+	return predicate.Session(sql.FieldLTE(FieldSiteID, v))
+}
+
+// SiteIDContains applies the Contains predicate on the "site_id" field.
+func SiteIDContains(v string) predicate.Session {
+	return predicate.Session(sql.FieldContains(FieldSiteID, v))
+}
+
+// SiteIDHasPrefix applies the HasPrefix predicate on the "site_id" field.
+func SiteIDHasPrefix(v string) predicate.Session {
+	return predicate.Session(sql.FieldHasPrefix(FieldSiteID, v))
+}
+
+// SiteIDHasSuffix applies the HasSuffix predicate on the "site_id" field.
+func SiteIDHasSuffix(v string) predicate.Session {
+	return predicate.Session(sql.FieldHasSuffix(FieldSiteID, v))
+}
+
+// SiteIDEqualFold applies the EqualFold predicate on the "site_id" field.
+func SiteIDEqualFold(v string) predicate.Session {
+	return predicate.Session(sql.FieldEqualFold(FieldSiteID, v))
+}
+
+// SiteIDContainsFold applies the ContainsFold predicate on the "site_id" field.
+func SiteIDContainsFold(v string) predicate.Session {
+	return predicate.Session(sql.FieldContainsFold(FieldSiteID, v))
 }
 
 // TokenHashEQ applies the EQ predicate on the "token_hash" field.
