@@ -123,3 +123,18 @@
 - **乐观并发**：`Transition` 带 `WHERE status = <from>`，两个审核员同时操作只有一个成功
 
 证据：`go test ./apps/api/internal/content` 通过（含 fail-closed、自我审批阻断、跨站、并发冲突用例）。
+
+### Task 6 站点管理端点（完成）
+
+- `GET /api/v1/sites/{id}`、`GET /sites/{id}/members`、`PATCH /sites/{id}/members/{userId}/role`、`PATCH /sites/{id}/settings`
+- 路径里的 `siteID` 必须与调用者的成员关系匹配：**改 URL 也不能跨站**（`actor()` 统一加载成员关系）
+- 成员列表与设置变更要求站点管理员；编辑调用设置接口 403
+- 角色变更后目标用户需**重新登录**才拿到新角色令牌（令牌内 role 是快照）
+
+端到端测试覆盖：非成员取站点被拒、普通成员列成员被拒、管理员改角色成功且目标重登后 `role=editor`、编辑改设置被拒、管理员改设置后 `publish_mode`/`visibility_mode` 生效。
+
+### 下一步
+
+1. 内容模块 Ent 仓储 + `/articles`、`/posts` 路由（领域层与状态机已就绪，缺持久化与 HTTP）
+2. 幂等中间件、媒体两阶段上传、审核队列
+3. 社区互动、搜索、消息与 WebSocket（M3）
