@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package practacu.security.v1;
+
+// SecurityService is the only surface the Go API uses for security critical work.
+// It is stateless: no users, no permissions, no business data lives here.
+service SecurityService {
+  // ValidateSecurityPolicy reports the active policy version and limits.
+  rpc ValidateSecurityPolicy(ValidateSecurityPolicyRequest) returns (ValidateSecurityPolicyResponse);
+
+  // HashPassword returns a PHC formatted Argon2id hash.
+  rpc HashPassword(HashPasswordRequest) returns (HashPasswordResponse);
+
+  // VerifyPassword checks a password against a stored hash.
+  rpc VerifyPassword(VerifyPasswordRequest) returns (VerifyPasswordResponse);
+
+  // SanitizeContent turns source content into allow-listed HTML.
+  rpc SanitizeContent(SanitizeContentRequest) returns (SanitizeContentResponse);
+
+  // InspectUpload inspects a stored object before it becomes referenceable.
+  rpc InspectUpload(InspectUploadRequest) returns (InspectUploadResponse);
+}
+
+message ValidateSecurityPolicyRequest {}
+
+message ValidateSecurityPolicyResponse {
+  string policy_version = 1;
+  uint32 max_source_chars = 2;
+  uint32 min_password_length = 3;
+  uint32 max_password_length = 4;
+}
+
+message HashPasswordRequest {
+  string plain = 1;
+}
+
+message HashPasswordResponse {
+  string encoded = 1;
+  string policy_version = 2;
+}
+
+message VerifyPasswordRequest {
+  string plain = 1;
+  string encoded = 2;
+}
+
+message VerifyPasswordResponse {
+  bool matches = 1;
+  string policy_version = 2;
+}
+
+message SanitizeContentRequest {
+  // One of markdown, html or plain.
+  string format = 1;
+  string source = 2;
+}
+
+message SanitizeContentResponse {
+  string html = 1;
+  string policy_version = 2;
+  repeated string violations = 3;
+}
+
+message InspectUploadRequest {
+  string file_name = 1;
+  string declared_mime = 2;
+  int64 size = 3;
+  string storage_key = 4;
+  // Optional first bytes of the object, used for magic number checks.
+  bytes head = 5;
+}
+
+// ScanStatus is the machine readable verdict.
+enum ScanStatus {
+  SCAN_STATUS_UNSPECIFIED = 0;
+  SCAN_STATUS_CLEAN = 1;
+  SCAN_STATUS_REJECTED = 2;
+  SCAN_STATUS_NEEDS_MANUAL_REVIEW = 3;
+}
+
+message InspectUploadResponse {
+  ScanStatus status = 1;
+  string reason_code = 2;
+  string policy_version = 3;
+}

@@ -161,3 +161,17 @@
 - `content`：基于 `ammonia` 的白名单清洗（标签/属性/协议三张白名单），`javascript:` 与 `data:` 协议、`onerror`/`onload` 事件属性、`<script>`/`<iframe>`/`<object>`/`<embed>` 全部移除，输出确定性并携带 `policy_version`，违规项记录供审计。
 
 命令：`rustup run stable-x86_64-pc-windows-msvc cargo test`（在 `services/security` 目录下）。
+### gRPC 层受阻（2026-10-20 记录）
+
+`packages/contracts/security/v1/security.proto` 已写好（5 个 RPC 的完整契约），但 gRPC 服务端**尚未落地**，原因：
+
+- 需要新增 `tonic`/`prost`/`tokio` 依赖，本地 registry 缓存里没有；
+- `cargo` 走 `HTTPS_PROXY=127.0.0.1:7890` 连接 `index.crates.io:443` 失败（PowerShell 直连同一地址是 200），
+  属于代理对 cargo 的连通性问题，不是代码问题；
+- 已被缓存依赖的 `argon2`/`ammonia` 构建正常，所以 `cargo test` 仍是 **14 passed**。
+
+**当前 Rust 状态：库可用（密码哈希 + 内容清洗），gRPC 服务未实现。** 回退动作：移除 `build.rs`、`src/main.rs`、
+`src/transport/`，`Cargo.toml` 恢复到可构建的依赖集，避免把原本全绿的构建改坏。
+
+**解封条件（任一）：** 修复 cargo 的代理连通性；或预热 registry 缓存（`cargo fetch` 在有网环境执行一次）；
+或改用本地 vendored 依赖（`cargo vendor`）。
