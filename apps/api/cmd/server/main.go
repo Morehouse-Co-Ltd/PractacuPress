@@ -20,11 +20,13 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
+	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 		"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/communitystore"
 		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/outboxstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
@@ -87,6 +89,11 @@ func run() error {
 		return fmt.Errorf("build site service: %w", err)
 	}
 
+	replayer, err := outbox.NewReplayer(outboxstore.New(handle.Client))
+	if err != nil {
+		return fmt.Errorf("build event replayer: %w", err)
+	}
+
 	mediaService, err := media.NewService(media.ServiceConfig{
 		Repository: mediastore.New(handle.Client),
 		Scanner:    media.UnavailableScanner{},
@@ -124,6 +131,15 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		Events: outbox.NewEventsHandler(replayer, outbox.HandlerConfig{
+			Principal: func(c *gin.Context) (string, string, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return "", "", false
+				}
+				return principal.SiteID, principal.UserID, true
+			},
 		}),
 		Media: media.NewHandler(mediaService, media.HandlerConfig{
 			Principal: func(c *gin.Context) (media.Actor, bool) {
