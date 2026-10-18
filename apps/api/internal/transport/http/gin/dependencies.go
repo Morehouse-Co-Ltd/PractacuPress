@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
@@ -34,4 +35,6 @@ type Dependencies struct {
 	Auth *auth.Handler
 	// Sites mounts the site administration endpoints when non nil.
 	Sites *site.Handler
+	// Content mounts the article and post endpoints when non nil.
+	Content *content.Handler
 }

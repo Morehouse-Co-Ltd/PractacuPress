@@ -19,7 +19,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+		"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
+		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
@@ -81,6 +83,17 @@ func run() error {
 		return fmt.Errorf("build site service: %w", err)
 	}
 
+	contentService, err := content.NewService(content.ServiceConfig{
+		Repository: contentstore.New(handle.Client),
+		Sanitizer:  securitySanitizer{client: securityclient.Unavailable{}},
+		PublishMode: func(ctx context.Context, siteID string) (site.PublishMode, error) {
+			return siteService.PublishMode(ctx, siteID)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("build content service: %w", err)
+	}
+
 	router := ginrouter.New(ginrouter.Dependencies{
 		Config:       cfg,
 		Logger:       logger,
@@ -94,6 +107,19 @@ func run() error {
 				return principal.UserID, ok
 			},
 			RequestID: middleware.RequestIDFrom,
+		}),
+		Content: content.NewHandler(contentService, content.HandlerConfig{
+			Principal: func(c *gin.Context) (content.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return content.Actor{}, false
+				}
+				return content.Actor{
+					UserID: principal.UserID,
+					SiteID: principal.SiteID,
+					Role:   principal.Role,
+				}, true
+			},
 		}),
 	})
 
@@ -166,6 +192,35 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB) (*auth.Han
 	})
 
 	return handler, issuer, nil
+}
+
+// securitySanitizer adapts the security service client to the content module's
+// narrow Sanitizer port.
+//
+// The adapter lives at the composition root so neither package has to import the
+// other's infrastructure.
+type securitySanitizer struct {
+	client securityclient.Client
+}
+
+// Sanitize delegates sanitization to the security service.
+func (s securitySanitizer) Sanitize(
+	ctx context.Context,
+	format content.SourceFormat,
+	source string,
+) (content.Sanitized, error) {
+	result, err := s.client.SanitizeContent(ctx, securityclient.ContentInput{
+		Format: securityclient.ContentFormat(format),
+		Source: source,
+	})
+	if err != nil {
+		return content.Sanitized{}, err
+	}
+	return content.Sanitized{
+		HTML:          result.HTML,
+		PolicyVersion: result.PolicyVersion,
+		Violations:    result.Violations,
+	}, nil
 }
 
 // choosePasswordHasher picks the password hashing implementation.

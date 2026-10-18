@@ -257,6 +257,18 @@ func (s *Service) RetrySecurityCheck(ctx context.Context, actor Actor, contentID
 	})
 }
 
+// Actions reports what the actor may do to an item right now.
+//
+// The handler needs this to render affordances, and it must agree with Apply, so it
+// runs the same policy with the site's real publish mode.
+func (s *Service) Actions(ctx context.Context, actor Actor, item Content) ([]Action, error) {
+	mode, err := s.publishMode(ctx, item.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	return Policy{PublishMode: mode}.AvailableActions(item, actor), nil
+}
+
 // Get returns one item, restricted to what the actor may read.
 func (s *Service) Get(ctx context.Context, actor Actor, contentID string) (Content, error) {
 	item, err := s.load(ctx, actor, contentID)

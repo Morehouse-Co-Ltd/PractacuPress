@@ -119,6 +119,18 @@ func (s *Service) DefaultSite(ctx context.Context) (Site, error) {
 	return solo, nil
 }
 
+// PublishMode returns the publishing rule of a site.
+//
+// It is read on every content write, so it deliberately does no caching: changing
+// the mode in the admin UI must take effect on the next request.
+func (s *Service) PublishMode(ctx context.Context, siteID string) (PublishMode, error) {
+	found, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return "", err
+	}
+	return found.PublishMode, nil
+}
+
 // Get returns a site to a caller who is a member of it.
 //
 // Non members get ErrMemberNotFound rather than ErrNotFound so the endpoint does not
