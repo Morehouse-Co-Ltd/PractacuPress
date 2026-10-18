@@ -97,9 +97,16 @@ func run() error {
 		return fmt.Errorf("build event replayer: %w", err)
 	}
 
+	mediaStorage, err := media.NewLocalStorage(cfg.StorageDir)
+	if err != nil {
+		return fmt.Errorf("open media storage: %w", err)
+	}
+	logger.Info("media storage ready", "dir", mediaStorage.Root())
+
 	mediaService, err := media.NewService(media.ServiceConfig{
 		Repository: mediastore.New(handle.Client),
 		Scanner:    securityScanner{client: securityClient},
+		Storage:    mediaStorage,
 	})
 	if err != nil {
 		return fmt.Errorf("build media service: %w", err)
@@ -109,6 +116,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("build community service: %w", err)
 	}
+
 
 	contentService, err := content.NewService(content.ServiceConfig{
 		Repository: contentstore.New(handle.Client),

@@ -720,6 +720,51 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /media/uploads/{uploadID}/content:
+    post:
+      tags: [media]
+      summary: Upload the bytes for a session
+      description: |
+        Phase two of the flow: the declared size is a hard bound, so a short stream is
+        an error rather than a truncated object. The bytes are stored under the
+        server generated key and are only inspected at completion.
+      parameters:
+        - name: uploadID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Bytes stored and waiting for inspection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Upload' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          description: No storage adapter is configured
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /media/uploads/{uploadID}/complete:
     post:
       tags: [media]

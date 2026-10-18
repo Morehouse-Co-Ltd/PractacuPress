@@ -285,3 +285,44 @@ go test ./... -count=1   23 个包 ok, 0 FAIL
 cargo test               23 passed, 0 failed
 双服务端到端             见 10.3
 ```
+---
+
+## 11. 媒体存储接通（2026-10-20 第三轮补记）
+
+### 11.1 结论
+
+媒体两阶段上传**全链路打通**：声明 → 传字节 → 扫描 → `clean`。
+
+### 11.2 做了什么
+
+| 项 | 内容 |
+| --- | --- |
+| 存储端口 | `media.Storage`：`Put` / `ReadHead` / `Delete` |
+| 本地实现 | `LocalStorage`：按声明大小硬限拷贝、密钥解析后做根目录包含校验、`ReadHead` 采样上限 64 字节 |
+| 服务 | `StoreContent`（校验所有者/过期/大小）、`CompleteUpload` 现会读样本交给扫描器 |
+| 端点 | `POST /api/v1/media/uploads/{uploadID}/content`（multipart `file`） |
+| 配置 | `STORAGE_DIR`，默认 `./data/media` |
+| 契约 | OpenAPI 已补该端点，契约测试通过 |
+
+### 11.3 端到端实测
+
+```
+create   = 201
+upload   = status: uploaded                      ← 8 字节真实 PNG 头写入磁盘
+complete = scan_status: clean, scan_reason: ok    ← Rust 校验魔数通过
+```
+
+### 11.4 安全性质（均有测试）
+
+- 密钥含 `..`、反斜杠、前导斜杠、盘符一律 `ErrStorageKeyUnsafe`
+- 流式写入超过声明大小会被 `io.CopyN` 截断并报错，**不会多写一个字节**
+- 无存储适配器时 `CompleteUpload` 只拿到空样本 → `needs_manual_review`，绝不假定干净
+
+### 11.5 仍然缺的
+
+| 项 | 说明 |
+| --- | --- |
+| S3 兼容存储 | 只有 `LocalStorage`，接口已留好 |
+| 媒体读取/下载端点 | 尚未提供，前端还无法展示已上传文件 |
+| 拒绝时清理对象 | 当前保留以便审计，未做垃圾回收 |
+| WebSocket、搜索、通知/消息路由 | 未实现 |

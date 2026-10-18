@@ -55,6 +55,28 @@ func (s *Store) FindUpload(ctx context.Context, siteID, uploadID string) (media.
 	return toUpload(row), nil
 }
 
+// MarkUploadUploaded records that the bytes arrived.
+func (s *Store) MarkUploadUploaded(ctx context.Context, uploadID string, at time.Time) error {
+	affected, err := s.client.MediaUpload.Update().
+		Where(mediaupload.IDEQ(uploadID), mediaupload.StatusEQ(string(media.UploadPending))).
+		SetStatus(string(media.UploadUploaded)).
+		SetUpdatedAt(at).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		exists, existErr := s.client.MediaUpload.Query().Where(mediaupload.IDEQ(uploadID)).Exist(ctx)
+		if existErr != nil {
+			return existErr
+		}
+		if !exists {
+			return media.ErrNotFound
+		}
+		return media.ErrAlreadyCompleted
+	}
+	return nil
+}
 // MarkUploadCompleted closes a session. Marking twice is a no-op.
 func (s *Store) MarkUploadCompleted(ctx context.Context, uploadID string, at time.Time) error {
 	affected, err := s.client.MediaUpload.Update().

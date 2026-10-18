@@ -36,6 +36,7 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/media", requireAuth)
 	group.POST("/uploads", h.CreateUpload)
+	group.POST("/uploads/:uploadID/content", h.UploadContent)
 	group.POST("/uploads/:uploadID/complete", h.CompleteUpload)
 }
 
@@ -97,6 +98,35 @@ func (h *Handler) CreateUpload(c *gin.Context) {
 	})
 }
 
+// UploadContent accepts the bytes for an open session.
+func (h *Handler) UploadContent(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		_ = c.Error(apperr.Validation("multipart field 'file' is required"))
+		return
+	}
+	defer file.Close()
+
+	upload, err := h.service.StoreContent(c.Request.Context(), actor, c.Param("uploadID"), file, header.Size)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	c.JSON(http.StatusOK, uploadResponse{
+		ID:         upload.ID,
+		FileName:   upload.FileName,
+		StorageKey: upload.StorageKey,
+		Status:     string(upload.Status),
+		ExpiresAt:  upload.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
 // CompleteUpload inspects the stored object and returns the resulting asset.
 func (h *Handler) CompleteUpload(c *gin.Context) {
 	actor, ok := h.principal(c)
@@ -144,6 +174,8 @@ func mapError(err error) *apperr.Problem {
 		return apperr.New(apperr.CodeSecurityUnavailable)
 	case errors.Is(err, ErrScanRejected):
 		return apperr.Validation("file rejected by security scan")
+	case errors.Is(err, ErrStorageMissing):
+		return apperr.Internal(err).WithDetail("reason", "storage_not_configured")
 	}
 
 	var problem *apperr.Problem

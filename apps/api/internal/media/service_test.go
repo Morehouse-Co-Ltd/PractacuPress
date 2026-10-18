@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -33,6 +34,15 @@ func (f *fakeRepo) FindUpload(_ context.Context, siteID, uploadID string) (Uploa
 	return upload, nil
 }
 
+func (f *fakeRepo) MarkUploadUploaded(_ context.Context, uploadID string, _ time.Time) error {
+	upload, ok := f.uploads[uploadID]
+	if !ok {
+		return ErrNotFound
+	}
+	upload.Status = UploadUploaded
+	f.uploads[uploadID] = upload
+	return nil
+}
 func (f *fakeRepo) MarkUploadCompleted(_ context.Context, uploadID string, _ time.Time) error {
 	upload, ok := f.uploads[uploadID]
 	if !ok {
@@ -203,4 +213,112 @@ func TestCompleteUploadTwiceIsRejected(t *testing.T) {
 
 	_, err = service.CompleteUpload(ctx, owner(), upload.ID)
 	require.ErrorIs(t, err, ErrAlreadyCompleted)
+}
+
+func serviceWithStorage(t *testing.T, repo Repository, scanner Scanner) *Service {
+	t.Helper()
+	storage, err := NewLocalStorage(t.TempDir())
+	require.NoError(t, err)
+
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Scanner:    scanner,
+		Storage:    storage,
+		Now:        func() time.Time { return time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+	return service
+}
+
+func TestStoreContentWritesBytes(t *testing.T) {
+	repo := newFakeRepo()
+	service := serviceWithStorage(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}})
+	ctx := context.Background()
+
+	payload := []byte("PNGDATA")
+	req := imageRequest()
+	req.Size = int64(len(payload))
+
+	upload, err := service.CreateUpload(ctx, owner(), req)
+	require.NoError(t, err)
+
+	stored, err := service.StoreContent(ctx, owner(), upload.ID, bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+	require.Equal(t, UploadUploaded, stored.Status)
+
+	head, err := service.storage.ReadHead(ctx, upload.StorageKey, HeadSampleSize)
+	require.NoError(t, err)
+	require.Equal(t, payload, head)
+}
+
+func TestStoreContentRejectsWrongSize(t *testing.T) {
+	service := serviceWithStorage(t, newFakeRepo(), &fakeScanner{})
+	ctx := context.Background()
+
+	upload, err := service.CreateUpload(ctx, owner(), imageRequest())
+	require.NoError(t, err)
+
+	_, err = service.StoreContent(ctx, owner(), upload.ID, bytes.NewReader([]byte("x")), 999)
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestStoreContentRejectsOtherOwner(t *testing.T) {
+	service := serviceWithStorage(t, newFakeRepo(), &fakeScanner{})
+	ctx := context.Background()
+
+	upload, err := service.CreateUpload(ctx, owner(), imageRequest())
+	require.NoError(t, err)
+
+	stranger := Actor{UserID: "u2", SiteID: "s1"}
+	_, err = service.StoreContent(ctx, stranger, upload.ID, bytes.NewReader([]byte("x")), 1)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+}
+
+// TestCompleteUploadSendsStoredSample is the point of the storage adapter: inspection
+// receives real leading bytes instead of being asked to guess.
+func TestCompleteUploadSendsStoredSample(t *testing.T) {
+	repo := newFakeRepo()
+	scanner := &capturingScanner{result: ScanResult{Status: ScanClean}}
+	service := serviceWithStorage(t, repo, scanner)
+	ctx := context.Background()
+
+	payload := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	req := imageRequest()
+	req.Size = int64(len(payload))
+
+	upload, err := service.CreateUpload(ctx, owner(), req)
+	require.NoError(t, err)
+
+	_, err = service.StoreContent(ctx, owner(), upload.ID, bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.NoError(t, err)
+	require.True(t, asset.Referenceable())
+	require.Equal(t, payload, scanner.last.Head, "inspection must receive the stored sample")
+}
+
+func TestCompleteUploadWithoutStorageAsksForReview(t *testing.T) {
+	repo := newFakeRepo()
+	scanner := &capturingScanner{result: ScanResult{Status: ScanNeedsManualReview}}
+	service := newService(t, repo, scanner)
+	ctx := context.Background()
+
+	upload, err := service.CreateUpload(ctx, owner(), imageRequest())
+	require.NoError(t, err)
+
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.NoError(t, err)
+	require.False(t, asset.Referenceable())
+	require.Empty(t, scanner.last.Head, "no storage means no sample")
+}
+
+type capturingScanner struct {
+	result ScanResult
+	last   ScanInput
+}
+
+func (c *capturingScanner) Inspect(_ context.Context, in ScanInput) (ScanResult, error) {
+	c.last = in
+	return c.result, nil
 }

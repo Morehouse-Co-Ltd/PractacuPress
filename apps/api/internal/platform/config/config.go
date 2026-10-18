@@ -68,6 +68,8 @@ type Config struct {
 	// DefaultSiteID is used when host resolution is not configured, which is the
 	// Windows single site deployment mode.
 	DefaultSiteID string
+	// StorageDir is the local media storage root.
+	StorageDir string
 }
 
 // DefaultJWTIssuer is the issuer used when AUTH_JWT_ISSUER is unset.
@@ -167,6 +169,11 @@ func Load() (Config, error) {
 	cfg.AuthJWTIssuer = env("AUTH_JWT_ISSUER")
 	if cfg.AuthJWTIssuer == "" {
 		cfg.AuthJWTIssuer = DefaultJWTIssuer
+	}
+
+	cfg.StorageDir = env("STORAGE_DIR")
+	if cfg.StorageDir == "" {
+		cfg.StorageDir = "./data/media"
 	}
 
 	cfg.CookieDomain = env("COOKIE_DOMAIN")

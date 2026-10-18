@@ -67,6 +67,9 @@ var (
 	ErrSecurityUnavailable = errors.New("media: security service unavailable")
 	// ErrAlreadyCompleted means the session was completed before.
 	ErrAlreadyCompleted = errors.New("media: upload already completed")
+	// ErrStorageMissing means the deployment has no storage adapter, so bytes cannot
+	// be accepted or inspected.
+	ErrStorageMissing = errors.New("media: storage is not configured")
 )
 
 // Bounds. They are enforced before a byte is stored.

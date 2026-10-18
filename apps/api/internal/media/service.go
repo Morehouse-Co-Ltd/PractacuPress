@@ -1,6 +1,7 @@
 package media
 
 import (
+	"io"
 	"context"
 	"errors"
 	"time"
@@ -28,6 +29,8 @@ type Scanner interface {
 type Repository interface {
 	InsertUpload(ctx context.Context, upload Upload) (Upload, error)
 	FindUpload(ctx context.Context, siteID, uploadID string) (Upload, error)
+	// MarkUploadUploaded records that the bytes arrived and are waiting for inspection.
+	MarkUploadUploaded(ctx context.Context, uploadID string, at time.Time) error
 	MarkUploadCompleted(ctx context.Context, uploadID string, at time.Time) error
 	InsertAsset(ctx context.Context, asset Asset) (Asset, error)
 }
@@ -36,6 +39,7 @@ type Repository interface {
 type Service struct {
 	repo    Repository
 	scanner Scanner
+	storage Storage
 	now     func() time.Time
 }
 
@@ -43,7 +47,10 @@ type Service struct {
 type ServiceConfig struct {
 	Repository Repository
 	Scanner    Scanner
-	Now        func() time.Time
+	// Storage is optional. Without it the API cannot accept bytes, so completion can
+	// only ask for manual review.
+	Storage Storage
+	Now     func() time.Time
 }
 
 // NewService builds a Service.
@@ -54,7 +61,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if cfg.Scanner == nil {
 		return nil, errors.New("media: scanner is required")
 	}
-	service := &Service{repo: cfg.Repository, scanner: cfg.Scanner, now: cfg.Now}
+	service := &Service{repo: cfg.Repository, scanner: cfg.Scanner, storage: cfg.Storage, now: cfg.Now}
 	if service.now == nil {
 		service.now = func() time.Time { return time.Now().UTC() }
 	}
@@ -89,6 +96,47 @@ func (s *Service) CreateUpload(ctx context.Context, actor Actor, req UploadReque
 	return s.repo.InsertUpload(ctx, upload)
 }
 
+// StoreContent accepts the bytes a client uploads for a session.
+//
+// The declared size is a hard bound: a client cannot stream more than it promised,
+// and a short stream is an error rather than a truncated object.
+func (s *Service) StoreContent(
+	ctx context.Context,
+	actor Actor,
+	uploadID string,
+	body io.Reader,
+	size int64,
+) (Upload, error) {
+	upload, err := s.repo.FindUpload(ctx, actor.SiteID, uploadID)
+	if err != nil {
+		return Upload{}, err
+	}
+	if upload.OwnerID != actor.UserID {
+		return Upload{}, ErrPermissionDenied
+	}
+	if upload.Status == UploadCompleted {
+		return Upload{}, ErrAlreadyCompleted
+	}
+	if upload.Expired(s.now()) {
+		return Upload{}, ErrNotFound
+	}
+	if s.storage == nil {
+		return Upload{}, ErrStorageMissing
+	}
+	if size != upload.Size {
+		return Upload{}, ErrInvalidInput
+	}
+
+	if putErr := s.storage.Put(ctx, upload.StorageKey, body, upload.Size); putErr != nil {
+		return Upload{}, putErr
+	}
+	if markErr := s.repo.MarkUploadUploaded(ctx, uploadID, s.now()); markErr != nil {
+		return Upload{}, markErr
+	}
+
+	upload.Status = UploadUploaded
+	return upload, nil
+}
 // CompleteUpload inspects the stored object and turns it into an asset.
 //
 // Failures are all fail closed: if inspection cannot run, the session is left as it
@@ -110,11 +158,23 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 		return Asset{}, ErrNotFound
 	}
 
+	// Without a sample the service can only ask a human; it never assumes a file is
+	// clean just because it could not look at it.
+	var head []byte
+	if s.storage != nil {
+		sample, readErr := s.storage.ReadHead(ctx, upload.StorageKey, HeadSampleSize)
+		if readErr != nil && !errors.Is(readErr, ErrStorageObjectMissing) {
+			return Asset{}, readErr
+		}
+		head = sample
+	}
+
 	result, err := s.scanner.Inspect(ctx, ScanInput{
 		FileName:     upload.FileName,
 		DeclaredMIME: upload.DeclaredMIME,
 		Size:         upload.Size,
 		StorageKey:   upload.StorageKey,
+		Head:         head,
 	})
 	if err != nil {
 		// The object stays pending; the client may retry completion.
