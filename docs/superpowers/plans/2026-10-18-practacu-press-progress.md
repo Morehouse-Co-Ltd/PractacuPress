@@ -147,3 +147,17 @@
 - 端到端测试：创建→提交→发布→归档 全链路（审计恰好 4 条）、fail-closed 落库、陈旧迁移被拒、跨站读取被拒、已发布不可编辑
 
 证据：`go test ./apps/api/internal/infrastructure/contentstore` 通过；全套 12 个包全绿。
+## Rust 工具链更正与安全服务进展（2026-10-20 补记）
+
+**结论修正：** 早期评审中的 E8 判断（"Rust 缺链接器，安全服务无法编译"）**错误**。实际情况是：
+
+- `rustup` 默认的 `x86_64-pc-windows-gnu` 目标在**无依赖的简单 crate** 上可以编译；
+- 一旦依赖里出现需要导入库的 crate（如 `parking_lot_core`），GNU 目标会要求 `dlltool.exe`（mingw binutils），而系统没有；
+- 解决方式是安装 **MSVC 工具链**：`rustup toolchain install stable-x86_64-pc-windows-msvc`（本机 VS 2022 已提供 `link.exe`），安装后所有依赖编译通过。
+
+因此 `services/security` 已建立并**通过 14 个测试**：
+
+- `password`：Argon2id（Argon2::new(Argon2id, V0x13, params)），长度边界 8–128，明文用 `zeroize` 清除，PHC 格式输出，错误信息不区分失败原因；
+- `content`：基于 `ammonia` 的白名单清洗（标签/属性/协议三张白名单），`javascript:` 与 `data:` 协议、`onerror`/`onload` 事件属性、`<script>`/`<iframe>`/`<object>`/`<embed>` 全部移除，输出确定性并携带 `policy_version`，违规项记录供审计。
+
+命令：`rustup run stable-x86_64-pc-windows-msvc cargo test`（在 `services/security` 目录下）。

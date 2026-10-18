@@ -1,0 +1,6 @@
+error: 'rustfmt.exe' is not installed for the toolchain 'stable-x86_64-pc-windows-msvc'.
+help: run `rustup component add --toolchain stable-x86_64-pc-windows-msvc rustfmt` to install it
+error: 'rustfmt.exe' is not installed for the toolchain 'stable-x86_64-pc-windows-msvc'.
+help: run `rustup component add --toolchain stable-x86_64-pc-windows-msvc rustfmt` to install it
+error: 'rustfmt.exe' is not installed for the toolchain 'stable-x86_64-pc-windows-msvc'.
+help: run `rustup component add --toolchain stable-x86_64-pc-windows-msvc rustfmt` to install it
