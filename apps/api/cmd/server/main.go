@@ -102,11 +102,10 @@ func run() error {
 		return fmt.Errorf("build event replayer: %w", err)
 	}
 
-	mediaStorage, err := media.NewLocalStorage(cfg.StorageDir)
+	mediaStorage, err := buildStorage(startupCtx, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("open media storage: %w", err)
 	}
-	logger.Info("media storage ready", "dir", mediaStorage.Root())
 
 	mediaService, err := media.NewService(media.ServiceConfig{
 		Repository: mediastore.New(handle.Client),
@@ -472,4 +471,33 @@ func runOutbox(ctx context.Context, logger *slog.Logger, worker *outbox.Worker) 
 			}
 		}
 	}
+}
+
+// buildStorage selects the media storage implementation.
+//
+// Both implementations satisfy the same port, so nothing downstream knows which one is
+// in use; the choice stays a deployment concern.
+func buildStorage(ctx context.Context, cfg config.Config, logger *slog.Logger) (media.Storage, error) {
+	if cfg.StorageDriver == "s3" {
+		store, err := media.NewS3Storage(ctx, media.S3Config{
+			Bucket:    cfg.S3Bucket,
+			Region:    cfg.S3Region,
+			Endpoint:  cfg.S3Endpoint,
+			AccessKey: cfg.S3AccessKey,
+			SecretKey: cfg.S3SecretKey,
+			Prefix:    cfg.S3Prefix,
+		})
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("media storage ready", "driver", "s3", "bucket", store.Bucket())
+		return store, nil
+	}
+
+	store, err := media.NewLocalStorage(cfg.StorageDir)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("media storage ready", "driver", "local", "dir", store.Root())
+	return store, nil
 }

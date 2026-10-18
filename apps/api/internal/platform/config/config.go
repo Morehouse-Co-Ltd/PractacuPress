@@ -70,6 +70,15 @@ type Config struct {
 	DefaultSiteID string
 	// StorageDir is the local media storage root.
 	StorageDir string
+	// StorageDriver selects local or s3.
+	StorageDriver string
+	// S3 settings, used when StorageDriver is s3.
+	S3Bucket    string
+	S3Region    string
+	S3Endpoint  string
+	S3AccessKey string
+	S3SecretKey string
+	S3Prefix    string
 }
 
 // DefaultJWTIssuer is the issuer used when AUTH_JWT_ISSUER is unset.
@@ -174,6 +183,32 @@ func Load() (Config, error) {
 	cfg.StorageDir = env("STORAGE_DIR")
 	if cfg.StorageDir == "" {
 		cfg.StorageDir = "./data/media"
+	}
+
+	cfg.StorageDriver = env("STORAGE_DRIVER")
+	if cfg.StorageDriver == "" {
+		cfg.StorageDriver = "local"
+	}
+	switch cfg.StorageDriver {
+	case "local":
+	case "s3":
+		cfg.S3Bucket = env("STORAGE_S3_BUCKET")
+		if cfg.S3Bucket == "" {
+			return Config{}, &Error{
+				Code:   "missing_s3_bucket",
+				Detail: "STORAGE_S3_BUCKET is required when STORAGE_DRIVER=s3",
+			}
+		}
+		cfg.S3Region = env("STORAGE_S3_REGION")
+		cfg.S3Endpoint = env("STORAGE_S3_ENDPOINT")
+		cfg.S3AccessKey = env("STORAGE_S3_ACCESS_KEY")
+		cfg.S3SecretKey = env("STORAGE_S3_SECRET_KEY")
+		cfg.S3Prefix = env("STORAGE_S3_PREFIX")
+	default:
+		return Config{}, &Error{
+			Code:   "invalid_storage_driver",
+			Detail: "STORAGE_DRIVER must be local or s3",
+		}
 	}
 
 	cfg.CookieDomain = env("COOKIE_DOMAIN")
