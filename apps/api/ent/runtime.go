@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/ent/auditlog"
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/schema"
@@ -77,6 +78,120 @@ func init() {
 	auditlog.DefaultID = auditlogDescID.Default.(func() string)
 	// auditlog.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	auditlog.IDValidator = auditlogDescID.Validators[0].(func(string) error)
+	contentitemFields := schema.ContentItem{}.Fields()
+	_ = contentitemFields
+	// contentitemDescSiteID is the schema descriptor for site_id field.
+	contentitemDescSiteID := contentitemFields[1].Descriptor()
+	// contentitem.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	contentitem.SiteIDValidator = func() func(string) error {
+		validators := contentitemDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentitemDescAuthorID is the schema descriptor for author_id field.
+	contentitemDescAuthorID := contentitemFields[2].Descriptor()
+	// contentitem.AuthorIDValidator is a validator for the "author_id" field. It is called by the builders before save.
+	contentitem.AuthorIDValidator = func() func(string) error {
+		validators := contentitemDescAuthorID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(author_id string) error {
+			for _, fn := range fns {
+				if err := fn(author_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentitemDescKind is the schema descriptor for kind field.
+	contentitemDescKind := contentitemFields[3].Descriptor()
+	// contentitem.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	contentitem.KindValidator = contentitemDescKind.Validators[0].(func(string) error)
+	// contentitemDescStatus is the schema descriptor for status field.
+	contentitemDescStatus := contentitemFields[4].Descriptor()
+	// contentitem.DefaultStatus holds the default value on creation for the status field.
+	contentitem.DefaultStatus = contentitemDescStatus.Default.(string)
+	// contentitem.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	contentitem.StatusValidator = contentitemDescStatus.Validators[0].(func(string) error)
+	// contentitemDescTitle is the schema descriptor for title field.
+	contentitemDescTitle := contentitemFields[5].Descriptor()
+	// contentitem.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	contentitem.TitleValidator = func() func(string) error {
+		validators := contentitemDescTitle.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(title string) error {
+			for _, fn := range fns {
+				if err := fn(title); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentitemDescSlug is the schema descriptor for slug field.
+	contentitemDescSlug := contentitemFields[6].Descriptor()
+	// contentitem.DefaultSlug holds the default value on creation for the slug field.
+	contentitem.DefaultSlug = contentitemDescSlug.Default.(string)
+	// contentitem.SlugValidator is a validator for the "slug" field. It is called by the builders before save.
+	contentitem.SlugValidator = contentitemDescSlug.Validators[0].(func(string) error)
+	// contentitemDescSummary is the schema descriptor for summary field.
+	contentitemDescSummary := contentitemFields[7].Descriptor()
+	// contentitem.DefaultSummary holds the default value on creation for the summary field.
+	contentitem.DefaultSummary = contentitemDescSummary.Default.(string)
+	// contentitem.SummaryValidator is a validator for the "summary" field. It is called by the builders before save.
+	contentitem.SummaryValidator = contentitemDescSummary.Validators[0].(func(string) error)
+	// contentitemDescSourceFormat is the schema descriptor for source_format field.
+	contentitemDescSourceFormat := contentitemFields[8].Descriptor()
+	// contentitem.DefaultSourceFormat holds the default value on creation for the source_format field.
+	contentitem.DefaultSourceFormat = contentitemDescSourceFormat.Default.(string)
+	// contentitem.SourceFormatValidator is a validator for the "source_format" field. It is called by the builders before save.
+	contentitem.SourceFormatValidator = contentitemDescSourceFormat.Validators[0].(func(string) error)
+	// contentitemDescRenderedHTML is the schema descriptor for rendered_html field.
+	contentitemDescRenderedHTML := contentitemFields[10].Descriptor()
+	// contentitem.DefaultRenderedHTML holds the default value on creation for the rendered_html field.
+	contentitem.DefaultRenderedHTML = contentitemDescRenderedHTML.Default.(string)
+	// contentitemDescPolicyVersion is the schema descriptor for policy_version field.
+	contentitemDescPolicyVersion := contentitemFields[11].Descriptor()
+	// contentitem.DefaultPolicyVersion holds the default value on creation for the policy_version field.
+	contentitem.DefaultPolicyVersion = contentitemDescPolicyVersion.Default.(string)
+	// contentitem.PolicyVersionValidator is a validator for the "policy_version" field. It is called by the builders before save.
+	contentitem.PolicyVersionValidator = contentitemDescPolicyVersion.Validators[0].(func(string) error)
+	// contentitemDescCategoryID is the schema descriptor for category_id field.
+	contentitemDescCategoryID := contentitemFields[12].Descriptor()
+	// contentitem.CategoryIDValidator is a validator for the "category_id" field. It is called by the builders before save.
+	contentitem.CategoryIDValidator = contentitemDescCategoryID.Validators[0].(func(string) error)
+	// contentitemDescCreatedAt is the schema descriptor for created_at field.
+	contentitemDescCreatedAt := contentitemFields[15].Descriptor()
+	// contentitem.DefaultCreatedAt holds the default value on creation for the created_at field.
+	contentitem.DefaultCreatedAt = contentitemDescCreatedAt.Default.(func() time.Time)
+	// contentitemDescUpdatedAt is the schema descriptor for updated_at field.
+	contentitemDescUpdatedAt := contentitemFields[16].Descriptor()
+	// contentitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	contentitem.DefaultUpdatedAt = contentitemDescUpdatedAt.Default.(func() time.Time)
+	// contentitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	contentitem.UpdateDefaultUpdatedAt = contentitemDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// contentitemDescID is the schema descriptor for id field.
+	contentitemDescID := contentitemFields[0].Descriptor()
+	// contentitem.DefaultID holds the default value on creation for the id field.
+	contentitem.DefaultID = contentitemDescID.Default.(func() string)
+	// contentitem.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	contentitem.IDValidator = contentitemDescID.Validators[0].(func(string) error)
 	idempotencykeyFields := schema.IdempotencyKey{}.Fields()
 	_ = idempotencykeyFields
 	// idempotencykeyDescUserID is the schema descriptor for user_id field.

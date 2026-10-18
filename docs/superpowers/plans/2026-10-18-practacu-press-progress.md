@@ -138,3 +138,12 @@
 1. 内容模块 Ent 仓储 + `/articles`、`/posts` 路由（领域层与状态机已就绪，缺持久化与 HTTP）
 2. 幂等中间件、媒体两阶段上传、审核队列
 3. 社区互动、搜索、消息与 WebSocket（M3）
+
+### Task 7 内容持久化（完成）
+
+- `content_item` 实体：kind 判别 + 状态 + 当前修订（source/rendered_html/policy_version）内联
+- **设计偏差（有意）**：`articles`/`posts` 合并为一张判别表，`content_revisions` 历史表延后。理由：两者字段几乎相同，所有查询都按 (site, status) 过滤；在"编辑历史"成为真实需求前就存历史表，等于给每次编辑多写一份没人读的数据。历史表落地时只需追加，不动现有列。
+- `contentstore.Store`：插入、草稿保存、按站点读取、**条件状态迁移**（`WHERE status = from`）全部带审计且在同一事务
+- 端到端测试：创建→提交→发布→归档 全链路（审计恰好 4 条）、fail-closed 落库、陈旧迁移被拒、跨站读取被拒、已发布不可编辑
+
+证据：`go test ./apps/api/internal/infrastructure/contentstore` 通过；全套 12 个包全绿。

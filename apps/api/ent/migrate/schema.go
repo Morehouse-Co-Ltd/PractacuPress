@@ -44,6 +44,49 @@ var (
 			},
 		},
 	}
+	// ContentItemsColumns holds the columns for the "content_items" table.
+	ContentItemsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "author_id", Type: field.TypeString, Size: 36},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "draft"},
+		{Name: "title", Type: field.TypeString, Size: 200},
+		{Name: "slug", Type: field.TypeString, Size: 120, Default: ""},
+		{Name: "summary", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "source_format", Type: field.TypeString, Default: "markdown"},
+		{Name: "source_body", Type: field.TypeString, Size: 2147483647},
+		{Name: "rendered_html", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "policy_version", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "category_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "published_at", Type: field.TypeTime, Nullable: true},
+		{Name: "archived_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ContentItemsTable holds the schema information for the "content_items" table.
+	ContentItemsTable = &schema.Table{
+		Name:       "content_items",
+		Columns:    ContentItemsColumns,
+		PrimaryKey: []*schema.Column{ContentItemsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "contentitem_site_id_status_published_at",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[13]},
+			},
+			{
+				Name:    "contentitem_author_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[2], ContentItemsColumns[4]},
+			},
+			{
+				Name:    "contentitem_site_id_slug",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[6]},
+			},
+		},
+	}
 	// IdempotencyKeysColumns holds the columns for the "idempotency_keys" table.
 	IdempotencyKeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -334,6 +377,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditLogsTable,
+		ContentItemsTable,
 		IdempotencyKeysTable,
 		OutboxEventsTable,
 		SessionsTable,

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/practacu/practacu-press/apps/api/ent/auditlog"
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/predicate"
@@ -33,6 +34,7 @@ const (
 
 	// Node types.
 	TypeAuditLog          = "AuditLog"
+	TypeContentItem       = "ContentItem"
 	TypeIdempotencyKey    = "IdempotencyKey"
 	TypeOutboxEvent       = "OutboxEvent"
 	TypeSession           = "Session"
@@ -922,6 +924,1208 @@ func (m *AuditLogMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AuditLogMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditLog edge %s", name)
+}
+
+// ContentItemMutation represents an operation that mutates the ContentItem nodes in the graph.
+type ContentItemMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	site_id        *string
+	author_id      *string
+	kind           *string
+	status         *string
+	title          *string
+	slug           *string
+	summary        *string
+	source_format  *string
+	source_body    *string
+	rendered_html  *string
+	policy_version *string
+	category_id    *string
+	published_at   *time.Time
+	archived_at    *time.Time
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*ContentItem, error)
+	predicates     []predicate.ContentItem
+}
+
+var _ ent.Mutation = (*ContentItemMutation)(nil)
+
+// contentitemOption allows management of the mutation configuration using functional options.
+type contentitemOption func(*ContentItemMutation)
+
+// newContentItemMutation creates new mutation for the ContentItem entity.
+func newContentItemMutation(c config, op Op, opts ...contentitemOption) *ContentItemMutation {
+	m := &ContentItemMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeContentItem,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withContentItemID sets the ID field of the mutation.
+func withContentItemID(id string) contentitemOption {
+	return func(m *ContentItemMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ContentItem
+		)
+		m.oldValue = func(ctx context.Context) (*ContentItem, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ContentItem.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withContentItem sets the old ContentItem of the mutation.
+func withContentItem(node *ContentItem) contentitemOption {
+	return func(m *ContentItemMutation) {
+		m.oldValue = func(context.Context) (*ContentItem, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ContentItemMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ContentItemMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ContentItem entities.
+func (m *ContentItemMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ContentItemMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ContentItemMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ContentItem.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSiteID sets the "site_id" field.
+func (m *ContentItemMutation) SetSiteID(s string) {
+	m.site_id = &s
+}
+
+// SiteID returns the value of the "site_id" field in the mutation.
+func (m *ContentItemMutation) SiteID() (r string, exists bool) {
+	v := m.site_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSiteID returns the old "site_id" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldSiteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSiteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSiteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSiteID: %w", err)
+	}
+	return oldValue.SiteID, nil
+}
+
+// ResetSiteID resets all changes to the "site_id" field.
+func (m *ContentItemMutation) ResetSiteID() {
+	m.site_id = nil
+}
+
+// SetAuthorID sets the "author_id" field.
+func (m *ContentItemMutation) SetAuthorID(s string) {
+	m.author_id = &s
+}
+
+// AuthorID returns the value of the "author_id" field in the mutation.
+func (m *ContentItemMutation) AuthorID() (r string, exists bool) {
+	v := m.author_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorID returns the old "author_id" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldAuthorID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorID: %w", err)
+	}
+	return oldValue.AuthorID, nil
+}
+
+// ResetAuthorID resets all changes to the "author_id" field.
+func (m *ContentItemMutation) ResetAuthorID() {
+	m.author_id = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *ContentItemMutation) SetKind(s string) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *ContentItemMutation) Kind() (r string, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *ContentItemMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ContentItemMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ContentItemMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ContentItemMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetTitle sets the "title" field.
+func (m *ContentItemMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *ContentItemMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *ContentItemMutation) ResetTitle() {
+	m.title = nil
+}
+
+// SetSlug sets the "slug" field.
+func (m *ContentItemMutation) SetSlug(s string) {
+	m.slug = &s
+}
+
+// Slug returns the value of the "slug" field in the mutation.
+func (m *ContentItemMutation) Slug() (r string, exists bool) {
+	v := m.slug
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlug returns the old "slug" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldSlug(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlug is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlug requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlug: %w", err)
+	}
+	return oldValue.Slug, nil
+}
+
+// ResetSlug resets all changes to the "slug" field.
+func (m *ContentItemMutation) ResetSlug() {
+	m.slug = nil
+}
+
+// SetSummary sets the "summary" field.
+func (m *ContentItemMutation) SetSummary(s string) {
+	m.summary = &s
+}
+
+// Summary returns the value of the "summary" field in the mutation.
+func (m *ContentItemMutation) Summary() (r string, exists bool) {
+	v := m.summary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSummary returns the old "summary" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldSummary(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSummary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSummary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSummary: %w", err)
+	}
+	return oldValue.Summary, nil
+}
+
+// ResetSummary resets all changes to the "summary" field.
+func (m *ContentItemMutation) ResetSummary() {
+	m.summary = nil
+}
+
+// SetSourceFormat sets the "source_format" field.
+func (m *ContentItemMutation) SetSourceFormat(s string) {
+	m.source_format = &s
+}
+
+// SourceFormat returns the value of the "source_format" field in the mutation.
+func (m *ContentItemMutation) SourceFormat() (r string, exists bool) {
+	v := m.source_format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceFormat returns the old "source_format" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldSourceFormat(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceFormat: %w", err)
+	}
+	return oldValue.SourceFormat, nil
+}
+
+// ResetSourceFormat resets all changes to the "source_format" field.
+func (m *ContentItemMutation) ResetSourceFormat() {
+	m.source_format = nil
+}
+
+// SetSourceBody sets the "source_body" field.
+func (m *ContentItemMutation) SetSourceBody(s string) {
+	m.source_body = &s
+}
+
+// SourceBody returns the value of the "source_body" field in the mutation.
+func (m *ContentItemMutation) SourceBody() (r string, exists bool) {
+	v := m.source_body
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceBody returns the old "source_body" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldSourceBody(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceBody is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceBody requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceBody: %w", err)
+	}
+	return oldValue.SourceBody, nil
+}
+
+// ResetSourceBody resets all changes to the "source_body" field.
+func (m *ContentItemMutation) ResetSourceBody() {
+	m.source_body = nil
+}
+
+// SetRenderedHTML sets the "rendered_html" field.
+func (m *ContentItemMutation) SetRenderedHTML(s string) {
+	m.rendered_html = &s
+}
+
+// RenderedHTML returns the value of the "rendered_html" field in the mutation.
+func (m *ContentItemMutation) RenderedHTML() (r string, exists bool) {
+	v := m.rendered_html
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRenderedHTML returns the old "rendered_html" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldRenderedHTML(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRenderedHTML is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRenderedHTML requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRenderedHTML: %w", err)
+	}
+	return oldValue.RenderedHTML, nil
+}
+
+// ResetRenderedHTML resets all changes to the "rendered_html" field.
+func (m *ContentItemMutation) ResetRenderedHTML() {
+	m.rendered_html = nil
+}
+
+// SetPolicyVersion sets the "policy_version" field.
+func (m *ContentItemMutation) SetPolicyVersion(s string) {
+	m.policy_version = &s
+}
+
+// PolicyVersion returns the value of the "policy_version" field in the mutation.
+func (m *ContentItemMutation) PolicyVersion() (r string, exists bool) {
+	v := m.policy_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPolicyVersion returns the old "policy_version" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldPolicyVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPolicyVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPolicyVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPolicyVersion: %w", err)
+	}
+	return oldValue.PolicyVersion, nil
+}
+
+// ResetPolicyVersion resets all changes to the "policy_version" field.
+func (m *ContentItemMutation) ResetPolicyVersion() {
+	m.policy_version = nil
+}
+
+// SetCategoryID sets the "category_id" field.
+func (m *ContentItemMutation) SetCategoryID(s string) {
+	m.category_id = &s
+}
+
+// CategoryID returns the value of the "category_id" field in the mutation.
+func (m *ContentItemMutation) CategoryID() (r string, exists bool) {
+	v := m.category_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCategoryID returns the old "category_id" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldCategoryID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCategoryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCategoryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCategoryID: %w", err)
+	}
+	return oldValue.CategoryID, nil
+}
+
+// ClearCategoryID clears the value of the "category_id" field.
+func (m *ContentItemMutation) ClearCategoryID() {
+	m.category_id = nil
+	m.clearedFields[contentitem.FieldCategoryID] = struct{}{}
+}
+
+// CategoryIDCleared returns if the "category_id" field was cleared in this mutation.
+func (m *ContentItemMutation) CategoryIDCleared() bool {
+	_, ok := m.clearedFields[contentitem.FieldCategoryID]
+	return ok
+}
+
+// ResetCategoryID resets all changes to the "category_id" field.
+func (m *ContentItemMutation) ResetCategoryID() {
+	m.category_id = nil
+	delete(m.clearedFields, contentitem.FieldCategoryID)
+}
+
+// SetPublishedAt sets the "published_at" field.
+func (m *ContentItemMutation) SetPublishedAt(t time.Time) {
+	m.published_at = &t
+}
+
+// PublishedAt returns the value of the "published_at" field in the mutation.
+func (m *ContentItemMutation) PublishedAt() (r time.Time, exists bool) {
+	v := m.published_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublishedAt returns the old "published_at" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldPublishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublishedAt: %w", err)
+	}
+	return oldValue.PublishedAt, nil
+}
+
+// ClearPublishedAt clears the value of the "published_at" field.
+func (m *ContentItemMutation) ClearPublishedAt() {
+	m.published_at = nil
+	m.clearedFields[contentitem.FieldPublishedAt] = struct{}{}
+}
+
+// PublishedAtCleared returns if the "published_at" field was cleared in this mutation.
+func (m *ContentItemMutation) PublishedAtCleared() bool {
+	_, ok := m.clearedFields[contentitem.FieldPublishedAt]
+	return ok
+}
+
+// ResetPublishedAt resets all changes to the "published_at" field.
+func (m *ContentItemMutation) ResetPublishedAt() {
+	m.published_at = nil
+	delete(m.clearedFields, contentitem.FieldPublishedAt)
+}
+
+// SetArchivedAt sets the "archived_at" field.
+func (m *ContentItemMutation) SetArchivedAt(t time.Time) {
+	m.archived_at = &t
+}
+
+// ArchivedAt returns the value of the "archived_at" field in the mutation.
+func (m *ContentItemMutation) ArchivedAt() (r time.Time, exists bool) {
+	v := m.archived_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArchivedAt returns the old "archived_at" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldArchivedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArchivedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArchivedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArchivedAt: %w", err)
+	}
+	return oldValue.ArchivedAt, nil
+}
+
+// ClearArchivedAt clears the value of the "archived_at" field.
+func (m *ContentItemMutation) ClearArchivedAt() {
+	m.archived_at = nil
+	m.clearedFields[contentitem.FieldArchivedAt] = struct{}{}
+}
+
+// ArchivedAtCleared returns if the "archived_at" field was cleared in this mutation.
+func (m *ContentItemMutation) ArchivedAtCleared() bool {
+	_, ok := m.clearedFields[contentitem.FieldArchivedAt]
+	return ok
+}
+
+// ResetArchivedAt resets all changes to the "archived_at" field.
+func (m *ContentItemMutation) ResetArchivedAt() {
+	m.archived_at = nil
+	delete(m.clearedFields, contentitem.FieldArchivedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ContentItemMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ContentItemMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ContentItemMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ContentItemMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ContentItemMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ContentItemMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ContentItemMutation builder.
+func (m *ContentItemMutation) Where(ps ...predicate.ContentItem) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ContentItemMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ContentItemMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ContentItem, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ContentItemMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ContentItemMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ContentItem).
+func (m *ContentItemMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ContentItemMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.site_id != nil {
+		fields = append(fields, contentitem.FieldSiteID)
+	}
+	if m.author_id != nil {
+		fields = append(fields, contentitem.FieldAuthorID)
+	}
+	if m.kind != nil {
+		fields = append(fields, contentitem.FieldKind)
+	}
+	if m.status != nil {
+		fields = append(fields, contentitem.FieldStatus)
+	}
+	if m.title != nil {
+		fields = append(fields, contentitem.FieldTitle)
+	}
+	if m.slug != nil {
+		fields = append(fields, contentitem.FieldSlug)
+	}
+	if m.summary != nil {
+		fields = append(fields, contentitem.FieldSummary)
+	}
+	if m.source_format != nil {
+		fields = append(fields, contentitem.FieldSourceFormat)
+	}
+	if m.source_body != nil {
+		fields = append(fields, contentitem.FieldSourceBody)
+	}
+	if m.rendered_html != nil {
+		fields = append(fields, contentitem.FieldRenderedHTML)
+	}
+	if m.policy_version != nil {
+		fields = append(fields, contentitem.FieldPolicyVersion)
+	}
+	if m.category_id != nil {
+		fields = append(fields, contentitem.FieldCategoryID)
+	}
+	if m.published_at != nil {
+		fields = append(fields, contentitem.FieldPublishedAt)
+	}
+	if m.archived_at != nil {
+		fields = append(fields, contentitem.FieldArchivedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, contentitem.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, contentitem.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ContentItemMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case contentitem.FieldSiteID:
+		return m.SiteID()
+	case contentitem.FieldAuthorID:
+		return m.AuthorID()
+	case contentitem.FieldKind:
+		return m.Kind()
+	case contentitem.FieldStatus:
+		return m.Status()
+	case contentitem.FieldTitle:
+		return m.Title()
+	case contentitem.FieldSlug:
+		return m.Slug()
+	case contentitem.FieldSummary:
+		return m.Summary()
+	case contentitem.FieldSourceFormat:
+		return m.SourceFormat()
+	case contentitem.FieldSourceBody:
+		return m.SourceBody()
+	case contentitem.FieldRenderedHTML:
+		return m.RenderedHTML()
+	case contentitem.FieldPolicyVersion:
+		return m.PolicyVersion()
+	case contentitem.FieldCategoryID:
+		return m.CategoryID()
+	case contentitem.FieldPublishedAt:
+		return m.PublishedAt()
+	case contentitem.FieldArchivedAt:
+		return m.ArchivedAt()
+	case contentitem.FieldCreatedAt:
+		return m.CreatedAt()
+	case contentitem.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ContentItemMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case contentitem.FieldSiteID:
+		return m.OldSiteID(ctx)
+	case contentitem.FieldAuthorID:
+		return m.OldAuthorID(ctx)
+	case contentitem.FieldKind:
+		return m.OldKind(ctx)
+	case contentitem.FieldStatus:
+		return m.OldStatus(ctx)
+	case contentitem.FieldTitle:
+		return m.OldTitle(ctx)
+	case contentitem.FieldSlug:
+		return m.OldSlug(ctx)
+	case contentitem.FieldSummary:
+		return m.OldSummary(ctx)
+	case contentitem.FieldSourceFormat:
+		return m.OldSourceFormat(ctx)
+	case contentitem.FieldSourceBody:
+		return m.OldSourceBody(ctx)
+	case contentitem.FieldRenderedHTML:
+		return m.OldRenderedHTML(ctx)
+	case contentitem.FieldPolicyVersion:
+		return m.OldPolicyVersion(ctx)
+	case contentitem.FieldCategoryID:
+		return m.OldCategoryID(ctx)
+	case contentitem.FieldPublishedAt:
+		return m.OldPublishedAt(ctx)
+	case contentitem.FieldArchivedAt:
+		return m.OldArchivedAt(ctx)
+	case contentitem.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case contentitem.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ContentItem field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ContentItemMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case contentitem.FieldSiteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSiteID(v)
+		return nil
+	case contentitem.FieldAuthorID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorID(v)
+		return nil
+	case contentitem.FieldKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case contentitem.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case contentitem.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case contentitem.FieldSlug:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlug(v)
+		return nil
+	case contentitem.FieldSummary:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSummary(v)
+		return nil
+	case contentitem.FieldSourceFormat:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceFormat(v)
+		return nil
+	case contentitem.FieldSourceBody:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceBody(v)
+		return nil
+	case contentitem.FieldRenderedHTML:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRenderedHTML(v)
+		return nil
+	case contentitem.FieldPolicyVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPolicyVersion(v)
+		return nil
+	case contentitem.FieldCategoryID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCategoryID(v)
+		return nil
+	case contentitem.FieldPublishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublishedAt(v)
+		return nil
+	case contentitem.FieldArchivedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArchivedAt(v)
+		return nil
+	case contentitem.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case contentitem.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ContentItem field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ContentItemMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ContentItemMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ContentItemMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ContentItem numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ContentItemMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(contentitem.FieldCategoryID) {
+		fields = append(fields, contentitem.FieldCategoryID)
+	}
+	if m.FieldCleared(contentitem.FieldPublishedAt) {
+		fields = append(fields, contentitem.FieldPublishedAt)
+	}
+	if m.FieldCleared(contentitem.FieldArchivedAt) {
+		fields = append(fields, contentitem.FieldArchivedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ContentItemMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ContentItemMutation) ClearField(name string) error {
+	switch name {
+	case contentitem.FieldCategoryID:
+		m.ClearCategoryID()
+		return nil
+	case contentitem.FieldPublishedAt:
+		m.ClearPublishedAt()
+		return nil
+	case contentitem.FieldArchivedAt:
+		m.ClearArchivedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ContentItem nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ContentItemMutation) ResetField(name string) error {
+	switch name {
+	case contentitem.FieldSiteID:
+		m.ResetSiteID()
+		return nil
+	case contentitem.FieldAuthorID:
+		m.ResetAuthorID()
+		return nil
+	case contentitem.FieldKind:
+		m.ResetKind()
+		return nil
+	case contentitem.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case contentitem.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case contentitem.FieldSlug:
+		m.ResetSlug()
+		return nil
+	case contentitem.FieldSummary:
+		m.ResetSummary()
+		return nil
+	case contentitem.FieldSourceFormat:
+		m.ResetSourceFormat()
+		return nil
+	case contentitem.FieldSourceBody:
+		m.ResetSourceBody()
+		return nil
+	case contentitem.FieldRenderedHTML:
+		m.ResetRenderedHTML()
+		return nil
+	case contentitem.FieldPolicyVersion:
+		m.ResetPolicyVersion()
+		return nil
+	case contentitem.FieldCategoryID:
+		m.ResetCategoryID()
+		return nil
+	case contentitem.FieldPublishedAt:
+		m.ResetPublishedAt()
+		return nil
+	case contentitem.FieldArchivedAt:
+		m.ResetArchivedAt()
+		return nil
+	case contentitem.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case contentitem.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ContentItem field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ContentItemMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ContentItemMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ContentItemMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ContentItemMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ContentItemMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ContentItemMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ContentItemMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ContentItem unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ContentItemMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ContentItem edge %s", name)
 }
 
 // IdempotencyKeyMutation represents an operation that mutates the IdempotencyKey nodes in the graph.

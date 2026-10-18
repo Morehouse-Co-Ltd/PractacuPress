@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/practacu/practacu-press/apps/api/ent/auditlog"
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
@@ -32,6 +33,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// ContentItem is the client for interacting with the ContentItem builders.
+	ContentItem *ContentItemClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
 	IdempotencyKey *IdempotencyKeyClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
@@ -60,6 +63,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AuditLog = NewAuditLogClient(c.config)
+	c.ContentItem = NewContentItemClient(c.config)
 	c.IdempotencyKey = NewIdempotencyKeyClient(c.config)
 	c.OutboxEvent = NewOutboxEventClient(c.config)
 	c.Session = NewSessionClient(c.config)
@@ -161,6 +165,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:               ctx,
 		config:            cfg,
 		AuditLog:          NewAuditLogClient(cfg),
+		ContentItem:       NewContentItemClient(cfg),
 		IdempotencyKey:    NewIdempotencyKeyClient(cfg),
 		OutboxEvent:       NewOutboxEventClient(cfg),
 		Session:           NewSessionClient(cfg),
@@ -189,6 +194,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:               ctx,
 		config:            cfg,
 		AuditLog:          NewAuditLogClient(cfg),
+		ContentItem:       NewContentItemClient(cfg),
 		IdempotencyKey:    NewIdempotencyKeyClient(cfg),
 		OutboxEvent:       NewOutboxEventClient(cfg),
 		Session:           NewSessionClient(cfg),
@@ -226,8 +232,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.IdempotencyKey, c.OutboxEvent, c.Session, c.Site, c.SiteMember,
-		c.User, c.UserIdentity, c.VerificationToken,
+		c.AuditLog, c.ContentItem, c.IdempotencyKey, c.OutboxEvent, c.Session, c.Site,
+		c.SiteMember, c.User, c.UserIdentity, c.VerificationToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -237,8 +243,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.IdempotencyKey, c.OutboxEvent, c.Session, c.Site, c.SiteMember,
-		c.User, c.UserIdentity, c.VerificationToken,
+		c.AuditLog, c.ContentItem, c.IdempotencyKey, c.OutboxEvent, c.Session, c.Site,
+		c.SiteMember, c.User, c.UserIdentity, c.VerificationToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -249,6 +255,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
+	case *ContentItemMutation:
+		return c.ContentItem.mutate(ctx, m)
 	case *IdempotencyKeyMutation:
 		return c.IdempotencyKey.mutate(ctx, m)
 	case *OutboxEventMutation:
@@ -400,6 +408,139 @@ func (c *AuditLogClient) mutate(ctx context.Context, m *AuditLogMutation) (Value
 		return (&AuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditLog mutation op: %q", m.Op())
+	}
+}
+
+// ContentItemClient is a client for the ContentItem schema.
+type ContentItemClient struct {
+	config
+}
+
+// NewContentItemClient returns a client for the ContentItem from the given config.
+func NewContentItemClient(c config) *ContentItemClient {
+	return &ContentItemClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `contentitem.Hooks(f(g(h())))`.
+func (c *ContentItemClient) Use(hooks ...Hook) {
+	c.hooks.ContentItem = append(c.hooks.ContentItem, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `contentitem.Intercept(f(g(h())))`.
+func (c *ContentItemClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ContentItem = append(c.inters.ContentItem, interceptors...)
+}
+
+// Create returns a builder for creating a ContentItem entity.
+func (c *ContentItemClient) Create() *ContentItemCreate {
+	mutation := newContentItemMutation(c.config, OpCreate)
+	return &ContentItemCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ContentItem entities.
+func (c *ContentItemClient) CreateBulk(builders ...*ContentItemCreate) *ContentItemCreateBulk {
+	return &ContentItemCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ContentItemClient) MapCreateBulk(slice any, setFunc func(*ContentItemCreate, int)) *ContentItemCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ContentItemCreateBulk{err: fmt.Errorf("calling to ContentItemClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ContentItemCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ContentItemCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ContentItem.
+func (c *ContentItemClient) Update() *ContentItemUpdate {
+	mutation := newContentItemMutation(c.config, OpUpdate)
+	return &ContentItemUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ContentItemClient) UpdateOne(_m *ContentItem) *ContentItemUpdateOne {
+	mutation := newContentItemMutation(c.config, OpUpdateOne, withContentItem(_m))
+	return &ContentItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ContentItemClient) UpdateOneID(id string) *ContentItemUpdateOne {
+	mutation := newContentItemMutation(c.config, OpUpdateOne, withContentItemID(id))
+	return &ContentItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ContentItem.
+func (c *ContentItemClient) Delete() *ContentItemDelete {
+	mutation := newContentItemMutation(c.config, OpDelete)
+	return &ContentItemDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ContentItemClient) DeleteOne(_m *ContentItem) *ContentItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ContentItemClient) DeleteOneID(id string) *ContentItemDeleteOne {
+	builder := c.Delete().Where(contentitem.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ContentItemDeleteOne{builder}
+}
+
+// Query returns a query builder for ContentItem.
+func (c *ContentItemClient) Query() *ContentItemQuery {
+	return &ContentItemQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeContentItem},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ContentItem entity by its id.
+func (c *ContentItemClient) Get(ctx context.Context, id string) (*ContentItem, error) {
+	return c.Query().Where(contentitem.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ContentItemClient) GetX(ctx context.Context, id string) *ContentItem {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ContentItemClient) Hooks() []Hook {
+	return c.hooks.ContentItem
+}
+
+// Interceptors returns the client interceptors.
+func (c *ContentItemClient) Interceptors() []Interceptor {
+	return c.inters.ContentItem
+}
+
+func (c *ContentItemClient) mutate(ctx context.Context, m *ContentItemMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ContentItemCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ContentItemUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ContentItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ContentItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ContentItem mutation op: %q", m.Op())
 	}
 }
 
@@ -1470,11 +1611,11 @@ func (c *VerificationTokenClient) mutate(ctx context.Context, m *VerificationTok
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, IdempotencyKey, OutboxEvent, Session, Site, SiteMember, User,
-		UserIdentity, VerificationToken []ent.Hook
+		AuditLog, ContentItem, IdempotencyKey, OutboxEvent, Session, Site, SiteMember,
+		User, UserIdentity, VerificationToken []ent.Hook
 	}
 	inters struct {
-		AuditLog, IdempotencyKey, OutboxEvent, Session, Site, SiteMember, User,
-		UserIdentity, VerificationToken []ent.Interceptor
+		AuditLog, ContentItem, IdempotencyKey, OutboxEvent, Session, Site, SiteMember,
+		User, UserIdentity, VerificationToken []ent.Interceptor
 	}
 )

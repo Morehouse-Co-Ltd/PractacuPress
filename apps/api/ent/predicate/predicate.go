@@ -9,6 +9,9 @@ import (
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
+// ContentItem is the predicate function for contentitem builders.
+type ContentItem func(*sql.Selector)
+
 // IdempotencyKey is the predicate function for idempotencykey builders.
 type IdempotencyKey func(*sql.Selector)
 

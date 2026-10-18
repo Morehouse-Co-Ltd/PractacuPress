@@ -21,6 +21,18 @@ func (f AuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditLogMutation", m)
 }
 
+// The ContentItemFunc type is an adapter to allow the use of ordinary
+// function as ContentItem mutator.
+type ContentItemFunc func(context.Context, *ent.ContentItemMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ContentItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ContentItemMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ContentItemMutation", m)
+}
+
 // The IdempotencyKeyFunc type is an adapter to allow the use of ordinary
 // function as IdempotencyKey mutator.
 type IdempotencyKeyFunc func(context.Context, *ent.IdempotencyKeyMutation) (ent.Value, error)

@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/practacu/practacu-press/apps/api/ent/auditlog"
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
@@ -82,6 +83,7 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			auditlog.Table:          auditlog.ValidColumn,
+			contentitem.Table:       contentitem.ValidColumn,
 			idempotencykey.Table:    idempotencykey.ValidColumn,
 			outboxevent.Table:       outboxevent.ValidColumn,
 			session.Table:           session.ValidColumn,
