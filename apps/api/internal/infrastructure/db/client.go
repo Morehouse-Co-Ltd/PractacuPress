@@ -47,6 +47,13 @@ func Open(ctx context.Context, driverName, dsn string) (*DB, error) {
 		return nil, apperr.Validation("DATABASE_DSN must not be empty")
 	}
 
+	// Ent's schema tooling refuses to run with foreign keys disabled, and WAL plus a
+	// busy timeout are what make concurrent writers queue instead of failing. Applying
+	// them here means no caller has to remember the pragmas.
+	if canonical == config.DriverSQLite {
+		dsn = EnsureSQLitePragmas(dsn)
+	}
+
 	sqlDB, err := sql.Open(sqlDriverOf(canonical), dsn)
 	if err != nil {
 		return nil, err
@@ -81,6 +88,21 @@ func (d *DB) Dialect() string { return dialectOfCanonical(d.driver) }
 // Close releases the connection pool. It is safe to call more than once.
 func (d *DB) Close() error { return d.sqlDB.Close() }
 
+// EnsureSQLitePragmas appends the required pragmas to a SQLite DSN when they are
+// not already present.
+//
+// A DSN that already mentions foreign keys is left alone, so an operator can tighten
+// or relax it deliberately; everything else gets the safe defaults.
+func EnsureSQLitePragmas(dsn string) string {
+	if strings.Contains(dsn, "foreign_keys") {
+		return dsn
+	}
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + "_pragma=foreign_keys%281%29"
+}
 // SQLiteDSN builds a modernc/sqlite DSN with the pragmas this application relies
 // on: foreign key enforcement, WAL journaling for concurrent readers, and a busy
 // timeout so a competing writer waits instead of failing immediately.

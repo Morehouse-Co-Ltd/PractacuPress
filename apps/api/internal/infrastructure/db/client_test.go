@@ -141,3 +141,29 @@ func TestUniqueSiteMembership(t *testing.T) {
 		SetSiteID(site.ID).SetUserID(user.ID).Save(ctx)
 	require.Error(t, err, "duplicate site membership must be rejected")
 }
+
+// TestOpenSQLiteAppliesRequiredPragmas proves callers do not have to remember them:
+// Ent refuses to create a schema when foreign keys are disabled.
+func TestOpenSQLiteAppliesRequiredPragmas(t *testing.T) {
+	ctx := context.Background()
+	plain := "file:" + filepath.Join(t.TempDir(), "plain.db")
+
+	handle, err := Open(ctx, "sqlite", plain)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+	require.NoError(t, handle.Client.Schema.Create(ctx),
+		"schema creation requires foreign keys to be on")
+
+	var enabled int
+	row := handle.sqlDB.QueryRowContext(ctx, "PRAGMA foreign_keys")
+	require.NoError(t, row.Scan(&enabled))
+	require.Equal(t, 1, enabled)
+}
+
+func TestEnsureSQLitePragmasLeavesExplicitDSNAlone(t *testing.T) {
+	explicit := "file:x.db?_pragma=foreign_keys(0)"
+	require.Equal(t, explicit, EnsureSQLitePragmas(explicit))
+	require.Contains(t, EnsureSQLitePragmas("file:x.db"), "foreign_keys")
+	require.Contains(t, EnsureSQLitePragmas("file:x.db?cache=shared"), "&_pragma=foreign_keys")
+}
