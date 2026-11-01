@@ -27,6 +27,8 @@ tags:
   - name: events
   - name: messaging
   - name: notifications
+  - name: analytics
+  - name: taxonomy
 
 paths:
   /healthz:
@@ -89,6 +91,61 @@ paths:
             application/json:
               schema:
                 type: object
+
+  /setup/status:
+    get:
+      tags: [system]
+      summary: Install status for the requesting host
+      description: |
+        Reports whether the hostname still belongs to an installed site, so a browser
+        holding a saved install configuration can tell that the data directory was
+        deleted and reopen the setup wizard instead of rendering an empty site.
+
+        Served without a session and without site resolution: answering when no site
+        exists is the whole point. `has_admin` is advisory and must not be used to
+        reset a configuration on its own — a server deployment whose first account is
+        a plain member would otherwise loop through the wizard.
+      security: []
+      responses:
+        '200':
+          description: Install status for the request hostname
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [installed, has_admin]
+                properties:
+                  installed:
+                    type: boolean
+                    description: True when the hostname resolves to a site.
+                  has_admin:
+                    type: boolean
+                    description: True when the site has an active administrator.
+                  reason:
+                    type: string
+                    enum: [no_site, domain_unverified, not_configured]
+                    description: Present when `installed` is false.
+                  site_id:
+                    type: string
+                    description: Present when `installed` is true.
+                  site_name:
+                    type: string
+                    description: Present when `installed` is true.
+        '503':
+          description: The site service is not mounted in this process
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [installed, reason]
+                properties:
+                  installed: { type: boolean }
+                  reason: { type: string }
+        '500':
+          description: The install status could not be read
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /auth/register/email:
     post:
@@ -194,6 +251,94 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /auth/password-reset/policy:
+    get:
+      tags: [auth]
+      summary: Password reset availability
+      description: |
+        Reports whether this deployment can deliver reset links. The login page uses it
+        to decide between offering "forgot password" and explaining that the operator has
+        not configured an SMTP relay yet. It exposes no secret: only whether mail works,
+        the link lifetime and the request cooldown.
+      security: []
+      responses:
+        '200':
+          description: Current policy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, delivery, expires_in, cooldown]
+                properties:
+                  enabled: { type: boolean }
+                  delivery: { type: string, enum: [email] }
+                  expires_in: { type: integer, description: Reset link lifetime in seconds. }
+                  cooldown: { type: integer, description: Minimum seconds between two requests for one account. }
+
+  /auth/password-reset/request:
+    post:
+      tags: [auth]
+      summary: Request a reset link
+      description: |
+        Sends a single use link to the address when it belongs to an account of this
+        site. The response is identical for an unknown address, an account without a
+        password, and a request dropped by the cooldown, so the endpoint cannot be used
+        to enumerate accounts. Asking again invalidates the previous link.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+      responses:
+        '202':
+          description: Accepted. A message is sent only when the address has an account here.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, delivery, expires_in]
+                properties:
+                  status: { type: string, const: accepted }
+                  delivery: { type: string, enum: [email] }
+                  expires_in: { type: integer }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/EmailNotConfigured'
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      summary: Redeem a reset link
+      description: |
+        Replaces the account password. The token is single use, expires after the
+        advertised lifetime, and every live session of the account is revoked on
+        success, so a stolen session cannot survive the reset.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, description: The `token` query parameter of the reset link. }
+                password: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '204':
+          description: Password replaced and sessions revoked
+        '400':
+          description: Malformed body, weak password, or an invalid or expired token
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
   /me:
     get:
       tags: [auth]
@@ -212,6 +357,33 @@ paths:
                   site_id: { type: string }
         '401':
           $ref: '#/components/responses/Unauthenticated'
+
+  /users/{userID}:
+    get:
+      tags: [sites]
+      summary: Public member profile
+      description: |
+        The header of an author archive: display name, site role and join time of one
+        active member. No session is required on a `public` site; a `members_only` site
+        refuses an anonymous request with 401. An account that is not an active member
+        of the resolved site is not found.
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/UserID'
+      responses:
+        '200':
+          description: Public profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicUser' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /sites/{siteID}:
     get:
@@ -253,6 +425,36 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/PermissionDenied'
+    post:
+      tags: [sites]
+      summary: Create a member account
+      description: |
+        Requires site administrator authority and applies to the caller's own site.
+        Only a platform administrator may create another platform administrator. The
+        account is created without a session; the administrator hands the initial
+        password to its owner. Personal blog installs pass `site_admin` so the account
+        can sign in to the admin area.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewMember' }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /sites/{siteID}/members/{userID}/role:
     patch:
@@ -261,6 +463,7 @@ paths:
       description: |
         Requires site administrator authority. Only a platform administrator may grant
         or revoke the `platform_admin` role, or demote an existing platform administrator.
+        The last active platform administrator of a site can never be demoted.
       parameters:
         - $ref: '#/components/parameters/SiteID'
         - name: userID
@@ -288,6 +491,92 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /sites/{siteID}/members/{userID}:
+    patch:
+      tags: [sites]
+      summary: Update a member profile
+      description: |
+        Requires platform administrator authority and applies to the caller's own site.
+        Only lower ranked accounts may be edited: neither the caller itself nor another
+        platform administrator can be changed. The email is the login identity and is
+        unique across the install.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/UserID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMember' }
+      responses:
+        '200':
+          description: Account updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [sites]
+      summary: Remove a member from the site
+      description: |
+        Requires platform administrator authority and applies to the caller's own site.
+        Removes the site membership, not the account: content, comments and memberships
+        of other sites are preserved. The member can no longer refresh a session on this
+        site afterwards.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/UserID'
+      responses:
+        '204':
+          description: Membership removed
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteID}/members/{userID}/status:
+    patch:
+      tags: [sites]
+      summary: Suspend or reactivate a member
+      description: |
+        Requires platform administrator authority and applies to the caller's own site.
+        Only lower ranked accounts may be suspended: neither the caller itself nor
+        another platform administrator can be changed. A suspended membership cannot
+        log in or refresh a session until it is reactivated.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/UserID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMemberStatus' }
+      responses:
+        '200':
+          description: Membership status changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /sites/{siteID}/settings:
     patch:
       tags: [sites]
@@ -306,7 +595,12 @@ paths:
                 description: { type: string, maxLength: 2000 }
                 visibility_mode: { $ref: '#/components/schemas/VisibilityMode' }
                 publish_mode: { $ref: '#/components/schemas/PublishMode' }
-                domain: { type: string }
+                domain:
+                  type: string
+                  description: |
+                    Convenience field kept for existing clients; a non-empty value is
+                    validated and stored as verified. Use PUT /sites/{siteID}/domain to
+                    clear a domain.
       responses:
         '204':
           description: Settings updated and audited
@@ -317,6 +611,94 @@ paths:
         '403':
           $ref: '#/components/responses/PermissionDenied'
 
+  /sites/{siteID}/customization:
+    get:
+      tags: [sites]
+      summary: Site design document
+      description: |
+        The design a browser renders the site from: theme tokens, layout, the page
+        builder's pages and blocks, custom CSS and pinned articles.
+
+        Anonymous read: every visitor needs this before the first paint. The request host
+        must resolve to `siteID`, so the path cannot select another tenant's design. On a
+        members-only site the document names the private pages, so a caller who is not an
+        active member gets the same `404` a site that never saved a design returns.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: The saved design document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteCustomization' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [sites]
+      summary: Store the site design document
+      description: |
+        Requires site administrator authority on the caller's own site.
+
+        The document is opaque to the server: it must be a JSON object and at most 1 MiB,
+        and it is stored byte for byte. Send `revision` to make the write conditional; a
+        stale revision is refused with `409` instead of silently overwriting an edit made
+        in another tab or by another administrator.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SiteCustomizationInput' }
+      responses:
+        '200':
+          description: Stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteCustomizationSaved' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /sites/{siteID}/domain:
+    put:
+      tags: [sites]
+      summary: Set or clear the site domain
+      description: |
+        Requires site administrator authority and applies to the caller's own site.
+        A non-empty domain is stored with `domain_verified_at = now`: the operator
+        declaring the value is treated as proof of ownership, so the site becomes
+        reachable on it immediately. An empty string clears both the domain and its
+        verification and restores the domain-less fallback.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SiteDomainInput' }
+      responses:
+        '204':
+          description: Domain updated and audited
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   /articles:
     get:
       tags: [content]
@@ -324,11 +706,13 @@ paths:
       description: |
         Readers only ever see published items; editors also see the review queue.
         Anonymous visitors may read a site whose visibility mode is `public`; on a
-        `members_only` site the call is refused with 401.
+        `members_only` site the call is refused with 401. `author_id` narrows the page
+        to one author's visible items, which is what the author archive uses.
       security: []
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/AuthorID'
       responses:
         '200':
           description: One page of articles
@@ -490,6 +874,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/AuthorID'
       responses:
         '200':
           description: One page of posts
@@ -578,6 +963,48 @@ paths:
           $ref: '#/components/responses/ContentStateInvalid'
 
   /comments:
+    get:
+      tags: [community]
+      summary: List comments
+      description: |
+        Public reads are allowed on a site whose visibility mode is `public`; a
+        members-only site requires a session. Readers without moderation rights only
+        ever receive `visible` comments. Moderators may filter by any status, or pass
+        `status=all` to read the whole moderation queue.
+      parameters:
+        - name: target_type
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/TargetType' }
+        - name: target_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, visible, hidden, deleted, pending_review]
+        - name: q
+          in: query
+          required: false
+          description: Matches the comment body and the author display name.
+          schema: { type: string, maxLength: 200 }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of comments, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentPage' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
     post:
       tags: [community]
       summary: Comment on a target
@@ -610,8 +1037,12 @@ paths:
   /comments/{commentID}:
     patch:
       tags: [community]
-      summary: Edit your comment
-      description: Only the author may edit, and only while the comment is visible.
+      summary: Edit or moderate a comment
+      description: |
+        An author may change the body of their own visible comment. A moderator may
+        send `status` instead: `visible` restores a hidden or pending comment, `hidden`
+        removes it from public view without deleting the row. Permanent removal uses
+        DELETE.
       parameters:
         - $ref: '#/components/parameters/CommentID'
       requestBody:
@@ -620,15 +1051,17 @@ paths:
           application/json:
             schema:
               type: object
-              required: [body]
               properties:
                 body: { type: string, maxLength: 5000 }
+                status: { type: string, enum: [visible, hidden] }
       responses:
         '200':
           description: Comment updated
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Comment' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
         '403':
           $ref: '#/components/responses/PermissionDenied'
         '404':
@@ -750,7 +1183,10 @@ paths:
                 size: { type: integer, format: int64, minimum: 1 }
                 purpose:
                   type: string
-                  enum: [content, avatar, attachment]
+                  enum: [content, site, avatar, attachment]
+                  description: |
+                    What the file will be used for. `site` covers site level pictures
+                    (logos, favicons, share images) and is validated like an image.
       responses:
         '201':
           description: Upload session opened
@@ -1133,6 +1569,173 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /analytics/visits:
+    post:
+      tags: [analytics]
+      summary: Record a page view
+      description: |
+        Anonymous write. The site comes from the request host, never from the body, so a
+        browser cannot attribute traffic to another tenant. Admin surface traffic is
+        recorded but excluded from the public report.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, session, surface]
+              properties:
+                path: { type: string, maxLength: 2048, pattern: '^/' }
+                title: { type: string, maxLength: 300 }
+                referrer: { type: string, maxLength: 2048 }
+                session: { type: string, maxLength: 64 }
+                surface: { type: string, enum: [site, admin] }
+      responses:
+        '204':
+          description: Page view recorded
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteID}/analytics:
+    get:
+      tags: [analytics]
+      summary: Traffic report for a site
+      description: |
+        Requires a session and at least site administrator authority. The principal's
+        site must equal `siteID`; a platform administrator is allowed. Only public
+        (`site`) traffic is counted. Timestamps are stored in UTC; bucket boundaries and
+        labels honor `tz_offset`. `online` counts distinct sessions seen in the last five
+        minutes.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: [24h, 7d, 30d], default: 24h }
+        - name: tz_offset
+          in: query
+          required: false
+          description: |
+            Browser UTC offset in minutes east of UTC (for example 480 for UTC+8).
+            Buckets and labels are aligned to this offset; stored timestamps remain UTC.
+          schema: { type: integer, minimum: -840, maximum: 840, default: 0 }
+      responses:
+        '200':
+          description: The dashboard report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsReport' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /sites/{siteID}/taxonomy:
+    get:
+      tags: [taxonomy]
+      summary: List categories and tags
+      description: |
+        Anonymous read: public pages render category navigation and tag chips. The
+        request host must resolve to `siteID`, so the path cannot select another
+        tenant's taxonomy.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: Categories and tags of the site
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Taxonomy' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+    post:
+      tags: [taxonomy]
+      summary: Create a category or tag
+      description: Requires site administrator authority on the caller's own site.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxonomyTermInput' }
+      responses:
+        '201':
+          description: Term created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxonomyTerm' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /sites/{siteID}/taxonomy/{termID}:
+    patch:
+      tags: [taxonomy]
+      summary: Update a category or tag
+      description: |
+        Partial update; omitted fields are unchanged. Requires site administrator
+        authority on the caller's own site. The kind is immutable.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: termID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaxonomyTermUpdate' }
+      responses:
+        '200':
+          description: The updated term
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxonomyTerm' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [taxonomy]
+      summary: Delete a category or tag
+      description: |
+        Requires site administrator authority. Deleting a category clears the category
+        reference of its content instead of deleting the content.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: termID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Term deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1143,6 +1746,11 @@ components:
   parameters:
     SiteID:
       name: siteID
+      in: path
+      required: true
+      schema: { type: string }
+    UserID:
+      name: userID
       in: path
       required: true
       schema: { type: string }
@@ -1182,6 +1790,15 @@ components:
       required: false
       description: Opaque cursor from a previous page. Malformed values are rejected, never ignored.
       schema: { type: string }
+    AuthorID:
+      name: author_id
+      in: query
+      required: false
+      description: |
+        Restrict the page to the items of one author, which is what the archive page
+        /u/{userID} uses. The id is not validated against membership: an unknown or
+        malformed id simply matches nothing and yields an empty page.
+      schema: { type: string }
 
   responses:
     ValidationFailed:
@@ -1219,6 +1836,11 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    EmailNotConfigured:
+      description: The deployment has no SMTP relay, so no message can be delivered
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
     Problem:
@@ -1246,6 +1868,7 @@ components:
             - security_unavailable
             - provider_not_configured
             - invalid_database_driver
+            - email_not_configured
         message: { type: string, description: Localised, may change. Clients branch on `code`. }
         details: { type: object, additionalProperties: true }
         request_id: { type: string }
@@ -1264,7 +1887,7 @@ components:
 
     TargetType:
       type: string
-      enum: [article, post, comment, user]
+      enum: [article, post, comment, user, page]
 
     User:
       type: object
@@ -1274,6 +1897,18 @@ components:
         display_name: { type: string }
         locale: { type: string }
         status: { type: string, enum: [active, disabled] }
+        created_at: { type: string, format: date-time }
+
+    PublicUser:
+      type: object
+      description: |
+        Public author archive profile. It deliberately omits the email and the
+        membership status, which belong to administration rather than to /u/{userID}.
+      required: [user_id, display_name, role, created_at]
+      properties:
+        user_id: { type: string }
+        display_name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
         created_at: { type: string, format: date-time }
 
     Session:
@@ -1299,6 +1934,18 @@ components:
         publish_mode: { $ref: '#/components/schemas/PublishMode' }
         disabled: { type: boolean }
 
+    SiteDomainInput:
+      type: object
+      required: [domain]
+      properties:
+        domain:
+          type: string
+          maxLength: 253
+          description: |
+            Bare hostname; punycode labels are accepted. Scheme, port, path, wildcard,
+            IP address and whitespace are rejected. An empty string clears the domain
+            and its verification timestamp.
+
     Member:
       type: object
       required: [user_id, display_name, role, status]
@@ -1307,6 +1954,26 @@ components:
         display_name: { type: string }
         role: { $ref: '#/components/schemas/Role' }
         status: { type: string, enum: [active, invited, suspended] }
+        email:
+          type: string
+          format: email
+          description: Login email of the account. Omitted when the account has no email identity.
+
+    UpdateMember:
+      type: object
+      minProperties: 1
+      description: Partial update; omitted fields are left unchanged.
+      properties:
+        display_name: { type: string, maxLength: 120 }
+        email: { type: string, format: email }
+
+    UpdateMemberStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, suspended]
 
     DraftInput:
       type: object
@@ -1318,10 +1985,15 @@ components:
         source_format: { type: string, enum: [markdown, html, plain], default: markdown }
         source_body: { type: string, maxLength: 200000 }
         category_id: { type: string }
+        tags:
+          type: array
+          description: Up to 12 labels, each at most 24 characters; order is preserved.
+          maxItems: 12
+          items: { type: string, maxLength: 24 }
 
     Content:
       type: object
-      required: [id, kind, status, title, slug, source_format, rendered_html, policy_version, created_at, updated_at, actions]
+      required: [id, kind, status, title, slug, source_format, rendered_html, policy_version, category_id, tags, created_at, updated_at, actions]
       properties:
         id: { type: string }
         kind: { type: string, enum: [article, post] }
@@ -1336,6 +2008,11 @@ components:
           type: string
           description: The only representation a client may render. Produced by the security service.
         policy_version: { type: string }
+        category_id: { type: string }
+        tags:
+          type: array
+          description: Labels attached to the item, in author order. Empty when untagged.
+          items: { type: string }
         published_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -1356,7 +2033,7 @@ components:
 
     Comment:
       type: object
-      required: [id, target_type, target_id, depth, body, status]
+      required: [id, target_type, target_id, depth, body, status, created_at]
       properties:
         id: { type: string }
         target_type: { $ref: '#/components/schemas/TargetType' }
@@ -1365,6 +2042,32 @@ components:
         depth: { type: integer, description: 0 for a top level comment. }
         body: { type: string }
         status: { type: string, enum: [visible, hidden, deleted, pending_review] }
+        author_id: { type: string, description: Read only. The account that wrote the comment. }
+        author_name:
+          type: string
+          description: Read only. Display name of the author, joined for listing.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CommentPage:
+      type: object
+      required: [items, next_cursor, has_more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+        next_cursor: { type: string }
+        has_more: { type: boolean }
+
+    NewMember:
+      type: object
+      required: [email, display_name, password]
+      properties:
+        email: { type: string, format: email }
+        display_name: { type: string, maxLength: 120 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        role:
+          $ref: '#/components/schemas/Role'
 
     ToggleInput:
       type: object
@@ -1444,3 +2147,154 @@ components:
         occurred_at: { type: string, format: date-time }
         site_id: { type: string }
         payload: { type: object, additionalProperties: true }
+
+    AnalyticsTotals:
+      type: object
+      required: [views, sessions, online]
+      properties:
+        views: { type: integer, description: Page views of the public surface in the range. }
+        sessions: { type: integer, description: Distinct visitor sessions in the range. }
+        online: { type: integer, description: Distinct sessions seen in the last five minutes. }
+
+    AnalyticsPoint:
+      type: object
+      required: [label, count]
+      properties:
+        label:
+          type: string
+          description: Preformatted bucket label; "15:00" for hours and "10/24" for days.
+        count: { type: integer }
+
+    TopPage:
+      type: object
+      required: [path, count]
+      properties:
+        path: { type: string }
+        count: { type: integer }
+
+    TopContent:
+      type: object
+      required: [id, count]
+      properties:
+        id: { type: string, description: 'Content id parsed from /a/{id} and /p/{id} detail paths.' }
+        count: { type: integer }
+
+    RecentVisit:
+      type: object
+      required: [path, title, referrer, session, created_at]
+      properties:
+        path: { type: string }
+        title: { type: string }
+        referrer: { type: string }
+        session: { type: string }
+        created_at: { type: string, format: date-time }
+
+    AnalyticsReport:
+      type: object
+      required: [range, totals, series, top_pages, top_content, recent]
+      properties:
+        range: { type: string, enum: [24h, 7d, 30d] }
+        totals: { $ref: '#/components/schemas/AnalyticsTotals' }
+        series:
+          type: array
+          description: 24 hourly buckets for 24h, 7 or 30 daily buckets otherwise, aligned to tz_offset.
+          items: { $ref: '#/components/schemas/AnalyticsPoint' }
+        top_pages:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/TopPage' }
+        top_content:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/TopContent' }
+        recent:
+          type: array
+          maxItems: 10
+          description: Latest public page views of the report window, newest first.
+          items: { $ref: '#/components/schemas/RecentVisit' }
+
+    TaxonomyTerm:
+      type: object
+      required: [id, kind, name, slug, description, color]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [category, tag] }
+        name: { type: string, maxLength: 80 }
+        slug: { type: string, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        color: { type: string, description: '#rrggbb; empty for tags that have no colour.' }
+
+    Taxonomy:
+      type: object
+      required: [categories, tags]
+      properties:
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/TaxonomyTerm' }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/TaxonomyTerm' }
+
+    TaxonomyTermInput:
+      type: object
+      required: [kind, name, slug]
+      properties:
+        kind: { type: string, enum: [category, tag] }
+        name: { type: string, maxLength: 80 }
+        slug:
+          type: string
+          maxLength: 80
+          description: Lowercase ASCII slug, unique per kind inside the site.
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        description: { type: string, maxLength: 500 }
+        color: { type: string, description: '#rrggbb; optional.' }
+
+    TaxonomyTermUpdate:
+      type: object
+      description: Partial update; omitted fields are unchanged. The kind cannot change.
+      properties:
+        name: { type: string, maxLength: 80 }
+        slug:
+          type: string
+          maxLength: 80
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        description: { type: string, maxLength: 500 }
+        color: { type: string, description: '#rrggbb; send an empty string to clear.' }
+
+    SiteCustomization:
+      type: object
+      description: |
+        The opaque design document of a site plus the revision it is at. `revision`
+        increments on every accepted write and is the value to send back when saving.
+      required: [site_id, revision, updated_at, customization]
+      properties:
+        site_id: { type: string }
+        revision: { type: integer, minimum: 1 }
+        updated_at: { type: string, format: date-time }
+        customization:
+          type: object
+          additionalProperties: true
+          description: |
+            The frontend's design object: theme tokens, layout variant, page tree,
+            cover and pin lists. The server never interprets it.
+
+    SiteCustomizationInput:
+      type: object
+      required: [customization]
+      properties:
+        customization:
+          type: object
+          additionalProperties: true
+        revision:
+          type: integer
+          minimum: 0
+          description: |
+            The revision the client last read. Omit it for an unconditional write. A
+            value that no longer matches the stored revision is refused with `409`.
+
+    SiteCustomizationSaved:
+      type: object
+      required: [revision, updated_at]
+      properties:
+        revision: { type: integer, minimum: 1 }
+        updated_at: { type: string, format: date-time }
