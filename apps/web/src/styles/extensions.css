@@ -1,0 +1,640 @@
+/* =========================================================
+   创作者扩展（.ppe-*）
+   - 扩展宿主容器、槽位、管理页卡片与扩展工坊。
+   - 扩展自己的 HTML / CSS 跑在 sandbox iframe 里，这份样式只管宿主。
+   - 全部颜色走主题令牌：后台是纸白令牌，前台跟随站点深浅色主题。
+   ========================================================= */
+
+/* ---------------- 前台宿主与槽位 ---------------- */
+
+.ppe-slot {
+  width: 100%;
+  min-width: 0;
+}
+
+.ppe-slot-inner {
+  width: 100%;
+  min-width: 0;
+}
+
+.ppe-host {
+  width: 100%;
+  min-width: 0;
+  line-height: 0;
+}
+
+.ppe-frame {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color-scheme: normal;
+}
+
+/* 悬浮扩展：不占文档流，右下角固定；宽度跟随站点内容宽度收缩。 */
+.ppe-floating {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, 92vw);
+  pointer-events: none;
+}
+
+.ppe-floating .ppe-host {
+  pointer-events: auto;
+}
+
+/* 预览态：iframe 内容超出时在框内滚动，不再撑高后台页面。 */
+.ppe-host.is-preview .ppe-frame {
+  border-radius: var(--r-md);
+}
+
+/* ---------------- 我的扩展：卡片列表 ---------------- */
+
+.ppe-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ppe-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.ppe-card.is-on {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: #fff;
+}
+
+.ppe-card-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--muted);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1;
+  user-select: none;
+}
+
+.ppe-card.is-on .ppe-card-icon {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.ppe-card-main {
+  min-width: 0;
+}
+
+.ppe-card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ppe-card-title strong {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.ppe-card-version {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ppe-card-author {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.ppe-card-desc {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.ppe-card-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ppe-tag-label {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.ppe-tag-label:not(:first-child) {
+  margin-left: 6px;
+}
+
+.ppe-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  background: #fff;
+  white-space: nowrap;
+}
+
+.ppe-tag.is-soft {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ppe-tag.is-quiet {
+  color: var(--faint);
+  background: transparent;
+  border-style: dashed;
+}
+
+.ppe-card-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.ppe-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ppe-card-actions .btn {
+  padding: 0 7px;
+}
+
+.ppe-danger-btn {
+  color: var(--danger);
+}
+
+.ppe-danger-btn:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* ---------------- 导入区 ---------------- */
+
+.ppe-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.ppe-import-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.ppe-import-box strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ppe-import-box p {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.ppe-import-box .textarea {
+  width: 100%;
+  min-height: 104px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.ppe-import-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+}
+
+.ppe-sample-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ppe-sample-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+/* ---------------- 扩展工坊 ---------------- */
+
+.ppe-studio-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.ppe-studio-bar > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ppe-studio-bar strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.ppe-template-select {
+  width: 190px;
+}
+
+.ppe-template-select .select {
+  height: 32px;
+  font-size: 12.5px;
+}
+
+.ppe-studio {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 360px;
+  grid-template-areas: "form code preview";
+  gap: 16px;
+  align-items: start;
+}
+
+.ppe-studio-form {
+  grid-area: form;
+}
+
+.ppe-studio-code {
+  grid-area: code;
+  min-width: 0;
+}
+
+.ppe-studio-preview {
+  grid-area: preview;
+}
+
+.ppe-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 用双类选择器提高优先级：extensions.css 在 styles.css 之前 @import，
+   否则同优先级的 .panel-body 内边距会覆盖这里。 */
+.panel-body.ppe-form-stack {
+  padding: 18px;
+}
+
+.ppe-studio-form .form-grid {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.ppe-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 4px 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.ppe-check-grid .checkline {
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+
+.ppe-permission-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.ppe-permission-row {
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ppe-permission-row:last-child {
+  border-bottom: 0;
+}
+
+.ppe-permission-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ppe-permission-row strong {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.ppe-permission-hint {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.ppe-code-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel-body.ppe-code-stack {
+  padding: 18px;
+}
+
+.ppe-code {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #fff;
+}
+
+.ppe-code.is-over {
+  border-color: var(--danger);
+}
+
+.ppe-code-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-subtle);
+  font-size: 11.5px;
+}
+
+.ppe-code-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ppe-code-hint {
+  font-weight: 400;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.ppe-char-count {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ppe-char-count.is-over {
+  color: var(--danger);
+}
+
+.ppe-code-area {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 0;
+  outline: none;
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.ppe-code-area:focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ppe-studio-preview .panel-body {
+  padding: 16px;
+}
+
+.ppe-preview-stage {
+  min-height: 96px;
+  max-height: 520px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+/* ---------------- 开发说明 ---------------- */
+
+.ppe-docs .panel-body {
+  padding: 20px 22px;
+}
+
+.ppe-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 28px;
+}
+
+.ppe-doc-block {
+  min-width: 0;
+}
+
+.ppe-doc-block h4 {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ppe-doc-block > p {
+  margin-bottom: 10px;
+}
+
+.ppe-doc-block .mini-row {
+  align-items: flex-start;
+  padding: 8px 0;
+}
+
+.ppe-doc-block .mini-label {
+  flex: none;
+  min-width: 72px;
+}
+
+.ppe-doc-value {
+  flex: 1;
+  text-align: left !important;
+  font-weight: 400;
+  color: var(--muted) !important;
+  line-height: 1.6;
+}
+
+.ppe-doc-code {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.ppe-doc-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* ---------------- 响应式 ---------------- */
+
+@media (max-width: 1180px) {
+  .ppe-studio {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-areas:
+      "form form"
+      "code preview";
+  }
+
+  /* 表单横跨整行时，成对的短字段并排更紧凑。 */
+  .ppe-studio-form .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .ppe-studio {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "form"
+      "code"
+      "preview";
+  }
+
+  .ppe-docs-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ppe-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ppe-card-side {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .ppe-import-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ppe-studio-bar {
+    align-items: flex-start;
+  }
+
+  .ppe-template-select {
+    width: 100%;
+  }
+
+  .ppe-floating {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .ppe-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ppe-card-icon {
+    display: none;
+  }
+}
+
+/* 窄屏时卡片操作按钮换行，不挤压开关。 */
+@media (max-width: 560px) {
+  .ppe-card-actions {
+    justify-content: flex-start;
+  }
+
+  .ppe-sample-row {
+    align-items: flex-start;
+  }
+}

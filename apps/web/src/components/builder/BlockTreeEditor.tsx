@@ -1,0 +1,472 @@
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import type { BlockInstance, LayoutVariant } from '../../types';
+import { availableBlocks, createBlock, type BlockDefinition } from '../../lib/blocks';
+import {
+  MAX_BLOCKS,
+  appendChild,
+  columnCount,
+  countBlocks,
+  findBlock,
+  insertBlock,
+  moveBlock,
+  removeBlock,
+  updateBlock,
+} from '../../lib/blockTree';
+import { Badge, Button } from '../ui';
+
+/**
+ * 递归区块树编辑器。
+ *
+ * 所有增删移动都落到 lib/blockTree 的纯函数上；这里只负责：
+ * - 组件库点击/拖入；
+ * - 递归行渲染；
+ * - 分栏列投放区；
+ * - 行首拖拽。
+ *
+ * 数组下标只在同一级内使用，跨级移动通过 parentId + column 表示。
+ */
+
+const MIME_BLOCK = 'application/x-pp-block';
+const MIME_NEW = 'application/x-pp-new';
+
+interface AddTarget {
+  parentId: string | null;
+  column?: number;
+}
+
+function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' {
+  if (type === 'columns' || type === 'text') return 'layout';
+  if (type === 'image' || type === 'video' || type === 'website' || type === 'slideshow') return 'media';
+  if (type === 'stats' || type === 'chart' || type === 'list' || type === 'articles' || type === 'code') return 'data';
+  return 'content';
+}
+
+const GROUP_LABEL = {
+  layout: '布局',
+  media: '媒体',
+  data: '数据与代码',
+  content: '内容',
+} as const;
+
+const GROUP_ORDER = ['layout', 'media', 'data', 'content'] as const;
+
+function Palette({
+  variant,
+  onAdd,
+  onDragStart,
+}: {
+  variant: LayoutVariant;
+  onAdd: (def: BlockDefinition) => void;
+  onDragStart: (event: DragEvent<HTMLButtonElement>, def: BlockDefinition) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map: Record<string, BlockDefinition[]> = { layout: [], media: [], data: [], content: [] };
+    for (const def of availableBlocks(variant)) map[groupOf(def.type)].push(def);
+    return map;
+  }, [variant]);
+
+  return (
+    <div className="builder-palette">
+      <div className="panel-head compact">
+        <div>
+          <h3>组件</h3>
+          <p>点击追加，或拖到画布/分栏里。</p>
+        </div>
+      </div>
+      {GROUP_ORDER.map((group) => (
+        <details className="palette-group" key={group} open={group !== 'content'}>
+          <summary className="field-label">{GROUP_LABEL[group]}</summary>
+          <div className="palette-grid">
+            {grouped[group].map((def) => (
+              <button
+                key={def.type}
+                type="button"
+                className="palette-item"
+                draggable
+                onDragStart={(event) => onDragStart(event, def)}
+                onClick={() => onAdd(def)}
+                title={def.description}
+              >
+                <strong>{def.name}</strong>
+                <span>{def.description}</span>
+              </button>
+            ))}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function DropZone({
+  onDropBlock,
+  onDropNew,
+  label = '拖到这里',
+}: {
+  onDropBlock: (id: string) => void;
+  onDropNew: (type: string) => void;
+  label?: string;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      className={`tree-drop${over ? ' is-over' : ''}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = event.dataTransfer.types.includes(MIME_NEW) ? 'copy' : 'move';
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setOver(false);
+        const blockId = event.dataTransfer.getData(MIME_BLOCK) || event.dataTransfer.getData('text/plain');
+        if (blockId && !blockId.startsWith('new:')) {
+          onDropBlock(blockId);
+          return;
+        }
+        const type =
+          event.dataTransfer.getData(MIME_NEW) ||
+          (blockId.startsWith('new:') ? blockId.slice(4) : '');
+        if (type) onDropNew(type);
+      }}
+      data-drop-label={label}
+    />
+  );
+}
+
+export function BlockTreeEditor({
+  variant,
+  blocks,
+  selectedId,
+  onChange,
+  onSelect,
+  onLocate,
+}: {
+  variant: LayoutVariant;
+  blocks: BlockInstance[];
+  selectedId: string | null;
+  onChange: (blocks: BlockInstance[]) => void;
+  onSelect: (id: string | null) => void;
+  /** 双击组件行：把预览视角移动到该组件。 */
+  onLocate: (id: string) => void;
+}) {
+  const selected = findBlock(blocks, selectedId ?? '');
+  const total = countBlocks(blocks);
+  const full = total >= MAX_BLOCKS;
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 在预览里双击/选中区块时，左侧结构树跟着滚动到对应行。
+  useEffect(() => {
+    if (!selectedId) return;
+    const row = containerRef.current?.querySelector<HTMLElement>('.tree-row.is-selected');
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [selectedId]);
+
+  const toggleCollapse = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const addAt = (target: AddTarget, type: string) => {
+    if (countBlocks(blocks) >= MAX_BLOCKS) return;
+    const parent = target.parentId ? findBlock(blocks, target.parentId)?.block : null;
+    const index = parent?.children?.length ?? blocks.length;
+    const block = createBlock(type);
+    onChange(insertBlock(blocks, { ...target, index }, block));
+    onSelect(block.id);
+  };
+
+  const addChild = (parentId: string, column: number, type: string) => {
+    if (countBlocks(blocks) >= MAX_BLOCKS) return;
+    const block = createBlock(type);
+    onChange(appendChild(blocks, parentId, column, block));
+    onSelect(block.id);
+  };
+
+  const handlePaletteAdd = (def: BlockDefinition) => {
+    if (selected?.block.type === 'columns') {
+      addChild(selected.block.id, 1, def.type);
+      return;
+    }
+    addAt({ parentId: null }, def.type);
+  };
+
+  const move = (id: string, direction: -1 | 1) => {
+    const location = findBlock(blocks, id);
+    if (!location) return;
+    const siblings = location.parent?.children ?? blocks;
+    const index = location.index + direction;
+    if (index < 0 || index >= siblings.length) return;
+    onChange(
+      moveBlock(blocks, id, {
+        parentId: location.parent?.id ?? null,
+        column: location.column,
+        index,
+      }),
+    );
+  };
+
+  const remove = (id: string) => {
+    onChange(removeBlock(blocks, id));
+    if (selectedId === id) onSelect(null);
+  };
+
+  const toggleHidden = (block: BlockInstance) => {
+    onChange(updateBlock(blocks, block.id, { hidden: !block.hidden }));
+  };
+
+  const renderRows = (
+    list: BlockInstance[],
+    parentId: string | null,
+    depth = 0,
+  ): ReactNode => (
+    <div className="tree-rows">
+      {list.map((block, index) => {
+        const isSelected = block.id === selectedId;
+        const isColumns = block.type === 'columns';
+        const hasChildren = (block.children?.length ?? 0) > 0;
+        const cols = isColumns
+          ? columnCount(block)
+          : block.type === 'container' || hasChildren
+            ? 1
+            : 0;
+        const childCount = block.children?.length ?? 0;
+        const isCollapsed = collapsed.has(block.id);
+        return (
+          <div className="tree-node" key={block.id} data-depth={depth}>
+            <div
+              className={`tree-row${isSelected ? ' is-selected' : ''}${block.hidden ? ' is-hidden' : ''}${
+                cols > 0 ? ' is-parent' : ''
+              }`}
+              data-depth={depth}
+              draggable
+              onDragStart={(event) => {
+                event.stopPropagation();
+                event.dataTransfer.setData(MIME_BLOCK, block.id);
+                event.dataTransfer.setData('text/plain', block.id);
+                event.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes(MIME_BLOCK) || event.dataTransfer.types.includes(MIME_NEW)) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.dataTransfer.dropEffect = event.dataTransfer.types.includes(MIME_NEW) ? 'copy' : 'move';
+                  event.currentTarget.classList.add('is-nest-target');
+                }
+              }}
+              onDragLeave={(event) => {
+                event.currentTarget.classList.remove('is-nest-target');
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.classList.remove('is-nest-target');
+                const dragged = event.dataTransfer.getData(MIME_BLOCK) || event.dataTransfer.getData('text/plain');
+                const newType = event.dataTransfer.getData(MIME_NEW);
+                if (newType) {
+                  addChild(block.id, 1, newType);
+                  return;
+                }
+                if (!dragged || dragged === block.id) return;
+                // 拖到组件行上 = 成为它的子图层，而不是同级排序。
+                onChange(
+                  moveBlock(blocks, dragged, {
+                    parentId: block.id,
+                    column: 1,
+                    index: block.children?.length ?? 0,
+                  }),
+                );
+              }}
+              onClick={() => onSelect(block.id)}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                onSelect(block.id);
+                onLocate(block.id);
+              }}
+            >
+              {cols > 0 ? (
+                <button
+                  type="button"
+                  className="tree-toggle"
+                  aria-label={isCollapsed ? '展开子组件' : '收起子组件'}
+                  aria-expanded={!isCollapsed}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleCollapse(block.id);
+                  }}
+                >
+                  {isCollapsed ? '▸' : '▾'}
+                </button>
+              ) : (
+                <span className="tree-toggle tree-toggle-spacer" aria-hidden />
+              )}
+              <span className="tree-grip" aria-hidden>⠿</span>
+              <span className="tree-main">
+                <strong>{block.title || block.type}</strong>
+                <span className="tree-meta">
+                  <Badge tone="muted">{block.type}</Badge>
+                  {cols > 0 ? <span className="tree-child-count">{childCount} 子项</span> : null}
+                  {block.animation !== 'none' ? <span>{block.animation}</span> : null}
+                  {block.hidden ? <span>已隐藏</span> : null}
+                </span>
+              </span>
+              <span className="tree-actions" onClick={(event) => event.stopPropagation()}>
+                <button type="button" className="icon-btn" title="上移" onClick={() => move(block.id, -1)}>
+                  ↑
+                </button>
+                <button type="button" className="icon-btn" title="下移" onClick={() => move(block.id, 1)}>
+                  ↓
+                </button>
+                <button type="button" className="icon-btn" title={block.hidden ? '显示' : '隐藏'} onClick={() => toggleHidden(block)}>
+                  {block.hidden ? '◌' : '◉'}
+                </button>
+                <button type="button" className="icon-btn danger" title="删除" onClick={() => remove(block.id)}>
+                  ×
+                </button>
+              </span>
+            </div>
+
+            {cols > 0 && !isCollapsed ? (
+              <div className="tree-children">
+                {Array.from({ length: cols }, (_, columnIndex) => {
+                  const column = columnIndex + 1;
+                  const children = (block.children ?? []).filter((child) => (child.column ?? 1) === column);
+                  return (
+                    <div
+                      className="tree-column"
+                      key={column}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = event.dataTransfer.types.includes(MIME_NEW) ? 'copy' : 'move';
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const blockId =
+                          event.dataTransfer.getData(MIME_BLOCK) ||
+                          event.dataTransfer.getData('text/plain');
+                        if (blockId && !blockId.startsWith('new:')) {
+                          onChange(
+                            moveBlock(blocks, blockId, {
+                              parentId: block.id,
+                              column,
+                              index: (block.children ?? []).filter((child) => (child.column ?? 1) === column).length,
+                            }),
+                          );
+                          return;
+                        }
+                        const type =
+                          event.dataTransfer.getData(MIME_NEW) ||
+                          (blockId.startsWith('new:') ? blockId.slice(4) : '');
+                        if (type) addChild(block.id, column, type);
+                      }}
+                    >
+                      <p className="tree-column-label">
+                        {block.type === 'columns' ? `第 ${column} 栏` : '子组件'}
+                        <span>{children.length}</span>
+                      </p>
+                      {renderRows(children, block.id, depth + 1)}
+                      <DropZone
+                        label={`拖入第 ${column} 栏`}
+                        onDropBlock={(id) =>
+                          onChange(
+                            moveBlock(blocks, id, {
+                              parentId: block.id,
+                              column,
+                              index: (block.children ?? []).filter((child) => (child.column ?? 1) === column).length,
+                            }),
+                          )
+                        }
+                        onDropNew={(type) => addChild(block.id, column, type)}
+                      />
+                      <div className="tree-column-add">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="plus"
+                          disabled={full}
+                          onClick={() => addChild(block.id, column, 'text')}
+                        >
+                          文本
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="plus"
+                          disabled={full}
+                          onClick={() => addChild(block.id, column, 'columns')}
+                        >
+                          分栏
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="plus"
+                          disabled={full}
+                          onClick={() => addChild(block.id, column, 'container')}
+                        >
+                          容器
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {parentId === null ? (
+              <DropZone
+                label="拖到这里排序"
+                onDropBlock={(id) => onChange(moveBlock(blocks, id, { parentId: null, index: index + 1 }))}
+                onDropNew={(type) => addAt({ parentId: null }, type)}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="builder-left panel" ref={containerRef}>
+      <Palette
+        variant={variant}
+        onAdd={handlePaletteAdd}
+        onDragStart={(event, def) => {
+          event.dataTransfer.setData(MIME_NEW, def.type);
+          event.dataTransfer.setData('text/plain', `new:${def.type}`);
+          event.dataTransfer.effectAllowed = 'copy';
+        }}
+      />
+      <div className="panel-head compact">
+        <div>
+          <h3>页面结构</h3>
+          <p>
+            {total} 个区块{selected ? ` · 已选「${selected.block.title || selected.block.type}」` : ''}
+          </p>
+        </div>
+      </div>
+      {blocks.length === 0 ? (
+        <div className="builder-empty">
+          <p>还没有区块。从上方组件库点击添加，或把组件拖进来。</p>
+        </div>
+      ) : (
+        <>
+          {renderRows(blocks, null)}
+          <DropZone
+            label="拖到页面末尾"
+            onDropBlock={(id) => onChange(moveBlock(blocks, id, { parentId: null, index: blocks.length }))}
+            onDropNew={(type) => addAt({ parentId: null }, type)}
+          />
+        </>
+      )}
+      {full ? <p className="field-hint">已达到 200 个区块上限，删除一些再添加。</p> : null}
+    </div>
+  );
+}

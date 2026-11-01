@@ -1,0 +1,166 @@
+import { useEffect, useState } from 'react';
+import { copyText } from '../lib/clipboard';
+import { changePort, collectLocalState, currentPort, originForPort, readRuntime, type RuntimeInfo } from '../lib/runtime';
+import { useToast } from '../lib/toast';
+import { Badge, Button, Callout, Field, Input } from './ui';
+
+/**
+ * 访问端口面板：默认 80，可以在后台直接改成其他端口。
+ *
+ * 只有 `npm start`（scripts/serve.mjs）提供的静态服务支持运行中切换；
+ * Vite 开发服务器的端口在启动时确定，这里会给出重启命令而不是假装能改。
+ */
+export function AccessPortPanel() {
+  const toast = useToast();
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [value, setValue] = useState(String(currentPort()));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void readRuntime().then((info) => {
+      if (!alive) return;
+      setRuntime(info);
+      setValue(String(info?.port ?? currentPort()));
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const parsed = Number(value);
+  const valid = Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535;
+  const dirty = valid && runtime !== null && parsed !== runtime.port;
+  const command = `npm start -- --port ${valid && parsed !== 80 ? parsed : 8080}`;
+
+  const apply = async () => {
+    if (!runtime) return;
+    if (!valid) {
+      setError('端口需要是 1–65535 之间的整数。');
+      return;
+    }
+    if (parsed === runtime.port) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await changePort(parsed, collectLocalState());
+      const target = new URL(`${window.location.pathname}${window.location.search}`, result.origin);
+      if (result.import_token) target.searchParams.set('pp_import', result.import_token);
+      toast.push('ok', '端口已切换', `正在跳转到 ${result.origin}`);
+      window.setTimeout(() => window.location.assign(target.toString()), 700);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '端口切换失败，请稍后再试。');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h3>访问端口</h3>
+          <p>站点对外提供访问的端口，默认 80。</p>
+        </div>
+        <Badge tone={runtime ? 'ok' : 'muted'}>
+          {loading ? '读取中' : runtime ? '静态服务' : '开发服务器'}
+        </Badge>
+      </div>
+      <div className="panel-body" style={{ paddingTop: 8 }}>
+        {loading ? <p className="tiny faint">正在读取运行时信息…</p> : null}
+
+        {!loading && runtime ? (
+          <>
+            <div className="mini-list">
+              <div className="mini-row">
+                <span className="mini-label">当前地址</span>
+                <span className="mini-value mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
+                  {runtime.origin}
+                </span>
+              </div>
+              <div className="mini-row">
+                <span className="mini-label">监听端口</span>
+                <span className="mini-value mono">
+                  {runtime.port}
+                  {runtime.port === 80 ? ' · 默认' : ''}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-16">
+              <Field
+                label="修改端口"
+                htmlFor="access-port"
+                error={error || (!valid && value !== '' ? '端口需要是 1–65535 之间的整数。' : null)}
+                hint="1–65535。应用后立即在新端口监听，本页会自动跳转。"
+              >
+                <div className="row gap-8">
+                  <Input
+                    id="access-port"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={65535}
+                    value={value}
+                    onChange={(e) => {
+                      setValue(e.target.value);
+                      setError('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && dirty && !busy) void apply();
+                    }}
+                    style={{ width: 96 }}
+                  />
+                  <Button
+                    size="sm"
+                    icon="check"
+                    loading={busy}
+                    disabled={!dirty}
+                    onClick={() => void apply()}
+                  >
+                    应用
+                  </Button>
+                </div>
+              </Field>
+            </div>
+            <p className="tiny faint mt-8" style={{ lineHeight: 1.7 }}>
+              80 是浏览器默认端口，地址栏不用写端口号；改成其他端口后地址会带上
+              <code className="mono"> :端口</code>。切换时本站的配置与演示数据会一起带到新地址。
+            </p>
+          </>
+        ) : null}
+
+        {!loading && !runtime ? (
+          <>
+            <Callout tone="info" icon="server" title="端口在启动时确定">
+              当前由开发服务器（Vite）提供页面，运行中不能改端口。用
+              <code className="mono"> npm start </code>
+              运行的站点可以在后台直接修改。
+            </Callout>
+            <pre className="connect-commands mt-12">{command}</pre>
+            <div className="row gap-8 mt-8">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={copied ? 'check' : 'copy'}
+                onClick={async () => {
+                  const ok = await copyText(command);
+                  setCopied(ok);
+                  if (ok) toast.push('ok', '命令已复制', '在 apps/web 目录下执行。');
+                }}
+              >
+                {copied ? '已复制' : '复制命令'}
+              </Button>
+            </div>
+            <p className="tiny faint mt-8">
+              当前地址 {originForPort(currentPort())} · 端口 {currentPort()}
+            </p>
+          </>
+        ) : null}
+      </div>
+    </section>
+  );
+}

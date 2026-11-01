@@ -1,0 +1,30 @@
+{
+  "name": "@practacu/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Practacu Press 前台与管理后台（React）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "node scripts/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "happy-dom": "^18.0.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "^3.2.4"
+  }
+}

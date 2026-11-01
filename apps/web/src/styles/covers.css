@@ -1,0 +1,201 @@
+/* =========================================================
+   文章自定义封面（.pcov-*）
+   - 只使用主题令牌（--bg / --ink / --muted / --line / --accent），
+     浅色、深色与夜航主题共用一份样式。
+   - 封面外框沿用基础 `.cover` 的圆角与边框；自定义图片直接用 <img> 铺满。
+   ========================================================= */
+
+.cover.cover-custom {
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+
+.cover.cover-custom > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ------------------------------------------------------------------ *
+ * 创作页「封面」面板（.pcov-*）
+ * ------------------------------------------------------------------ */
+
+.pcov-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pcov-preview {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--bg-subtle);
+}
+
+/* 预览画框自己带圆角与描边，里面的封面不再重复。 */
+.pcov-preview .cover {
+  border-radius: 0;
+}
+
+.pcov-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pcov-url-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pcov-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pcov-pos {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pcov-pos .seg {
+  flex: 1 1 180px;
+  max-width: 240px;
+}
+
+.pcov-pos .seg button {
+  flex: 1;
+}
+
+.pcov-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pcov-hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* 隐藏封面时的预览占位：前台整块不显示，这里只说明状态。 */
+.pcov-hidden {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  aspect-ratio: 16 / 9;
+  padding: 16px;
+  text-align: center;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--bg-subtle) 0 8px,
+    var(--bg-sunken) 8px 16px
+  );
+}
+
+.pcov-hidden strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pcov-hidden span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pcov-body .toggle-row {
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.pcov-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* ------------------------------------------------------------------ *
+ * 内容库表格的封面列
+ * ------------------------------------------------------------------ */
+
+.content-cover-thumb {
+  position: relative;
+  display: block;
+  width: 72px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  line-height: 0;
+  background: var(--bg-subtle);
+}
+
+.content-cover-thumb:hover {
+  border-color: var(--accent);
+}
+
+.content-cover-thumb .cover {
+  border-radius: 0;
+  width: 100%;
+}
+
+.content-cover-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.content-cover-flag {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  padding: 1px 5px;
+  border-radius: var(--r-pill);
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--bg);
+  background: color-mix(in srgb, var(--ink) 78%, transparent);
+}
+
+.content-cover-hidden {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--bg-subtle) 0 6px,
+    var(--bg-sunken) 6px 12px
+  );
+}
+
+/* 缩略图在窄屏收起文字标记，只保留图片，避免挤压标题列。 */
+@media (max-width: 720px) {
+  .content-cover-thumb {
+    width: 56px;
+  }
+
+  .content-cover-flag {
+    display: none;
+  }
+}
+

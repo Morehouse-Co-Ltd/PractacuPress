@@ -1,0 +1,16 @@
+# 默认 robots.txt。部署后按需要改成你自己的域名与规则。
+# 完整的 sitemap 可以在「管理后台 → SEO → 站点地图」里生成并下载。
+
+User-agent: *
+Allow: /
+
+# 后台、接口与认证页不参与收录
+Disallow: /admin
+Disallow: /api
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+
+# 上传 sitemap.xml 到站点根目录后，取消下一行注释并换成完整地址：
+# Sitemap: https://press.example.com/sitemap.xml

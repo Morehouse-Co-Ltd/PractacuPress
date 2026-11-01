@@ -1,0 +1,200 @@
+/* =========================================================
+   页头样式（最上方 Tab 栏）
+   - 经典吸顶 / 顶部透明 / 悬浮胶囊（滚动后切换）
+   - 背景高斯模糊可配置：--header-blur
+   - 选择器带 html 前缀：覆盖 styles.css 的基础规则与夜航（bento）覆盖，
+     所以本文件必须靠 @import 在最前面也能生效。
+   ========================================================= */
+
+html .site-header {
+  transition: background-color 240ms ease, border-color 240ms ease, box-shadow 240ms ease;
+}
+
+/* ---- 高斯模糊开关：经典 / 顶部透明作用在整条页头 ---- */
+html .site-header[data-blur='on'] {
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  -webkit-backdrop-filter: blur(var(--header-blur, 10px));
+  backdrop-filter: blur(var(--header-blur, 10px));
+}
+html .site-header[data-blur='off'] {
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ---- 经典吸顶：滚动后加一层阴影，强调已经离开页首 ---- */
+html[data-header-style='classic'] .site-header.is-scrolled {
+  box-shadow: 0 16px 34px -30px rgb(0 0 0 / 0.6);
+}
+
+/* ---- 顶部透明：页首完全透明，滚过阈值后出现底色 ---- */
+html[data-header-style='transparent'] .site-header:not(.is-scrolled) {
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-header-style='transparent'] .site-header:not(.is-scrolled)::after {
+  display: none;
+}
+html[data-header-style='transparent'] .site-header.is-scrolled {
+  box-shadow: 0 16px 34px -30px rgb(0 0 0 / 0.6);
+}
+
+/* ---- 悬浮胶囊：顶部透明，滚动后收缩成一条悬浮圆角栏 ---- */
+html[data-header-style='float'] .site-header {
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  /* 顶部始终留出与内容的空气，避免滚动那一刻整页跳动。 */
+  padding-top: 10px;
+}
+html[data-header-style='float'] .site-header::after {
+  display: none;
+}
+html[data-header-style='float'] .header-inner {
+  width: min(100%, 1280px);
+  margin-inline: auto;
+  padding-inline: 18px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-md, 6px) + 8px);
+  background: transparent;
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease,
+    box-shadow 240ms ease,
+    backdrop-filter 240ms ease;
+}
+html[data-header-style='float'] .site-header.is-scrolled .header-inner {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  box-shadow: 0 22px 48px -36px rgb(0 0 0 / 0.65);
+}
+html[data-header-style='float'] .site-header[data-blur='on'].is-scrolled .header-inner {
+  -webkit-backdrop-filter: blur(var(--header-blur, 10px));
+  backdrop-filter: blur(var(--header-blur, 10px));
+}
+html[data-header-style='float'] .site-header[data-blur='off'].is-scrolled .header-inner {
+  background: var(--bg);
+}
+
+/* 悬浮胶囊里的移动端菜单也变成一张卡片。 */
+html[data-header-style='float'] .site-header .mobile-menu {
+  margin: 8px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--r-md, 6px) + 8px);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+}
+html[data-header-style='float'] .site-header[data-blur='on'] .mobile-menu {
+  -webkit-backdrop-filter: blur(var(--header-blur, 10px));
+  backdrop-filter: blur(var(--header-blur, 10px));
+}
+
+@media (max-width: 560px) {
+  html[data-header-style='float'] .header-inner {
+    padding-inline: 12px;
+  }
+}
+
+/* =========================================================
+   后台「主题设置 → 导航与页脚」的页头样式选择器
+   ========================================================= */
+
+.header-style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.header-style-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.header-style-card:hover {
+  border-color: var(--line-strong);
+}
+
+.header-style-card.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.header-style-card strong {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.header-style-card em {
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.header-style-preview {
+  position: relative;
+  display: block;
+  height: 56px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--bg-subtle), var(--bg));
+}
+
+/* 页头条 */
+.header-style-preview::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  background: color-mix(in srgb, var(--ink) 12%, var(--bg));
+  border-bottom: 1px solid var(--line);
+}
+
+/* 正文占位 */
+.header-style-preview::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 27px;
+  height: 22px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 8%, var(--bg));
+}
+
+.header-style-preview.is-transparent::before {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+
+.header-style-preview.is-float::before {
+  top: 5px;
+  left: 10px;
+  right: 10px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  box-shadow: 0 8px 14px -10px rgb(0 0 0 / 0.6);
+}
+
+@media (max-width: 720px) {
+  .header-style-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

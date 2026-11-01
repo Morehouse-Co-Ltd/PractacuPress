@@ -1,0 +1,177 @@
+/* =========================================================
+   链接卡片（.pp-linkcard-*）
+   - 正文里的「卡片式链接」：封面 + 标题 + 域名 / 说明。
+   - 只用白名单标签（a / img / strong / em / br），服务端清洗后保留 class。
+   - 前台、编辑器预览与后台预览共用这一份样式。
+   - 布局用 CSS Grid：白名单没有 div/span，标题与说明靠 grid 定位，
+     <br> 只当作 Markdown 语义占位，显示时隐藏。
+   ========================================================= */
+
+.article-body a.pp-linkcard,
+.pp-linkcard-preview a.pp-linkcard {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 3px;
+  margin: 26px 0;
+  padding: 12px;
+  border: 1px solid var(--line, #e6e6df);
+  border-radius: var(--r-lg, 10px);
+  background: var(--bg-subtle, #fafaf7);
+  color: var(--ink, #14140f);
+  text-decoration: none !important;
+  overflow-wrap: anywhere;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+/* 封面：高度跟着两行文字走，限制在 96–140px 之间。 */
+.article-body a.pp-linkcard .pp-linkcard-cover,
+.pp-linkcard-preview a.pp-linkcard .pp-linkcard-cover {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 100%;
+  height: 100%;
+  min-height: 84px;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: var(--r-md, 6px);
+  background: var(--bg-sunken, #f5f5f0);
+}
+
+.article-body a.pp-linkcard > strong,
+.pp-linkcard-preview a.pp-linkcard > strong {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 1.02em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.article-body a.pp-linkcard > em,
+.pp-linkcard-preview a.pp-linkcard > em {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
+  font-style: normal;
+  font-size: 0.76em;
+  line-height: 1.6;
+  color: var(--muted, #83837a);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 结构里的 <br> 只服务于 Markdown 序列化，不参与栅格布局。 */
+.article-body a.pp-linkcard > br,
+.pp-linkcard-preview a.pp-linkcard > br {
+  display: none;
+}
+
+/* 没有封面时的占位：纯 CSS 伪元素，不新增标签。 */
+a.pp-linkcard.pp-linkcard-plain::before {
+  content: "↗";
+  display: flex;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-items: center;
+  justify-content: center;
+  min-height: 84px;
+  border-radius: var(--r-md, 6px);
+  background: var(--accent-soft, #eef4f0);
+  color: var(--accent, #1f5c4a);
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.article-body a.pp-linkcard:hover,
+.pp-linkcard-preview a.pp-linkcard:hover {
+  border-color: var(--line-strong, #d3d3ca);
+  box-shadow: 0 10px 26px rgb(20 20 15 / 0.08);
+  transform: translateY(-2px);
+}
+
+/* ---------------- 后台弹窗里的卡片预览 ---------------- */
+
+.pp-linkcard-preview {
+  margin-top: 4px;
+}
+
+.pp-linkcard-preview a.pp-linkcard {
+  margin: 0;
+  pointer-events: none;
+}
+
+/* ---------------- 「文字 / 卡片」分段选择器 ---------------- */
+
+.link-mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line, #e7e7e1);
+  border-radius: var(--r-md, 6px);
+  background: var(--bg-sunken, #f5f5f0);
+}
+
+.link-mode-btn {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: var(--r-sm, 4px);
+  background: transparent;
+  color: var(--muted, #83837a);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.link-mode-btn:hover {
+  color: var(--ink, #14140f);
+}
+
+.link-mode-btn.is-on {
+  background: var(--bg, #ffffff);
+  color: var(--ink, #14140f);
+  box-shadow: 0 1px 2px rgb(20 20 15 / 0.08);
+}
+
+/* ---------------- 移动端：封面在上，文字在下 ---------------- */
+
+@media (max-width: 640px) {
+  .article-body a.pp-linkcard,
+  .pp-linkcard-preview a.pp-linkcard {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+  }
+
+  .article-body a.pp-linkcard .pp-linkcard-cover,
+  .pp-linkcard-preview a.pp-linkcard .pp-linkcard-cover {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    height: 160px;
+    max-height: none;
+  }
+
+  .article-body a.pp-linkcard > strong,
+  .pp-linkcard-preview a.pp-linkcard > strong {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .article-body a.pp-linkcard > em,
+  .pp-linkcard-preview a.pp-linkcard > em {
+    grid-column: 1;
+    grid-row: 3;
+    white-space: normal;
+  }
+
+  a.pp-linkcard.pp-linkcard-plain::before {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 72px;
+  }
+}
