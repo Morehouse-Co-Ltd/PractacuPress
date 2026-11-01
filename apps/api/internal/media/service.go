@@ -1,9 +1,9 @@
 package media
 
 import (
-	"io"
 	"context"
 	"errors"
+	"io"
 	"time"
 )
 
@@ -35,14 +35,18 @@ type Repository interface {
 	// FindAsset loads an inspected asset inside a site scope.
 	FindAsset(ctx context.Context, siteID, assetID string) (Asset, error)
 	InsertAsset(ctx context.Context, asset Asset) (Asset, error)
+	// DeleteAsset removes an asset record. Deleting a missing record is reported as
+	// ErrNotFound so the caller does not believe a stale object was cleaned up.
+	DeleteAsset(ctx context.Context, siteID, assetID string) error
 }
 
 // Service implements the two phase upload flow.
 type Service struct {
-	repo    Repository
-	scanner Scanner
-	storage Storage
-	now     func() time.Time
+	repo     Repository
+	scanner  Scanner
+	storage  Storage
+	storages map[Purpose]Storage
+	now      func() time.Time
 }
 
 // ServiceConfig configures a Service.
@@ -50,9 +54,13 @@ type ServiceConfig struct {
 	Repository Repository
 	Scanner    Scanner
 	// Storage is optional. Without it the API cannot accept bytes, so completion can
-	// only ask for manual review.
+	// only ask for manual review. It is the fallback for every purpose that has no
+	// dedicated adapter.
 	Storage Storage
-	Now     func() time.Time
+	// Storages optionally routes each purpose to its own adapter. A missing entry
+	// falls back to Storage, which keeps old deployments unchanged.
+	Storages map[Purpose]Storage
+	Now      func() time.Time
 }
 
 // NewService builds a Service.
@@ -63,11 +71,37 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if cfg.Scanner == nil {
 		return nil, errors.New("media: scanner is required")
 	}
-	service := &Service{repo: cfg.Repository, scanner: cfg.Scanner, storage: cfg.Storage, now: cfg.Now}
+
+	storages := make(map[Purpose]Storage, len(cfg.Storages))
+	for purpose, storage := range cfg.Storages {
+		if storage != nil {
+			storages[purpose] = storage
+		}
+	}
+
+	service := &Service{
+		repo:     cfg.Repository,
+		scanner:  cfg.Scanner,
+		storage:  cfg.Storage,
+		storages: storages,
+		now:      cfg.Now,
+	}
 	if service.now == nil {
 		service.now = func() time.Time { return time.Now().UTC() }
 	}
 	return service, nil
+}
+
+// storageFor returns the adapter responsible for a purpose.
+//
+// Every byte path goes through here: upload, inspection and download of a resource
+// must agree on the adapter, and the only reliable key is the purpose recorded with
+// the upload or asset. Nil means no adapter is configured at all.
+func (s *Service) storageFor(purpose Purpose) Storage {
+	if storage, ok := s.storages[purpose]; ok {
+		return storage
+	}
+	return s.storage
 }
 
 // CreateUpload opens an upload session.
@@ -122,14 +156,15 @@ func (s *Service) StoreContent(
 	if upload.Expired(s.now()) {
 		return Upload{}, ErrNotFound
 	}
-	if s.storage == nil {
+	storage := s.storageFor(upload.Purpose)
+	if storage == nil {
 		return Upload{}, ErrStorageMissing
 	}
 	if size != upload.Size {
 		return Upload{}, ErrInvalidInput
 	}
 
-	if putErr := s.storage.Put(ctx, upload.StorageKey, body, upload.Size); putErr != nil {
+	if putErr := storage.Put(ctx, upload.StorageKey, body, upload.Size); putErr != nil {
 		return Upload{}, putErr
 	}
 	if markErr := s.repo.MarkUploadUploaded(ctx, uploadID, s.now()); markErr != nil {
@@ -139,6 +174,7 @@ func (s *Service) StoreContent(
 	upload.Status = UploadUploaded
 	return upload, nil
 }
+
 // CompleteUpload inspects the stored object and turns it into an asset.
 //
 // Failures are all fail closed: if inspection cannot run, the session is left as it
@@ -161,10 +197,11 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 	}
 
 	// Without a sample the service can only ask a human; it never assumes a file is
-	// clean just because it could not look at it.
+	// clean just because it could not look at it. The sample is read from the adapter
+	// the upload was written to, selected by the session's recorded purpose.
 	var head []byte
-	if s.storage != nil {
-		sample, readErr := s.storage.ReadHead(ctx, upload.StorageKey, HeadSampleSize)
+	if storage := s.storageFor(upload.Purpose); storage != nil {
+		sample, readErr := storage.ReadHead(ctx, upload.StorageKey, HeadSampleSize)
 		if readErr != nil && !errors.Is(readErr, ErrStorageObjectMissing) {
 			return Asset{}, readErr
 		}
@@ -190,6 +227,7 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 		MIME:       upload.DeclaredMIME,
 		Size:       upload.Size,
 		ScanStatus: result.Status,
+		Purpose:    upload.Purpose,
 		ReasonCode: result.ReasonCode,
 		CreatedAt:  now,
 	}
@@ -218,18 +256,38 @@ func (s *Service) OpenAsset(
 	actor Actor,
 	assetID string,
 ) (Asset, io.ReadCloser, error) {
-	asset, err := s.repo.FindAsset(ctx, actor.SiteID, assetID)
+	return s.OpenAssetInSite(ctx, actor.SiteID, assetID)
+}
+
+// OpenAssetInSite returns a clean asset scoped to one site, without a caller.
+//
+// It exists for the anonymous read path: an image embedded in a published article has to
+// load for a reader who has no session at all, and the only thing that then identifies
+// the tenant is the hostname the request resolved to. Who may read at all is the
+// transport's decision (it applies the site's visibility mode); this function only
+// enforces the site scope and the scan verdict.
+func (s *Service) OpenAssetInSite(
+	ctx context.Context,
+	siteID string,
+	assetID string,
+) (Asset, io.ReadCloser, error) {
+	if siteID == "" || assetID == "" {
+		return Asset{}, nil, ErrNotFound
+	}
+
+	asset, err := s.repo.FindAsset(ctx, siteID, assetID)
 	if err != nil {
 		return Asset{}, nil, err
 	}
 	if !asset.Referenceable() {
 		return Asset{}, nil, ErrNotFound
 	}
-	if s.storage == nil {
+	storage := s.storageFor(asset.Purpose)
+	if storage == nil {
 		return Asset{}, nil, ErrStorageMissing
 	}
 
-	reader, err := s.storage.Open(ctx, asset.StorageKey)
+	reader, err := storage.Open(ctx, asset.StorageKey)
 	if err != nil {
 		if errors.Is(err, ErrStorageObjectMissing) {
 			return Asset{}, nil, ErrNotFound
@@ -238,6 +296,32 @@ func (s *Service) OpenAsset(
 	}
 	return asset, reader, nil
 }
+
+// DeleteAsset removes a stored object and its record.
+//
+// The adapter comes from the asset's persisted purpose, never from a caller supplied
+// value: an avatar and an article image may live in different directories or buckets,
+// and deleting with the wrong adapter would either miss the object or hit an unrelated
+// key. Storage deletes are idempotent, so a missing object still removes the record.
+func (s *Service) DeleteAsset(ctx context.Context, actor Actor, assetID string) error {
+	asset, err := s.repo.FindAsset(ctx, actor.SiteID, assetID)
+	if err != nil {
+		return err
+	}
+	if asset.OwnerID != actor.UserID {
+		return ErrPermissionDenied
+	}
+
+	storage := s.storageFor(asset.Purpose)
+	if storage == nil {
+		return ErrStorageMissing
+	}
+	if err := storage.Delete(ctx, asset.StorageKey); err != nil {
+		return err
+	}
+	return s.repo.DeleteAsset(ctx, actor.SiteID, assetID)
+}
+
 // Referenceable reports whether an asset may be linked from content.
 //
 // It exists so callers ask a question rather than inspecting the status themselves:

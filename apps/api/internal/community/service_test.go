@@ -3,6 +3,7 @@ package community
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,34 @@ func (f *fakeRepo) FindComment(_ context.Context, siteID, commentID string) (Com
 		return Comment{}, ErrNotFound
 	}
 	return comment, nil
+}
+
+func (f *fakeRepo) ListComments(_ context.Context, filter CommentListFilter) ([]Comment, error) {
+	statuses := map[string]bool{}
+	for _, status := range filter.Statuses {
+		statuses[status] = true
+	}
+	out := make([]Comment, 0, len(f.comments))
+	for _, comment := range f.comments {
+		if comment.SiteID != filter.SiteID {
+			continue
+		}
+		if filter.TargetType != "" && comment.TargetType != filter.TargetType {
+			continue
+		}
+		if filter.TargetID != "" && comment.TargetID != filter.TargetID {
+			continue
+		}
+		if len(statuses) > 0 && !statuses[comment.Status] {
+			continue
+		}
+		out = append(out, comment)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
 }
 
 func (f *fakeRepo) InsertComment(_ context.Context, comment Comment, _ string, _ site.AuditEntry) (Comment, error) {
@@ -167,6 +196,71 @@ func TestEditAndDeletePermissions(t *testing.T) {
 	_, err = service.DeleteComment(ctx, moderator, created.ID)
 	require.ErrorIs(t, err, ErrPermissionDenied)
 	require.Equal(t, before, repo.writes)
+}
+
+// TestListCommentsHidesNonVisibleFromReaders pins the read model: a reader without
+// moderation rights never receives hidden or pending comments, even when the query
+// does not ask for a status.
+func TestListCommentsHidesNonVisibleFromReaders(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo)
+	ctx := context.Background()
+	author := Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember}
+	moderator := Actor{UserID: "m1", SiteID: "s1", Role: site.RoleEditor}
+
+	visible, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1", Body: "visible",
+	})
+	require.NoError(t, err)
+	pending, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1", Body: "pending",
+	})
+	require.NoError(t, err)
+	_, err = service.ModerateComment(ctx, moderator, pending.ID, CommentStatusHidden)
+	require.NoError(t, err)
+
+	reader := Actor{SiteID: "s1"}
+	items, _, err := service.ListComments(ctx, reader, CommentListFilter{
+		TargetType: TargetArticle, TargetID: "a1",
+	})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, visible.ID, items[0].ID)
+
+	moderated, _, err := service.ListComments(ctx, moderator, CommentListFilter{
+		TargetType: TargetArticle, TargetID: "a1",
+	})
+	require.NoError(t, err)
+	require.Len(t, moderated, 2)
+}
+
+func TestListCommentsRejectsNonVisibleFilterForReader(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo)
+	reader := Actor{SiteID: "s1"}
+
+	_, _, err := service.ListComments(context.Background(), reader, CommentListFilter{
+		Statuses: []string{CommentStatusHidden},
+	})
+	require.ErrorIs(t, err, ErrPermissionDenied)
+}
+
+func TestModerateCommentRequiresModerator(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo)
+	ctx := context.Background()
+	author := Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember}
+
+	created, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1", Body: "hello",
+	})
+	require.NoError(t, err)
+
+	_, err = service.ModerateComment(ctx, author, created.ID, CommentStatusHidden)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	_, err = service.ModerateComment(ctx, Actor{UserID: "m1", SiteID: "s1", Role: site.RoleEditor}, created.ID, "deleted")
+	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
 // TestRetriedReactionDoesNotWrite is what keeps retries from double notifying.

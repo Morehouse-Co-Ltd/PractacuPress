@@ -53,6 +53,20 @@ func (_c *MediaAssetCreate) SetSize(v int64) *MediaAssetCreate {
 	return _c
 }
 
+// SetPurpose sets the "purpose" field.
+func (_c *MediaAssetCreate) SetPurpose(v string) *MediaAssetCreate {
+	_c.mutation.SetPurpose(v)
+	return _c
+}
+
+// SetNillablePurpose sets the "purpose" field if the given value is not nil.
+func (_c *MediaAssetCreate) SetNillablePurpose(v *string) *MediaAssetCreate {
+	if v != nil {
+		_c.SetPurpose(*v)
+	}
+	return _c
+}
+
 // SetScanStatus sets the "scan_status" field.
 func (_c *MediaAssetCreate) SetScanStatus(v string) *MediaAssetCreate {
 	_c.mutation.SetScanStatus(v)
@@ -218,6 +232,11 @@ func (_c *MediaAssetCreate) check() error {
 			return &ValidationError{Name: "size", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.size": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.Purpose(); ok {
+		if err := mediaasset.PurposeValidator(v); err != nil {
+			return &ValidationError{Name: "purpose", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.purpose": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.ScanStatus(); !ok {
 		return &ValidationError{Name: "scan_status", err: errors.New(`ent: missing required field "MediaAsset.scan_status"`)}
 	}
@@ -297,6 +316,10 @@ func (_c *MediaAssetCreate) createSpec() (*MediaAsset, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Size(); ok {
 		_spec.SetField(mediaasset.FieldSize, field.TypeInt64, value)
 		_node.Size = value
+	}
+	if value, ok := _c.mutation.Purpose(); ok {
+		_spec.SetField(mediaasset.FieldPurpose, field.TypeString, value)
+		_node.Purpose = &value
 	}
 	if value, ok := _c.mutation.ScanStatus(); ok {
 		_spec.SetField(mediaasset.FieldScanStatus, field.TypeString, value)
@@ -393,6 +416,24 @@ func (u *MediaAssetUpsert) UpdateSize() *MediaAssetUpsert {
 // AddSize adds v to the "size" field.
 func (u *MediaAssetUpsert) AddSize(v int64) *MediaAssetUpsert {
 	u.Add(mediaasset.FieldSize, v)
+	return u
+}
+
+// SetPurpose sets the "purpose" field.
+func (u *MediaAssetUpsert) SetPurpose(v string) *MediaAssetUpsert {
+	u.Set(mediaasset.FieldPurpose, v)
+	return u
+}
+
+// UpdatePurpose sets the "purpose" field to the value that was provided on create.
+func (u *MediaAssetUpsert) UpdatePurpose() *MediaAssetUpsert {
+	u.SetExcluded(mediaasset.FieldPurpose)
+	return u
+}
+
+// ClearPurpose clears the value of the "purpose" field.
+func (u *MediaAssetUpsert) ClearPurpose() *MediaAssetUpsert {
+	u.SetNull(mediaasset.FieldPurpose)
 	return u
 }
 
@@ -530,6 +571,27 @@ func (u *MediaAssetUpsertOne) AddSize(v int64) *MediaAssetUpsertOne {
 func (u *MediaAssetUpsertOne) UpdateSize() *MediaAssetUpsertOne {
 	return u.Update(func(s *MediaAssetUpsert) {
 		s.UpdateSize()
+	})
+}
+
+// SetPurpose sets the "purpose" field.
+func (u *MediaAssetUpsertOne) SetPurpose(v string) *MediaAssetUpsertOne {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.SetPurpose(v)
+	})
+}
+
+// UpdatePurpose sets the "purpose" field to the value that was provided on create.
+func (u *MediaAssetUpsertOne) UpdatePurpose() *MediaAssetUpsertOne {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.UpdatePurpose()
+	})
+}
+
+// ClearPurpose clears the value of the "purpose" field.
+func (u *MediaAssetUpsertOne) ClearPurpose() *MediaAssetUpsertOne {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.ClearPurpose()
 	})
 }
 
@@ -841,6 +903,27 @@ func (u *MediaAssetUpsertBulk) AddSize(v int64) *MediaAssetUpsertBulk {
 func (u *MediaAssetUpsertBulk) UpdateSize() *MediaAssetUpsertBulk {
 	return u.Update(func(s *MediaAssetUpsert) {
 		s.UpdateSize()
+	})
+}
+
+// SetPurpose sets the "purpose" field.
+func (u *MediaAssetUpsertBulk) SetPurpose(v string) *MediaAssetUpsertBulk {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.SetPurpose(v)
+	})
+}
+
+// UpdatePurpose sets the "purpose" field to the value that was provided on create.
+func (u *MediaAssetUpsertBulk) UpdatePurpose() *MediaAssetUpsertBulk {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.UpdatePurpose()
+	})
+}
+
+// ClearPurpose clears the value of the "purpose" field.
+func (u *MediaAssetUpsertBulk) ClearPurpose() *MediaAssetUpsertBulk {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.ClearPurpose()
 	})
 }
 

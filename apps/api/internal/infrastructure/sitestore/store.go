@@ -3,15 +3,22 @@ package sitestore
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
+	"github.com/practacu/practacu-press/apps/api/ent/session"
 	entsite "github.com/practacu/practacu-press/apps/api/ent/site"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
+	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 )
+
+// providerEmail is the identity provider used by email and password accounts. It
+// mirrors authstore.ProviderEmail; both adapters read the same table.
+const providerEmail = "email"
 
 // Store is the Ent backed implementation of site.Repository.
 type Store struct {
@@ -83,6 +90,11 @@ func (s *Store) FindMember(ctx context.Context, siteID, userID string) (site.Mem
 	if account, err := s.client.User.Get(ctx, row.UserID); err == nil {
 		member.DisplayName = account.DisplayName
 	}
+	if identity, err := s.client.UserIdentity.Query().
+		Where(useridentity.UserIDEQ(row.UserID), useridentity.ProviderEQ(providerEmail)).
+		Only(ctx); err == nil {
+		member.Email = identityEmail(identity)
+	}
 	return member, nil
 }
 
@@ -114,13 +126,50 @@ func (s *Store) ListMembers(ctx context.Context, siteID string, limit int) ([]si
 		names[account.ID] = account.DisplayName
 	}
 
+	// The admin screen shows the login email next to each member, so one extra query
+	// joins it in instead of a query per row.
+	identities, err := s.client.UserIdentity.Query().
+		Where(useridentity.UserIDIn(userIDs...), useridentity.ProviderEQ(providerEmail)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	emails := make(map[string]string, len(identities))
+	for _, identity := range identities {
+		emails[identity.UserID] = identityEmail(identity)
+	}
+
 	members := make([]site.Member, 0, len(rows))
 	for _, row := range rows {
 		member := toMember(row)
 		member.DisplayName = names[row.UserID]
+		member.Email = emails[row.UserID]
 		members = append(members, member)
 	}
 	return members, nil
+}
+
+// identityEmail returns the address a login identity authenticates, falling back to
+// the provider subject when the denormalised email column is empty.
+func identityEmail(identity *entgen.UserIdentity) string {
+	if identity.Email != nil && *identity.Email != "" {
+		return *identity.Email
+	}
+	return identity.ProviderSubject
+}
+
+// CountAdmins returns how many active members may administer a site.
+//
+// A count is enough: callers only ask whether anyone is left, and the wizard must
+// not learn who the administrators are before it has a session.
+func (s *Store) CountAdmins(ctx context.Context, siteID string) (int, error) {
+	return s.client.SiteMember.Query().
+		Where(
+			sitemember.SiteIDEQ(siteID),
+			sitemember.StatusEQ(site.MemberStatusActive),
+			sitemember.RoleIn(string(site.RolePlatformAdmin), string(site.RoleSiteAdmin)),
+		).
+		Count(ctx)
 }
 
 // UpdateMemberRole changes a role and records the audit entry in one transaction.
@@ -150,6 +199,195 @@ func (s *Store) UpdateMemberRole(
 	}
 	if updated == 0 {
 		return site.ErrMemberNotFound
+	}
+
+	if err := insertAudit(ctx, tx.Client(), audit, "site_member", userID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+// CountMembersByRole returns how many active members of a site hold role.
+//
+// Only active memberships count: a suspended platform administrator cannot log in,
+// so it must not keep a site recoverable-looking when nobody else can administer it.
+func (s *Store) CountMembersByRole(ctx context.Context, siteID string, role site.Role) (int, error) {
+	return s.client.SiteMember.Query().
+		Where(
+			sitemember.SiteIDEQ(siteID),
+			sitemember.RoleEQ(string(role)),
+			sitemember.StatusEQ(site.MemberStatusActive),
+		).
+		Count(ctx)
+}
+
+// UpdateMemberProfile changes the account behind a membership.
+//
+// The display name lives on User, while the login address is the email identity:
+// both writes are in one transaction with the audit entry, so an email change can
+// never be recorded without also changing the identity that actually logs in.
+func (s *Store) UpdateMemberProfile(
+	ctx context.Context,
+	siteID, userID string,
+	in site.MemberProfile,
+	audit site.AuditEntry,
+) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if in.DisplayName != nil {
+		if err := tx.User.UpdateOneID(userID).SetDisplayName(*in.DisplayName).Exec(ctx); err != nil {
+			if entgen.IsNotFound(err) {
+				return site.ErrTargetNotFound
+			}
+			return err
+		}
+	}
+
+	if in.Email != nil {
+		identity, err := tx.UserIdentity.Query().
+			Where(useridentity.UserIDEQ(userID), useridentity.ProviderEQ(providerEmail)).
+			Only(ctx)
+		if err != nil {
+			if entgen.IsNotFound(err) {
+				return fmt.Errorf("%w: account has no email identity", site.ErrInvalidInput)
+			}
+			return err
+		}
+
+		// Email is unique across the install: check before writing so the caller gets
+		// a 409 instead of a database constraint error.
+		taken, err := tx.UserIdentity.Query().
+			Where(
+				useridentity.ProviderEQ(providerEmail),
+				useridentity.ProviderSubjectEQ(*in.Email),
+				useridentity.UserIDNEQ(userID),
+			).
+			Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if taken {
+			return site.ErrEmailTaken
+		}
+
+		if _, err := tx.UserIdentity.UpdateOneID(identity.ID).
+			SetProviderSubject(*in.Email).
+			SetEmail(*in.Email).
+			Save(ctx); err != nil {
+			return err
+		}
+	}
+
+	if err := insertAudit(ctx, tx.Client(), audit, "site_member", userID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+// UpdateMemberStatus changes the membership status and records the audit entry.
+func (s *Store) UpdateMemberStatus(
+	ctx context.Context,
+	siteID, userID, status string,
+	audit site.AuditEntry,
+) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	updated, err := tx.SiteMember.Update().
+		Where(sitemember.SiteIDEQ(siteID), sitemember.UserIDEQ(userID)).
+		SetStatus(status).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return site.ErrTargetNotFound
+	}
+
+	if err := insertAudit(ctx, tx.Client(), audit, "site_member", userID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+// DeleteMember removes the membership and revokes the member's sessions on this site.
+//
+// The account row is intentionally kept: content, comments and other site
+// memberships reference it, and the product promise is "removed from this site",
+// not "account erased". Revoking the site's sessions means a live access token stops
+// being refreshable immediately, which is the part of removal the user can observe.
+func (s *Store) DeleteMember(
+	ctx context.Context,
+	siteID, userID string,
+	audit site.AuditEntry,
+) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	deleted, err := tx.SiteMember.Delete().
+		Where(sitemember.SiteIDEQ(siteID), sitemember.UserIDEQ(userID)).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return site.ErrTargetNotFound
+	}
+
+	at := audit.At
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	if _, err := tx.Session.Update().
+		Where(
+			session.UserIDEQ(userID),
+			session.SiteIDEQ(siteID),
+			session.RevokedAtIsNil(),
+		).
+		SetRevokedAt(at).
+		SetRevokedReason("member_removed").
+		Save(ctx); err != nil {
+		return err
 	}
 
 	if err := insertAudit(ctx, tx.Client(), audit, "site_member", userID); err != nil {
@@ -198,6 +436,62 @@ func (s *Store) UpdateSettings(
 	}
 	if in.Domain != "" {
 		update.SetDomain(in.Domain)
+		// The domain is only trusted through domain_verified_at, so the two are always
+		// written together. Otherwise the site would 404 on the domain it just accepted.
+		if in.DomainVerifiedAt != nil {
+			update.SetDomainVerifiedAt(*in.DomainVerifiedAt)
+		}
+	}
+
+	if _, err := update.Save(ctx); err != nil {
+		if entgen.IsNotFound(err) {
+			return site.ErrNotFound
+		}
+		return err
+	}
+
+	if err := insertAudit(ctx, tx.Client(), audit, "site", siteID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+// UpdateDomain sets or clears the primary domain and its verification timestamp.
+//
+// Clearing writes SQL NULL for both columns, which is what makes the single-site
+// domain-less fallback active again. The audit entry is committed with the change.
+func (s *Store) UpdateDomain(
+	ctx context.Context,
+	siteID string,
+	in site.DomainInput,
+	audit site.AuditEntry,
+) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	update := tx.Site.UpdateOneID(siteID)
+	if in.Domain == "" {
+		update.ClearDomain().ClearDomainVerifiedAt()
+	} else {
+		update.SetDomain(in.Domain)
+		if in.VerifiedAt != nil {
+			update.SetDomainVerifiedAt(*in.VerifiedAt)
+		} else {
+			update.ClearDomainVerifiedAt()
+		}
 	}
 
 	if _, err := update.Save(ctx); err != nil {
@@ -278,4 +572,3 @@ func toMember(row *entgen.SiteMember) site.Member {
 		CreatedAt: row.CreatedAt,
 	}
 }
-

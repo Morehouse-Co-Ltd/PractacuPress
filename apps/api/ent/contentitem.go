@@ -41,6 +41,8 @@ type ContentItem struct {
 	PolicyVersion string `json:"policy_version,omitempty"`
 	// CategoryID holds the value of the "category_id" field.
 	CategoryID *string `json:"category_id,omitempty"`
+	// Tags holds the value of the "tags" field.
+	Tags string `json:"tags,omitempty"`
 	// PublishedAt holds the value of the "published_at" field.
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 	// ArchivedAt holds the value of the "archived_at" field.
@@ -57,7 +59,7 @@ func (*ContentItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case contentitem.FieldID, contentitem.FieldSiteID, contentitem.FieldAuthorID, contentitem.FieldKind, contentitem.FieldStatus, contentitem.FieldTitle, contentitem.FieldSlug, contentitem.FieldSummary, contentitem.FieldSourceFormat, contentitem.FieldSourceBody, contentitem.FieldRenderedHTML, contentitem.FieldPolicyVersion, contentitem.FieldCategoryID:
+		case contentitem.FieldID, contentitem.FieldSiteID, contentitem.FieldAuthorID, contentitem.FieldKind, contentitem.FieldStatus, contentitem.FieldTitle, contentitem.FieldSlug, contentitem.FieldSummary, contentitem.FieldSourceFormat, contentitem.FieldSourceBody, contentitem.FieldRenderedHTML, contentitem.FieldPolicyVersion, contentitem.FieldCategoryID, contentitem.FieldTags:
 			values[i] = new(sql.NullString)
 		case contentitem.FieldPublishedAt, contentitem.FieldArchivedAt, contentitem.FieldCreatedAt, contentitem.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -154,6 +156,12 @@ func (_m *ContentItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CategoryID = new(string)
 				*_m.CategoryID = value.String
+			}
+		case contentitem.FieldTags:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field tags", values[i])
+			} else if value.Valid {
+				_m.Tags = value.String
 			}
 		case contentitem.FieldPublishedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -254,6 +262,9 @@ func (_m *ContentItem) String() string {
 		builder.WriteString("category_id=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("tags=")
+	builder.WriteString(_m.Tags)
 	builder.WriteString(", ")
 	if v := _m.PublishedAt; v != nil {
 		builder.WriteString("published_at=")

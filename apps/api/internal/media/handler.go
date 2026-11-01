@@ -2,25 +2,34 @@ package media
 
 import (
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // PrincipalFunc returns the authenticated caller.
 type PrincipalFunc func(*gin.Context) (Actor, bool)
 
+// SiteFunc returns the site the request host resolved to.
+type SiteFunc func(*gin.Context) (site.Site, bool)
+
 // HandlerConfig configures a Handler.
 type HandlerConfig struct {
 	Principal PrincipalFunc
+	// Site exposes the resolved site so a published article's images can be served to a
+	// reader without a session. Downloads are the only anonymous media operation.
+	Site SiteFunc
 }
 
 // Handler exposes the two phase upload flow over HTTP.
 type Handler struct {
 	service   *Service
 	principal PrincipalFunc
+	site      SiteFunc
 }
 
 // NewHandler builds a Handler.
@@ -29,7 +38,11 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 	if principal == nil {
 		principal = func(*gin.Context) (Actor, bool) { return Actor{}, false }
 	}
-	return &Handler{service: service, principal: principal}
+	siteOf := cfg.Site
+	if siteOf == nil {
+		siteOf = func(*gin.Context) (site.Site, bool) { return site.Site{}, false }
+	}
+	return &Handler{service: service, principal: principal, site: siteOf}
 }
 
 // Routes mounts the media endpoints under /api/v1.
@@ -106,14 +119,12 @@ func (h *Handler) CreateUpload(c *gin.Context) {
 // Only clean assets are reachable: an object that failed inspection must not be
 // served even to its uploader, because serving it is exactly the outcome the scan
 // exists to prevent.
+//
+// A reader with no session is served too: an image embedded in a published article has
+// to load for a logged-out visitor. The tenant then comes from the resolved host - the
+// only thing an anonymous request has - and a members-only site still refuses.
 func (h *Handler) DownloadAsset(c *gin.Context) {
-	actor, ok := h.principal(c)
-	if !ok {
-		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
-		return
-	}
-
-	asset, reader, err := h.service.OpenAsset(c.Request.Context(), actor, c.Param("assetID"))
+	asset, reader, err := h.openForCaller(c, c.Param("assetID"))
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
@@ -128,6 +139,26 @@ func (h *Handler) DownloadAsset(c *gin.Context) {
 
 	c.DataFromReader(http.StatusOK, asset.Size, asset.MIME, reader, nil)
 }
+
+// openForCaller resolves the asset for an authenticated caller or an anonymous reader.
+//
+// The order matters: a caller with a session is scoped by its token's site, so a member
+// of site A cannot read site B's media by aiming at site B's hostname. An anonymous
+// reader has no token, so the resolved site is the only scope available.
+func (h *Handler) openForCaller(c *gin.Context, assetID string) (Asset, io.ReadCloser, error) {
+	if actor, ok := h.principal(c); ok {
+		return h.service.OpenAsset(c.Request.Context(), actor, assetID)
+	}
+
+	resolved, ok := h.site(c)
+	if !ok {
+		return Asset{}, nil, apperr.New(apperr.CodeSiteNotFound)
+	}
+	if resolved.IsMembersOnly() {
+		return Asset{}, nil, apperr.Unauthenticated().WithDetail("reason", "members_only_site")
+	}
+	return h.service.OpenAssetInSite(c.Request.Context(), resolved.ID, assetID)
+}
 // UploadContent accepts the bytes for an open session.
 func (h *Handler) UploadContent(c *gin.Context) {
 	actor, ok := h.principal(c)
@@ -138,6 +169,14 @@ func (h *Handler) UploadContent(c *gin.Context) {
 
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
+		// A body that hit the transport's ceiling is truncated mid-read, which would
+		// otherwise be reported as a missing field and send the caller hunting for the
+		// wrong problem.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			_ = c.Error(apperr.Validation("uploaded file exceeds the accepted size"))
+			return
+		}
 		_ = c.Error(apperr.Validation("multipart field 'file' is required"))
 		return
 	}

@@ -21,10 +21,10 @@ type ScanStatus string
 
 // Scan states. Only clean objects may be referenced.
 const (
-	ScanPending            ScanStatus = "pending"
-	ScanClean              ScanStatus = "clean"
-	ScanRejected           ScanStatus = "rejected"
-	ScanNeedsManualReview  ScanStatus = "needs_manual_review"
+	ScanPending           ScanStatus = "pending"
+	ScanClean             ScanStatus = "clean"
+	ScanRejected          ScanStatus = "rejected"
+	ScanNeedsManualReview ScanStatus = "needs_manual_review"
 )
 
 // UploadStatus is the state of an upload session.
@@ -44,13 +44,20 @@ type Purpose string
 // Supported purposes.
 const (
 	PurposeContent    Purpose = "content"
+	PurposeSite       Purpose = "site"
 	PurposeAvatar     Purpose = "avatar"
 	PurposeAttachment Purpose = "attachment"
 )
 
 // Valid reports whether the purpose is defined.
 func (p Purpose) Valid() bool {
-	return p == PurposeContent || p == PurposeAvatar || p == PurposeAttachment
+	return p == PurposeContent || p == PurposeSite || p == PurposeAvatar || p == PurposeAttachment
+}
+
+// IsImage reports whether the purpose only accepts image types. It keeps validation
+// and the storage scope mapping from drifting apart.
+func (p Purpose) IsImage() bool {
+	return p == PurposeContent || p == PurposeSite || p == PurposeAvatar
 }
 
 // Sentinel errors.
@@ -137,19 +144,19 @@ func ValidateRequest(in UploadRequest) (UploadRequest, error) {
 	}
 
 	limit := MaxAttachmentBytes
-	if in.Purpose == PurposeAvatar || in.Purpose == PurposeContent {
+	if in.Purpose.IsImage() {
 		limit = MaxImageBytes
 	}
 	if in.Size > limit {
 		return UploadRequest{}, fmt.Errorf("%w: file is too large", ErrInvalidInput)
 	}
 
-	switch in.Purpose {
-	case PurposeContent, PurposeAvatar:
+	switch {
+	case in.Purpose.IsImage():
 		if _, ok := allowedImageTypes[in.DeclaredMIME]; !ok {
 			return UploadRequest{}, fmt.Errorf("%w: unsupported image type", ErrInvalidInput)
 		}
-	case PurposeAttachment:
+	case in.Purpose == PurposeAttachment:
 		if _, ok := allowedAttachmentTypes[in.DeclaredMIME]; !ok {
 			return UploadRequest{}, fmt.Errorf("%w: unsupported attachment type", ErrInvalidInput)
 		}
@@ -198,6 +205,10 @@ type Asset struct {
 	MIME       string
 	Size       int64
 	ScanStatus ScanStatus
+	// Purpose is persisted with the asset because storage may be configured per
+	// purpose: a download or delete has to pick the same adapter the bytes were
+	// written to, and only the record knows which one that was.
+	Purpose Purpose
 	// ReasonCode is the security service's stable explanation for a non clean verdict.
 	ReasonCode string
 	CreatedAt  time.Time

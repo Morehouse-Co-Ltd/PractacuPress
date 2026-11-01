@@ -7,7 +7,9 @@
 package content
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -110,6 +112,10 @@ const (
 	MaxSourceLength = 200_000
 	// MaxSlugLength bounds a slug.
 	MaxSlugLength = 120
+	// MaxTags bounds the number of labels attached to one item.
+	MaxTags = 12
+	// MaxTagLength bounds one label.
+	MaxTagLength = 24
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -136,6 +142,7 @@ type Content struct {
 	RenderedHTML  string
 	PolicyVersion string
 	CategoryID    string
+	Tags          []string
 	PublishedAt   *time.Time
 	ArchivedAt    *time.Time
 	CreatedAt     time.Time
@@ -153,6 +160,7 @@ type DraftInput struct {
 	SourceFormat SourceFormat
 	SourceBody   string
 	CategoryID   string
+	Tags         []string
 }
 
 // Transition is one row of the workflow table.
@@ -293,40 +301,104 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 	in.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
 	in.CategoryID = strings.TrimSpace(in.CategoryID)
 
+	tags, err := NormalizeTags(in.Tags)
+	if err != nil {
+		return DraftInput{}, err
+	}
+	in.Tags = tags
+
 	if in.Title == "" {
-		return DraftInput{}, errors.New("content: title is required")
+		return DraftInput{}, fmt.Errorf("%w: title is required", ErrInvalidInput)
 	}
 	if len([]rune(in.Title)) > MaxTitleLength {
-		return DraftInput{}, errors.New("content: title is too long")
+		return DraftInput{}, fmt.Errorf("%w: title is too long", ErrInvalidInput)
 	}
 	if len([]rune(in.Summary)) > MaxSummaryLength {
-		return DraftInput{}, errors.New("content: summary is too long")
+		return DraftInput{}, fmt.Errorf("%w: summary is too long", ErrInvalidInput)
 	}
 	if in.SourceFormat == "" {
 		in.SourceFormat = FormatMarkdown
 	}
 	if !in.SourceFormat.Valid() {
-		return DraftInput{}, errors.New("content: unknown source format")
+		return DraftInput{}, fmt.Errorf("%w: unknown source format", ErrInvalidInput)
 	}
 	if in.SourceBody == "" {
-		return DraftInput{}, errors.New("content: body is required")
+		return DraftInput{}, fmt.Errorf("%w: body is required", ErrInvalidInput)
 	}
 	if len([]rune(in.SourceBody)) > MaxSourceLength {
-		return DraftInput{}, errors.New("content: body is too long")
+		return DraftInput{}, fmt.Errorf("%w: body is too long", ErrInvalidInput)
 	}
 	if in.Slug != "" {
 		if len(in.Slug) > MaxSlugLength {
-			return DraftInput{}, errors.New("content: slug is too long")
+			return DraftInput{}, fmt.Errorf("%w: slug is too long", ErrInvalidInput)
 		}
 		if !slugPattern.MatchString(in.Slug) {
-			return DraftInput{}, errors.New("content: slug must be lowercase letters, digits and hyphens")
+			return DraftInput{}, fmt.Errorf("%w: slug must be lowercase letters, digits and hyphens", ErrInvalidInput)
 		}
 	}
 	if in.CategoryID != "" && len(in.CategoryID) > 36 {
-		return DraftInput{}, errors.New("content: category id is malformed")
+		return DraftInput{}, fmt.Errorf("%w: category id is malformed", ErrInvalidInput)
 	}
 
 	return in, nil
+}
+
+// NormalizeTags trims labels, drops blanks and duplicates, and enforces the
+// per item bounds. Order is preserved because the author chose it and the editor
+// renders tags in that order.
+func NormalizeTags(raw []string) ([]string, error) {
+	tags := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+
+	for _, label := range raw {
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		if len([]rune(label)) > MaxTagLength {
+			return nil, fmt.Errorf("%w: tag is too long", ErrInvalidInput)
+		}
+		if _, exists := seen[label]; exists {
+			continue
+		}
+		seen[label] = struct{}{}
+		tags = append(tags, label)
+		if len(tags) > MaxTags {
+			return nil, fmt.Errorf("%w: too many tags", ErrInvalidInput)
+		}
+	}
+	return tags, nil
+}
+
+// EncodeTags renders tags for storage. The content table keeps them as JSON text so
+// the portable schema needs no join table; a nil slice is stored as an empty array
+// rather than NULL so reads never have to special case it.
+func EncodeTags(tags []string) string {
+	if len(tags) == 0 {
+		return "[]"
+	}
+	raw, err := json.Marshal(tags)
+	if err != nil {
+		return "[]"
+	}
+	return string(raw)
+}
+
+// DecodeTags reads a stored tags column. Corrupt or legacy values decode to an empty
+// slice: a malformed label list must not make the whole item unreadable.
+func DecodeTags(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
+		return []string{}
+	}
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }
 
 // SlugFromTitle derives a stable slug from a title.

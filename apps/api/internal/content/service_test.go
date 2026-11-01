@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-		"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -107,15 +107,20 @@ func (f *fakeRepo) Search(_ context.Context, siteID, term string, kind Kind, lim
 	}
 	return out, nil
 }
+
 type fakeSanitizer struct {
-	err     error
-	html    string
-	version string
-	calls   int
+	err        error
+	html       string
+	version    string
+	calls      int
+	lastFormat SourceFormat
+	lastSource string
 }
 
-func (f *fakeSanitizer) Sanitize(context.Context, SourceFormat, string) (Sanitized, error) {
+func (f *fakeSanitizer) Sanitize(_ context.Context, format SourceFormat, source string) (Sanitized, error) {
 	f.calls++
+	f.lastFormat = format
+	f.lastSource = source
 	if f.err != nil {
 		return Sanitized{}, f.err
 	}
@@ -441,6 +446,47 @@ func TestListAfterRejectsBadKind(t *testing.T) {
 	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
 	_, _, err := service.ListAfter(context.Background(), actor("u", site.RoleMember), Kind("x"), 5, page.Cursor{})
 	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+// TestListAfterFilterNarrowsToOneAuthor pins the author archive contract: author_id
+// only narrows the page, it never widens what the caller may see.
+func TestListAfterFilterNarrowsToOneAuthor(t *testing.T) {
+	repo := newFakeRepo()
+	repo.items["alice-pub"] = Content{ID: "alice-pub", SiteID: "s1", AuthorID: "alice",
+		Kind: KindArticle, Status: StatusPublished}
+	repo.items["alice-draft"] = Content{ID: "alice-draft", SiteID: "s1", AuthorID: "alice",
+		Kind: KindArticle, Status: StatusDraft}
+	repo.items["bob-pub"] = Content{ID: "bob-pub", SiteID: "s1", AuthorID: "bob",
+		Kind: KindArticle, Status: StatusPublished}
+
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	ctx := context.Background()
+
+	// A reader gets the author's published work only, never the draft.
+	readerItems, readerNext, err := service.ListAfterFilter(ctx,
+		actor("reader", site.RoleMember), KindArticle, 10, page.Cursor{}, "alice")
+	require.NoError(t, err)
+	require.Len(t, readerItems, 1)
+	require.Equal(t, "alice-pub", readerItems[0].ID)
+	require.Empty(t, readerNext)
+
+	// A moderator keeps the existing visibility rule under the same filter.
+	editorItems, _, err := service.ListAfterFilter(ctx,
+		actor("mod", site.RoleEditor), KindArticle, 10, page.Cursor{}, "alice")
+	require.NoError(t, err)
+	editorIDs := make([]string, 0, len(editorItems))
+	for _, item := range editorItems {
+		editorIDs = append(editorIDs, item.ID)
+	}
+	require.ElementsMatch(t, []string{"alice-pub", "alice-draft"}, editorIDs)
+
+	// An unknown author is an empty page, not a validation error: archive links can
+	// outlive the account they point at.
+	empty, next, err := service.ListAfterFilter(ctx,
+		actor("reader", site.RoleMember), KindArticle, 10, page.Cursor{}, "ghost")
+	require.NoError(t, err)
+	require.Empty(t, empty)
+	require.Empty(t, next)
 }
 func TestSearchOnlyReturnsPublished(t *testing.T) {
 	repo := newFakeRepo()

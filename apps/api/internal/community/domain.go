@@ -7,11 +7,12 @@
 package community
 
 import (
-		"errors"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -24,12 +25,14 @@ const (
 	TargetPost     TargetType = "post"
 	TargetComment  TargetType = "comment"
 	TargetUser     TargetType = "user"
+	// TargetPage stands for a custom site page, for example a guestbook.
+	TargetPage TargetType = "page"
 )
 
 // Valid reports whether the target type is defined.
 func (t TargetType) Valid() bool {
 	switch t {
-	case TargetArticle, TargetPost, TargetComment, TargetUser:
+	case TargetArticle, TargetPost, TargetComment, TargetUser, TargetPage:
 		return true
 	default:
 		return false
@@ -88,6 +91,9 @@ type Comment struct {
 	ID         string
 	SiteID     string
 	AuthorID   string
+	// AuthorName is a read model field: it is joined when listing comments and is
+	// never persisted on the comment row.
+	AuthorName string
 	TargetType TargetType
 	TargetID   string
 	ParentID   string
@@ -96,6 +102,31 @@ type Comment struct {
 	Status     string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// ValidCommentStatus reports whether status names a stored comment status.
+func ValidCommentStatus(status string) bool {
+	switch status {
+	case CommentStatusVisible, CommentStatusHidden, CommentStatusDeleted, CommentStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// CommentListFilter narrows a comment list request.
+//
+// Statuses is already authorised by the service: a reader without moderation rights
+// can only ever be given visible comments.
+type CommentListFilter struct {
+	SiteID     string
+	TargetType TargetType
+	TargetID   string
+	Statuses   []string
+	// Query matches the body and the author display name.
+	Query string
+	Limit int
+	After page.Cursor
 }
 
 // IsAuthor reports whether the actor wrote the comment.

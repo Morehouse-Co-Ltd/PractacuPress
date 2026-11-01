@@ -16,6 +16,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
+	"github.com/practacu/practacu-press/apps/api/ent/user"
 )
 
 // Store is the Ent backed implementation of community.Repository.
@@ -40,6 +41,85 @@ func (s *Store) FindComment(ctx context.Context, siteID, commentID string) (comm
 		return community.Comment{}, err
 	}
 	return toComment(row), nil
+}
+
+// ListComments returns comments newest first, joined with author display names.
+func (s *Store) ListComments(ctx context.Context, filter community.CommentListFilter) ([]community.Comment, error) {
+	query := s.client.Comment.Query().Where(comment.SiteIDEQ(filter.SiteID))
+	if filter.TargetType != "" {
+		query = query.Where(comment.TargetTypeEQ(string(filter.TargetType)))
+	}
+	if filter.TargetID != "" {
+		query = query.Where(comment.TargetIDEQ(filter.TargetID))
+	}
+	if len(filter.Statuses) > 0 {
+		query = query.Where(comment.StatusIn(filter.Statuses...))
+	}
+	if filter.Query != "" {
+		// The search box matches the body and the author name. Names live on the user
+		// row, so resolve matching authors first and OR the ids into the predicate.
+		authorIDs, err := s.client.User.Query().
+			Where(user.DisplayNameContainsFold(filter.Query)).
+			IDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		body := comment.BodyContainsFold(filter.Query)
+		if len(authorIDs) > 0 {
+			query = query.Where(comment.Or(body, comment.AuthorIDIn(authorIDs...)))
+		} else {
+			query = query.Where(body)
+		}
+	}
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, community.ErrInvalidInput
+		}
+		query = query.Where(comment.Or(
+			comment.CreatedAtLT(at),
+			comment.And(comment.CreatedAtEQ(at), comment.IDLT(filter.After.ID)),
+		))
+	}
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := query.
+		Order(entgen.Desc(comment.FieldCreatedAt), entgen.Desc(comment.FieldID)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []community.Comment{}, nil
+	}
+
+	ids := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if _, ok := seen[row.AuthorID]; ok {
+			continue
+		}
+		seen[row.AuthorID] = struct{}{}
+		ids = append(ids, row.AuthorID)
+	}
+	names := make(map[string]string, len(ids))
+	if users, userErr := s.client.User.Query().Where(user.IDIn(ids...)).All(ctx); userErr == nil {
+		for _, item := range users {
+			names[item.ID] = item.DisplayName
+		}
+	}
+
+	items := make([]community.Comment, 0, len(rows))
+	for _, row := range rows {
+		item := toComment(row)
+		item.AuthorName = names[row.AuthorID]
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // InsertComment stores a comment and records its audit entry in one transaction.

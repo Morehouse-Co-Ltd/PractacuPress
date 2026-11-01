@@ -27,6 +27,7 @@ const (
 	CodeSecurityUnavailable    Code = "security_unavailable"
 	CodeProviderNotConfigured  Code = "provider_not_configured"
 	CodeInvalidDatabaseDriver  Code = "invalid_database_driver"
+	CodeEmailNotConfigured     Code = "email_not_configured"
 )
 
 // spec is the fixed HTTP projection of a code. Keeping it in one table is what
@@ -112,6 +113,11 @@ var specs = map[Code]spec{
 		status:  http.StatusInternalServerError,
 		title:   "Invalid database driver",
 		message: "数据库驱动配置无效",
+	},
+	CodeEmailNotConfigured: {
+		status:  http.StatusServiceUnavailable,
+		title:   "Email not configured",
+		message: "服务端还没有配置 SMTP，暂时无法发送找回密码邮件",
 	},
 }
 

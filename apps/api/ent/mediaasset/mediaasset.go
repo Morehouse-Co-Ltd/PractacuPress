@@ -23,6 +23,8 @@ const (
 	FieldMimeType = "mime_type"
 	// FieldSize holds the string denoting the size field in the database.
 	FieldSize = "size"
+	// FieldPurpose holds the string denoting the purpose field in the database.
+	FieldPurpose = "purpose"
 	// FieldScanStatus holds the string denoting the scan_status field in the database.
 	FieldScanStatus = "scan_status"
 	// FieldScanReason holds the string denoting the scan_reason field in the database.
@@ -43,6 +45,7 @@ var Columns = []string{
 	FieldStorageKey,
 	FieldMimeType,
 	FieldSize,
+	FieldPurpose,
 	FieldScanStatus,
 	FieldScanReason,
 	FieldCreatedAt,
@@ -70,6 +73,8 @@ var (
 	MimeTypeValidator func(string) error
 	// SizeValidator is a validator for the "size" field. It is called by the builders before save.
 	SizeValidator func(int64) error
+	// PurposeValidator is a validator for the "purpose" field. It is called by the builders before save.
+	PurposeValidator func(string) error
 	// DefaultScanStatus holds the default value on creation for the "scan_status" field.
 	DefaultScanStatus string
 	// ScanStatusValidator is a validator for the "scan_status" field. It is called by the builders before save.
@@ -119,6 +124,11 @@ func ByMimeType(opts ...sql.OrderTermOption) OrderOption {
 // BySize orders the results by the size field.
 func BySize(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSize, opts...).ToFunc()
+}
+
+// ByPurpose orders the results by the purpose field.
+func ByPurpose(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPurpose, opts...).ToFunc()
 }
 
 // ByScanStatus orders the results by the scan_status field.

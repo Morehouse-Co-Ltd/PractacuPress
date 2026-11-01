@@ -25,11 +25,14 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/notification"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
+	"github.com/practacu/practacu-press/apps/api/ent/pageview"
 	"github.com/practacu/practacu-press/apps/api/ent/predicate"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
+	"github.com/practacu/practacu-press/apps/api/ent/sitecustomization"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
+	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
@@ -58,10 +61,13 @@ const (
 	TypeModerationReport   = "ModerationReport"
 	TypeNotification       = "Notification"
 	TypeOutboxEvent        = "OutboxEvent"
+	TypePageView           = "PageView"
 	TypeReaction           = "Reaction"
 	TypeSession            = "Session"
 	TypeSite               = "Site"
+	TypeSiteCustomization  = "SiteCustomization"
 	TypeSiteMember         = "SiteMember"
+	TypeTaxonomyTerm       = "TaxonomyTerm"
 	TypeUser               = "User"
 	TypeUserIdentity       = "UserIdentity"
 	TypeVerificationToken  = "VerificationToken"
@@ -2390,6 +2396,7 @@ type ContentItemMutation struct {
 	rendered_html  *string
 	policy_version *string
 	category_id    *string
+	tags           *string
 	published_at   *time.Time
 	archived_at    *time.Time
 	created_at     *time.Time
@@ -2949,6 +2956,42 @@ func (m *ContentItemMutation) ResetCategoryID() {
 	delete(m.clearedFields, contentitem.FieldCategoryID)
 }
 
+// SetTags sets the "tags" field.
+func (m *ContentItemMutation) SetTags(s string) {
+	m.tags = &s
+}
+
+// Tags returns the value of the "tags" field in the mutation.
+func (m *ContentItemMutation) Tags() (r string, exists bool) {
+	v := m.tags
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTags returns the old "tags" field's value of the ContentItem entity.
+// If the ContentItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ContentItemMutation) OldTags(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTags is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTags requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTags: %w", err)
+	}
+	return oldValue.Tags, nil
+}
+
+// ResetTags resets all changes to the "tags" field.
+func (m *ContentItemMutation) ResetTags() {
+	m.tags = nil
+}
+
 // SetPublishedAt sets the "published_at" field.
 func (m *ContentItemMutation) SetPublishedAt(t time.Time) {
 	m.published_at = &t
@@ -3153,7 +3196,7 @@ func (m *ContentItemMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ContentItemMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.site_id != nil {
 		fields = append(fields, contentitem.FieldSiteID)
 	}
@@ -3189,6 +3232,9 @@ func (m *ContentItemMutation) Fields() []string {
 	}
 	if m.category_id != nil {
 		fields = append(fields, contentitem.FieldCategoryID)
+	}
+	if m.tags != nil {
+		fields = append(fields, contentitem.FieldTags)
 	}
 	if m.published_at != nil {
 		fields = append(fields, contentitem.FieldPublishedAt)
@@ -3234,6 +3280,8 @@ func (m *ContentItemMutation) Field(name string) (ent.Value, bool) {
 		return m.PolicyVersion()
 	case contentitem.FieldCategoryID:
 		return m.CategoryID()
+	case contentitem.FieldTags:
+		return m.Tags()
 	case contentitem.FieldPublishedAt:
 		return m.PublishedAt()
 	case contentitem.FieldArchivedAt:
@@ -3275,6 +3323,8 @@ func (m *ContentItemMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldPolicyVersion(ctx)
 	case contentitem.FieldCategoryID:
 		return m.OldCategoryID(ctx)
+	case contentitem.FieldTags:
+		return m.OldTags(ctx)
 	case contentitem.FieldPublishedAt:
 		return m.OldPublishedAt(ctx)
 	case contentitem.FieldArchivedAt:
@@ -3375,6 +3425,13 @@ func (m *ContentItemMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCategoryID(v)
+		return nil
+	case contentitem.FieldTags:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTags(v)
 		return nil
 	case contentitem.FieldPublishedAt:
 		v, ok := value.(time.Time)
@@ -3509,6 +3566,9 @@ func (m *ContentItemMutation) ResetField(name string) error {
 		return nil
 	case contentitem.FieldCategoryID:
 		m.ResetCategoryID()
+		return nil
+	case contentitem.FieldTags:
+		m.ResetTags()
 		return nil
 	case contentitem.FieldPublishedAt:
 		m.ResetPublishedAt()
@@ -6020,6 +6080,7 @@ type MediaAssetMutation struct {
 	mime_type     *string
 	size          *int64
 	addsize       *int64
+	purpose       *string
 	scan_status   *string
 	scan_reason   *string
 	created_at    *time.Time
@@ -6334,6 +6395,55 @@ func (m *MediaAssetMutation) ResetSize() {
 	m.addsize = nil
 }
 
+// SetPurpose sets the "purpose" field.
+func (m *MediaAssetMutation) SetPurpose(s string) {
+	m.purpose = &s
+}
+
+// Purpose returns the value of the "purpose" field in the mutation.
+func (m *MediaAssetMutation) Purpose() (r string, exists bool) {
+	v := m.purpose
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPurpose returns the old "purpose" field's value of the MediaAsset entity.
+// If the MediaAsset object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaAssetMutation) OldPurpose(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPurpose is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPurpose requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPurpose: %w", err)
+	}
+	return oldValue.Purpose, nil
+}
+
+// ClearPurpose clears the value of the "purpose" field.
+func (m *MediaAssetMutation) ClearPurpose() {
+	m.purpose = nil
+	m.clearedFields[mediaasset.FieldPurpose] = struct{}{}
+}
+
+// PurposeCleared returns if the "purpose" field was cleared in this mutation.
+func (m *MediaAssetMutation) PurposeCleared() bool {
+	_, ok := m.clearedFields[mediaasset.FieldPurpose]
+	return ok
+}
+
+// ResetPurpose resets all changes to the "purpose" field.
+func (m *MediaAssetMutation) ResetPurpose() {
+	m.purpose = nil
+	delete(m.clearedFields, mediaasset.FieldPurpose)
+}
+
 // SetScanStatus sets the "scan_status" field.
 func (m *MediaAssetMutation) SetScanStatus(s string) {
 	m.scan_status = &s
@@ -6525,7 +6635,7 @@ func (m *MediaAssetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MediaAssetMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.site_id != nil {
 		fields = append(fields, mediaasset.FieldSiteID)
 	}
@@ -6540,6 +6650,9 @@ func (m *MediaAssetMutation) Fields() []string {
 	}
 	if m.size != nil {
 		fields = append(fields, mediaasset.FieldSize)
+	}
+	if m.purpose != nil {
+		fields = append(fields, mediaasset.FieldPurpose)
 	}
 	if m.scan_status != nil {
 		fields = append(fields, mediaasset.FieldScanStatus)
@@ -6571,6 +6684,8 @@ func (m *MediaAssetMutation) Field(name string) (ent.Value, bool) {
 		return m.MimeType()
 	case mediaasset.FieldSize:
 		return m.Size()
+	case mediaasset.FieldPurpose:
+		return m.Purpose()
 	case mediaasset.FieldScanStatus:
 		return m.ScanStatus()
 	case mediaasset.FieldScanReason:
@@ -6598,6 +6713,8 @@ func (m *MediaAssetMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldMimeType(ctx)
 	case mediaasset.FieldSize:
 		return m.OldSize(ctx)
+	case mediaasset.FieldPurpose:
+		return m.OldPurpose(ctx)
 	case mediaasset.FieldScanStatus:
 		return m.OldScanStatus(ctx)
 	case mediaasset.FieldScanReason:
@@ -6649,6 +6766,13 @@ func (m *MediaAssetMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSize(v)
+		return nil
+	case mediaasset.FieldPurpose:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPurpose(v)
 		return nil
 	case mediaasset.FieldScanStatus:
 		v, ok := value.(string)
@@ -6723,6 +6847,9 @@ func (m *MediaAssetMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *MediaAssetMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(mediaasset.FieldPurpose) {
+		fields = append(fields, mediaasset.FieldPurpose)
+	}
 	if m.FieldCleared(mediaasset.FieldScanReason) {
 		fields = append(fields, mediaasset.FieldScanReason)
 	}
@@ -6740,6 +6867,9 @@ func (m *MediaAssetMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *MediaAssetMutation) ClearField(name string) error {
 	switch name {
+	case mediaasset.FieldPurpose:
+		m.ClearPurpose()
+		return nil
 	case mediaasset.FieldScanReason:
 		m.ClearScanReason()
 		return nil
@@ -6765,6 +6895,9 @@ func (m *MediaAssetMutation) ResetField(name string) error {
 		return nil
 	case mediaasset.FieldSize:
 		m.ResetSize()
+		return nil
+	case mediaasset.FieldPurpose:
+		m.ResetPurpose()
 		return nil
 	case mediaasset.FieldScanStatus:
 		m.ResetScanStatus()
@@ -11175,6 +11308,662 @@ func (m *OutboxEventMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown OutboxEvent edge %s", name)
 }
 
+// PageViewMutation represents an operation that mutates the PageView nodes in the graph.
+type PageViewMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	site_id       *string
+	_path         *string
+	title         *string
+	referrer      *string
+	session       *string
+	surface       *string
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*PageView, error)
+	predicates    []predicate.PageView
+}
+
+var _ ent.Mutation = (*PageViewMutation)(nil)
+
+// pageviewOption allows management of the mutation configuration using functional options.
+type pageviewOption func(*PageViewMutation)
+
+// newPageViewMutation creates new mutation for the PageView entity.
+func newPageViewMutation(c config, op Op, opts ...pageviewOption) *PageViewMutation {
+	m := &PageViewMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePageView,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPageViewID sets the ID field of the mutation.
+func withPageViewID(id string) pageviewOption {
+	return func(m *PageViewMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PageView
+		)
+		m.oldValue = func(ctx context.Context) (*PageView, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PageView.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPageView sets the old PageView of the mutation.
+func withPageView(node *PageView) pageviewOption {
+	return func(m *PageViewMutation) {
+		m.oldValue = func(context.Context) (*PageView, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PageViewMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PageViewMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PageView entities.
+func (m *PageViewMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PageViewMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PageViewMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PageView.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSiteID sets the "site_id" field.
+func (m *PageViewMutation) SetSiteID(s string) {
+	m.site_id = &s
+}
+
+// SiteID returns the value of the "site_id" field in the mutation.
+func (m *PageViewMutation) SiteID() (r string, exists bool) {
+	v := m.site_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSiteID returns the old "site_id" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldSiteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSiteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSiteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSiteID: %w", err)
+	}
+	return oldValue.SiteID, nil
+}
+
+// ResetSiteID resets all changes to the "site_id" field.
+func (m *PageViewMutation) ResetSiteID() {
+	m.site_id = nil
+}
+
+// SetPath sets the "path" field.
+func (m *PageViewMutation) SetPath(s string) {
+	m._path = &s
+}
+
+// Path returns the value of the "path" field in the mutation.
+func (m *PageViewMutation) Path() (r string, exists bool) {
+	v := m._path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPath returns the old "path" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPath: %w", err)
+	}
+	return oldValue.Path, nil
+}
+
+// ResetPath resets all changes to the "path" field.
+func (m *PageViewMutation) ResetPath() {
+	m._path = nil
+}
+
+// SetTitle sets the "title" field.
+func (m *PageViewMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *PageViewMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *PageViewMutation) ResetTitle() {
+	m.title = nil
+}
+
+// SetReferrer sets the "referrer" field.
+func (m *PageViewMutation) SetReferrer(s string) {
+	m.referrer = &s
+}
+
+// Referrer returns the value of the "referrer" field in the mutation.
+func (m *PageViewMutation) Referrer() (r string, exists bool) {
+	v := m.referrer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReferrer returns the old "referrer" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldReferrer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReferrer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReferrer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReferrer: %w", err)
+	}
+	return oldValue.Referrer, nil
+}
+
+// ResetReferrer resets all changes to the "referrer" field.
+func (m *PageViewMutation) ResetReferrer() {
+	m.referrer = nil
+}
+
+// SetSession sets the "session" field.
+func (m *PageViewMutation) SetSession(s string) {
+	m.session = &s
+}
+
+// Session returns the value of the "session" field in the mutation.
+func (m *PageViewMutation) Session() (r string, exists bool) {
+	v := m.session
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSession returns the old "session" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldSession(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSession is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSession requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSession: %w", err)
+	}
+	return oldValue.Session, nil
+}
+
+// ResetSession resets all changes to the "session" field.
+func (m *PageViewMutation) ResetSession() {
+	m.session = nil
+}
+
+// SetSurface sets the "surface" field.
+func (m *PageViewMutation) SetSurface(s string) {
+	m.surface = &s
+}
+
+// Surface returns the value of the "surface" field in the mutation.
+func (m *PageViewMutation) Surface() (r string, exists bool) {
+	v := m.surface
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSurface returns the old "surface" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldSurface(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSurface is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSurface requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSurface: %w", err)
+	}
+	return oldValue.Surface, nil
+}
+
+// ResetSurface resets all changes to the "surface" field.
+func (m *PageViewMutation) ResetSurface() {
+	m.surface = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PageViewMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PageViewMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PageView entity.
+// If the PageView object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PageViewMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PageViewMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the PageViewMutation builder.
+func (m *PageViewMutation) Where(ps ...predicate.PageView) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PageViewMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PageViewMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PageView, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PageViewMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PageViewMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PageView).
+func (m *PageViewMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PageViewMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.site_id != nil {
+		fields = append(fields, pageview.FieldSiteID)
+	}
+	if m._path != nil {
+		fields = append(fields, pageview.FieldPath)
+	}
+	if m.title != nil {
+		fields = append(fields, pageview.FieldTitle)
+	}
+	if m.referrer != nil {
+		fields = append(fields, pageview.FieldReferrer)
+	}
+	if m.session != nil {
+		fields = append(fields, pageview.FieldSession)
+	}
+	if m.surface != nil {
+		fields = append(fields, pageview.FieldSurface)
+	}
+	if m.created_at != nil {
+		fields = append(fields, pageview.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PageViewMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case pageview.FieldSiteID:
+		return m.SiteID()
+	case pageview.FieldPath:
+		return m.Path()
+	case pageview.FieldTitle:
+		return m.Title()
+	case pageview.FieldReferrer:
+		return m.Referrer()
+	case pageview.FieldSession:
+		return m.Session()
+	case pageview.FieldSurface:
+		return m.Surface()
+	case pageview.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PageViewMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case pageview.FieldSiteID:
+		return m.OldSiteID(ctx)
+	case pageview.FieldPath:
+		return m.OldPath(ctx)
+	case pageview.FieldTitle:
+		return m.OldTitle(ctx)
+	case pageview.FieldReferrer:
+		return m.OldReferrer(ctx)
+	case pageview.FieldSession:
+		return m.OldSession(ctx)
+	case pageview.FieldSurface:
+		return m.OldSurface(ctx)
+	case pageview.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PageView field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PageViewMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case pageview.FieldSiteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSiteID(v)
+		return nil
+	case pageview.FieldPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPath(v)
+		return nil
+	case pageview.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case pageview.FieldReferrer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReferrer(v)
+		return nil
+	case pageview.FieldSession:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSession(v)
+		return nil
+	case pageview.FieldSurface:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSurface(v)
+		return nil
+	case pageview.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PageView field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PageViewMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PageViewMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PageViewMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown PageView numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PageViewMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PageViewMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PageViewMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown PageView nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PageViewMutation) ResetField(name string) error {
+	switch name {
+	case pageview.FieldSiteID:
+		m.ResetSiteID()
+		return nil
+	case pageview.FieldPath:
+		m.ResetPath()
+		return nil
+	case pageview.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case pageview.FieldReferrer:
+		m.ResetReferrer()
+		return nil
+	case pageview.FieldSession:
+		m.ResetSession()
+		return nil
+	case pageview.FieldSurface:
+		m.ResetSurface()
+		return nil
+	case pageview.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PageView field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PageViewMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PageViewMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PageViewMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PageViewMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PageViewMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PageViewMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PageViewMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PageView unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PageViewMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PageView edge %s", name)
+}
+
 // ReactionMutation represents an operation that mutates the Reaction nodes in the graph.
 type ReactionMutation struct {
 	config
@@ -13825,6 +14614,590 @@ func (m *SiteMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Site edge %s", name)
 }
 
+// SiteCustomizationMutation represents an operation that mutates the SiteCustomization nodes in the graph.
+type SiteCustomizationMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	site_id       *string
+	document      *string
+	revision      *int
+	addrevision   *int
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*SiteCustomization, error)
+	predicates    []predicate.SiteCustomization
+}
+
+var _ ent.Mutation = (*SiteCustomizationMutation)(nil)
+
+// sitecustomizationOption allows management of the mutation configuration using functional options.
+type sitecustomizationOption func(*SiteCustomizationMutation)
+
+// newSiteCustomizationMutation creates new mutation for the SiteCustomization entity.
+func newSiteCustomizationMutation(c config, op Op, opts ...sitecustomizationOption) *SiteCustomizationMutation {
+	m := &SiteCustomizationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSiteCustomization,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSiteCustomizationID sets the ID field of the mutation.
+func withSiteCustomizationID(id string) sitecustomizationOption {
+	return func(m *SiteCustomizationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SiteCustomization
+		)
+		m.oldValue = func(ctx context.Context) (*SiteCustomization, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SiteCustomization.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSiteCustomization sets the old SiteCustomization of the mutation.
+func withSiteCustomization(node *SiteCustomization) sitecustomizationOption {
+	return func(m *SiteCustomizationMutation) {
+		m.oldValue = func(context.Context) (*SiteCustomization, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SiteCustomizationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SiteCustomizationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SiteCustomization entities.
+func (m *SiteCustomizationMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SiteCustomizationMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SiteCustomizationMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SiteCustomization.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSiteID sets the "site_id" field.
+func (m *SiteCustomizationMutation) SetSiteID(s string) {
+	m.site_id = &s
+}
+
+// SiteID returns the value of the "site_id" field in the mutation.
+func (m *SiteCustomizationMutation) SiteID() (r string, exists bool) {
+	v := m.site_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSiteID returns the old "site_id" field's value of the SiteCustomization entity.
+// If the SiteCustomization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteCustomizationMutation) OldSiteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSiteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSiteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSiteID: %w", err)
+	}
+	return oldValue.SiteID, nil
+}
+
+// ResetSiteID resets all changes to the "site_id" field.
+func (m *SiteCustomizationMutation) ResetSiteID() {
+	m.site_id = nil
+}
+
+// SetDocument sets the "document" field.
+func (m *SiteCustomizationMutation) SetDocument(s string) {
+	m.document = &s
+}
+
+// Document returns the value of the "document" field in the mutation.
+func (m *SiteCustomizationMutation) Document() (r string, exists bool) {
+	v := m.document
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDocument returns the old "document" field's value of the SiteCustomization entity.
+// If the SiteCustomization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteCustomizationMutation) OldDocument(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDocument is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDocument requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDocument: %w", err)
+	}
+	return oldValue.Document, nil
+}
+
+// ResetDocument resets all changes to the "document" field.
+func (m *SiteCustomizationMutation) ResetDocument() {
+	m.document = nil
+}
+
+// SetRevision sets the "revision" field.
+func (m *SiteCustomizationMutation) SetRevision(i int) {
+	m.revision = &i
+	m.addrevision = nil
+}
+
+// Revision returns the value of the "revision" field in the mutation.
+func (m *SiteCustomizationMutation) Revision() (r int, exists bool) {
+	v := m.revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevision returns the old "revision" field's value of the SiteCustomization entity.
+// If the SiteCustomization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteCustomizationMutation) OldRevision(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevision: %w", err)
+	}
+	return oldValue.Revision, nil
+}
+
+// AddRevision adds i to the "revision" field.
+func (m *SiteCustomizationMutation) AddRevision(i int) {
+	if m.addrevision != nil {
+		*m.addrevision += i
+	} else {
+		m.addrevision = &i
+	}
+}
+
+// AddedRevision returns the value that was added to the "revision" field in this mutation.
+func (m *SiteCustomizationMutation) AddedRevision() (r int, exists bool) {
+	v := m.addrevision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRevision resets all changes to the "revision" field.
+func (m *SiteCustomizationMutation) ResetRevision() {
+	m.revision = nil
+	m.addrevision = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SiteCustomizationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SiteCustomizationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SiteCustomization entity.
+// If the SiteCustomization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteCustomizationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SiteCustomizationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SiteCustomizationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SiteCustomizationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SiteCustomization entity.
+// If the SiteCustomization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteCustomizationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SiteCustomizationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SiteCustomizationMutation builder.
+func (m *SiteCustomizationMutation) Where(ps ...predicate.SiteCustomization) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SiteCustomizationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SiteCustomizationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SiteCustomization, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SiteCustomizationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SiteCustomizationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SiteCustomization).
+func (m *SiteCustomizationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SiteCustomizationMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.site_id != nil {
+		fields = append(fields, sitecustomization.FieldSiteID)
+	}
+	if m.document != nil {
+		fields = append(fields, sitecustomization.FieldDocument)
+	}
+	if m.revision != nil {
+		fields = append(fields, sitecustomization.FieldRevision)
+	}
+	if m.created_at != nil {
+		fields = append(fields, sitecustomization.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, sitecustomization.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SiteCustomizationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sitecustomization.FieldSiteID:
+		return m.SiteID()
+	case sitecustomization.FieldDocument:
+		return m.Document()
+	case sitecustomization.FieldRevision:
+		return m.Revision()
+	case sitecustomization.FieldCreatedAt:
+		return m.CreatedAt()
+	case sitecustomization.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SiteCustomizationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sitecustomization.FieldSiteID:
+		return m.OldSiteID(ctx)
+	case sitecustomization.FieldDocument:
+		return m.OldDocument(ctx)
+	case sitecustomization.FieldRevision:
+		return m.OldRevision(ctx)
+	case sitecustomization.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case sitecustomization.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SiteCustomization field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SiteCustomizationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sitecustomization.FieldSiteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSiteID(v)
+		return nil
+	case sitecustomization.FieldDocument:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDocument(v)
+		return nil
+	case sitecustomization.FieldRevision:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevision(v)
+		return nil
+	case sitecustomization.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case sitecustomization.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SiteCustomization field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SiteCustomizationMutation) AddedFields() []string {
+	var fields []string
+	if m.addrevision != nil {
+		fields = append(fields, sitecustomization.FieldRevision)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SiteCustomizationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case sitecustomization.FieldRevision:
+		return m.AddedRevision()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SiteCustomizationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case sitecustomization.FieldRevision:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRevision(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SiteCustomization numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SiteCustomizationMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SiteCustomizationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SiteCustomizationMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown SiteCustomization nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SiteCustomizationMutation) ResetField(name string) error {
+	switch name {
+	case sitecustomization.FieldSiteID:
+		m.ResetSiteID()
+		return nil
+	case sitecustomization.FieldDocument:
+		m.ResetDocument()
+		return nil
+	case sitecustomization.FieldRevision:
+		m.ResetRevision()
+		return nil
+	case sitecustomization.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case sitecustomization.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SiteCustomization field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SiteCustomizationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SiteCustomizationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SiteCustomizationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SiteCustomizationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SiteCustomizationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SiteCustomizationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SiteCustomizationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SiteCustomization unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SiteCustomizationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SiteCustomization edge %s", name)
+}
+
 // SiteMemberMutation represents an operation that mutates the SiteMember nodes in the graph.
 type SiteMemberMutation struct {
 	config
@@ -14425,6 +15798,716 @@ func (m *SiteMemberMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SiteMemberMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SiteMember edge %s", name)
+}
+
+// TaxonomyTermMutation represents an operation that mutates the TaxonomyTerm nodes in the graph.
+type TaxonomyTermMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	site_id       *string
+	kind          *string
+	name          *string
+	slug          *string
+	description   *string
+	color         *string
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*TaxonomyTerm, error)
+	predicates    []predicate.TaxonomyTerm
+}
+
+var _ ent.Mutation = (*TaxonomyTermMutation)(nil)
+
+// taxonomytermOption allows management of the mutation configuration using functional options.
+type taxonomytermOption func(*TaxonomyTermMutation)
+
+// newTaxonomyTermMutation creates new mutation for the TaxonomyTerm entity.
+func newTaxonomyTermMutation(c config, op Op, opts ...taxonomytermOption) *TaxonomyTermMutation {
+	m := &TaxonomyTermMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTaxonomyTerm,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTaxonomyTermID sets the ID field of the mutation.
+func withTaxonomyTermID(id string) taxonomytermOption {
+	return func(m *TaxonomyTermMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TaxonomyTerm
+		)
+		m.oldValue = func(ctx context.Context) (*TaxonomyTerm, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TaxonomyTerm.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTaxonomyTerm sets the old TaxonomyTerm of the mutation.
+func withTaxonomyTerm(node *TaxonomyTerm) taxonomytermOption {
+	return func(m *TaxonomyTermMutation) {
+		m.oldValue = func(context.Context) (*TaxonomyTerm, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TaxonomyTermMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TaxonomyTermMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TaxonomyTerm entities.
+func (m *TaxonomyTermMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TaxonomyTermMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TaxonomyTermMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TaxonomyTerm.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSiteID sets the "site_id" field.
+func (m *TaxonomyTermMutation) SetSiteID(s string) {
+	m.site_id = &s
+}
+
+// SiteID returns the value of the "site_id" field in the mutation.
+func (m *TaxonomyTermMutation) SiteID() (r string, exists bool) {
+	v := m.site_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSiteID returns the old "site_id" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldSiteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSiteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSiteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSiteID: %w", err)
+	}
+	return oldValue.SiteID, nil
+}
+
+// ResetSiteID resets all changes to the "site_id" field.
+func (m *TaxonomyTermMutation) ResetSiteID() {
+	m.site_id = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *TaxonomyTermMutation) SetKind(s string) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *TaxonomyTermMutation) Kind() (r string, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *TaxonomyTermMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetName sets the "name" field.
+func (m *TaxonomyTermMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *TaxonomyTermMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *TaxonomyTermMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSlug sets the "slug" field.
+func (m *TaxonomyTermMutation) SetSlug(s string) {
+	m.slug = &s
+}
+
+// Slug returns the value of the "slug" field in the mutation.
+func (m *TaxonomyTermMutation) Slug() (r string, exists bool) {
+	v := m.slug
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlug returns the old "slug" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldSlug(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlug is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlug requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlug: %w", err)
+	}
+	return oldValue.Slug, nil
+}
+
+// ResetSlug resets all changes to the "slug" field.
+func (m *TaxonomyTermMutation) ResetSlug() {
+	m.slug = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *TaxonomyTermMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *TaxonomyTermMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *TaxonomyTermMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetColor sets the "color" field.
+func (m *TaxonomyTermMutation) SetColor(s string) {
+	m.color = &s
+}
+
+// Color returns the value of the "color" field in the mutation.
+func (m *TaxonomyTermMutation) Color() (r string, exists bool) {
+	v := m.color
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldColor returns the old "color" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldColor(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldColor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldColor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldColor: %w", err)
+	}
+	return oldValue.Color, nil
+}
+
+// ResetColor resets all changes to the "color" field.
+func (m *TaxonomyTermMutation) ResetColor() {
+	m.color = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TaxonomyTermMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TaxonomyTermMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TaxonomyTermMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TaxonomyTermMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TaxonomyTermMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TaxonomyTerm entity.
+// If the TaxonomyTerm object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaxonomyTermMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TaxonomyTermMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the TaxonomyTermMutation builder.
+func (m *TaxonomyTermMutation) Where(ps ...predicate.TaxonomyTerm) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TaxonomyTermMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TaxonomyTermMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TaxonomyTerm, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TaxonomyTermMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TaxonomyTermMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TaxonomyTerm).
+func (m *TaxonomyTermMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TaxonomyTermMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.site_id != nil {
+		fields = append(fields, taxonomyterm.FieldSiteID)
+	}
+	if m.kind != nil {
+		fields = append(fields, taxonomyterm.FieldKind)
+	}
+	if m.name != nil {
+		fields = append(fields, taxonomyterm.FieldName)
+	}
+	if m.slug != nil {
+		fields = append(fields, taxonomyterm.FieldSlug)
+	}
+	if m.description != nil {
+		fields = append(fields, taxonomyterm.FieldDescription)
+	}
+	if m.color != nil {
+		fields = append(fields, taxonomyterm.FieldColor)
+	}
+	if m.created_at != nil {
+		fields = append(fields, taxonomyterm.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, taxonomyterm.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TaxonomyTermMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case taxonomyterm.FieldSiteID:
+		return m.SiteID()
+	case taxonomyterm.FieldKind:
+		return m.Kind()
+	case taxonomyterm.FieldName:
+		return m.Name()
+	case taxonomyterm.FieldSlug:
+		return m.Slug()
+	case taxonomyterm.FieldDescription:
+		return m.Description()
+	case taxonomyterm.FieldColor:
+		return m.Color()
+	case taxonomyterm.FieldCreatedAt:
+		return m.CreatedAt()
+	case taxonomyterm.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TaxonomyTermMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case taxonomyterm.FieldSiteID:
+		return m.OldSiteID(ctx)
+	case taxonomyterm.FieldKind:
+		return m.OldKind(ctx)
+	case taxonomyterm.FieldName:
+		return m.OldName(ctx)
+	case taxonomyterm.FieldSlug:
+		return m.OldSlug(ctx)
+	case taxonomyterm.FieldDescription:
+		return m.OldDescription(ctx)
+	case taxonomyterm.FieldColor:
+		return m.OldColor(ctx)
+	case taxonomyterm.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case taxonomyterm.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TaxonomyTerm field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TaxonomyTermMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case taxonomyterm.FieldSiteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSiteID(v)
+		return nil
+	case taxonomyterm.FieldKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case taxonomyterm.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case taxonomyterm.FieldSlug:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlug(v)
+		return nil
+	case taxonomyterm.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case taxonomyterm.FieldColor:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetColor(v)
+		return nil
+	case taxonomyterm.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case taxonomyterm.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TaxonomyTerm field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TaxonomyTermMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TaxonomyTermMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TaxonomyTermMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TaxonomyTerm numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TaxonomyTermMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TaxonomyTermMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TaxonomyTermMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown TaxonomyTerm nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TaxonomyTermMutation) ResetField(name string) error {
+	switch name {
+	case taxonomyterm.FieldSiteID:
+		m.ResetSiteID()
+		return nil
+	case taxonomyterm.FieldKind:
+		m.ResetKind()
+		return nil
+	case taxonomyterm.FieldName:
+		m.ResetName()
+		return nil
+	case taxonomyterm.FieldSlug:
+		m.ResetSlug()
+		return nil
+	case taxonomyterm.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case taxonomyterm.FieldColor:
+		m.ResetColor()
+		return nil
+	case taxonomyterm.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case taxonomyterm.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TaxonomyTerm field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TaxonomyTermMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TaxonomyTermMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TaxonomyTermMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TaxonomyTermMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TaxonomyTermMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TaxonomyTermMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TaxonomyTermMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TaxonomyTerm unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TaxonomyTermMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TaxonomyTerm edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.

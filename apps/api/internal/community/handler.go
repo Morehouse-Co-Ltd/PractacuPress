@@ -3,24 +3,34 @@ package community
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // PrincipalFunc returns the authenticated caller.
 type PrincipalFunc func(*gin.Context) (Actor, bool)
 
+// SiteFunc returns the site resolved for the request.
+type SiteFunc func(*gin.Context) (site.Site, bool)
+
 // HandlerConfig configures a Handler.
 type HandlerConfig struct {
 	Principal PrincipalFunc
+	// Site exposes the resolved site so public comment threads can be read anonymously.
+	Site SiteFunc
 }
 
 // Handler exposes comments and interactions over HTTP.
 type Handler struct {
 	service   *Service
 	principal PrincipalFunc
+	site      SiteFunc
 }
 
 // NewHandler builds a Handler.
@@ -29,11 +39,20 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 	if principal == nil {
 		principal = func(*gin.Context) (Actor, bool) { return Actor{}, false }
 	}
-	return &Handler{service: service, principal: principal}
+	siteOf := cfg.Site
+	if siteOf == nil {
+		siteOf = func(*gin.Context) (site.Site, bool) { return site.Site{}, false }
+	}
+	return &Handler{service: service, principal: principal, site: siteOf}
 }
 
 // Routes mounts the community endpoints under /api/v1.
-func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
+//
+// Reading a thread is open to anonymous visitors on a public site; every write still
+// requires a session.
+func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc, optionalAuth gin.HandlerFunc) {
+	r.GET("/comments", optionalAuth, h.ListComments)
+
 	group := r.Group("", requireAuth)
 	group.POST("/comments", h.CreateComment)
 	group.PATCH("/comments/:commentID", h.EditComment)
@@ -41,6 +60,24 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group.POST("/reactions/:targetType/:targetID", h.ToggleReaction)
 	group.POST("/bookmarks/:targetType/:targetID", h.ToggleBookmark)
 	group.POST("/follows/:userID", h.ToggleFollow)
+}
+
+// actor resolves the caller, falling back to an anonymous reader on a public site.
+func (h *Handler) actor(c *gin.Context) (Actor, bool) {
+	if principal, ok := h.principal(c); ok {
+		return principal, true
+	}
+	resolved, ok := h.site(c)
+	if !ok || resolved.IsMembersOnly() {
+		return Actor{}, false
+	}
+	return Actor{SiteID: resolved.ID}, true
+}
+
+type commentListResponse struct {
+	Items      []commentResponse `json:"items"`
+	NextCursor string            `json:"next_cursor"`
+	HasMore    bool              `json:"has_more"`
 }
 
 type commentRequest struct {
@@ -52,6 +89,9 @@ type commentRequest struct {
 
 type bodyRequest struct {
 	Body string `json:"body"`
+	// Status is a moderator only field: visible restores a comment, hidden removes it
+	// from public view without deleting the row.
+	Status string `json:"status"`
 }
 
 type toggleRequest struct {
@@ -60,13 +100,63 @@ type toggleRequest struct {
 }
 
 type commentResponse struct {
-	ID         string `json:"id"`
-	TargetType string `json:"target_type"`
-	TargetID   string `json:"target_id"`
-	ParentID   string `json:"parent_id,omitempty"`
-	Depth      int    `json:"depth"`
-	Body       string `json:"body"`
-	Status     string `json:"status"`
+	ID         string    `json:"id"`
+	TargetType string    `json:"target_type"`
+	TargetID   string    `json:"target_id"`
+	ParentID   string    `json:"parent_id,omitempty"`
+	Depth      int       `json:"depth"`
+	Body       string    `json:"body"`
+	Status     string    `json:"status"`
+	AuthorID   string    `json:"author_id,omitempty"`
+	AuthorName string    `json:"author_name,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ListComments returns a page of comments for a target or for the moderation queue.
+func (h *Handler) ListComments(c *gin.Context) {
+	actor, ok := h.actor(c)
+	if !ok {
+		h.unauthenticated(c)
+		return
+	}
+
+	cursor, err := page.Decode(c.Query("cursor"))
+	if err != nil {
+		_ = c.Error(apperr.Validation("invalid cursor"))
+		return
+	}
+	limit, _ := strconv.Atoi(c.Query("limit"))
+
+	filter := CommentListFilter{
+		TargetType: TargetType(c.Query("target_type")),
+		TargetID:   c.Query("target_id"),
+		Query:      c.Query("q"),
+		Limit:      limit,
+		After:      cursor,
+	}
+	switch status := c.Query("status"); status {
+	case "", "all":
+		// The service decides the default: visible for readers, every state for
+		// moderators.
+	default:
+		filter.Statuses = []string{status}
+	}
+
+	items, next, err := h.service.ListComments(c.Request.Context(), actor, filter)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	response := make([]commentResponse, 0, len(items))
+	for _, item := range items {
+		response = append(response, toCommentResponse(item))
+	}
+	c.JSON(http.StatusOK, commentListResponse{
+		Items:      response,
+		NextCursor: next,
+		HasMore:    next != "",
+	})
 }
 
 // CreateComment stores a comment or reply.
@@ -96,7 +186,8 @@ func (h *Handler) CreateComment(c *gin.Context) {
 	c.JSON(http.StatusCreated, toCommentResponse(comment))
 }
 
-// EditComment changes the body of a comment the caller wrote.
+// EditComment changes the body of a comment the caller wrote, or its visibility when
+// the caller is a moderator.
 func (h *Handler) EditComment(c *gin.Context) {
 	actor, ok := h.principal(c)
 	if !ok {
@@ -107,6 +198,16 @@ func (h *Handler) EditComment(c *gin.Context) {
 	var req bodyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		_ = c.Error(apperr.Validation("malformed json body"))
+		return
+	}
+
+	if req.Status != "" {
+		comment, err := h.service.ModerateComment(c.Request.Context(), actor, c.Param("commentID"), req.Status)
+		if err != nil {
+			_ = c.Error(mapError(err))
+			return
+		}
+		c.JSON(http.StatusOK, toCommentResponse(comment))
 		return
 	}
 
@@ -213,6 +314,9 @@ func toCommentResponse(comment Comment) commentResponse {
 		Depth:      comment.Depth,
 		Body:       comment.Body,
 		Status:     comment.Status,
+		AuthorID:   comment.AuthorID,
+		AuthorName: comment.AuthorName,
+		CreatedAt:  comment.CreatedAt,
 	}
 }
 

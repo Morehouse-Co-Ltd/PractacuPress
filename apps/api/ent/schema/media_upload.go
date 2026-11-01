@@ -18,7 +18,7 @@ func (MediaUpload) Fields() []ent.Field {
 		field.String("file_name").MaxLen(200).NotEmpty(),
 		field.String("declared_mime").MaxLen(120).NotEmpty(),
 		field.Int64("size").NonNegative(),
-		field.String("purpose").MaxLen(20).Validate(oneOf("content", "avatar", "attachment")),
+		field.String("purpose").MaxLen(20).Validate(oneOf("content", "site", "avatar", "attachment")),
 		// The storage key is generated server side; the declared name never reaches it.
 		field.String("storage_key").MaxLen(200).NotEmpty(),
 		field.String("status").

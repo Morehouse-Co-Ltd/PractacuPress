@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"net/http/httptest"
-	"time"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -44,6 +44,12 @@ func (s *stubRepo) List(_ context.Context, filter content.ListFilter) ([]content
 	out := make([]content.Content, 0, len(s.items))
 	for _, item := range s.items {
 		if item.SiteID != filter.SiteID {
+			continue
+		}
+		if filter.Kind != "" && item.Kind != filter.Kind {
+			continue
+		}
+		if filter.AuthorID != "" && item.AuthorID != filter.AuthorID {
 			continue
 		}
 		if len(filter.Statuses) > 0 {
@@ -94,14 +100,17 @@ func (acceptingSanitizer) Sanitize(context.Context, content.SourceFormat, string
 // attaches a principal, which is exactly the anonymous case.
 func anonymousEngine(t *testing.T, visibility site.VisibilityMode) *gin.Engine {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-
-	repo := &stubRepo{items: []content.Content{
+	return anonymousEngineWithRepo(t, &stubRepo{items: []content.Content{
 		{ID: "pub", SiteID: "s1", AuthorID: "u1", Kind: content.KindArticle,
 			Status: content.StatusPublished, Title: "Published", CreatedAt: time.Unix(0, 0).UTC()},
 		{ID: "draft", SiteID: "s1", AuthorID: "u1", Kind: content.KindArticle,
 			Status: content.StatusDraft, Title: "Draft", CreatedAt: time.Unix(0, 0).UTC()},
-	}}
+	}}, visibility)
+}
+
+func anonymousEngineWithRepo(t *testing.T, repo *stubRepo, visibility site.VisibilityMode) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
 
 	service, err := content.NewService(content.ServiceConfig{
 		Repository: repo,
@@ -128,8 +137,6 @@ func anonymousEngine(t *testing.T, visibility site.VisibilityMode) *gin.Engine {
 	handler.Routes(r, anonymous, anonymous)
 	return r
 }
-
-
 
 func TestAnonymousReadOnPublicSite(t *testing.T) {
 	r := anonymousEngine(t, site.VisibilityPublic)
@@ -176,6 +183,47 @@ func TestAnonymousCanReadPublishedByID(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/articles/pub", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestAnonymousAuthorArchiveFiltersPublishedByAuthor covers the query parameter the
+// /u/{userID} archive sends: it narrows the page to one author without widening what
+// an anonymous reader may see.
+func TestAnonymousAuthorArchiveFiltersPublishedByAuthor(t *testing.T) {
+	repo := &stubRepo{items: []content.Content{
+		{ID: "alice-pub", SiteID: "s1", AuthorID: "alice", Kind: content.KindArticle,
+			Status: content.StatusPublished, CreatedAt: time.Unix(1, 0).UTC()},
+		{ID: "alice-draft", SiteID: "s1", AuthorID: "alice", Kind: content.KindArticle,
+			Status: content.StatusDraft, CreatedAt: time.Unix(2, 0).UTC()},
+		{ID: "bob-pub", SiteID: "s1", AuthorID: "bob", Kind: content.KindArticle,
+			Status: content.StatusPublished, CreatedAt: time.Unix(3, 0).UTC()},
+	}}
+	r := anonymousEngineWithRepo(t, repo, site.VisibilityPublic)
+
+	fetch := func(path string) (int, map[string]any) {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+		return w.Code, payload
+	}
+
+	code, payload := fetch("/articles?author_id=alice")
+	require.Equal(t, http.StatusOK, code)
+	items, ok := payload["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1, "only the author's published item is public")
+	require.Equal(t, "alice-pub", items[0].(map[string]any)["id"])
+
+	// The archive page is kind scoped: the same author has no posts.
+	code, payload = fetch("/posts?author_id=alice")
+	require.Equal(t, http.StatusOK, code)
+	require.Empty(t, payload["items"])
+	require.Equal(t, "", payload["next_cursor"])
+
+	// An unknown author is an empty page, never a 400.
+	code, payload = fetch("/articles?author_id=ghost")
+	require.Equal(t, http.StatusOK, code)
+	require.Empty(t, payload["items"])
 }
 
 func decodeCode(t *testing.T, w *httptest.ResponseRecorder) string {

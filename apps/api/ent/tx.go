@@ -40,14 +40,20 @@ type Tx struct {
 	Notification *NotificationClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
+	// PageView is the client for interacting with the PageView builders.
+	PageView *PageViewClient
 	// Reaction is the client for interacting with the Reaction builders.
 	Reaction *ReactionClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// Site is the client for interacting with the Site builders.
 	Site *SiteClient
+	// SiteCustomization is the client for interacting with the SiteCustomization builders.
+	SiteCustomization *SiteCustomizationClient
 	// SiteMember is the client for interacting with the SiteMember builders.
 	SiteMember *SiteMemberClient
+	// TaxonomyTerm is the client for interacting with the TaxonomyTerm builders.
+	TaxonomyTerm *TaxonomyTermClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -199,10 +205,13 @@ func (tx *Tx) init() {
 	tx.ModerationReport = NewModerationReportClient(tx.config)
 	tx.Notification = NewNotificationClient(tx.config)
 	tx.OutboxEvent = NewOutboxEventClient(tx.config)
+	tx.PageView = NewPageViewClient(tx.config)
 	tx.Reaction = NewReactionClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.Site = NewSiteClient(tx.config)
+	tx.SiteCustomization = NewSiteCustomizationClient(tx.config)
 	tx.SiteMember = NewSiteMemberClient(tx.config)
+	tx.TaxonomyTerm = NewTaxonomyTermClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.VerificationToken = NewVerificationTokenClient(tx.config)

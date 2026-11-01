@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -19,6 +21,14 @@ type Service struct {
 	now                 func() time.Time
 	refreshTTL          time.Duration
 	requireVerification bool
+	bootstrapFirstAdmin bool
+	// mailer delivers password reset links. Nil means the deployment has no SMTP
+	// relay, and the reset endpoints report themselves as unavailable.
+	mailer mailer.Sender
+	// publicBaseURL overrides the origin of reset links. Empty means the origin of
+	// the request that asked for the reset is used.
+	publicBaseURL string
+	logger        *slog.Logger
 }
 
 // ServiceConfig configures a Service.
@@ -32,10 +42,23 @@ type ServiceConfig struct {
 	Tokens *TokenIssuer
 	// RequireEmailVerification refuses login until an email identity is verified.
 	RequireEmailVerification bool
+	// BootstrapFirstAdmin makes the first account of a site its platform
+	// administrator. It exists for single site desktop installs, where nobody can
+	// promote the first account afterwards; server deployments leave it off and
+	// register plain members.
+	BootstrapFirstAdmin bool
 	// RefreshTTL defaults to RefreshTTL.
 	RefreshTTL time.Duration
 	// Now defaults to time.Now().UTC.
 	Now func() time.Time
+	// Mailer delivers transactional mail. Leaving it nil disables password reset,
+	// which is the correct behaviour for an install without an SMTP relay.
+	Mailer mailer.Sender
+	// PublicBaseURL is the origin used in reset links, for example
+	// "https://press.example.com". Empty falls back to the request origin.
+	PublicBaseURL string
+	// Logger records delivery failures. Nil discards them.
+	Logger *slog.Logger
 }
 
 // NewService validates its dependencies and returns a Service.
@@ -56,6 +79,10 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		now:                 cfg.Now,
 		refreshTTL:          cfg.RefreshTTL,
 		requireVerification: cfg.RequireEmailVerification,
+		bootstrapFirstAdmin: cfg.BootstrapFirstAdmin,
+		mailer:              cfg.Mailer,
+		publicBaseURL:       cfg.PublicBaseURL,
+		logger:              cfg.Logger,
 	}
 	if s.refreshTTL <= 0 {
 		s.refreshTTL = RefreshTTL
@@ -114,13 +141,27 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 		return Session{}, err
 	}
 
+	role := string(site.RoleMember)
+	if s.bootstrapFirstAdmin {
+		// The count and the insert are not one transaction, so two simultaneous first
+		// registrations could both win. A desktop install only ever has one operator,
+		// and a server deployment never enables this rule.
+		members, countErr := s.repo.CountSiteMembers(ctx, siteID)
+		if countErr != nil {
+			return Session{}, countErr
+		}
+		if members == 0 {
+			role = string(site.RolePlatformAdmin)
+		}
+	}
+
 	user, err := s.repo.CreateAccountWithEmail(ctx, CreateAccountInput{
 		SiteID:       siteID,
 		Email:        email,
 		DisplayName:  displayName,
 		PasswordHash: passwordHash,
 		Verified:     !s.requireVerification,
-		Role:         string(site.RoleMember),
+		Role:         role,
 	})
 	if err != nil {
 		return Session{}, err
@@ -134,6 +175,78 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 		return Session{}, err
 	}
 	return session, nil
+}
+
+// CreateMemberInput is an administrator initiated account creation.
+type CreateMemberInput struct {
+	Email       string
+	DisplayName string
+	Password    string
+	Role        site.Role
+}
+
+// CreateMember creates an account on a site without starting a session.
+//
+// This is the counterpart of self service registration for installs that keep
+// registration closed (a personal blog, or a community with an invite only policy).
+// The stored role is what the server enforces, so callers that want "every account is
+// an administrator" must pass site_admin explicitly.
+func (s *Service) CreateMember(
+	ctx context.Context,
+	actor Principal,
+	siteID string,
+	in CreateMemberInput,
+) (UserView, error) {
+	if siteID == "" {
+		return UserView{}, fmt.Errorf("%w: site is required", ErrInvalidInput)
+	}
+	if actor.SiteID != siteID {
+		return UserView{}, ErrPermissionToSite
+	}
+	if !actor.AtLeast(site.RoleSiteAdmin) {
+		return UserView{}, ErrActionNotAllowed
+	}
+
+	role := in.Role
+	if role == "" {
+		role = site.RoleMember
+	}
+	if !role.Valid() {
+		return UserView{}, fmt.Errorf("%w: unknown role", ErrInvalidInput)
+	}
+	if role == site.RolePlatformAdmin && actor.Role != site.RolePlatformAdmin {
+		return UserView{}, ErrActionNotAllowed
+	}
+
+	email, err := NormalizeEmail(in.Email)
+	if err != nil {
+		return UserView{}, err
+	}
+	if err := ValidatePassword(in.Password); err != nil {
+		return UserView{}, err
+	}
+	displayName, err := ValidateDisplayName(in.DisplayName)
+	if err != nil {
+		return UserView{}, err
+	}
+
+	passwordHash, err := s.hasher.Hash(ctx, in.Password)
+	if err != nil {
+		return UserView{}, err
+	}
+
+	user, err := s.repo.CreateAccountWithEmail(ctx, CreateAccountInput{
+		SiteID:       siteID,
+		Email:        email,
+		DisplayName:  displayName,
+		PasswordHash: passwordHash,
+		Verified:     true,
+		Role:         string(role),
+	})
+	if err != nil {
+		return UserView{}, err
+	}
+	return user.View(), nil
 }
 
 // LoginPassword verifies an email and password and starts a session.

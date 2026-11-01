@@ -37,6 +37,8 @@ const (
 	FieldPolicyVersion = "policy_version"
 	// FieldCategoryID holds the string denoting the category_id field in the database.
 	FieldCategoryID = "category_id"
+	// FieldTags holds the string denoting the tags field in the database.
+	FieldTags = "tags"
 	// FieldPublishedAt holds the string denoting the published_at field in the database.
 	FieldPublishedAt = "published_at"
 	// FieldArchivedAt holds the string denoting the archived_at field in the database.
@@ -64,6 +66,7 @@ var Columns = []string{
 	FieldRenderedHTML,
 	FieldPolicyVersion,
 	FieldCategoryID,
+	FieldTags,
 	FieldPublishedAt,
 	FieldArchivedAt,
 	FieldCreatedAt,
@@ -113,6 +116,8 @@ var (
 	PolicyVersionValidator func(string) error
 	// CategoryIDValidator is a validator for the "category_id" field. It is called by the builders before save.
 	CategoryIDValidator func(string) error
+	// DefaultTags holds the default value on creation for the "tags" field.
+	DefaultTags string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -191,6 +196,11 @@ func ByPolicyVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByCategoryID orders the results by the category_id field.
 func ByCategoryID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCategoryID, opts...).ToFunc()
+}
+
+// ByTags orders the results by the tags field.
+func ByTags(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTags, opts...).ToFunc()
 }
 
 // ByPublishedAt orders the results by the published_at field.

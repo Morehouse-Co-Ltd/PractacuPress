@@ -124,6 +124,11 @@ func CategoryID(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldCategoryID, v))
 }
 
+// Tags applies equality check predicate on the "tags" field. It's identical to TagsEQ.
+func Tags(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldTags, v))
+}
+
 // PublishedAt applies equality check predicate on the "published_at" field. It's identical to PublishedAtEQ.
 func PublishedAt(v time.Time) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldPublishedAt, v))
@@ -932,6 +937,71 @@ func CategoryIDEqualFold(v string) predicate.ContentItem {
 // CategoryIDContainsFold applies the ContainsFold predicate on the "category_id" field.
 func CategoryIDContainsFold(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldContainsFold(FieldCategoryID, v))
+}
+
+// TagsEQ applies the EQ predicate on the "tags" field.
+func TagsEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldTags, v))
+}
+
+// TagsNEQ applies the NEQ predicate on the "tags" field.
+func TagsNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldTags, v))
+}
+
+// TagsIn applies the In predicate on the "tags" field.
+func TagsIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldTags, vs...))
+}
+
+// TagsNotIn applies the NotIn predicate on the "tags" field.
+func TagsNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldTags, vs...))
+}
+
+// TagsGT applies the GT predicate on the "tags" field.
+func TagsGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldTags, v))
+}
+
+// TagsGTE applies the GTE predicate on the "tags" field.
+func TagsGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldTags, v))
+}
+
+// TagsLT applies the LT predicate on the "tags" field.
+func TagsLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldTags, v))
+}
+
+// TagsLTE applies the LTE predicate on the "tags" field.
+func TagsLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldTags, v))
+}
+
+// TagsContains applies the Contains predicate on the "tags" field.
+func TagsContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldTags, v))
+}
+
+// TagsHasPrefix applies the HasPrefix predicate on the "tags" field.
+func TagsHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldTags, v))
+}
+
+// TagsHasSuffix applies the HasSuffix predicate on the "tags" field.
+func TagsHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldTags, v))
+}
+
+// TagsEqualFold applies the EqualFold predicate on the "tags" field.
+func TagsEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldTags, v))
+}
+
+// TagsContainsFold applies the ContainsFold predicate on the "tags" field.
+func TagsContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldTags, v))
 }
 
 // PublishedAtEQ applies the EQ predicate on the "published_at" field.

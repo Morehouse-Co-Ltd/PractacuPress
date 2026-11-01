@@ -6,17 +6,19 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/practacu/practacu-press/apps/api/internal/analytics"
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
-		"github.com/practacu/practacu-press/apps/api/internal/media"
+	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/messaging"
-		"github.com/practacu/practacu-press/apps/api/internal/notifications"
+	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
-		"github.com/practacu/practacu-press/apps/api/internal/site"
-	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/taxonomy"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 )
 
 // Dependencies is everything the HTTP layer needs.
@@ -35,6 +37,12 @@ type Dependencies struct {
 	// SiteResolver resolves the request hostname to a site. Nil disables host
 	// resolution, which is correct until the site service exists.
 	SiteResolver middleware.SiteResolver
+	// Install reports whether the request hostname still has an installed site.
+	//
+	// It is the only site aware endpoint mounted outside the resolver group: the
+	// wizard needs an answer precisely when no site resolves, which the group would
+	// turn into a 404 before any handler runs. Nil reports "not configured".
+	Install InstallReporter
 	// AccessTokens verifies bearer tokens for guarded routes. Nil disables auth.
 	AccessTokens middleware.AccessTokenVerifier
 	// Auth mounts the authentication endpoints when non nil.
@@ -55,4 +63,17 @@ type Dependencies struct {
 	Notifications *notifications.Handler
 	// Events mounts the catch up endpoint when non nil.
 	Events *outbox.EventsHandler
+	// Analytics mounts the page view and traffic report endpoints when non nil.
+	Analytics *analytics.Handler
+	// Taxonomy mounts the category and tag endpoints when non nil.
+	Taxonomy *taxonomy.Handler
+}
+
+// InstallReporter answers whether a hostname belongs to an installed site.
+//
+// *site.Service implements it. The interface keeps the transport free of the
+// service's repository, which matters here: this endpoint is the one place the API
+// answers before a site has been resolved.
+type InstallReporter interface {
+	InstallStatus(ctx context.Context, hostname string) (site.InstallStatus, error)
 }

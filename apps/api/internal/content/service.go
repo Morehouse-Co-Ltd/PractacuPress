@@ -1,11 +1,12 @@
 package content
 
 import (
-	"strings"
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
-		"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -46,10 +47,10 @@ type PublishModeFunc func(ctx context.Context, siteID string) (site.PublishMode,
 
 // Service implements the content use cases.
 type Service struct {
-	repo       Repository
-	sanitizer  Sanitizer
+	repo        Repository
+	sanitizer   Sanitizer
 	publishMode PublishModeFunc
-	now        func() time.Time
+	now         func() time.Time
 }
 
 // ServiceConfig configures a Service.
@@ -113,6 +114,7 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 		SourceFormat: validated.SourceFormat,
 		SourceBody:   validated.SourceBody,
 		CategoryID:   validated.CategoryID,
+		Tags:         validated.Tags,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -166,6 +168,7 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	item.SourceFormat = validated.SourceFormat
 	item.SourceBody = validated.SourceBody
 	item.CategoryID = validated.CategoryID
+	item.Tags = validated.Tags
 	item.UpdatedAt = s.now()
 
 	securityErr := s.applySanitization(ctx, &item)
@@ -260,6 +263,7 @@ func (s *Service) RetrySecurityCheck(ctx context.Context, actor Actor, contentID
 		SourceFormat: item.SourceFormat,
 		SourceBody:   item.SourceBody,
 		CategoryID:   item.CategoryID,
+		Tags:         item.Tags,
 	})
 }
 
@@ -299,6 +303,24 @@ func (s *Service) ListAfter(
 	limit int,
 	after page.Cursor,
 ) ([]Content, string, error) {
+	return s.ListAfterFilter(ctx, actor, kind, limit, after, "")
+}
+
+// ListAfterFilter is ListAfter narrowed to one author.
+//
+// It backs the public author archive (/u/{userID}): the visibility rules stay
+// exactly those of ListAfter, so a reader only ever gets published items while a
+// moderator may also see the author's queue. authorID is a plain filter value, not a
+// validated resource: an unknown id simply matches nothing, which is why a stale
+// archive link yields an empty page instead of an error.
+func (s *Service) ListAfterFilter(
+	ctx context.Context,
+	actor Actor,
+	kind Kind,
+	limit int,
+	after page.Cursor,
+	authorID string,
+) ([]Content, string, error) {
 	if kind != "" && !kind.Valid() {
 		return nil, "", ErrInvalidInput
 	}
@@ -306,7 +328,7 @@ func (s *Service) ListAfter(
 		limit = 20
 	}
 
-	filter := ListFilter{SiteID: actor.SiteID, Kind: kind, Limit: limit, After: after}
+	filter := ListFilter{SiteID: actor.SiteID, Kind: kind, Limit: limit, After: after, AuthorID: authorID}
 	if !actor.Role.AtLeast(site.RoleEditor) {
 		filter.Statuses = []Status{StatusPublished}
 	}
@@ -323,6 +345,7 @@ func (s *Service) ListAfter(
 	}
 	return items, next, nil
 }
+
 // List returns the items of a site that the actor is allowed to see.
 //
 // Visibility is decided here, not by the caller: anonymous and ordinary readers only
@@ -406,6 +429,7 @@ func (s *Service) Search(
 
 	return s.repo.Search(ctx, actor.SiteID, term, kind, limit)
 }
+
 // Get returns one item, restricted to what the actor may read.
 func (s *Service) Get(ctx context.Context, actor Actor, contentID string) (Content, error) {
 	item, err := s.load(ctx, actor, contentID)
@@ -421,7 +445,20 @@ func (s *Service) Get(ctx context.Context, actor Actor, contentID string) (Conte
 
 // applySanitization fills the rendered HTML or marks the item as held.
 func (s *Service) applySanitization(ctx context.Context, item *Content) error {
-	result, err := s.sanitizer.Sanitize(ctx, item.SourceFormat, item.SourceBody)
+	format := item.SourceFormat
+	source := item.SourceBody
+
+	// Markdown is expanded to HTML first: the sanitizer cleans markup, it does not
+	// parse a markdown dialect. Plain and HTML already reach it in their final shape.
+	if format == FormatMarkdown {
+		rendered, err := renderMarkdown(source)
+		if err != nil {
+			return fmt.Errorf("render markdown: %w", err)
+		}
+		format, source = FormatHTML, rendered
+	}
+
+	result, err := s.sanitizer.Sanitize(ctx, format, source)
 	if err != nil {
 		// Fail closed: keep the item, drop any previously rendered HTML, and hold it.
 		item.Status = StatusPendingSecurityCheck

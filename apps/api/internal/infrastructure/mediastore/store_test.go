@@ -106,3 +106,41 @@ type stubScanner struct{ result media.ScanResult }
 func (s stubScanner) Inspect(context.Context, media.ScanInput) (media.ScanResult, error) {
 	return s.result, nil
 }
+
+// TestAssetPurposeRoundTripAndDelete is the persistence half of per purpose storage:
+// the download/delete path can only pick the right adapter if the purpose survived the
+// round trip. A NULL purpose must stay empty so legacy rows fall back to the global
+// adapter instead of assuming a scope.
+func TestAssetPurposeRoundTripAndDelete(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	saved, err := store.InsertAsset(ctx, media.Asset{
+		SiteID: siteID, OwnerID: "u1", StorageKey: "ab/site.png",
+		MIME: "image/png", Size: 10, ScanStatus: media.ScanClean,
+		Purpose: media.PurposeSite, CreatedAt: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, media.PurposeSite, saved.Purpose)
+
+	found, err := store.FindAsset(ctx, siteID, saved.ID)
+	require.NoError(t, err)
+	require.Equal(t, media.PurposeSite, found.Purpose)
+
+	require.NoError(t, store.DeleteAsset(ctx, siteID, saved.ID))
+	_, err = store.FindAsset(ctx, siteID, saved.ID)
+	require.ErrorIs(t, err, media.ErrNotFound)
+	require.ErrorIs(t, store.DeleteAsset(ctx, siteID, saved.ID), media.ErrNotFound)
+
+	// A row created without a purpose models the pre per purpose era.
+	legacy, err := handle.Client.MediaAsset.Create().
+		SetSiteID(siteID).SetOwnerID("u1").SetStorageKey("ab/legacy.png").
+		SetMimeType("image/png").SetSize(10).SetScanStatus("clean").
+		Save(ctx)
+	require.NoError(t, err)
+
+	got, err := store.FindAsset(ctx, siteID, legacy.ID)
+	require.NoError(t, err)
+	require.Empty(t, got.Purpose, "a legacy row has no purpose and must use the global adapter")
+}

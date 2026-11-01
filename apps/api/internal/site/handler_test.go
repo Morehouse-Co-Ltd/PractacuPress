@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -25,12 +26,25 @@ import (
 )
 
 type harness struct {
-	router *gin.Engine
-	db     *db.DB
-	siteID string
+	router      *gin.Engine
+	db          *db.DB
+	siteID      string
+	issuer      *auth.TokenIssuer
+	siteService *site.Service
 }
 
+// staticSiteResolver always resolves to the single test site, which is how the
+// visibility mode reaches the public profile endpoint.
+type staticSiteResolver struct{ site site.Site }
+
+func (s staticSiteResolver) Resolve(context.Context, string) (site.Site, error) { return s.site, nil }
+
 func newHarness(t *testing.T) *harness {
+	t.Helper()
+	return newHarnessWithVisibility(t, site.VisibilityPublic)
+}
+
+func newHarnessWithVisibility(t *testing.T, visibility site.VisibilityMode) *harness {
 	t.Helper()
 	ctx := context.Background()
 
@@ -66,21 +80,23 @@ func newHarness(t *testing.T) *harness {
 	})
 
 	siteHandler := site.NewHandler(siteService, site.HandlerConfig{
-		UserID: func(c *gin.Context) (string, bool) {
+		Principal: func(c *gin.Context) (string, string, bool) {
 			principal, ok := middleware.PrincipalFrom(c)
-			return principal.UserID, ok
+			return principal.UserID, principal.SiteID, ok
 		},
+		Site:      middleware.SiteFrom,
 		RequestID: middleware.RequestIDFrom,
 	})
 
 	router := ginrouter.New(ginrouter.Dependencies{
 		Config:       cfg,
+		SiteResolver: staticSiteResolver{site: site.Site{ID: siteID, Slug: "main", Name: "Main", VisibilityMode: visibility}},
 		AccessTokens: issuer,
 		Auth:         authHandler,
 		Sites:        siteHandler,
 	})
 
-	return &harness{router: router, db: handle, siteID: siteRow.ID}
+	return &harness{router: router, db: handle, siteID: siteRow.ID, issuer: issuer, siteService: siteService}
 }
 
 func (h *harness) register(t *testing.T, email string) string {
@@ -266,7 +282,7 @@ func TestUpdateSettingsAppliesForAdmin(t *testing.T) {
 	require.Equal(t, "members_only", payload["visibility_mode"])
 }
 
-func (h *harness) login(t *testing.T, email string) string {
+func (h *harness) attemptLogin(t *testing.T, email string) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(map[string]string{
 		"email": email, "password": "correct horse battery",
@@ -277,6 +293,12 @@ func (h *harness) login(t *testing.T, email string) string {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.router.ServeHTTP(w, req)
+	return w
+}
+
+func (h *harness) login(t *testing.T, email string) string {
+	t.Helper()
+	w := h.attemptLogin(t, email)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 	var payload map[string]any
@@ -286,10 +308,423 @@ func (h *harness) login(t *testing.T, email string) string {
 	return token
 }
 
+// makePlatformAdmin registers an account and promotes it to platform administrator.
+func (h *harness) makePlatformAdmin(t *testing.T, email string) (token, userID string) {
+	t.Helper()
+	token = h.register(t, email)
+	userID = h.userID(t, token)
+	h.setRole(t, userID, site.RolePlatformAdmin)
+	return h.login(t, email), userID
+}
+
+// makeSiteAdmin registers an account and promotes it to site administrator.
+func (h *harness) makeSiteAdmin(t *testing.T, email string) (token, userID string) {
+	t.Helper()
+	token = h.register(t, email)
+	userID = h.userID(t, token)
+	h.setRole(t, userID, site.RoleSiteAdmin)
+	return h.login(t, email), userID
+}
+
+// mintToken issues an access token for an arbitrary site, which is how the tests
+// exercise the cross site guard without a second site in the database.
+func (h *harness) mintToken(t *testing.T, userID, siteID string, role site.Role) string {
+	t.Helper()
+	token, _, err := h.issuer.IssueAccess(auth.Principal{UserID: userID, SiteID: siteID, Role: role})
+	require.NoError(t, err)
+	return token
+}
+
+// decodeMember decodes a Member body.
+func decodeMember(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	return payload
+}
+
+// decodeReason returns details.reason of a Problem body.
+func decodeReason(t *testing.T, w *httptest.ResponseRecorder) string {
+	t.Helper()
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	details, _ := payload["details"].(map[string]any)
+	reason, _ := details["reason"].(string)
+	return reason
+}
+
 func decodeCode(t *testing.T, w *httptest.ResponseRecorder) string {
 	t.Helper()
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
 	code, _ := payload["code"].(string)
 	return code
+}
+
+// --- member administration -------------------------------------------------
+
+func (h *harness) memberPath(userID, suffix string) string {
+	return "/api/v1/sites/" + h.siteID + "/members/" + userID + suffix
+}
+
+func TestListMembersReturnsEmailAndStatus(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+	targetID := h.userID(t, h.register(t, "member@example.com"))
+
+	w := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/members", adminToken, "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	items, ok := payload["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, 2)
+
+	var target map[string]any
+	for _, item := range items {
+		row := item.(map[string]any)
+		if row["user_id"] == targetID {
+			target = row
+		}
+	}
+	require.NotNil(t, target, "the ordinary member must be in the list")
+	require.Equal(t, "member@example.com", target["email"])
+	require.Equal(t, "active", target["status"])
+	require.Equal(t, "member", target["role"])
+}
+
+func TestUpdateMemberProfileChangesNameAndLoginEmail(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodPatch, h.memberPath(targetID, ""), adminToken,
+		`{"display_name":"Target Renamed","email":"new@example.com"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	member := decodeMember(t, w)
+	require.Equal(t, targetID, member["user_id"])
+	require.Equal(t, "Target Renamed", member["display_name"])
+	require.Equal(t, "new@example.com", member["email"])
+	require.Equal(t, "active", member["status"])
+
+	// The login identity moved with the profile: the old address stops working and
+	// the new one starts working.
+	require.Equal(t, http.StatusUnauthorized, h.attemptLogin(t, "target@example.com").Code)
+	require.NotEmpty(t, h.login(t, "new@example.com"))
+}
+
+func TestUpdateMemberProfileRejectsDuplicateEmail(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodPatch, h.memberPath(targetID, ""), adminToken,
+		`{"email":"root@example.com"}`)
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	require.Equal(t, "conflict", decodeCode(t, w))
+	require.Equal(t, "email_taken", decodeReason(t, w))
+}
+
+func TestUpdateMemberProfileRejectsSiteAdminSelfAndPlatformPeers(t *testing.T) {
+	h := newHarness(t)
+	rootToken, rootID := h.makePlatformAdmin(t, "root@example.com")
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	// A site administrator may manage members but not rewrite an account.
+	w := h.do(t, http.MethodPatch, h.memberPath(targetID, ""), adminToken, `{"display_name":"x"}`)
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	// Nobody edits its own account here.
+	w = h.do(t, http.MethodPatch, h.memberPath(rootID, ""), rootToken, `{"display_name":"x"}`)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, "self_management", decodeReason(t, w))
+
+	// Nor another platform administrator.
+	peerToken, peerID := h.makePlatformAdmin(t, "peer@example.com")
+	w = h.do(t, http.MethodPatch, h.memberPath(peerID, ""), rootToken, `{"display_name":"x"}`)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, "target_role_not_lower", decodeReason(t, w))
+
+	require.NotEmpty(t, peerToken)
+}
+
+func TestUpdateMemberProfileUnknownTargetIsNotFound(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+
+	w := h.do(t, http.MethodPatch, h.memberPath("usr_ghost", ""), adminToken, `{"display_name":"x"}`)
+
+	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.Equal(t, "not_found", decodeCode(t, w))
+}
+
+func TestSuspendMemberBlocksLoginAndReactivationRestoresIt(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodPatch, h.memberPath(targetID, "/status"), adminToken, `{"status":"suspended"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "suspended", decodeMember(t, w)["status"])
+
+	// A suspended membership cannot start a session.
+	denied := h.attemptLogin(t, "target@example.com")
+	require.Equal(t, http.StatusForbidden, denied.Code, denied.Body.String())
+
+	// It is still listed, so an administrator can find and reactivate it.
+	list := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/members", adminToken, "")
+	require.Equal(t, http.StatusOK, list.Code)
+	require.Contains(t, list.Body.String(), `"suspended"`)
+
+	w = h.do(t, http.MethodPatch, h.memberPath(targetID, "/status"), adminToken, `{"status":"active"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "active", decodeMember(t, w)["status"])
+	require.NotEmpty(t, h.login(t, "target@example.com"))
+}
+
+func TestUpdateMemberStatusRejectsBadRequestsAndSiteAdmins(t *testing.T) {
+	h := newHarness(t)
+	rootToken, rootID := h.makePlatformAdmin(t, "root@example.com")
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodPatch, h.memberPath(targetID, "/status"), adminToken, `{"status":"suspended"}`)
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	w = h.do(t, http.MethodPatch, h.memberPath(targetID, "/status"), rootToken, `{"status":"invited"}`)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Equal(t, "validation_failed", decodeCode(t, w))
+
+	w = h.do(t, http.MethodPatch, h.memberPath(rootID, "/status"), rootToken, `{"status":"suspended"}`)
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, "self_management", decodeReason(t, w))
+}
+
+func TestDeleteMemberRemovesMembershipButKeepsAccount(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodDelete, h.memberPath(targetID, ""), adminToken, "")
+	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+
+	// The membership is gone, so the account can no longer authenticate here. The
+	// account row itself survives, which is why this is a refusal rather than a
+	// credential failure.
+	denied := h.attemptLogin(t, "target@example.com")
+	require.Equal(t, http.StatusForbidden, denied.Code, denied.Body.String())
+
+	list := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/members", adminToken, "")
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(list.Body.Bytes(), &payload))
+	require.Len(t, payload["items"].([]any), 1)
+
+	// Deleting twice is a not found, not a silent success.
+	again := h.do(t, http.MethodDelete, h.memberPath(targetID, ""), adminToken, "")
+	require.Equal(t, http.StatusNotFound, again.Code)
+}
+
+func TestDeleteMemberRejectsSiteAdminAndSelf(t *testing.T) {
+	h := newHarness(t)
+	rootToken, rootID := h.makePlatformAdmin(t, "root@example.com")
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodDelete, h.memberPath(targetID, ""), adminToken, "")
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	w = h.do(t, http.MethodDelete, h.memberPath(rootID, ""), rootToken, "")
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, "self_management", decodeReason(t, w))
+}
+
+func TestChangeMemberRoleRejectsDemotingLastPlatformAdmin(t *testing.T) {
+	h := newHarness(t)
+	adminToken, adminID := h.makePlatformAdmin(t, "root@example.com")
+
+	w := h.do(t, http.MethodPatch, h.memberPath(adminID, "/role"), adminToken, `{"role":"member"}`)
+
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Equal(t, "last_platform_admin", decodeReason(t, w))
+}
+
+func TestMemberAdministrationRejectsTokenFromAnotherSite(t *testing.T) {
+	h := newHarness(t)
+	_, adminID := h.makePlatformAdmin(t, "root@example.com")
+	crossToken := h.mintToken(t, adminID, "another-site", site.RolePlatformAdmin)
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	w := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/members", crossToken, "")
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Equal(t, "cross_site", decodeReason(t, w))
+
+	w = h.do(t, http.MethodDelete, h.memberPath(targetID, ""), crossToken, "")
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, "cross_site", decodeReason(t, w))
+}
+
+// --- public author profile -------------------------------------------------
+
+func TestPublicUserProfileIsPublicOnPublicSite(t *testing.T) {
+	h := newHarness(t)
+	userID := h.userID(t, h.register(t, "alice@example.com"))
+
+	w := h.do(t, http.MethodGet, "/api/v1/users/"+userID, "", "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	payload := decodeMember(t, w)
+	require.Equal(t, userID, payload["user_id"])
+	require.Equal(t, "alice@example.com", payload["display_name"])
+	require.Equal(t, "member", payload["role"])
+
+	createdAt, ok := payload["created_at"].(string)
+	require.True(t, ok, "created_at must be an RFC3339 timestamp")
+	_, err := time.Parse(time.RFC3339Nano, createdAt)
+	require.NoError(t, err)
+	require.NotContains(t, w.Body.String(), "email", "the public profile must not expose the login email")
+}
+
+func TestPublicUserProfileUnknownMemberIsNotFound(t *testing.T) {
+	h := newHarness(t)
+
+	w := h.do(t, http.MethodGet, "/api/v1/users/usr_ghost", "", "")
+
+	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.Equal(t, "not_found", decodeCode(t, w))
+}
+
+func TestPublicUserProfileHidesSuspendedMember(t *testing.T) {
+	h := newHarness(t)
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+	adminToken, _ := h.makePlatformAdmin(t, "root@example.com")
+
+	suspended := h.do(t, http.MethodPatch, h.memberPath(targetID, "/status"), adminToken, `{"status":"suspended"}`)
+	require.Equal(t, http.StatusOK, suspended.Code, suspended.Body.String())
+
+	w := h.do(t, http.MethodGet, "/api/v1/users/"+targetID, "", "")
+	require.Equal(t, http.StatusNotFound, w.Code, "a suspended member is not a public author")
+}
+
+func TestPublicUserProfileOnMembersOnlySiteRequiresSession(t *testing.T) {
+	h := newHarnessWithVisibility(t, site.VisibilityMembersOnly)
+	token := h.register(t, "alice@example.com")
+	userID := h.userID(t, token)
+
+	anonymous := h.do(t, http.MethodGet, "/api/v1/users/"+userID, "", "")
+	require.Equal(t, http.StatusUnauthorized, anonymous.Code, anonymous.Body.String())
+	require.Equal(t, "unauthenticated", decodeCode(t, anonymous))
+
+	authenticated := h.do(t, http.MethodGet, "/api/v1/users/"+userID, token, "")
+	require.Equal(t, http.StatusOK, authenticated.Code, authenticated.Body.String())
+}
+
+// --- primary domain --------------------------------------------------------
+
+func TestUpdateDomainSetsDomainAndVerification(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+
+	w := h.do(t, http.MethodPut, "/api/v1/sites/"+h.siteID+"/domain", adminToken,
+		`{"domain":"Press.Example.com."}`)
+	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+
+	row, err := h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.NotNil(t, row.Domain)
+	require.Equal(t, "press.example.com", *row.Domain)
+	require.NotNil(t, row.DomainVerifiedAt, "setting a domain must verify it, or the site would 404")
+
+	// The site resolves through the domain it just accepted.
+	resolved, err := h.siteService.Resolve(context.Background(), "press.example.com")
+	require.NoError(t, err)
+	require.Equal(t, h.siteID, resolved.ID)
+}
+
+func TestUpdateDomainClearsDomainAndRestoresFallback(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+
+	first := h.do(t, http.MethodPut, "/api/v1/sites/"+h.siteID+"/domain", adminToken,
+		`{"domain":"press.example.com"}`)
+	require.Equal(t, http.StatusNoContent, first.Code, first.Body.String())
+
+	clear := h.do(t, http.MethodPut, "/api/v1/sites/"+h.siteID+"/domain", adminToken, `{"domain":""}`)
+	require.Equal(t, http.StatusNoContent, clear.Code, clear.Body.String())
+
+	row, err := h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.True(t, row.Domain == nil || *row.Domain == "")
+	require.Nil(t, row.DomainVerifiedAt)
+
+	// A single site without a domain answers through the fallback again.
+	resolved, err := h.siteService.Resolve(context.Background(), "127.0.0.1")
+	require.NoError(t, err)
+	require.Equal(t, h.siteID, resolved.ID)
+}
+
+func TestUpdateDomainRejectsInvalidDomains(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	path := "/api/v1/sites/" + h.siteID + "/domain"
+
+	invalidBodies := []string{
+		`{"domain":"https://press.example.com"}`,
+		`{"domain":"press.example.com/path"}`,
+		`{"domain":"press.example.com:8080"}`,
+		`{"domain":"*.example.com"}`,
+		`{"domain":"127.0.0.1"}`,
+		`{"domain":"press example.com"}`,
+		`{}`,
+		`not-json`,
+	}
+	for _, body := range invalidBodies {
+		w := h.do(t, http.MethodPut, path, adminToken, body)
+		require.Equal(t, http.StatusBadRequest, w.Code, body)
+		require.Equal(t, "validation_failed", decodeCode(t, w), body)
+	}
+
+	row, err := h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.True(t, row.Domain == nil, "a rejected domain must not be stored")
+}
+
+func TestUpdateDomainRejectsNonAdministrators(t *testing.T) {
+	h := newHarness(t)
+	memberToken := h.register(t, "member@example.com")
+
+	editorToken := h.register(t, "editor@example.com")
+	h.setRole(t, h.userID(t, editorToken), site.RoleEditor)
+	editorToken = h.login(t, "editor@example.com")
+
+	path := "/api/v1/sites/" + h.siteID + "/domain"
+
+	anonymous := h.do(t, http.MethodPut, path, "", `{"domain":"press.example.com"}`)
+	require.Equal(t, http.StatusUnauthorized, anonymous.Code)
+
+	denied := h.do(t, http.MethodPut, path, memberToken, `{"domain":"press.example.com"}`)
+	require.Equal(t, http.StatusForbidden, denied.Code)
+
+	denied = h.do(t, http.MethodPut, path, editorToken, `{"domain":"press.example.com"}`)
+	require.Equal(t, http.StatusForbidden, denied.Code)
+}
+
+func TestUpdateDomainRejectsDomainOfAnotherSite(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+
+	_, err := h.db.Client.Site.Create().
+		SetSlug("other").SetName("Other").
+		SetDomain("taken.example.com").
+		SetDomainVerifiedAt(time.Now().UTC()).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	w := h.do(t, http.MethodPut, "/api/v1/sites/"+h.siteID+"/domain", adminToken,
+		`{"domain":"taken.example.com"}`)
+
+	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+	require.Equal(t, "domain_taken", decodeReason(t, w))
 }

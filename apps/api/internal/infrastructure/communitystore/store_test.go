@@ -204,3 +204,40 @@ func ensureNoEvents(t *testing.T, handle *db.DB) {
 	require.NoError(t, err)
 	require.Zero(t, count, "no notification event must be written")
 }
+func TestListCommentsJoinsAuthorsAndFilters(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	author, err := handle.Client.User.Create().SetDisplayName("林知远").Save(ctx)
+	require.NoError(t, err)
+
+	bodies := []string{"first", "second", "third"}
+	for index, body := range bodies {
+		status := community.CommentStatusVisible
+		if body == "second" {
+			status = community.CommentStatusHidden
+		}
+		_, insertErr := store.InsertComment(ctx, community.Comment{
+			SiteID: siteID, AuthorID: author.ID, TargetType: community.TargetArticle,
+			TargetID: "a1", Body: body, Status: status,
+			CreatedAt: now.Add(time.Duration(index) * time.Second), UpdatedAt: now,
+		}, "", site.AuditEntry{SiteID: siteID, ActorID: author.ID, Action: "community.comment.created"})
+		require.NoError(t, insertErr)
+	}
+
+	items, err := store.ListComments(ctx, community.CommentListFilter{
+		SiteID: siteID, TargetType: community.TargetArticle, TargetID: "a1",
+		Statuses: []string{community.CommentStatusVisible}, Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	require.Equal(t, "third", items[0].Body, "newest first")
+	require.Equal(t, "林知远", items[0].AuthorName, "author names are joined for listing")
+
+	all, err := store.ListComments(ctx, community.CommentListFilter{
+		SiteID: siteID, TargetType: community.TargetArticle, TargetID: "a1", Limit: 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+}

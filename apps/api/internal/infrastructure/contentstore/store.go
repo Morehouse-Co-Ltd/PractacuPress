@@ -2,7 +2,7 @@
 package contentstore
 
 import (
-		"context"
+	"context"
 	"strings"
 	"time"
 
@@ -48,6 +48,7 @@ func (s *Store) Insert(ctx context.Context, item content.Content, audit site.Aud
 		SetSourceBody(item.SourceBody).
 		SetRenderedHTML(item.RenderedHTML).
 		SetPolicyVersion(item.PolicyVersion).
+		SetTags(content.EncodeTags(item.Tags)).
 		SetCreatedAt(item.CreatedAt).
 		SetUpdatedAt(item.UpdatedAt)
 	if item.CategoryID != "" {
@@ -97,6 +98,7 @@ func (s *Store) SaveDraft(ctx context.Context, item content.Content, audit site.
 		SetSourceBody(item.SourceBody).
 		SetRenderedHTML(item.RenderedHTML).
 		SetPolicyVersion(item.PolicyVersion).
+		SetTags(content.EncodeTags(item.Tags)).
 		SetStatus(string(item.Status)).
 		SetUpdatedAt(item.UpdatedAt)
 	if item.CategoryID != "" {
@@ -224,6 +226,7 @@ func (s *Store) Search(ctx context.Context, siteID, term string, kind content.Ki
 	}
 	return items, nil
 }
+
 // Transition applies a status change only when the stored status still matches from.
 //
 // The conditional update is the concurrency guard: two moderators acting on stale
@@ -332,6 +335,7 @@ func toContent(row *entgen.ContentItem) content.Content {
 		SourceBody:    row.SourceBody,
 		RenderedHTML:  row.RenderedHTML,
 		PolicyVersion: row.PolicyVersion,
+		Tags:          content.DecodeTags(row.Tags),
 		PublishedAt:   row.PublishedAt,
 		ArchivedAt:    row.ArchivedAt,
 		CreatedAt:     row.CreatedAt,

@@ -151,6 +151,20 @@ func (_c *ContentItemCreate) SetNillableCategoryID(v *string) *ContentItemCreate
 	return _c
 }
 
+// SetTags sets the "tags" field.
+func (_c *ContentItemCreate) SetTags(v string) *ContentItemCreate {
+	_c.mutation.SetTags(v)
+	return _c
+}
+
+// SetNillableTags sets the "tags" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableTags(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetTags(*v)
+	}
+	return _c
+}
+
 // SetPublishedAt sets the "published_at" field.
 func (_c *ContentItemCreate) SetPublishedAt(v time.Time) *ContentItemCreate {
 	_c.mutation.SetPublishedAt(v)
@@ -280,6 +294,10 @@ func (_c *ContentItemCreate) defaults() {
 		v := contentitem.DefaultPolicyVersion
 		_c.mutation.SetPolicyVersion(v)
 	}
+	if _, ok := _c.mutation.Tags(); !ok {
+		v := contentitem.DefaultTags
+		_c.mutation.SetTags(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := contentitem.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -379,6 +397,9 @@ func (_c *ContentItemCreate) check() error {
 			return &ValidationError{Name: "category_id", err: fmt.Errorf(`ent: validator failed for field "ContentItem.category_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.Tags(); !ok {
+		return &ValidationError{Name: "tags", err: errors.New(`ent: missing required field "ContentItem.tags"`)}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ContentItem.created_at"`)}
 	}
@@ -473,6 +494,10 @@ func (_c *ContentItemCreate) createSpec() (*ContentItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CategoryID(); ok {
 		_spec.SetField(contentitem.FieldCategoryID, field.TypeString, value)
 		_node.CategoryID = &value
+	}
+	if value, ok := _c.mutation.Tags(); ok {
+		_spec.SetField(contentitem.FieldTags, field.TypeString, value)
+		_node.Tags = value
 	}
 	if value, ok := _c.mutation.PublishedAt(); ok {
 		_spec.SetField(contentitem.FieldPublishedAt, field.TypeTime, value)
@@ -653,6 +678,18 @@ func (u *ContentItemUpsert) UpdateCategoryID() *ContentItemUpsert {
 // ClearCategoryID clears the value of the "category_id" field.
 func (u *ContentItemUpsert) ClearCategoryID() *ContentItemUpsert {
 	u.SetNull(contentitem.FieldCategoryID)
+	return u
+}
+
+// SetTags sets the "tags" field.
+func (u *ContentItemUpsert) SetTags(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldTags, v)
+	return u
+}
+
+// UpdateTags sets the "tags" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateTags() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldTags)
 	return u
 }
 
@@ -894,6 +931,20 @@ func (u *ContentItemUpsertOne) UpdateCategoryID() *ContentItemUpsertOne {
 func (u *ContentItemUpsertOne) ClearCategoryID() *ContentItemUpsertOne {
 	return u.Update(func(s *ContentItemUpsert) {
 		s.ClearCategoryID()
+	})
+}
+
+// SetTags sets the "tags" field.
+func (u *ContentItemUpsertOne) SetTags(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetTags(v)
+	})
+}
+
+// UpdateTags sets the "tags" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateTags() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateTags()
 	})
 }
 
@@ -1310,6 +1361,20 @@ func (u *ContentItemUpsertBulk) UpdateCategoryID() *ContentItemUpsertBulk {
 func (u *ContentItemUpsertBulk) ClearCategoryID() *ContentItemUpsertBulk {
 	return u.Update(func(s *ContentItemUpsert) {
 		s.ClearCategoryID()
+	})
+}
+
+// SetTags sets the "tags" field.
+func (u *ContentItemUpsertBulk) SetTags(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetTags(v)
+	})
+}
+
+// UpdateTags sets the "tags" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateTags() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateTags()
 	})
 }
 

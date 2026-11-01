@@ -160,6 +160,20 @@ func (_u *ContentItemUpdate) ClearCategoryID() *ContentItemUpdate {
 	return _u
 }
 
+// SetTags sets the "tags" field.
+func (_u *ContentItemUpdate) SetTags(v string) *ContentItemUpdate {
+	_u.mutation.SetTags(v)
+	return _u
+}
+
+// SetNillableTags sets the "tags" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableTags(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetTags(*v)
+	}
+	return _u
+}
+
 // SetPublishedAt sets the "published_at" field.
 func (_u *ContentItemUpdate) SetPublishedAt(v time.Time) *ContentItemUpdate {
 	_u.mutation.SetPublishedAt(v)
@@ -329,6 +343,9 @@ func (_u *ContentItemUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if _u.mutation.CategoryIDCleared() {
 		_spec.ClearField(contentitem.FieldCategoryID, field.TypeString)
 	}
+	if value, ok := _u.mutation.Tags(); ok {
+		_spec.SetField(contentitem.FieldTags, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.PublishedAt(); ok {
 		_spec.SetField(contentitem.FieldPublishedAt, field.TypeTime, value)
 	}
@@ -493,6 +510,20 @@ func (_u *ContentItemUpdateOne) SetNillableCategoryID(v *string) *ContentItemUpd
 // ClearCategoryID clears the value of the "category_id" field.
 func (_u *ContentItemUpdateOne) ClearCategoryID() *ContentItemUpdateOne {
 	_u.mutation.ClearCategoryID()
+	return _u
+}
+
+// SetTags sets the "tags" field.
+func (_u *ContentItemUpdateOne) SetTags(v string) *ContentItemUpdateOne {
+	_u.mutation.SetTags(v)
+	return _u
+}
+
+// SetNillableTags sets the "tags" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableTags(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetTags(*v)
+	}
 	return _u
 }
 
@@ -694,6 +725,9 @@ func (_u *ContentItemUpdateOne) sqlSave(ctx context.Context) (_node *ContentItem
 	}
 	if _u.mutation.CategoryIDCleared() {
 		_spec.ClearField(contentitem.FieldCategoryID, field.TypeString)
+	}
+	if value, ok := _u.mutation.Tags(); ok {
+		_spec.SetField(contentitem.FieldTags, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.PublishedAt(); ok {
 		_spec.SetField(contentitem.FieldPublishedAt, field.TypeTime, value)

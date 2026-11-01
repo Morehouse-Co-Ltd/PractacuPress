@@ -75,6 +75,34 @@ func TestCreateUploadReturnsSession(t *testing.T) {
 	require.NotContains(t, payload["storage_key"], "photo")
 }
 
+func TestCreateUploadAcceptsSitePurpose(t *testing.T) {
+	repo := newFakeRepo()
+	r := newEngine(repo, &fakeScanner{result: ScanResult{Status: ScanClean}}, ownerActor())
+
+	created := do(r, http.MethodPost, "/media/uploads",
+		`{"file_name":"hero.png","mime_type":"image/png","size":1024,"purpose":"site"}`)
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+
+	id, _ := decodeBody(t, created)["id"].(string)
+	require.NotEmpty(t, id)
+	require.Equal(t, PurposeSite, repo.uploads[id].Purpose)
+
+	completed := do(r, http.MethodPost, "/media/uploads/"+id+"/complete", "")
+	require.Equal(t, http.StatusOK, completed.Code, completed.Body.String())
+	require.Equal(t, "clean", decodeBody(t, completed)["scan_status"])
+	require.Equal(t, PurposeSite, repo.assets[0].Purpose, "the asset must keep the site purpose")
+}
+
+func TestCreateUploadRejectsAttachmentTypeForSitePurpose(t *testing.T) {
+	r := newEngine(newFakeRepo(), &fakeScanner{}, ownerActor())
+
+	w := do(r, http.MethodPost, "/media/uploads",
+		`{"file_name":"doc.pdf","mime_type":"application/pdf","size":1024,"purpose":"site"}`)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Equal(t, "validation_failed", decodeBody(t, w)["code"])
+}
+
 func TestCreateUploadRejectsDisallowedType(t *testing.T) {
 	r := newEngine(newFakeRepo(), &fakeScanner{}, ownerActor())
 

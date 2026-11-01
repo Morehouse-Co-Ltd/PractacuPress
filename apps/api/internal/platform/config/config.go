@@ -7,9 +7,14 @@
 package config
 
 import (
+	"net"
+	"net/mail"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Accepted APP_ENV values.
@@ -25,6 +30,50 @@ const (
 	DriverMySQL    = "mysql"
 	DriverPostgres = "postgres"
 )
+
+// Per purpose storage drivers. "inherit" reuses the global adapter.
+const (
+	StorageDriverInherit = "inherit"
+	StorageDriverLocal   = "local"
+	StorageDriverS3      = "s3"
+)
+
+// Storage scopes are the media purposes that may override global storage. They map
+// one to one onto the media.Purpose values and name the STORAGE_<SCOPE>_* env group.
+const (
+	StorageScopeContent    = "content"
+	StorageScopeSite       = "site"
+	StorageScopeAvatar     = "avatar"
+	StorageScopeAttachment = "attachment"
+)
+
+// StorageScopeNames lists every configurable scope.
+func StorageScopeNames() []string {
+	return []string{
+		StorageScopeContent,
+		StorageScopeSite,
+		StorageScopeAvatar,
+		StorageScopeAttachment,
+	}
+}
+
+// StorageScopeConfig is the per purpose storage override parsed from
+// STORAGE_<SCOPE>_*.
+//
+// The S3 endpoint, region and credentials always come from the global STORAGE_S3_*
+// settings; a scope only chooses the driver, and for S3 its bucket and prefix.
+type StorageScopeConfig struct {
+	// Driver is one of inherit, local or s3.
+	Driver string
+	// LocalDir is the local root when Driver is local. It defaults to
+	// <StorageDir>/<scope>.
+	LocalDir string
+	// S3Bucket is the target bucket when Driver is s3. Required in that case.
+	S3Bucket string
+	// S3Prefix is the key prefix when Driver is s3. It defaults to
+	// <global S3 prefix>/<scope>.
+	S3Prefix string
+}
 
 // Config is the fully validated process configuration.
 type Config struct {
@@ -50,6 +99,31 @@ type Config struct {
 	TrustedProxies []string
 	// RateLimitPerMinute caps requests per client per minute. Zero disables it.
 	RateLimitPerMinute int
+	// CredentialRateLimitPerMinute caps authentication attempts per client per
+	// minute. It is a second, much tighter budget on top of RateLimitPerMinute,
+	// because registration, login and password reset are the endpoints worth brute
+	// forcing and each attempt costs one Argon2 hash. Zero disables the tier.
+	CredentialRateLimitPerMinute int
+	// HTTPReadTimeout bounds how long a request may take to arrive. It protects the
+	// server from slow clients holding connections open.
+	HTTPReadTimeout time.Duration
+	// HTTPIdleTimeout keeps idle keep-alive connections around. A shorter value
+	// frees resources sooner; too short makes browsers reconnect constantly.
+	HTTPIdleTimeout time.Duration
+	// MaxRequestBodyBytes caps how much of a request body any handler may read. Zero
+	// disables the cap. Media upload routes get their own, larger ceiling.
+	MaxRequestBodyBytes int64
+	// HTTPRequestTimeout bounds one request's work. It cancels the request context, so
+	// a slow database call or a stuck upstream cannot hold a handler (and its
+	// connection) forever. Streaming responses (downloads, the WebSocket upgrade) are
+	// exempt because a deadline there would cut a legitimate slow transfer.
+	HTTPRequestTimeout time.Duration
+	// DBMaxOpenConns and DBMaxIdleConns override the driver defaults. Zero keeps
+	// the defaults chosen by the data layer (SQLite 1, MySQL/Postgres 25).
+	DBMaxOpenConns int
+	DBMaxIdleConns int
+	// DBConnMaxLifetime recycles pooled connections. Zero disables recycling.
+	DBConnMaxLifetime time.Duration
 
 	// AuthJWTPrivateKey is the base64 PKCS#8 Ed25519 signing key. It is optional at
 	// load time so development can run with an ephemeral key; production refuses to
@@ -68,6 +142,10 @@ type Config struct {
 	// DefaultSiteID is used when host resolution is not configured, which is the
 	// Windows single site deployment mode.
 	DefaultSiteID string
+	// DesktopMode enables the zero configuration bootstrap the Windows launcher
+	// relies on: the schema is applied at startup, a single site is created when the
+	// database is empty, and the first registered account owns it.
+	DesktopMode bool
 	// StorageDir is the local media storage root.
 	StorageDir string
 	// StorageDriver selects local or s3.
@@ -79,13 +157,76 @@ type Config struct {
 	S3AccessKey string
 	S3SecretKey string
 	S3Prefix    string
+	// StorageScopes optionally overrides the adapter per media purpose. A scope with
+	// no override (or driver inherit) reuses the global adapter above.
+	StorageScopes map[string]StorageScopeConfig
+
+	// SMTPHost is the outbound mail relay. Empty disables mail entirely, which is
+	// also what turns password reset off: without a way to deliver the link the
+	// endpoint would only ever lie to the caller.
+	SMTPHost string
+	// SMTPPort is the relay port. Defaults to 465 for ssl, 587 for starttls and 25
+	// for none.
+	SMTPPort int
+	// SMTPEncryption is one of ssl, starttls or none.
+	SMTPEncryption string
+	// SMTPUsername and SMTPPassword authenticate the relay. Both are optional for
+	// relays that accept unauthenticated mail from a trusted network.
+	SMTPUsername string
+	SMTPPassword string
+	// SMTPFrom is the envelope and header sender. It defaults to SMTPUsername,
+	// because most relays reject a sender they cannot authenticate for.
+	SMTPFrom string
+	// SMTPFromName is the display name of the sender.
+	SMTPFromName string
+	// PublicBaseURL overrides the origin used to build password reset links. Empty
+	// means the origin of the request that asked for the reset is used, which is
+	// correct for the same origin deployment this product ships.
+	PublicBaseURL string
 }
+
+// Accepted SMTP_ENCRYPTION values.
+const (
+	// SMTPEncryptionSSL wraps the connection in TLS from the first byte (port 465).
+	SMTPEncryptionSSL = "ssl"
+	// SMTPEncryptionStartTLS upgrades a plaintext connection (port 587).
+	SMTPEncryptionStartTLS = "starttls"
+	// SMTPEncryptionNone is plaintext. It is only accepted for a loopback relay:
+	// credentials over a network would be readable by anyone on the path.
+	SMTPEncryptionNone = "none"
+)
 
 // DefaultJWTIssuer is the issuer used when AUTH_JWT_ISSUER is unset.
 const DefaultJWTIssuer = "practacu-press"
 
 // DefaultRateLimitPerMinute is the global per client budget.
 const DefaultRateLimitPerMinute = 240
+
+// DefaultCredentialRateLimitPerMinute is the per client budget for endpoints that
+// consume a password. Each accepted attempt costs one Argon2 hash, so this tier exists
+// to keep a credential stuffing run from saturating the hashing path.
+const DefaultCredentialRateLimitPerMinute = 10
+
+// Server resource defaults. They match the values the HTTP server and the data
+// layer used before they became configurable.
+const (
+	DefaultHTTPReadTimeout   = 30 * time.Second
+	DefaultHTTPIdleTimeout   = 120 * time.Second
+	DefaultDBConnMaxLifetime = 30 * time.Minute
+	maxConnectionsPerProcess = 512
+	maxTimeoutSeconds        = 3600
+
+	// DefaultHTTPRequestTimeout bounds one request's work. Thirty seconds is far more
+	// than any endpoint here needs and far less than forever.
+	DefaultHTTPRequestTimeout = 30 * time.Second
+	// DefaultMaxRequestBodyBytes caps ordinary JSON bodies. The largest legitimate one
+	// is a 200k character article source (the security service's own ceiling), which is
+	// under a megabyte as UTF-8, so four is generous. Upload routes carry their own,
+	// larger limit derived from the media module's attachment ceiling.
+	DefaultMaxRequestBodyBytes = 4 << 20
+	// maxRequestBodyBytes is the largest value an operator may configure.
+	maxRequestBodyBytes = 64 << 20
+)
 
 // Error is a typed configuration error.
 //
@@ -122,6 +263,14 @@ func Load() (Config, error) {
 
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = "127.0.0.1:8080"
+	}
+
+	// The API is meant to be reached only from this machine: the desktop launcher
+	// proxies it under the same origin, so there is no reason to expose the port to
+	// the LAN. A wildcard or LAN address is usually a typo or an accidental exposure,
+	// therefore it fails fast unless the operator opts in explicitly.
+	if problem := loopbackListenProblem(cfg.HTTPAddr); problem != nil && !envBool("PP_ALLOW_REMOTE_API") {
+		return Config{}, problem
 	}
 
 	driver, ok := NormalizeDriver(cfg.DatabaseDriver)
@@ -173,6 +322,107 @@ func Load() (Config, error) {
 	}
 	cfg.RateLimitPerMinute = rate
 
+	// Credential endpoints get their own budget. The default is deliberately low: ten
+	// password attempts per minute per client is far more than a human needs and far
+	// less than a brute force run wants.
+	credentialRate, err := envInt("AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE", DefaultCredentialRateLimitPerMinute)
+	if err != nil {
+		return Config{}, err
+	}
+	if credentialRate < 0 || credentialRate > maxTimeoutSeconds {
+		return Config{}, &Error{
+			Code:   "invalid_credential_rate_limit",
+			Detail: "AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE must be between 0 and 3600",
+		}
+	}
+	cfg.CredentialRateLimitPerMinute = credentialRate
+
+	readTimeout, err := envInt("HTTP_READ_TIMEOUT_SECONDS", int(DefaultHTTPReadTimeout/time.Second))
+	if err != nil {
+		return Config{}, err
+	}
+	if readTimeout < 1 || readTimeout > maxTimeoutSeconds {
+		return Config{}, &Error{
+			Code:   "invalid_http_read_timeout",
+			Detail: "HTTP_READ_TIMEOUT_SECONDS must be between 1 and 3600",
+		}
+	}
+	cfg.HTTPReadTimeout = time.Duration(readTimeout) * time.Second
+
+	idleTimeout, err := envInt("HTTP_IDLE_TIMEOUT_SECONDS", int(DefaultHTTPIdleTimeout/time.Second))
+	if err != nil {
+		return Config{}, err
+	}
+	if idleTimeout < 1 || idleTimeout > maxTimeoutSeconds {
+		return Config{}, &Error{
+			Code:   "invalid_http_idle_timeout",
+			Detail: "HTTP_IDLE_TIMEOUT_SECONDS must be between 1 and 3600",
+		}
+	}
+	cfg.HTTPIdleTimeout = time.Duration(idleTimeout) * time.Second
+
+	requestTimeout, err := envInt("HTTP_REQUEST_TIMEOUT_SECONDS", int(DefaultHTTPRequestTimeout/time.Second))
+	if err != nil {
+		return Config{}, err
+	}
+	if requestTimeout < 0 || requestTimeout > maxTimeoutSeconds {
+		return Config{}, &Error{
+			Code:   "invalid_http_request_timeout",
+			Detail: "HTTP_REQUEST_TIMEOUT_SECONDS must be between 0 and 3600",
+		}
+	}
+	cfg.HTTPRequestTimeout = time.Duration(requestTimeout) * time.Second
+
+	bodyLimit, err := envInt("MAX_REQUEST_BODY_BYTES", DefaultMaxRequestBodyBytes)
+	if err != nil {
+		return Config{}, err
+	}
+	if bodyLimit < 0 || bodyLimit > maxRequestBodyBytes {
+		return Config{}, &Error{
+			Code:   "invalid_max_request_body_bytes",
+			Detail: "MAX_REQUEST_BODY_BYTES must be between 0 and 67108864",
+		}
+	}
+	cfg.MaxRequestBodyBytes = int64(bodyLimit)
+
+	for key, target := range map[string]*int{
+		"DB_MAX_OPEN_CONNS": &cfg.DBMaxOpenConns,
+		"DB_MAX_IDLE_CONNS": &cfg.DBMaxIdleConns,
+	} {
+		value, err := envInt(key, 0)
+		if err != nil {
+			return Config{}, err
+		}
+		if value < 0 || value > maxConnectionsPerProcess {
+			return Config{}, &Error{
+				Code:   "invalid_" + strings.ToLower(key),
+				Detail: key + " must be between 0 and 512",
+			}
+		}
+		*target = value
+	}
+	if cfg.DBMaxOpenConns > 0 && cfg.DBMaxIdleConns > cfg.DBMaxOpenConns {
+		return Config{}, &Error{
+			Code:   "invalid_db_pool",
+			Detail: "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS",
+		}
+	}
+
+	lifetime, err := envInt(
+		"DB_CONN_MAX_LIFETIME_SECONDS",
+		int(DefaultDBConnMaxLifetime/time.Second),
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	if lifetime < 0 || lifetime > 24*60*60 {
+		return Config{}, &Error{
+			Code:   "invalid_db_conn_max_lifetime",
+			Detail: "DB_CONN_MAX_LIFETIME_SECONDS must be between 0 and 86400",
+		}
+	}
+	cfg.DBConnMaxLifetime = time.Duration(lifetime) * time.Second
+
 	cfg.AuthJWTPrivateKey = env("AUTH_JWT_ED25519_PRIVATE_KEY")
 	cfg.AuthJWTKeyID = env("AUTH_JWT_KID")
 	cfg.AuthJWTIssuer = env("AUTH_JWT_ISSUER")
@@ -185,6 +435,16 @@ func Load() (Config, error) {
 		cfg.StorageDir = "./data/media"
 	}
 
+	// The S3 connection settings are read regardless of the global driver: a per
+	// purpose override may select S3 while the global driver stays local, and it
+	// reuses these credentials, endpoint, region and prefix.
+	cfg.S3Bucket = env("STORAGE_S3_BUCKET")
+	cfg.S3Region = env("STORAGE_S3_REGION")
+	cfg.S3Endpoint = env("STORAGE_S3_ENDPOINT")
+	cfg.S3AccessKey = env("STORAGE_S3_ACCESS_KEY")
+	cfg.S3SecretKey = env("STORAGE_S3_SECRET_KEY")
+	cfg.S3Prefix = env("STORAGE_S3_PREFIX")
+
 	cfg.StorageDriver = env("STORAGE_DRIVER")
 	if cfg.StorageDriver == "" {
 		cfg.StorageDriver = "local"
@@ -192,18 +452,12 @@ func Load() (Config, error) {
 	switch cfg.StorageDriver {
 	case "local":
 	case "s3":
-		cfg.S3Bucket = env("STORAGE_S3_BUCKET")
 		if cfg.S3Bucket == "" {
 			return Config{}, &Error{
 				Code:   "missing_s3_bucket",
 				Detail: "STORAGE_S3_BUCKET is required when STORAGE_DRIVER=s3",
 			}
 		}
-		cfg.S3Region = env("STORAGE_S3_REGION")
-		cfg.S3Endpoint = env("STORAGE_S3_ENDPOINT")
-		cfg.S3AccessKey = env("STORAGE_S3_ACCESS_KEY")
-		cfg.S3SecretKey = env("STORAGE_S3_SECRET_KEY")
-		cfg.S3Prefix = env("STORAGE_S3_PREFIX")
 	default:
 		return Config{}, &Error{
 			Code:   "invalid_storage_driver",
@@ -211,15 +465,207 @@ func Load() (Config, error) {
 		}
 	}
 
+	if err := loadStorageScopes(&cfg); err != nil {
+		return Config{}, err
+	}
+
 	cfg.CookieDomain = env("COOKIE_DOMAIN")
 	cfg.DefaultSiteID = env("DEFAULT_SITE_ID")
+	cfg.DesktopMode = envBool("PP_DESKTOP")
+	if cfg.DesktopMode && cfg.AppEnv == EnvProduction {
+		// The desktop bootstrap seeds a site and promotes the first account. That is
+		// a convenience for a loopback install, never something a public deployment
+		// should be able to switch on by accident.
+		return Config{}, &Error{
+			Code:   "invalid_desktop_mode",
+			Detail: "PP_DESKTOP cannot be enabled when APP_ENV=production",
+		}
+	}
 	if raw := env("COOKIE_SECURE"); raw != "" {
 		cfg.CookieSecure = envBool("COOKIE_SECURE")
 	} else {
 		cfg.CookieSecure = cfg.AppEnv == EnvProduction
 	}
 
+	if err := loadMail(&cfg); err != nil {
+		return Config{}, err
+	}
+	cfg.PublicBaseURL = strings.TrimRight(env("PUBLIC_BASE_URL"), "/")
+	if cfg.PublicBaseURL != "" {
+		parsed, err := url.Parse(cfg.PublicBaseURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			// A bare "press.example.com" would end up in a mail as a relative link,
+			// which is silently useless.
+			return Config{}, &Error{
+				Code:   "invalid_public_base_url",
+				Detail: "PUBLIC_BASE_URL must be an absolute http or https URL",
+			}
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return Config{}, &Error{
+				Code:   "invalid_public_base_url",
+				Detail: "PUBLIC_BASE_URL must use http or https",
+			}
+		}
+	}
+
 	return cfg, nil
+}
+
+// loadStorageScopes reads the optional per purpose storage overrides.
+func loadStorageScopes(cfg *Config) error {
+	names := StorageScopeNames()
+	cfg.StorageScopes = make(map[string]StorageScopeConfig, len(names))
+	for _, scope := range names {
+		parsed, err := loadStorageScope(*cfg, scope)
+		if err != nil {
+			return err
+		}
+		cfg.StorageScopes[scope] = parsed
+	}
+	return nil
+}
+
+// loadStorageScope reads one STORAGE_<SCOPE>_* group.
+func loadStorageScope(cfg Config, scope string) (StorageScopeConfig, error) {
+	prefix := "STORAGE_" + strings.ToUpper(scope) + "_"
+
+	driver := strings.ToLower(env(prefix + "DRIVER"))
+	if driver == "" {
+		driver = StorageDriverInherit
+	}
+
+	switch driver {
+	case StorageDriverInherit:
+		return StorageScopeConfig{Driver: StorageDriverInherit}, nil
+
+	case StorageDriverLocal:
+		dir := env(prefix + "LOCAL_DIR")
+		if dir == "" {
+			// Default to a scope subdirectory of the global root, so two purposes never
+			// silently share one directory.
+			dir = filepath.Join(cfg.StorageDir, scope)
+		}
+		return StorageScopeConfig{Driver: StorageDriverLocal, LocalDir: dir}, nil
+
+	case StorageDriverS3:
+		bucket := env(prefix + "S3_BUCKET")
+		if bucket == "" {
+			return StorageScopeConfig{}, &Error{
+				Code:   "missing_scope_bucket",
+				Detail: prefix + "S3_BUCKET is required when " + prefix + "DRIVER=s3",
+			}
+		}
+		keyPrefix := env(prefix + "S3_PREFIX")
+		if keyPrefix == "" {
+			keyPrefix = joinStoragePrefix(cfg.S3Prefix, scope)
+		}
+		return StorageScopeConfig{
+			Driver:   StorageDriverS3,
+			S3Bucket: bucket,
+			S3Prefix: keyPrefix,
+		}, nil
+
+	default:
+		return StorageScopeConfig{}, &Error{
+			Code:   "invalid_storage_driver",
+			Detail: prefix + "DRIVER must be inherit, local or s3",
+		}
+	}
+}
+
+// joinStoragePrefix appends a scope segment to the global key prefix.
+func joinStoragePrefix(base, scope string) string {
+	base = strings.Trim(base, "/")
+	if base == "" {
+		return scope
+	}
+	return base + "/" + scope
+}
+
+// loadMail reads and validates the outbound mail settings.
+//
+// Mail stays entirely optional: an install that never needs password reset simply
+// leaves SMTP_HOST empty and the feature reports itself as unavailable instead of
+// accepting requests it cannot fulfil.
+func loadMail(cfg *Config) error {
+	cfg.SMTPHost = env("SMTP_HOST")
+	if cfg.SMTPHost == "" {
+		return nil
+	}
+
+	encryption := strings.ToLower(env("SMTP_ENCRYPTION"))
+	switch encryption {
+	case "":
+		encryption = SMTPEncryptionStartTLS
+	case SMTPEncryptionSSL, SMTPEncryptionStartTLS, SMTPEncryptionNone:
+	default:
+		return &Error{
+			Code:   "invalid_smtp_encryption",
+			Detail: "SMTP_ENCRYPTION must be one of ssl, starttls, none",
+		}
+	}
+	cfg.SMTPEncryption = encryption
+
+	defaultPort := 587
+	switch encryption {
+	case SMTPEncryptionSSL:
+		defaultPort = 465
+	case SMTPEncryptionNone:
+		defaultPort = 25
+	}
+	port, err := envInt("SMTP_PORT", defaultPort)
+	if err != nil {
+		return err
+	}
+	if port < 1 || port > 65535 {
+		return &Error{Code: "invalid_smtp_port", Detail: "SMTP_PORT must be between 1 and 65535"}
+	}
+	cfg.SMTPPort = port
+
+	cfg.SMTPUsername = env("SMTP_USERNAME")
+	cfg.SMTPPassword = env("SMTP_PASSWORD")
+	if (cfg.SMTPUsername == "") != (cfg.SMTPPassword == "") {
+		return &Error{
+			Code:   "incomplete_smtp_credentials",
+			Detail: "SMTP_USERNAME and SMTP_PASSWORD must be set together",
+		}
+	}
+	if cfg.SMTPUsername != "" && encryption == SMTPEncryptionNone && !isLoopback(cfg.SMTPHost) {
+		// PlainAuth refuses this too; failing at startup gives the operator the
+		// reason instead of a mysterious delivery error on the first reset.
+		return &Error{
+			Code:   "insecure_smtp_auth",
+			Detail: "SMTP credentials require ssl or starttls unless the relay is on localhost",
+		}
+	}
+
+	cfg.SMTPFrom = env("SMTP_FROM")
+	if cfg.SMTPFrom == "" {
+		cfg.SMTPFrom = cfg.SMTPUsername
+	}
+	if cfg.SMTPFrom == "" {
+		return &Error{Code: "missing_smtp_from", Detail: "SMTP_FROM is required when SMTP_HOST is set"}
+	}
+	if parsed, err := mail.ParseAddress(cfg.SMTPFrom); err != nil || parsed.Address != cfg.SMTPFrom {
+		// The display name has its own variable (SMTP_FROM_NAME), so "Name <addr>"
+		// here is almost always a paste mistake worth rejecting.
+		return &Error{Code: "invalid_smtp_from", Detail: "SMTP_FROM must be a bare email address"}
+	}
+	cfg.SMTPFromName = env("SMTP_FROM_NAME")
+	if cfg.SMTPFromName == "" {
+		cfg.SMTPFromName = "Practacu Press"
+	}
+	return nil
+}
+
+// isLoopback reports whether host resolves to the local machine by name or literal.
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // envList reads a comma separated list, dropping empty entries.
@@ -280,3 +726,31 @@ func NormalizeDriver(name string) (string, bool) {
 }
 
 func env(key string) string { return strings.TrimSpace(os.Getenv(key)) }
+
+// loopbackListenProblem reports why addr would expose the API beyond this machine.
+//
+// An empty host (":8080"), "0.0.0.0" and a LAN address all mean "reachable from the
+// network"; only 127.0.0.0/8, ::1 and the localhost name are accepted. The check is
+// intentionally conservative: an unparseable hostname could resolve anywhere, so it
+// is rejected too.
+func loopbackListenProblem(addr string) *Error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return &Error{
+			Code:   "invalid_http_addr",
+			Detail: "HTTP_ADDR must look like host:port, for example 127.0.0.1:8080",
+		}
+	}
+	host = strings.Trim(host, "[]")
+	if host == "localhost" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return &Error{
+		Code: "non_loopback_listen",
+		Detail: "HTTP_ADDR must be a loopback address (127.0.0.1, ::1 or localhost), got " +
+			addr + "; set PP_ALLOW_REMOTE_API=1 to allow a network-facing API",
+	}
+}

@@ -123,6 +123,7 @@ var (
 		{Name: "rendered_html", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "policy_version", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "category_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "tags", Type: field.TypeString, Size: 2147483647, Default: "[]"},
 		{Name: "published_at", Type: field.TypeTime, Nullable: true},
 		{Name: "archived_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -137,7 +138,7 @@ var (
 			{
 				Name:    "contentitem_site_id_status_published_at",
 				Unique:  false,
-				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[13]},
+				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[14]},
 			},
 			{
 				Name:    "contentitem_author_id_status",
@@ -265,6 +266,7 @@ var (
 		{Name: "storage_key", Type: field.TypeString, Size: 200},
 		{Name: "mime_type", Type: field.TypeString, Size: 120},
 		{Name: "size", Type: field.TypeInt64},
+		{Name: "purpose", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "scan_status", Type: field.TypeString, Default: "pending"},
 		{Name: "scan_reason", Type: field.TypeString, Nullable: true, Size: 120},
 		{Name: "created_at", Type: field.TypeTime},
@@ -289,7 +291,7 @@ var (
 			{
 				Name:    "mediaasset_site_id_scan_status",
 				Unique:  false,
-				Columns: []*schema.Column{MediaAssetsColumns[1], MediaAssetsColumns[6]},
+				Columns: []*schema.Column{MediaAssetsColumns[1], MediaAssetsColumns[7]},
 			},
 		},
 	}
@@ -472,6 +474,35 @@ var (
 			},
 		},
 	}
+	// PageViewsColumns holds the columns for the "page_views" table.
+	PageViewsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "path", Type: field.TypeString, Size: 2048},
+		{Name: "title", Type: field.TypeString, Size: 300, Default: ""},
+		{Name: "referrer", Type: field.TypeString, Size: 2048, Default: ""},
+		{Name: "session", Type: field.TypeString, Size: 64},
+		{Name: "surface", Type: field.TypeString, Default: "site"},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// PageViewsTable holds the schema information for the "page_views" table.
+	PageViewsTable = &schema.Table{
+		Name:       "page_views",
+		Columns:    PageViewsColumns,
+		PrimaryKey: []*schema.Column{PageViewsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "pageview_site_id_surface_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[6], PageViewsColumns[7]},
+			},
+			{
+				Name:    "pageview_site_id_session_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[5], PageViewsColumns[7]},
+			},
+		},
+	}
 	// ReactionsColumns holds the columns for the "reactions" table.
 	ReactionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -578,6 +609,28 @@ var (
 			},
 		},
 	}
+	// SiteCustomizationsColumns holds the columns for the "site_customizations" table.
+	SiteCustomizationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "document", Type: field.TypeString, Size: 2147483647},
+		{Name: "revision", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SiteCustomizationsTable holds the schema information for the "site_customizations" table.
+	SiteCustomizationsTable = &schema.Table{
+		Name:       "site_customizations",
+		Columns:    SiteCustomizationsColumns,
+		PrimaryKey: []*schema.Column{SiteCustomizationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sitecustomization_site_id",
+				Unique:  true,
+				Columns: []*schema.Column{SiteCustomizationsColumns[1]},
+			},
+		},
+	}
 	// SiteMembersColumns holds the columns for the "site_members" table.
 	SiteMembersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -608,6 +661,41 @@ var (
 				Name:    "sitemember_site_id_role",
 				Unique:  false,
 				Columns: []*schema.Column{SiteMembersColumns[1], SiteMembersColumns[3]},
+			},
+		},
+	}
+	// TaxonomyTermsColumns holds the columns for the "taxonomy_terms" table.
+	TaxonomyTermsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 80},
+		{Name: "slug", Type: field.TypeString, Size: 80},
+		{Name: "description", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "color", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// TaxonomyTermsTable holds the schema information for the "taxonomy_terms" table.
+	TaxonomyTermsTable = &schema.Table{
+		Name:       "taxonomy_terms",
+		Columns:    TaxonomyTermsColumns,
+		PrimaryKey: []*schema.Column{TaxonomyTermsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "taxonomyterm_site_id_kind_slug",
+				Unique:  true,
+				Columns: []*schema.Column{TaxonomyTermsColumns[1], TaxonomyTermsColumns[2], TaxonomyTermsColumns[4]},
+			},
+			{
+				Name:    "taxonomyterm_site_id_kind_name",
+				Unique:  true,
+				Columns: []*schema.Column{TaxonomyTermsColumns[1], TaxonomyTermsColumns[2], TaxonomyTermsColumns[3]},
+			},
+			{
+				Name:    "taxonomyterm_site_id_kind",
+				Unique:  false,
+				Columns: []*schema.Column{TaxonomyTermsColumns[1], TaxonomyTermsColumns[2]},
 			},
 		},
 	}
@@ -726,10 +814,13 @@ var (
 		ModerationReportsTable,
 		NotificationsTable,
 		OutboxEventsTable,
+		PageViewsTable,
 		ReactionsTable,
 		SessionsTable,
 		SitesTable,
+		SiteCustomizationsTable,
 		SiteMembersTable,
+		TaxonomyTermsTable,
 		UsersTable,
 		UserIdentitiesTable,
 		VerificationTokensTable,

@@ -35,7 +35,7 @@ func newEngine(repo Repository, actor Actor) *gin.Engine {
 			c.JSON(problem.Status, problem)
 		}
 	})
-	handler.Routes(r, func(c *gin.Context) { c.Next() })
+	handler.Routes(r, func(c *gin.Context) { c.Next() }, func(c *gin.Context) { c.Next() })
 	return r
 }
 

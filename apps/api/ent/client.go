@@ -28,10 +28,13 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/notification"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
+	"github.com/practacu/practacu-press/apps/api/ent/pageview"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
+	"github.com/practacu/practacu-press/apps/api/ent/sitecustomization"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
+	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
@@ -70,14 +73,20 @@ type Client struct {
 	Notification *NotificationClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
+	// PageView is the client for interacting with the PageView builders.
+	PageView *PageViewClient
 	// Reaction is the client for interacting with the Reaction builders.
 	Reaction *ReactionClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// Site is the client for interacting with the Site builders.
 	Site *SiteClient
+	// SiteCustomization is the client for interacting with the SiteCustomization builders.
+	SiteCustomization *SiteCustomizationClient
 	// SiteMember is the client for interacting with the SiteMember builders.
 	SiteMember *SiteMemberClient
+	// TaxonomyTerm is the client for interacting with the TaxonomyTerm builders.
+	TaxonomyTerm *TaxonomyTermClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -109,10 +118,13 @@ func (c *Client) init() {
 	c.ModerationReport = NewModerationReportClient(c.config)
 	c.Notification = NewNotificationClient(c.config)
 	c.OutboxEvent = NewOutboxEventClient(c.config)
+	c.PageView = NewPageViewClient(c.config)
 	c.Reaction = NewReactionClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.Site = NewSiteClient(c.config)
+	c.SiteCustomization = NewSiteCustomizationClient(c.config)
 	c.SiteMember = NewSiteMemberClient(c.config)
+	c.TaxonomyTerm = NewTaxonomyTermClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserIdentity = NewUserIdentityClient(c.config)
 	c.VerificationToken = NewVerificationTokenClient(c.config)
@@ -222,10 +234,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ModerationReport:   NewModerationReportClient(cfg),
 		Notification:       NewNotificationClient(cfg),
 		OutboxEvent:        NewOutboxEventClient(cfg),
+		PageView:           NewPageViewClient(cfg),
 		Reaction:           NewReactionClient(cfg),
 		Session:            NewSessionClient(cfg),
 		Site:               NewSiteClient(cfg),
+		SiteCustomization:  NewSiteCustomizationClient(cfg),
 		SiteMember:         NewSiteMemberClient(cfg),
+		TaxonomyTerm:       NewTaxonomyTermClient(cfg),
 		User:               NewUserClient(cfg),
 		UserIdentity:       NewUserIdentityClient(cfg),
 		VerificationToken:  NewVerificationTokenClient(cfg),
@@ -262,10 +277,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ModerationReport:   NewModerationReportClient(cfg),
 		Notification:       NewNotificationClient(cfg),
 		OutboxEvent:        NewOutboxEventClient(cfg),
+		PageView:           NewPageViewClient(cfg),
 		Reaction:           NewReactionClient(cfg),
 		Session:            NewSessionClient(cfg),
 		Site:               NewSiteClient(cfg),
+		SiteCustomization:  NewSiteCustomizationClient(cfg),
 		SiteMember:         NewSiteMemberClient(cfg),
+		TaxonomyTerm:       NewTaxonomyTermClient(cfg),
 		User:               NewUserClient(cfg),
 		UserIdentity:       NewUserIdentityClient(cfg),
 		VerificationToken:  NewVerificationTokenClient(cfg),
@@ -300,8 +318,9 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.Conversation,
 		c.ConversationMember, c.Follow, c.IdempotencyKey, c.MediaAsset, c.MediaUpload,
-		c.Message, c.ModerationReport, c.Notification, c.OutboxEvent, c.Reaction,
-		c.Session, c.Site, c.SiteMember, c.User, c.UserIdentity, c.VerificationToken,
+		c.Message, c.ModerationReport, c.Notification, c.OutboxEvent, c.PageView,
+		c.Reaction, c.Session, c.Site, c.SiteCustomization, c.SiteMember,
+		c.TaxonomyTerm, c.User, c.UserIdentity, c.VerificationToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -313,8 +332,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.Conversation,
 		c.ConversationMember, c.Follow, c.IdempotencyKey, c.MediaAsset, c.MediaUpload,
-		c.Message, c.ModerationReport, c.Notification, c.OutboxEvent, c.Reaction,
-		c.Session, c.Site, c.SiteMember, c.User, c.UserIdentity, c.VerificationToken,
+		c.Message, c.ModerationReport, c.Notification, c.OutboxEvent, c.PageView,
+		c.Reaction, c.Session, c.Site, c.SiteCustomization, c.SiteMember,
+		c.TaxonomyTerm, c.User, c.UserIdentity, c.VerificationToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -351,14 +371,20 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Notification.mutate(ctx, m)
 	case *OutboxEventMutation:
 		return c.OutboxEvent.mutate(ctx, m)
+	case *PageViewMutation:
+		return c.PageView.mutate(ctx, m)
 	case *ReactionMutation:
 		return c.Reaction.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
 	case *SiteMutation:
 		return c.Site.mutate(ctx, m)
+	case *SiteCustomizationMutation:
+		return c.SiteCustomization.mutate(ctx, m)
 	case *SiteMemberMutation:
 		return c.SiteMember.mutate(ctx, m)
+	case *TaxonomyTermMutation:
+		return c.TaxonomyTerm.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *UserIdentityMutation:
@@ -2232,6 +2258,139 @@ func (c *OutboxEventClient) mutate(ctx context.Context, m *OutboxEventMutation) 
 	}
 }
 
+// PageViewClient is a client for the PageView schema.
+type PageViewClient struct {
+	config
+}
+
+// NewPageViewClient returns a client for the PageView from the given config.
+func NewPageViewClient(c config) *PageViewClient {
+	return &PageViewClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `pageview.Hooks(f(g(h())))`.
+func (c *PageViewClient) Use(hooks ...Hook) {
+	c.hooks.PageView = append(c.hooks.PageView, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `pageview.Intercept(f(g(h())))`.
+func (c *PageViewClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PageView = append(c.inters.PageView, interceptors...)
+}
+
+// Create returns a builder for creating a PageView entity.
+func (c *PageViewClient) Create() *PageViewCreate {
+	mutation := newPageViewMutation(c.config, OpCreate)
+	return &PageViewCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PageView entities.
+func (c *PageViewClient) CreateBulk(builders ...*PageViewCreate) *PageViewCreateBulk {
+	return &PageViewCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PageViewClient) MapCreateBulk(slice any, setFunc func(*PageViewCreate, int)) *PageViewCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PageViewCreateBulk{err: fmt.Errorf("calling to PageViewClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PageViewCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PageViewCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PageView.
+func (c *PageViewClient) Update() *PageViewUpdate {
+	mutation := newPageViewMutation(c.config, OpUpdate)
+	return &PageViewUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PageViewClient) UpdateOne(_m *PageView) *PageViewUpdateOne {
+	mutation := newPageViewMutation(c.config, OpUpdateOne, withPageView(_m))
+	return &PageViewUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PageViewClient) UpdateOneID(id string) *PageViewUpdateOne {
+	mutation := newPageViewMutation(c.config, OpUpdateOne, withPageViewID(id))
+	return &PageViewUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PageView.
+func (c *PageViewClient) Delete() *PageViewDelete {
+	mutation := newPageViewMutation(c.config, OpDelete)
+	return &PageViewDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PageViewClient) DeleteOne(_m *PageView) *PageViewDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PageViewClient) DeleteOneID(id string) *PageViewDeleteOne {
+	builder := c.Delete().Where(pageview.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PageViewDeleteOne{builder}
+}
+
+// Query returns a query builder for PageView.
+func (c *PageViewClient) Query() *PageViewQuery {
+	return &PageViewQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePageView},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PageView entity by its id.
+func (c *PageViewClient) Get(ctx context.Context, id string) (*PageView, error) {
+	return c.Query().Where(pageview.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PageViewClient) GetX(ctx context.Context, id string) *PageView {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PageViewClient) Hooks() []Hook {
+	return c.hooks.PageView
+}
+
+// Interceptors returns the client interceptors.
+func (c *PageViewClient) Interceptors() []Interceptor {
+	return c.inters.PageView
+}
+
+func (c *PageViewClient) mutate(ctx context.Context, m *PageViewMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PageViewCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PageViewUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PageViewUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PageViewDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PageView mutation op: %q", m.Op())
+	}
+}
+
 // ReactionClient is a client for the Reaction schema.
 type ReactionClient struct {
 	config
@@ -2631,6 +2790,139 @@ func (c *SiteClient) mutate(ctx context.Context, m *SiteMutation) (Value, error)
 	}
 }
 
+// SiteCustomizationClient is a client for the SiteCustomization schema.
+type SiteCustomizationClient struct {
+	config
+}
+
+// NewSiteCustomizationClient returns a client for the SiteCustomization from the given config.
+func NewSiteCustomizationClient(c config) *SiteCustomizationClient {
+	return &SiteCustomizationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sitecustomization.Hooks(f(g(h())))`.
+func (c *SiteCustomizationClient) Use(hooks ...Hook) {
+	c.hooks.SiteCustomization = append(c.hooks.SiteCustomization, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sitecustomization.Intercept(f(g(h())))`.
+func (c *SiteCustomizationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SiteCustomization = append(c.inters.SiteCustomization, interceptors...)
+}
+
+// Create returns a builder for creating a SiteCustomization entity.
+func (c *SiteCustomizationClient) Create() *SiteCustomizationCreate {
+	mutation := newSiteCustomizationMutation(c.config, OpCreate)
+	return &SiteCustomizationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SiteCustomization entities.
+func (c *SiteCustomizationClient) CreateBulk(builders ...*SiteCustomizationCreate) *SiteCustomizationCreateBulk {
+	return &SiteCustomizationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SiteCustomizationClient) MapCreateBulk(slice any, setFunc func(*SiteCustomizationCreate, int)) *SiteCustomizationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SiteCustomizationCreateBulk{err: fmt.Errorf("calling to SiteCustomizationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SiteCustomizationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SiteCustomizationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SiteCustomization.
+func (c *SiteCustomizationClient) Update() *SiteCustomizationUpdate {
+	mutation := newSiteCustomizationMutation(c.config, OpUpdate)
+	return &SiteCustomizationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SiteCustomizationClient) UpdateOne(_m *SiteCustomization) *SiteCustomizationUpdateOne {
+	mutation := newSiteCustomizationMutation(c.config, OpUpdateOne, withSiteCustomization(_m))
+	return &SiteCustomizationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SiteCustomizationClient) UpdateOneID(id string) *SiteCustomizationUpdateOne {
+	mutation := newSiteCustomizationMutation(c.config, OpUpdateOne, withSiteCustomizationID(id))
+	return &SiteCustomizationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SiteCustomization.
+func (c *SiteCustomizationClient) Delete() *SiteCustomizationDelete {
+	mutation := newSiteCustomizationMutation(c.config, OpDelete)
+	return &SiteCustomizationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SiteCustomizationClient) DeleteOne(_m *SiteCustomization) *SiteCustomizationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SiteCustomizationClient) DeleteOneID(id string) *SiteCustomizationDeleteOne {
+	builder := c.Delete().Where(sitecustomization.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SiteCustomizationDeleteOne{builder}
+}
+
+// Query returns a query builder for SiteCustomization.
+func (c *SiteCustomizationClient) Query() *SiteCustomizationQuery {
+	return &SiteCustomizationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSiteCustomization},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SiteCustomization entity by its id.
+func (c *SiteCustomizationClient) Get(ctx context.Context, id string) (*SiteCustomization, error) {
+	return c.Query().Where(sitecustomization.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SiteCustomizationClient) GetX(ctx context.Context, id string) *SiteCustomization {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SiteCustomizationClient) Hooks() []Hook {
+	return c.hooks.SiteCustomization
+}
+
+// Interceptors returns the client interceptors.
+func (c *SiteCustomizationClient) Interceptors() []Interceptor {
+	return c.inters.SiteCustomization
+}
+
+func (c *SiteCustomizationClient) mutate(ctx context.Context, m *SiteCustomizationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SiteCustomizationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SiteCustomizationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SiteCustomizationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SiteCustomizationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SiteCustomization mutation op: %q", m.Op())
+	}
+}
+
 // SiteMemberClient is a client for the SiteMember schema.
 type SiteMemberClient struct {
 	config
@@ -2761,6 +3053,139 @@ func (c *SiteMemberClient) mutate(ctx context.Context, m *SiteMemberMutation) (V
 		return (&SiteMemberDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown SiteMember mutation op: %q", m.Op())
+	}
+}
+
+// TaxonomyTermClient is a client for the TaxonomyTerm schema.
+type TaxonomyTermClient struct {
+	config
+}
+
+// NewTaxonomyTermClient returns a client for the TaxonomyTerm from the given config.
+func NewTaxonomyTermClient(c config) *TaxonomyTermClient {
+	return &TaxonomyTermClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `taxonomyterm.Hooks(f(g(h())))`.
+func (c *TaxonomyTermClient) Use(hooks ...Hook) {
+	c.hooks.TaxonomyTerm = append(c.hooks.TaxonomyTerm, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `taxonomyterm.Intercept(f(g(h())))`.
+func (c *TaxonomyTermClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TaxonomyTerm = append(c.inters.TaxonomyTerm, interceptors...)
+}
+
+// Create returns a builder for creating a TaxonomyTerm entity.
+func (c *TaxonomyTermClient) Create() *TaxonomyTermCreate {
+	mutation := newTaxonomyTermMutation(c.config, OpCreate)
+	return &TaxonomyTermCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TaxonomyTerm entities.
+func (c *TaxonomyTermClient) CreateBulk(builders ...*TaxonomyTermCreate) *TaxonomyTermCreateBulk {
+	return &TaxonomyTermCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TaxonomyTermClient) MapCreateBulk(slice any, setFunc func(*TaxonomyTermCreate, int)) *TaxonomyTermCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TaxonomyTermCreateBulk{err: fmt.Errorf("calling to TaxonomyTermClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TaxonomyTermCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TaxonomyTermCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TaxonomyTerm.
+func (c *TaxonomyTermClient) Update() *TaxonomyTermUpdate {
+	mutation := newTaxonomyTermMutation(c.config, OpUpdate)
+	return &TaxonomyTermUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TaxonomyTermClient) UpdateOne(_m *TaxonomyTerm) *TaxonomyTermUpdateOne {
+	mutation := newTaxonomyTermMutation(c.config, OpUpdateOne, withTaxonomyTerm(_m))
+	return &TaxonomyTermUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TaxonomyTermClient) UpdateOneID(id string) *TaxonomyTermUpdateOne {
+	mutation := newTaxonomyTermMutation(c.config, OpUpdateOne, withTaxonomyTermID(id))
+	return &TaxonomyTermUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TaxonomyTerm.
+func (c *TaxonomyTermClient) Delete() *TaxonomyTermDelete {
+	mutation := newTaxonomyTermMutation(c.config, OpDelete)
+	return &TaxonomyTermDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TaxonomyTermClient) DeleteOne(_m *TaxonomyTerm) *TaxonomyTermDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TaxonomyTermClient) DeleteOneID(id string) *TaxonomyTermDeleteOne {
+	builder := c.Delete().Where(taxonomyterm.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TaxonomyTermDeleteOne{builder}
+}
+
+// Query returns a query builder for TaxonomyTerm.
+func (c *TaxonomyTermClient) Query() *TaxonomyTermQuery {
+	return &TaxonomyTermQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTaxonomyTerm},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TaxonomyTerm entity by its id.
+func (c *TaxonomyTermClient) Get(ctx context.Context, id string) (*TaxonomyTerm, error) {
+	return c.Query().Where(taxonomyterm.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TaxonomyTermClient) GetX(ctx context.Context, id string) *TaxonomyTerm {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TaxonomyTermClient) Hooks() []Hook {
+	return c.hooks.TaxonomyTerm
+}
+
+// Interceptors returns the client interceptors.
+func (c *TaxonomyTermClient) Interceptors() []Interceptor {
+	return c.inters.TaxonomyTerm
+}
+
+func (c *TaxonomyTermClient) mutate(ctx context.Context, m *TaxonomyTermMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TaxonomyTermCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TaxonomyTermUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TaxonomyTermUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TaxonomyTermDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TaxonomyTerm mutation op: %q", m.Op())
 	}
 }
 
@@ -3168,13 +3593,15 @@ type (
 	hooks struct {
 		AuditLog, Bookmark, Comment, ContentItem, Conversation, ConversationMember,
 		Follow, IdempotencyKey, MediaAsset, MediaUpload, Message, ModerationReport,
-		Notification, OutboxEvent, Reaction, Session, Site, SiteMember, User,
-		UserIdentity, VerificationToken []ent.Hook
+		Notification, OutboxEvent, PageView, Reaction, Session, Site,
+		SiteCustomization, SiteMember, TaxonomyTerm, User, UserIdentity,
+		VerificationToken []ent.Hook
 	}
 	inters struct {
 		AuditLog, Bookmark, Comment, ContentItem, Conversation, ConversationMember,
 		Follow, IdempotencyKey, MediaAsset, MediaUpload, Message, ModerationReport,
-		Notification, OutboxEvent, Reaction, Session, Site, SiteMember, User,
-		UserIdentity, VerificationToken []ent.Interceptor
+		Notification, OutboxEvent, PageView, Reaction, Session, Site,
+		SiteCustomization, SiteMember, TaxonomyTerm, User, UserIdentity,
+		VerificationToken []ent.Interceptor
 	}
 )

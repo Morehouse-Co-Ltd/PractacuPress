@@ -1,17 +1,18 @@
 package content
 
 import (
+	"context"
 	"errors"
-		"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-		"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
-	"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // PrincipalFunc returns the authenticated caller's id, site and role.
@@ -109,6 +110,8 @@ type contentResponse struct {
 	SourceFormat  string     `json:"source_format"`
 	RenderedHTML  string     `json:"rendered_html"`
 	PolicyVersion string     `json:"policy_version"`
+	CategoryID    string     `json:"category_id"`
+	Tags          []string   `json:"tags"`
 	PublishedAt   *time.Time `json:"published_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
@@ -116,12 +119,13 @@ type contentResponse struct {
 }
 
 type draftRequest struct {
-	Title        string `json:"title"`
-	Slug         string `json:"slug"`
-	Summary      string `json:"summary"`
-	SourceFormat string `json:"source_format"`
-	SourceBody   string `json:"source_body"`
-	CategoryID   string `json:"category_id"`
+	Title        string   `json:"title"`
+	Slug         string   `json:"slug"`
+	Summary      string   `json:"summary"`
+	SourceFormat string   `json:"source_format"`
+	SourceBody   string   `json:"source_body"`
+	CategoryID   string   `json:"category_id"`
+	Tags         []string `json:"tags"`
 }
 
 type actionRequest struct {
@@ -180,6 +184,7 @@ func (h *Handler) search(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"items": views, "next_cursor": "", "has_more": false})
 }
+
 // list returns the items of a site the caller may see.
 func (h *Handler) list(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
@@ -200,7 +205,14 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 		return
 	}
 
-	items, next, err := h.service.ListAfter(c.Request.Context(), actor, kind, limit, cursor)
+	items, next, err := h.service.ListAfterFilter(
+		c.Request.Context(),
+		actor,
+		kind,
+		limit,
+		cursor,
+		strings.TrimSpace(c.Query("author_id")),
+	)
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
@@ -218,7 +230,8 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 	})
 }
 
-func (h *Handler) get(c *gin.Context) {	actor, ok := h.requireActor(c)
+func (h *Handler) get(c *gin.Context) {
+	actor, ok := h.requireActor(c)
 	if !ok {
 		return
 	}
@@ -305,6 +318,8 @@ func (h *Handler) view(item Content, actor Actor) contentResponse {
 		SourceFormat:  string(item.SourceFormat),
 		RenderedHTML:  item.RenderedHTML,
 		PolicyVersion: item.PolicyVersion,
+		CategoryID:    item.CategoryID,
+		Tags:          nonNilTags(item.Tags),
 		PublishedAt:   item.PublishedAt,
 		CreatedAt:     item.CreatedAt,
 		UpdatedAt:     item.UpdatedAt,
@@ -328,7 +343,17 @@ func toDraftInput(req draftRequest) DraftInput {
 		SourceFormat: format,
 		SourceBody:   req.SourceBody,
 		CategoryID:   req.CategoryID,
+		Tags:         req.Tags,
 	}
+}
+
+// nonNilTags keeps the response shape stable: an untagged item returns [] rather
+// than null, so a client can iterate without a guard.
+func nonNilTags(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }
 
 // mapError translates content failures into the API error model.

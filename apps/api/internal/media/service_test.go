@@ -1,11 +1,12 @@
 package media
 
 import (
-	"io"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +68,16 @@ func (f *fakeRepo) InsertAsset(_ context.Context, asset Asset) (Asset, error) {
 	asset.ID = fmt.Sprintf("a%d", f.seq)
 	f.assets = append(f.assets, asset)
 	return asset, nil
+}
+
+func (f *fakeRepo) DeleteAsset(_ context.Context, siteID, assetID string) error {
+	for i, asset := range f.assets {
+		if asset.ID == assetID && asset.SiteID == siteID {
+			f.assets = append(f.assets[:i], f.assets[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
 }
 
 type fakeScanner struct {
@@ -331,6 +342,7 @@ func (c *capturingScanner) Inspect(_ context.Context, in ScanInput) (ScanResult,
 	c.last = in
 	return c.result, nil
 }
+
 // TestOpenAssetRefusesUncleanObjects is the property that matters: a file that failed
 // inspection must not be downloadable, not even by the account that uploaded it.
 func TestOpenAssetRefusesUncleanObjects(t *testing.T) {
@@ -399,4 +411,195 @@ func TestOpenAssetIsSiteScoped(t *testing.T) {
 	outsider := Actor{UserID: "u1", SiteID: "other-site"}
 	_, _, err = service.OpenAsset(ctx, outsider, asset.ID)
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// --- per purpose storage routing -------------------------------------------
+
+// recordingStorage remembers which adapter received each byte operation, which is how
+// the routing tests prove that the right scope handled the call.
+type recordingStorage struct {
+	name    string
+	puts    int
+	heads   int
+	opens   int
+	deletes int
+	lastKey string
+}
+
+func (r *recordingStorage) Put(_ context.Context, key string, reader io.Reader, size int64) error {
+	r.puts++
+	r.lastKey = key
+	_, err := io.Copy(io.Discard, io.LimitReader(reader, size))
+	return err
+}
+
+func (r *recordingStorage) ReadHead(_ context.Context, key string, _ int) ([]byte, error) {
+	r.heads++
+	r.lastKey = key
+	return []byte{0x89, 0x50, 0x4E, 0x47}, nil
+}
+
+func (r *recordingStorage) Open(_ context.Context, key string) (io.ReadCloser, error) {
+	r.opens++
+	r.lastKey = key
+	return io.NopCloser(strings.NewReader("DATA")), nil
+}
+
+func (r *recordingStorage) Delete(_ context.Context, key string) error {
+	r.deletes++
+	r.lastKey = key
+	return nil
+}
+
+func serviceWithStorages(
+	t *testing.T,
+	repo Repository,
+	scanner Scanner,
+	global Storage,
+	overrides map[Purpose]Storage,
+) *Service {
+	t.Helper()
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Scanner:    scanner,
+		Storage:    global,
+		Storages:   overrides,
+		Now:        func() time.Time { return time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+	return service
+}
+
+// createAndUpload opens a session and stores its bytes, so the routing tests can
+// observe which adapter the upload path used.
+func createAndUpload(t *testing.T, service *Service, purpose Purpose) Upload {
+	t.Helper()
+	mime := "image/png"
+	if purpose == PurposeAttachment {
+		mime = "application/pdf"
+	}
+	payload := []byte("DATA")
+	upload, err := service.CreateUpload(context.Background(), owner(), UploadRequest{
+		FileName:     "object.bin",
+		DeclaredMIME: mime,
+		Size:         int64(len(payload)),
+		Purpose:      purpose,
+	})
+	require.NoError(t, err)
+	_, err = service.StoreContent(context.Background(), owner(), upload.ID, bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err)
+	return upload
+}
+
+func TestServiceRoutesStorageByPurpose(t *testing.T) {
+	repo := newFakeRepo()
+	global := &recordingStorage{name: "global"}
+	contentStore := &recordingStorage{name: "content"}
+	siteStore := &recordingStorage{name: "site"}
+	service := serviceWithStorages(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}},
+		global, map[Purpose]Storage{
+			PurposeContent: contentStore,
+			PurposeSite:    siteStore,
+		})
+	ctx := context.Background()
+
+	contentUpload := createAndUpload(t, service, PurposeContent)
+	siteUpload := createAndUpload(t, service, PurposeSite)
+	avatarUpload := createAndUpload(t, service, PurposeAvatar)
+
+	require.Equal(t, 1, contentStore.puts, "content uploads go to the content adapter")
+	require.Equal(t, 1, siteStore.puts, "site uploads go to the site adapter")
+	require.Equal(t, 1, global.puts, "a purpose without an override falls back to the global adapter")
+	require.Zero(t, contentStore.heads)
+	require.Zero(t, siteStore.heads)
+
+	// Completion reads the leading bytes from the same adapter the upload wrote to.
+	_, err := service.CompleteUpload(ctx, owner(), contentUpload.ID)
+	require.NoError(t, err)
+	_, err = service.CompleteUpload(ctx, owner(), siteUpload.ID)
+	require.NoError(t, err)
+	_, err = service.CompleteUpload(ctx, owner(), avatarUpload.ID)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, contentStore.heads)
+	require.Equal(t, 1, siteStore.heads)
+	require.Equal(t, 1, global.heads)
+}
+
+func TestOpenAssetUsesRecordedPurpose(t *testing.T) {
+	repo := newFakeRepo()
+	global := &recordingStorage{name: "global"}
+	siteStore := &recordingStorage{name: "site"}
+	service := serviceWithStorages(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}},
+		global, map[Purpose]Storage{PurposeSite: siteStore})
+	ctx := context.Background()
+
+	upload := createAndUpload(t, service, PurposeSite)
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.NoError(t, err)
+	require.Equal(t, PurposeSite, asset.Purpose, "the asset must persist the upload purpose")
+
+	global.opens, siteStore.opens = 0, 0
+	_, reader, err := service.OpenAsset(ctx, owner(), asset.ID)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+
+	require.Equal(t, 1, siteStore.opens, "download must use the adapter recorded on the asset")
+	require.Zero(t, global.opens)
+
+	// A row written before per purpose storage existed carries the zero purpose and
+	// must keep working through the global adapter.
+	legacy := Asset{
+		ID: "legacy", SiteID: "s1", OwnerID: "u1", StorageKey: "aa/legacy.png",
+		MIME: "image/png", Size: 4, ScanStatus: ScanClean, CreatedAt: time.Now().UTC(),
+	}
+	repo.assets = append(repo.assets, legacy)
+	_, reader, err = service.OpenAsset(ctx, owner(), legacy.ID)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Equal(t, 1, global.opens, "an asset without a purpose falls back to the global adapter")
+}
+
+func TestDeleteAssetUsesRecordedPurpose(t *testing.T) {
+	repo := newFakeRepo()
+	global := &recordingStorage{name: "global"}
+	siteStore := &recordingStorage{name: "site"}
+	service := serviceWithStorages(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}},
+		global, map[Purpose]Storage{PurposeSite: siteStore})
+	ctx := context.Background()
+
+	upload := createAndUpload(t, service, PurposeSite)
+	asset, err := service.CompleteUpload(ctx, owner(), upload.ID)
+	require.NoError(t, err)
+
+	// A stranger cannot delete the object, and no adapter is touched.
+	stranger := Actor{UserID: "u2", SiteID: "s1"}
+	require.ErrorIs(t, service.DeleteAsset(ctx, stranger, asset.ID), ErrPermissionDenied)
+	require.Zero(t, siteStore.deletes)
+	require.Zero(t, global.deletes)
+
+	require.NoError(t, service.DeleteAsset(ctx, owner(), asset.ID))
+	require.Equal(t, 1, siteStore.deletes, "delete must use the adapter recorded on the asset")
+	require.Zero(t, global.deletes)
+
+	_, err = repo.FindAsset(ctx, "s1", asset.ID)
+	require.ErrorIs(t, err, ErrNotFound, "the record is removed after the object")
+}
+
+func TestStorageRoutingFallsBackWhenPurposeMissing(t *testing.T) {
+	repo := newFakeRepo()
+	global := &recordingStorage{name: "global"}
+	service := serviceWithStorages(t, repo, &fakeScanner{result: ScanResult{Status: ScanClean}}, global, nil)
+
+	upload := createAndUpload(t, service, PurposeSite)
+	require.Equal(t, 1, global.puts, "no overrides means every purpose uses the global adapter")
+
+	asset, err := service.CompleteUpload(context.Background(), owner(), upload.ID)
+	require.NoError(t, err)
+	require.Equal(t, PurposeSite, asset.Purpose)
+
+	_, reader, err := service.OpenAsset(context.Background(), owner(), asset.ID)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Equal(t, 1, global.opens)
 }

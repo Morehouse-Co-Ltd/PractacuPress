@@ -18,18 +18,20 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/practacu/practacu-press/apps/api/internal/analytics"
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
-			"github.com/practacu/practacu-press/apps/api/internal/messaging"
+	"github.com/practacu/practacu-press/apps/api/internal/messaging"
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
-	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
+	"github.com/practacu/practacu-press/apps/api/internal/taxonomy"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 )
 
 const docPath = "packages/contracts/openapi/openapi.yaml"
@@ -49,10 +51,10 @@ type document struct {
 }
 
 type operation struct {
-	Summary     string              `yaml:"summary"`
-	Responses   map[string]response `yaml:"responses"`
-	Security    *[]any              `yaml:"security"`
-	Deprecated  bool                `yaml:"deprecated"`
+	Summary    string              `yaml:"summary"`
+	Responses  map[string]response `yaml:"responses"`
+	Security   *[]any              `yaml:"security"`
+	Deprecated bool                `yaml:"deprecated"`
 }
 
 type response struct {
@@ -111,16 +113,18 @@ func buildRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
 	return ginrouter.New(ginrouter.Dependencies{
-		Config:  config.Config{AppEnv: config.EnvTest},
-		Auth:    auth.NewHandler(nil, auth.HandlerConfig{}),
-		Sites:   site.NewHandler(nil, site.HandlerConfig{}),
-		Content: content.NewHandler(nil, content.HandlerConfig{}),
-		Community: community.NewHandler(nil, community.HandlerConfig{}),
-		Media:   media.NewHandler(nil, media.HandlerConfig{}),
-		Events:  outbox.NewEventsHandler(nil, outbox.HandlerConfig{}),
+		Config:        config.Config{AppEnv: config.EnvTest},
+		Auth:          auth.NewHandler(nil, auth.HandlerConfig{}),
+		Sites:         site.NewHandler(nil, site.HandlerConfig{}),
+		Content:       content.NewHandler(nil, content.HandlerConfig{}),
+		Community:     community.NewHandler(nil, community.HandlerConfig{}),
+		Media:         media.NewHandler(nil, media.HandlerConfig{}),
+		Events:        outbox.NewEventsHandler(nil, outbox.HandlerConfig{}),
 		Notifications: notifications.NewHandler(nil, notifications.HandlerConfig{}),
-		Messages: messaging.NewHandler(nil, messaging.HandlerConfig{}),
-		WS:       ws.NewHandler(ws.NewTicketStore(nil), ws.NewHub(), ws.HandlerConfig{}),
+		Messages:      messaging.NewHandler(nil, messaging.HandlerConfig{}),
+		WS:            ws.NewHandler(ws.NewTicketStore(nil), ws.NewHub(), ws.HandlerConfig{}),
+		Analytics:     analytics.NewHandler(nil, analytics.HandlerConfig{}),
+		Taxonomy:      taxonomy.NewHandler(nil, taxonomy.HandlerConfig{}),
 	})
 }
 
@@ -208,8 +212,8 @@ func TestEveryOperationDocumentsResponses(t *testing.T) {
 	doc := loadDocument(t)
 
 	valid := map[int]struct{}{
-		http.StatusOK: {}, http.StatusCreated: {}, http.StatusNoContent: {},
-		http.StatusSwitchingProtocols: {},
+		http.StatusOK: {}, http.StatusCreated: {}, http.StatusAccepted: {},
+		http.StatusNoContent: {}, http.StatusSwitchingProtocols: {},
 		http.StatusBadRequest: {}, http.StatusUnauthorized: {}, http.StatusForbidden: {},
 		http.StatusNotFound: {}, http.StatusConflict: {}, http.StatusUnprocessableEntity: {},
 		http.StatusTooManyRequests: {}, http.StatusInternalServerError: {},

@@ -17,6 +17,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
+	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
 )
 
 // ProviderEmail is the identity provider used by email and password accounts.
@@ -113,22 +114,50 @@ func (s *Store) FindEmailIdentity(ctx context.Context, email string) (auth.Ident
 		}
 		return auth.Identity{}, err
 	}
+	return toIdentity(row), nil
+}
 
-	identity := auth.Identity{
-		ID:       row.ID,
-		UserID:   row.UserID,
-		Provider: row.Provider,
-		Subject:  row.ProviderSubject,
+// FindEmailIdentityByUser resolves the email identity of one account.
+func (s *Store) FindEmailIdentityByUser(ctx context.Context, userID string) (auth.Identity, error) {
+	row, err := s.client.UserIdentity.Query().
+		Where(useridentity.UserIDEQ(userID), useridentity.ProviderEQ(ProviderEmail)).
+		Only(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return auth.Identity{}, auth.ErrAccountNotFound
+		}
+		return auth.Identity{}, err
 	}
-	if row.Email != nil {
-		identity.Email = *row.Email
-	}
-	if row.PasswordHash != nil {
-		identity.PasswordHash = *row.PasswordHash
-	}
-	identity.VerifiedAt = row.VerifiedAt
+	return toIdentity(row), nil
+}
 
-	return identity, nil
+// UpdatePasswordHash replaces the stored hash and optionally proves the address.
+//
+// The verification timestamp is only written when it is currently NULL: a password
+// reset proves ownership today, it must not be able to rewrite an older proof.
+func (s *Store) UpdatePasswordHash(
+	ctx context.Context,
+	identityID, passwordHash string,
+	verifiedAt *time.Time,
+) error {
+	updated, err := s.client.UserIdentity.Update().
+		Where(useridentity.IDEQ(identityID)).
+		SetPasswordHash(passwordHash).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return auth.ErrAccountNotFound
+	}
+	if verifiedAt == nil {
+		return nil
+	}
+	_, err = s.client.UserIdentity.Update().
+		Where(useridentity.IDEQ(identityID), useridentity.VerifiedAtIsNil()).
+		SetVerifiedAt(*verifiedAt).
+		Save(ctx)
+	return err
 }
 
 // FindUser loads an account by id.
@@ -159,6 +188,16 @@ func (s *Store) FindMembershipRole(ctx context.Context, siteID, userID string) (
 		return "", err
 	}
 	return site.Role(row.Role), nil
+}
+
+// CountSiteMembers returns how many accounts belong to a site.
+//
+// Disabled members still count: the question is whether the install already has an
+// owner, not whether that owner is currently able to log in.
+func (s *Store) CountSiteMembers(ctx context.Context, siteID string) (int, error) {
+	return s.client.SiteMember.Query().
+		Where(sitemember.SiteIDEQ(siteID)).
+		Count(ctx)
 }
 
 // CreateSession persists a new refresh session.
@@ -296,6 +335,126 @@ func (s *Store) RevokeSession(ctx context.Context, sessionID, reason string, at 
 		SetRevokedReason(reason).
 		Save(ctx)
 	return err
+}
+
+// RevokeUserSessions revokes every live session of one account.
+func (s *Store) RevokeUserSessions(ctx context.Context, userID, reason string, at time.Time) error {
+	_, err := s.client.Session.Update().
+		Where(session.UserIDEQ(userID), session.RevokedAtIsNil()).
+		SetRevokedAt(at).
+		SetRevokedReason(reason).
+		Save(ctx)
+	return err
+}
+
+// CreateVerificationToken stores a new single use token.
+func (s *Store) CreateVerificationToken(ctx context.Context, token auth.VerificationToken) error {
+	builder := s.client.VerificationToken.Create().
+		SetID(token.ID).
+		SetUserID(token.UserID).
+		SetKind(token.Kind).
+		SetTokenHash(token.TokenHash).
+		SetExpiresAt(token.ExpiresAt)
+	if !token.CreatedAt.IsZero() {
+		builder.SetCreatedAt(token.CreatedAt)
+	}
+	_, err := builder.Save(ctx)
+	return err
+}
+
+// FindVerificationToken resolves the hash of a token.
+func (s *Store) FindVerificationToken(ctx context.Context, tokenHash string) (auth.VerificationToken, error) {
+	row, err := s.client.VerificationToken.Query().
+		Where(verificationtoken.TokenHashEQ(tokenHash)).
+		Only(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return auth.VerificationToken{}, auth.ErrVerificationTokenNotFound
+		}
+		return auth.VerificationToken{}, err
+	}
+	return toVerificationToken(row), nil
+}
+
+// LatestLiveVerificationToken returns the newest redeemable token of a kind.
+func (s *Store) LatestLiveVerificationToken(
+	ctx context.Context,
+	userID, kind string,
+	now time.Time,
+) (auth.VerificationToken, error) {
+	row, err := s.client.VerificationToken.Query().
+		Where(
+			verificationtoken.UserIDEQ(userID),
+			verificationtoken.KindEQ(kind),
+			verificationtoken.ConsumedAtIsNil(),
+			verificationtoken.ExpiresAtGT(now),
+		).
+		Order(entgen.Desc(verificationtoken.FieldCreatedAt)).
+		First(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return auth.VerificationToken{}, auth.ErrVerificationTokenNotFound
+		}
+		return auth.VerificationToken{}, err
+	}
+	return toVerificationToken(row), nil
+}
+
+// ConsumeVerificationToken marks a token redeemed.
+//
+// The update is conditional on consumed_at still being NULL, so two concurrent
+// redemptions cannot both succeed.
+func (s *Store) ConsumeVerificationToken(ctx context.Context, id string, at time.Time) (bool, error) {
+	updated, err := s.client.VerificationToken.Update().
+		Where(verificationtoken.IDEQ(id), verificationtoken.ConsumedAtIsNil()).
+		SetConsumedAt(at).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	return updated > 0, nil
+}
+
+// InvalidateVerificationTokens retires every live token of a kind.
+func (s *Store) InvalidateVerificationTokens(ctx context.Context, userID, kind string, at time.Time) error {
+	_, err := s.client.VerificationToken.Update().
+		Where(
+			verificationtoken.UserIDEQ(userID),
+			verificationtoken.KindEQ(kind),
+			verificationtoken.ConsumedAtIsNil(),
+		).
+		SetConsumedAt(at).
+		Save(ctx)
+	return err
+}
+
+func toIdentity(row *entgen.UserIdentity) auth.Identity {
+	identity := auth.Identity{
+		ID:         row.ID,
+		UserID:     row.UserID,
+		Provider:   row.Provider,
+		Subject:    row.ProviderSubject,
+		VerifiedAt: row.VerifiedAt,
+	}
+	if row.Email != nil {
+		identity.Email = *row.Email
+	}
+	if row.PasswordHash != nil {
+		identity.PasswordHash = *row.PasswordHash
+	}
+	return identity
+}
+
+func toVerificationToken(row *entgen.VerificationToken) auth.VerificationToken {
+	return auth.VerificationToken{
+		ID:         row.ID,
+		UserID:     row.UserID,
+		Kind:       row.Kind,
+		TokenHash:  row.TokenHash,
+		ExpiresAt:  row.ExpiresAt,
+		CreatedAt:  row.CreatedAt,
+		ConsumedAt: row.ConsumedAt,
+	}
 }
 
 func toAccount(row *entgen.User) auth.UserAccount {

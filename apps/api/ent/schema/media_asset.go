@@ -18,6 +18,16 @@ func (MediaAsset) Fields() []ent.Field {
 		field.String("storage_key").MaxLen(200).NotEmpty().Immutable(),
 		field.String("mime_type").MaxLen(120).NotEmpty(),
 		field.Int64("size").NonNegative(),
+		// The purpose is persisted because storage may be configured per purpose: a
+		// download or delete must use the same adapter the bytes were written to, and
+		// only the record knows which adapter that was. It is nullable on purpose:
+		// rows written before per purpose storage existed have no value and must fall
+		// back to the global adapter, not to whichever scope now owns "content".
+		field.String("purpose").
+			MaxLen(20).
+			Optional().
+			Nillable().
+			Validate(oneOf("content", "site", "avatar", "attachment")),
 		// Only "clean" may be referenced from content. The default is deliberately the
 		// most restrictive state, so a bug that forgets to set it cannot publish a file.
 		field.String("scan_status").

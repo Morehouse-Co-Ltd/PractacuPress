@@ -76,6 +76,25 @@ func Open(ctx context.Context, driverName, dsn string) (*DB, error) {
 	return &DB{Client: client, driver: canonical, sqlDB: sqlDB}, nil
 }
 
+// ConfigurePool overrides the driver defaults after Open. Zero max-open and
+// max-idle values keep the default chosen above, so a deployment that does not
+// tune the pool behaves exactly as before. A zero lifetime explicitly disables
+// recycling; the configuration default is 1800 seconds. SQLite reads this
+// literally: setting more than one open connection with the default rollback
+// journal can surface "database is locked", which is why the safe default is
+// still one.
+func (d *DB) ConfigurePool(maxOpen, maxIdle int, lifetime time.Duration) {
+	if maxOpen > 0 {
+		d.sqlDB.SetMaxOpenConns(maxOpen)
+	}
+	if maxIdle > 0 {
+		d.sqlDB.SetMaxIdleConns(maxIdle)
+	}
+	if lifetime >= 0 {
+		d.sqlDB.SetConnMaxLifetime(lifetime)
+	}
+}
+
 // Ping reports whether the database is reachable. It backs GET /readyz.
 func (d *DB) Ping(ctx context.Context) error { return d.sqlDB.PingContext(ctx) }
 
@@ -88,21 +107,41 @@ func (d *DB) Dialect() string { return dialectOfCanonical(d.driver) }
 // Close releases the connection pool. It is safe to call more than once.
 func (d *DB) Close() error { return d.sqlDB.Close() }
 
-// EnsureSQLitePragmas appends the required pragmas to a SQLite DSN when they are
-// not already present.
+// EnsureSQLitePragmas appends the pragmas this application relies on to a SQLite DSN.
 //
-// A DSN that already mentions foreign keys is left alone, so an operator can tighten
-// or relax it deliberately; everything else gets the safe defaults.
+// The server receives its DSN from the environment, not from SQLiteDSN, so this is the
+// function that decides how a real deployment's database behaves. WAL matters because
+// without it every reader blocks the single writer and the outbox worker's two-second
+// pass contends with request handling; busy_timeout matters because without it a
+// competing writer fails with "database is locked" instead of waiting for the lock.
+//
+// A DSN that already carries a _pragma of its own is left alone: an operator who wrote
+// `_pragma=foreign_keys(0)` has made a deliberate choice, and silently appending our
+// defaults to it would be both surprising and impossible to override.
 func EnsureSQLitePragmas(dsn string) string {
-	if strings.Contains(dsn, "foreign_keys") {
+	if strings.Contains(dsn, "_pragma") {
 		return dsn
 	}
+
 	separator := "?"
 	if strings.Contains(dsn, "?") {
 		separator = "&"
 	}
-	return dsn + separator + "_pragma=foreign_keys%281%29"
+
+	// Order matters only for readability; foreign_keys first matches SQLiteDSN so an
+	// operator comparing the two sees the same prefix.
+	pragmas := []string{"foreign_keys(1)", "journal_mode(WAL)", "busy_timeout(5000)"}
+	var builder strings.Builder
+	builder.WriteString(dsn)
+	for _, pragma := range pragmas {
+		builder.WriteString(separator)
+		builder.WriteString("_pragma=")
+		builder.WriteString(url.QueryEscape(pragma))
+		separator = "&"
+	}
+	return builder.String()
 }
+
 // SQLiteDSN builds a modernc/sqlite DSN with the pragmas this application relies
 // on: foreign key enforcement, WAL journaling for concurrent readers, and a busy
 // timeout so a competing writer waits instead of failing immediately.
@@ -121,4 +160,3 @@ func SQLiteDSN(path string) string {
 	target = strings.TrimPrefix(path, "file:")
 	return "file:" + target + "?" + q.Encode()
 }
-

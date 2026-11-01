@@ -63,6 +63,26 @@ func (_u *MediaAssetUpdate) AddSize(v int64) *MediaAssetUpdate {
 	return _u
 }
 
+// SetPurpose sets the "purpose" field.
+func (_u *MediaAssetUpdate) SetPurpose(v string) *MediaAssetUpdate {
+	_u.mutation.SetPurpose(v)
+	return _u
+}
+
+// SetNillablePurpose sets the "purpose" field if the given value is not nil.
+func (_u *MediaAssetUpdate) SetNillablePurpose(v *string) *MediaAssetUpdate {
+	if v != nil {
+		_u.SetPurpose(*v)
+	}
+	return _u
+}
+
+// ClearPurpose clears the value of the "purpose" field.
+func (_u *MediaAssetUpdate) ClearPurpose() *MediaAssetUpdate {
+	_u.mutation.ClearPurpose()
+	return _u
+}
+
 // SetScanStatus sets the "scan_status" field.
 func (_u *MediaAssetUpdate) SetScanStatus(v string) *MediaAssetUpdate {
 	_u.mutation.SetScanStatus(v)
@@ -156,6 +176,11 @@ func (_u *MediaAssetUpdate) check() error {
 			return &ValidationError{Name: "size", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.size": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Purpose(); ok {
+		if err := mediaasset.PurposeValidator(v); err != nil {
+			return &ValidationError{Name: "purpose", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.purpose": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ScanStatus(); ok {
 		if err := mediaasset.ScanStatusValidator(v); err != nil {
 			return &ValidationError{Name: "scan_status", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.scan_status": %w`, err)}
@@ -189,6 +214,12 @@ func (_u *MediaAssetUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.AddedSize(); ok {
 		_spec.AddField(mediaasset.FieldSize, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Purpose(); ok {
+		_spec.SetField(mediaasset.FieldPurpose, field.TypeString, value)
+	}
+	if _u.mutation.PurposeCleared() {
+		_spec.ClearField(mediaasset.FieldPurpose, field.TypeString)
 	}
 	if value, ok := _u.mutation.ScanStatus(); ok {
 		_spec.SetField(mediaasset.FieldScanStatus, field.TypeString, value)
@@ -254,6 +285,26 @@ func (_u *MediaAssetUpdateOne) SetNillableSize(v *int64) *MediaAssetUpdateOne {
 // AddSize adds value to the "size" field.
 func (_u *MediaAssetUpdateOne) AddSize(v int64) *MediaAssetUpdateOne {
 	_u.mutation.AddSize(v)
+	return _u
+}
+
+// SetPurpose sets the "purpose" field.
+func (_u *MediaAssetUpdateOne) SetPurpose(v string) *MediaAssetUpdateOne {
+	_u.mutation.SetPurpose(v)
+	return _u
+}
+
+// SetNillablePurpose sets the "purpose" field if the given value is not nil.
+func (_u *MediaAssetUpdateOne) SetNillablePurpose(v *string) *MediaAssetUpdateOne {
+	if v != nil {
+		_u.SetPurpose(*v)
+	}
+	return _u
+}
+
+// ClearPurpose clears the value of the "purpose" field.
+func (_u *MediaAssetUpdateOne) ClearPurpose() *MediaAssetUpdateOne {
+	_u.mutation.ClearPurpose()
 	return _u
 }
 
@@ -363,6 +414,11 @@ func (_u *MediaAssetUpdateOne) check() error {
 			return &ValidationError{Name: "size", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.size": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Purpose(); ok {
+		if err := mediaasset.PurposeValidator(v); err != nil {
+			return &ValidationError{Name: "purpose", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.purpose": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ScanStatus(); ok {
 		if err := mediaasset.ScanStatusValidator(v); err != nil {
 			return &ValidationError{Name: "scan_status", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.scan_status": %w`, err)}
@@ -413,6 +469,12 @@ func (_u *MediaAssetUpdateOne) sqlSave(ctx context.Context) (_node *MediaAsset, 
 	}
 	if value, ok := _u.mutation.AddedSize(); ok {
 		_spec.AddField(mediaasset.FieldSize, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Purpose(); ok {
+		_spec.SetField(mediaasset.FieldPurpose, field.TypeString, value)
+	}
+	if _u.mutation.PurposeCleared() {
+		_spec.ClearField(mediaasset.FieldPurpose, field.TypeString)
 	}
 	if value, ok := _u.mutation.ScanStatus(); ok {
 		_spec.SetField(mediaasset.FieldScanStatus, field.TypeString, value)

@@ -3,6 +3,7 @@ package site
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -57,14 +58,38 @@ func CanAssignRole(actor Member, role Role) bool {
 type Service struct {
 	repo Repository
 	now  func() time.Time
+	// requirePublicAddress restricts the domain-less single-site fallback to public
+	// IP literals. It is enabled in production only, so a desktop or development
+	// install keeps working on 127.0.0.1.
+	requirePublicAddress bool
 }
 
-// NewService builds a Service.
-func NewService(repo Repository) (*Service, error) {
+// Option configures optional Service behaviour.
+type Option func(*Service)
+
+// RequirePublicAddress makes a single site without a domain reachable only through a
+// public IP literal.
+//
+// It exists because the domain-less fallback would otherwise answer on any hostname,
+// including localhost and private addresses, which is exactly the accidental exposure
+// production must not have. Development, tests and the desktop launcher leave it off.
+func RequirePublicAddress(required bool) Option {
+	return func(s *Service) { s.requirePublicAddress = required }
+}
+
+// NewService builds a Service. Options keep the original NewService(repo) call sites
+// working unchanged.
+func NewService(repo Repository, opts ...Option) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("site: repository is required")
 	}
-	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}, nil
+	service := &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(service)
+		}
+	}
+	return service, nil
 }
 
 // Resolve maps a request hostname to a site.
@@ -95,6 +120,13 @@ func (s *Service) Resolve(ctx context.Context, hostname string) (Site, error) {
 		return Site{}, err
 	}
 	if ok && solo.Domain == "" {
+		// Without a domain the site answers on any host, which is convenient for a
+		// desktop install but an accidental exposure on a server. Production therefore
+		// accepts only public IP literals here; a hostname is what the domain setting
+		// is for.
+		if s.requirePublicAddress && !isPublicAddress(host) {
+			return Site{}, ErrNotFound
+		}
 		if validateErr := solo.ValidateForServing(host); validateErr != nil {
 			return Site{}, validateErr
 		}
@@ -165,6 +197,26 @@ func (s *Service) ListMembers(ctx context.Context, actor Member, siteID string, 
 	return s.repo.ListMembers(ctx, siteID, limit)
 }
 
+// PublicMember returns the author archive profile of one active member.
+//
+// The caller is not passed in on purpose: the endpoint is public, so the only thing
+// that matters is whether the account is an active member of this site. Suspended and
+// invited memberships answer not found, exactly like an unknown account, so the
+// endpoint cannot be used to enumerate deactivated accounts.
+func (s *Service) PublicMember(ctx context.Context, siteID, userID string) (Member, error) {
+	member, err := s.repo.FindMember(ctx, siteID, userID)
+	if err != nil {
+		if errors.Is(err, ErrMemberNotFound) {
+			return Member{}, ErrTargetNotFound
+		}
+		return Member{}, err
+	}
+	if !member.IsActive() {
+		return Member{}, ErrTargetNotFound
+	}
+	return member, nil
+}
+
 // ChangeMemberRole changes another member's role.
 //
 // Two escalation guards matter here: the actor must administer this site, and only a
@@ -188,11 +240,25 @@ func (s *Service) ChangeMemberRole(
 
 	target, err := s.repo.FindMember(ctx, siteID, userID)
 	if err != nil {
+		if errors.Is(err, ErrMemberNotFound) {
+			return ErrTargetNotFound
+		}
 		return err
 	}
 	// Demoting a platform administrator is as sensitive as promoting one.
 	if target.Role == RolePlatformAdmin && actor.Role != RolePlatformAdmin {
 		return ErrPermissionDenied
+	}
+	// The site must keep at least one platform administrator that can actually log
+	// in; otherwise nobody could ever restore the role.
+	if target.Role == RolePlatformAdmin && role != RolePlatformAdmin {
+		admins, countErr := s.repo.CountMembersByRole(ctx, siteID, RolePlatformAdmin)
+		if countErr != nil {
+			return countErr
+		}
+		if admins <= 1 {
+			return ErrLastPlatformAdmin
+		}
 	}
 
 	return s.repo.UpdateMemberRole(ctx, siteID, userID, role, AuditEntry{
@@ -204,6 +270,171 @@ func (s *Service) ChangeMemberRole(
 		Detail:    map[string]any{"from": string(target.Role), "to": string(role)},
 		At:        s.now(),
 	})
+}
+
+// UpdateMemberProfile changes the display name or login email of a member.
+//
+// This is deliberately stricter than a role change: only a platform administrator
+// may rewrite an account, and only for a member of lower rank. Editing another
+// platform administrator, or the caller itself, stays impossible.
+func (s *Service) UpdateMemberProfile(
+	ctx context.Context,
+	actor Member,
+	siteID, userID string,
+	in MemberProfile,
+	requestID string,
+) (Member, error) {
+	if err := authorize(actor, siteID, ActionManageMembers); err != nil {
+		return Member{}, err
+	}
+	target, err := s.manageableTarget(ctx, actor, siteID, userID)
+	if err != nil {
+		return Member{}, err
+	}
+
+	profile := MemberProfile{}
+	changed := make([]string, 0, 2)
+	if in.DisplayName != nil {
+		name, nameErr := validateMemberDisplayName(*in.DisplayName)
+		if nameErr != nil {
+			return Member{}, nameErr
+		}
+		profile.DisplayName = &name
+		changed = append(changed, "display_name")
+	}
+	if in.Email != nil {
+		email, emailErr := normalizeMemberEmail(*in.Email)
+		if emailErr != nil {
+			return Member{}, emailErr
+		}
+		// Re-sending the current address is not an update; it must not trip the
+		// uniqueness check against the account's own identity.
+		if email != target.Email {
+			profile.Email = &email
+			changed = append(changed, "email")
+		}
+	}
+	if len(changed) == 0 {
+		return Member{}, formatInvalid("nothing to update")
+	}
+
+	if err := s.repo.UpdateMemberProfile(ctx, siteID, userID, profile, AuditEntry{
+		SiteID:    siteID,
+		ActorID:   actor.UserID,
+		Action:    "site.member.profile_updated",
+		Target:    userID,
+		RequestID: requestID,
+		Detail:    map[string]any{"fields": changed},
+		At:        s.now(),
+	}); err != nil {
+		return Member{}, err
+	}
+
+	if profile.DisplayName != nil {
+		target.DisplayName = *profile.DisplayName
+	}
+	if profile.Email != nil {
+		target.Email = *profile.Email
+	}
+	return target, nil
+}
+
+// UpdateMemberStatus suspends or reactivates a member's site membership.
+//
+// Only the membership status is touched, never the global account: an account can
+// belong to several sites, and one site has no business disabling it everywhere.
+// Login and refresh both read the membership through FindMembershipRole, which only
+// accepts an active membership, so a suspended member cannot obtain a session.
+func (s *Service) UpdateMemberStatus(
+	ctx context.Context,
+	actor Member,
+	siteID, userID, status string,
+	requestID string,
+) (Member, error) {
+	if err := authorize(actor, siteID, ActionManageMembers); err != nil {
+		return Member{}, err
+	}
+	if status != MemberStatusActive && status != MemberStatusSuspended {
+		return Member{}, formatInvalid("status must be active or suspended")
+	}
+
+	target, err := s.manageableTarget(ctx, actor, siteID, userID)
+	if err != nil {
+		return Member{}, err
+	}
+
+	if err := s.repo.UpdateMemberStatus(ctx, siteID, userID, status, AuditEntry{
+		SiteID:    siteID,
+		ActorID:   actor.UserID,
+		Action:    "site.member.status_changed",
+		Target:    userID,
+		RequestID: requestID,
+		Detail:    map[string]any{"from": target.Status, "to": status},
+		At:        s.now(),
+	}); err != nil {
+		return Member{}, err
+	}
+
+	target.Status = status
+	return target, nil
+}
+
+// DeleteMember removes a member from the site.
+//
+// The account itself is kept: it may still own content, comments and other site
+// memberships, and deleting a user row would either break those references or
+// cascade into data loss. Rejoining the site or recreating the account is a
+// deliberate future operation, not a side effect of "remove from this site".
+func (s *Service) DeleteMember(ctx context.Context, actor Member, siteID, userID, requestID string) error {
+	if err := authorize(actor, siteID, ActionManageMembers); err != nil {
+		return err
+	}
+	target, err := s.manageableTarget(ctx, actor, siteID, userID)
+	if err != nil {
+		return err
+	}
+
+	return s.repo.DeleteMember(ctx, siteID, target.UserID, AuditEntry{
+		SiteID:    siteID,
+		ActorID:   actor.UserID,
+		Action:    "site.member.removed",
+		Target:    userID,
+		RequestID: requestID,
+		Detail:    map[string]any{"role": string(target.Role)},
+		At:        s.now(),
+	})
+}
+
+// manageableTarget loads the member an administration call is aimed at and checks
+// that the caller outranks it.
+//
+// "Lower" is strict: a caller may never edit itself and never another platform
+// administrator, so the account operations cannot be used to disable the only other
+// administrator or to edit one's own audit trail.
+func (s *Service) manageableTarget(ctx context.Context, actor Member, siteID, userID string) (Member, error) {
+	if actor.Role != RolePlatformAdmin {
+		return Member{}, ErrPermissionDenied
+	}
+
+	target, err := s.repo.FindMember(ctx, siteID, userID)
+	if err != nil {
+		if errors.Is(err, ErrMemberNotFound) {
+			return Member{}, ErrTargetNotFound
+		}
+		return Member{}, err
+	}
+	if target.UserID == actor.UserID {
+		return Member{}, ErrCannotManageSelf
+	}
+	if target.Role == RolePlatformAdmin {
+		return Member{}, ErrTargetTooPrivileged
+	}
+	return target, nil
+}
+
+// formatInvalid wraps a validation message so the transport can turn it into a 400.
+func formatInvalid(message string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidInput, message)
 }
 
 // UpdateSettings changes site level configuration.
@@ -239,7 +470,20 @@ func (s *Service) UpdateSettings(
 		Description:    strings.TrimSpace(in.Description),
 		VisibilityMode: in.VisibilityMode,
 		PublishMode:    in.PublishMode,
-		Domain:         NormalizeHost(in.Domain),
+	}
+	// A domain written through the general settings endpoint is verified exactly like
+	// one written through PUT /sites/{id}/domain. Leaving it unverified would make the
+	// site unreachable: ValidateForServing rejects an unverified domain.
+	if in.Domain != "" {
+		domain, domainErr := normalizeDomain(in.Domain)
+		if domainErr != nil {
+			return domainErr
+		}
+		normalized.Domain = domain
+		if domain != "" {
+			verifiedAt := s.now()
+			normalized.DomainVerifiedAt = &verifiedAt
+		}
 	}
 
 	return s.repo.UpdateSettings(ctx, siteID, normalized, AuditEntry{
@@ -253,6 +497,55 @@ func (s *Service) UpdateSettings(
 			"publish_mode":    string(normalized.PublishMode),
 		},
 		At: s.now(),
+	})
+}
+
+// UpdateDomain sets or clears the site's primary domain.
+//
+// A non-empty domain is treated as operator declared ownership: it is stored together
+// with domain_verified_at = now, because an unverified domain would fail
+// ValidateForServing and take the site offline. An empty string clears both the domain
+// and the verification, which restores the domain-less fallback.
+func (s *Service) UpdateDomain(
+	ctx context.Context,
+	actor Member,
+	siteID, domain, requestID string,
+) error {
+	if err := authorize(actor, siteID, ActionManageSite); err != nil {
+		return err
+	}
+
+	normalized, err := normalizeDomain(domain)
+	if err != nil {
+		return err
+	}
+
+	in := DomainInput{Domain: normalized}
+	if normalized != "" {
+		// The domain index is unique. Checking first gives the caller a 409 instead of
+		// a database error; a concurrent write can still lose the race and surface as a
+		// constraint failure.
+		existing, findErr := s.repo.FindByDomain(ctx, normalized)
+		switch {
+		case findErr == nil && existing.ID != siteID:
+			return ErrDomainTaken
+		case findErr == nil:
+			// The site already owns this domain.
+		case !errors.Is(findErr, ErrNotFound):
+			return findErr
+		}
+		verifiedAt := s.now()
+		in.VerifiedAt = &verifiedAt
+	}
+
+	return s.repo.UpdateDomain(ctx, siteID, in, AuditEntry{
+		SiteID:    siteID,
+		ActorID:   actor.UserID,
+		Action:    "site.domain.updated",
+		Target:    siteID,
+		RequestID: requestID,
+		Detail:    map[string]any{"domain": normalized},
+		At:        s.now(),
 	})
 }
 

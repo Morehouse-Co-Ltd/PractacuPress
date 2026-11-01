@@ -50,17 +50,64 @@ func RequireAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
 // token still gets their own view (their drafts, their role). A malformed or expired
 // token is treated as anonymous rather than as an error, so a stale tab can still read
 // public pages.
+//
+// A token minted for another site is dropped for the same reason a bad one is: it
+// describes a different tenant. Keeping it would let an account registered on site A
+// browse site B with A's identity, and every anonymous-read handler keys its queries
+// off the principal's site, so the reader would silently be served the wrong site.
 func OptionalAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw, ok := bearerToken(c.GetHeader("Authorization"))
 		if ok && verifier != nil {
-			if principal, err := verifier.VerifyAccess(raw); err == nil {
+			if principal, err := verifier.VerifyAccess(raw); err == nil && siteMatches(c, principal) {
 				withPrincipal(c, principal)
 			}
 		}
 		c.Next()
 	}
 }
+
+// siteMatches reports whether the token's site is the site this request resolved to.
+//
+// When no site resolved there is nothing to disagree with: a deployment without a host
+// resolver addresses one fixed site, so the token cannot select another one.
+func siteMatches(c *gin.Context, principal auth.Principal) bool {
+	resolved, ok := SiteFrom(c)
+	if !ok {
+		return true
+	}
+	return principal.SiteID == resolved.ID
+}
+// RequireAuthForSite verifies the bearer token and binds it to the site this request
+// resolves to.
+//
+// A token is minted for exactly one site; the hostname decides which site a request
+// addresses. Comparing the two is what stops a token from tenant A from being used
+// against tenant B's hostname, where the same account may hold a different role - or
+// no membership at all. It is the composed form of RequireAuth + RequireSiteMatch and
+// exists so the route groups can keep taking a single guard handler.
+func RequireAuthForSite(verifier AccessTokenVerifier) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw, ok := bearerToken(c.GetHeader("Authorization"))
+		if !ok {
+			abortUnauthenticated(c, "missing_bearer_token")
+			return
+		}
+
+		principal, err := verifier.VerifyAccess(raw)
+		if err != nil {
+			abortUnauthenticated(c, reasonFor(err))
+			return
+		}
+
+		withPrincipal(c, principal)
+		if !rejectForeignSite(c, principal) {
+			return
+		}
+		c.Next()
+	}
+}
+
 // RequireSiteMatch rejects a principal whose token was issued for another site.
 //
 // This is the check that stops a token minted on site A from acting on site B when
@@ -72,22 +119,28 @@ func RequireSiteMatch() gin.HandlerFunc {
 			abortUnauthenticated(c, "missing_principal")
 			return
 		}
-
-		resolved, ok := SiteFrom(c)
-		if !ok {
-			AbortProblem(c, apperr.New(apperr.CodeSiteNotFound).WithRequestID(RequestIDFrom(c)))
-			return
-		}
-
-		if principal.SiteID != resolved.ID {
-			AbortProblem(c, apperr.PermissionDenied().
-				WithDetail("reason", "site_mismatch").
-				WithRequestID(RequestIDFrom(c)))
+		if !rejectForeignSite(c, principal) {
 			return
 		}
 
 		c.Next()
 	}
+}
+
+// rejectForeignSite compares the token's site with the resolved site.
+//
+// It reports false after writing the rejection, so callers can return immediately.
+func rejectForeignSite(c *gin.Context, principal auth.Principal) bool {
+	if siteMatches(c, principal) {
+		return true
+	}
+	// "cross_site" is the reason string every module handler already uses for this
+	// class of failure; the guard now rejects before the handler so clients see one
+	// vocabulary regardless of which layer caught it.
+	AbortProblem(c, apperr.PermissionDenied().
+		WithDetail("reason", "cross_site").
+		WithRequestID(RequestIDFrom(c)))
+	return false
 }
 
 // RequireRole rejects principals whose role is below the required authority.

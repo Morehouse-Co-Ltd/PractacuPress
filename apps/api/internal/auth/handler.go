@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // Browser session cookie and header names.
@@ -41,15 +42,25 @@ type HandlerConfig struct {
 	SiteID SiteIDFunc
 	// Principal resolves the authenticated caller. Required for GET /me.
 	Principal PrincipalFunc
+	// CredentialLimiter, when set, is charged once per request in front of the
+	// endpoints that consume a password: registration, login and both halves of
+	// password reset.
+	//
+	// The process wide limiter is sized for ordinary browsing; these endpoints are the
+	// ones worth brute forcing, and every accepted attempt costs an Argon2 hash (64 MiB
+	// of memory in the security service). A separate, far tighter budget keeps a
+	// credential stuffing run from saturating the hashing path.
+	CredentialLimiter gin.HandlerFunc
 }
 
 // Handler exposes the authentication use cases over HTTP.
 type Handler struct {
-	service   *Service
-	secure    bool
-	domain    string
-	siteID    SiteIDFunc
-	principal PrincipalFunc
+	service       *Service
+	secure        bool
+	domain        string
+	siteID        SiteIDFunc
+	principal     PrincipalFunc
+	credential    gin.HandlerFunc
 }
 
 // NewHandler builds a Handler.
@@ -62,12 +73,17 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 	if principal == nil {
 		principal = func(*gin.Context) (Principal, bool) { return Principal{}, false }
 	}
+	credential := cfg.CredentialLimiter
+	if credential == nil {
+		credential = func(c *gin.Context) { c.Next() }
+	}
 	return &Handler{
-		service:   service,
-		secure:    cfg.SecureCookies,
-		domain:    cfg.CookieDomain,
-		siteID:    siteID,
-		principal: principal,
+		service:    service,
+		secure:     cfg.SecureCookies,
+		domain:     cfg.CookieDomain,
+		siteID:     siteID,
+		principal:  principal,
+		credential: credential,
 	}
 }
 
@@ -77,12 +93,20 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 // an access token, and logout must work with an expired one.
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/auth")
-	group.POST("/register/email", h.RegisterEmail)
-	group.POST("/login/password", h.LoginPassword)
+	group.POST("/register/email", h.credential, h.RegisterEmail)
+	group.POST("/login/password", h.credential, h.LoginPassword)
 	group.POST("/token/refresh", h.Refresh)
 	group.POST("/logout", h.Logout)
+	// Password reset must work for a caller who cannot log in at all, so the whole
+	// flow sits next to registration rather than behind requireAuth.
+	group.GET("/password-reset/policy", h.PasswordResetPolicy)
+	group.POST("/password-reset/request", h.credential, h.RequestPasswordReset)
+	group.POST("/password-reset/confirm", h.credential, h.ResetPassword)
 
 	r.GET("/me", requireAuth, h.Me)
+	// Account creation lives with authentication because it owns password hashing and
+	// identity uniqueness; the path stays site scoped so the contract reads naturally.
+	r.POST("/sites/:siteID/members", requireAuth, h.CreateMemberAccount)
 }
 
 type registerRequest struct {
@@ -94,6 +118,49 @@ type registerRequest struct {
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type createMemberRequest struct {
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	Password    string `json:"password"`
+	Role        string `json:"role"`
+}
+
+type passwordResetRequest struct {
+	Email string `json:"email"`
+}
+
+type passwordResetConfirmRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+// passwordResetPolicyResponse tells the client whether the reset flow can work.
+//
+// It is public and carries no secrets: the login page uses it to decide whether to
+// offer the link or to explain that the operator has not configured mail yet.
+type passwordResetPolicyResponse struct {
+	Enabled   bool   `json:"enabled"`
+	Delivery  string `json:"delivery"`
+	ExpiresIn int    `json:"expires_in"`
+	Cooldown  int    `json:"cooldown"`
+}
+
+// passwordResetRequestResponse is deliberately identical for every address: a
+// caller must not be able to tell registered addresses from unknown ones.
+type passwordResetRequestResponse struct {
+	Status    string `json:"status"`
+	Delivery  string `json:"delivery"`
+	ExpiresIn int    `json:"expires_in"`
+}
+
+type memberResponse struct {
+	UserID      string `json:"user_id"`
+	DisplayName string `json:"display_name"`
+	Role        string `json:"role"`
+	Status      string `json:"status"`
+	Email       string `json:"email"`
 }
 
 type userResponse struct {
@@ -154,6 +221,125 @@ func (h *Handler) LoginPassword(c *gin.Context) {
 	}
 
 	h.writeSession(c, http.StatusOK, session)
+}
+
+// PasswordResetPolicy reports whether this deployment can deliver reset links.
+func (h *Handler) PasswordResetPolicy(c *gin.Context) {
+	policy := h.service.PasswordResetPolicy()
+	delivery := policy.Delivery
+	if delivery == "" {
+		delivery = "email"
+	}
+	c.JSON(http.StatusOK, passwordResetPolicyResponse{
+		Enabled:   policy.Enabled,
+		Delivery:  delivery,
+		ExpiresIn: int(policy.ExpiresIn.Seconds()),
+		Cooldown:  int(policy.Cooldown.Seconds()),
+	})
+}
+
+// RequestPasswordReset sends a reset link when the address has an account here.
+//
+// The response is identical in every case, including an unknown address and a
+// failed delivery, so the endpoint cannot be used to enumerate accounts.
+func (h *Handler) RequestPasswordReset(c *gin.Context) {
+	var req passwordResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(apperr.Validation("malformed json body"))
+		return
+	}
+
+	_, err := h.service.RequestPasswordReset(
+		c.Request.Context(),
+		h.siteID(c),
+		req.Email,
+		requestOrigin(c, h.secure),
+	)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	// The nominal lifetime, never the remaining time: a computed value would differ
+	// by a second between a real account and an unknown one, which is exactly the
+	// enumeration signal this endpoint must not have.
+	c.JSON(http.StatusAccepted, passwordResetRequestResponse{
+		Status:    "accepted",
+		Delivery:  "email",
+		ExpiresIn: int(ResetTokenTTL.Seconds()),
+	})
+}
+
+// ResetPassword redeems a reset link and replaces the account password.
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req passwordResetConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(apperr.Validation("malformed json body"))
+		return
+	}
+
+	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.Password); err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// requestOrigin rebuilds the origin the browser used to reach this API.
+//
+// Only the Host header is trusted, never Origin or Referer: a reset link must never
+// be pointed at an attacker supplied host. When TLS terminates in front of the API,
+// SecureCookies is on, and https is the right scheme for the link.
+func requestOrigin(c *gin.Context, secure bool) string {
+	host := c.Request.Host
+	if host == "" {
+		return ""
+	}
+	if secure || c.Request.TLS != nil {
+		return "https://" + host
+	}
+	return "http://" + host
+}
+
+// CreateMemberAccount creates a member account on the caller's site.
+// It does not start a session: the administrator creates the account, then hands the
+// initial password to the person who will use it.
+func (h *Handler) CreateMemberAccount(c *gin.Context) {
+	principal, ok := h.principal(c)
+	if !ok {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
+		return
+	}
+
+	var req createMemberRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(apperr.Validation("malformed json body"))
+		return
+	}
+
+	role := site.Role(req.Role)
+	if role == "" {
+		role = site.RoleMember
+	}
+
+	user, err := h.service.CreateMember(c.Request.Context(), principal, c.Param("siteID"), CreateMemberInput{
+		Email:       req.Email,
+		DisplayName: req.DisplayName,
+		Password:    req.Password,
+		Role:        role,
+	})
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	c.JSON(http.StatusCreated, memberResponse{
+		UserID:      user.ID,
+		DisplayName: user.DisplayName,
+		Role:        string(role),
+		Status:      user.Status,
+		Email:       req.Email,
+	})
 }
 
 // Refresh rotates the session using the refresh cookie and CSRF header.
@@ -296,6 +482,15 @@ func mapError(err error) *apperr.Problem {
 	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrAccountNotFound):
 		return apperr.Unauthenticated().WithDetail("reason", "invalid_credentials")
 
+	case errors.Is(err, ErrResetTokenInvalid):
+		// A reset link that no longer works is a client error the UI can explain
+		// ("request a new one"), not an internal failure.
+		return apperr.Validation("reset_token_invalid").
+			WithMessage("重置链接无效或已过期，请重新获取。")
+
+	case errors.Is(err, ErrMailNotConfigured):
+		return apperr.New(apperr.CodeEmailNotConfigured).WithDetail("reason", "smtp_not_configured")
+
 	case errors.Is(err, ErrRefreshReuse):
 		return apperr.Unauthenticated().WithDetail("reason", "refresh_reuse")
 
@@ -307,6 +502,9 @@ func mapError(err error) *apperr.Problem {
 
 	case errors.Is(err, ErrPermissionToSite):
 		return apperr.PermissionDenied().WithDetail("reason", "not_a_member")
+
+	case errors.Is(err, ErrActionNotAllowed):
+		return apperr.PermissionDenied().WithDetail("reason", "role_too_low")
 
 	case errors.Is(err, ErrSiteMissing):
 		return apperr.New(apperr.CodeSiteNotFound)

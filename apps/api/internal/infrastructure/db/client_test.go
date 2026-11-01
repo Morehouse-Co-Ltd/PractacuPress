@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql/schema"
@@ -101,6 +102,20 @@ func TestOpenSQLiteAndCreateSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "alice", read.DisplayName)
 	require.False(t, read.CreatedAt.IsZero())
+}
+
+func TestConfigurePoolOverridesMaxOpen(t *testing.T) {
+	ctx := context.Background()
+	handle, err := Open(ctx, "sqlite", SQLiteDSN(filepath.Join(t.TempDir(), "pool.db")))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+	handle.ConfigurePool(3, 2, time.Minute)
+	require.Equal(t, 3, handle.sqlDB.Stats().MaxOpenConnections)
+
+	// 0 keeps the current setting for open/idle; only explicit values override.
+	handle.ConfigurePool(0, 0, 0)
+	require.Equal(t, 3, handle.sqlDB.Stats().MaxOpenConnections)
 }
 
 // TestSchemaIsIdempotent guards the migration command: applying the schema twice

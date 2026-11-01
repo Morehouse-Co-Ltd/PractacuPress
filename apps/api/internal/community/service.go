@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -12,6 +13,8 @@ import (
 type Repository interface {
 	// FindComment loads a comment inside a site scope.
 	FindComment(ctx context.Context, siteID, commentID string) (Comment, error)
+	// ListComments returns a page of comments ordered newest first.
+	ListComments(ctx context.Context, filter CommentListFilter) ([]Comment, error)
 	// InsertComment stores a comment, the notification event for its target author and
 	// the audit entry in one transaction. notifyUserID empty means nobody is told.
 	InsertComment(ctx context.Context, comment Comment, notifyUserID string, audit site.AuditEntry) (Comment, error)
@@ -153,6 +156,99 @@ func (s *Service) EditComment(ctx context.Context, actor Actor, commentID, body 
 		ActorID: actor.UserID,
 		Action:  "community.comment.edited",
 		Target:  comment.ID,
+		At:      s.now(),
+	})
+}
+
+// ListComments returns a page of comments and the cursor for the next page.
+//
+// Authorisation is decided here, not by the caller: a reader without moderation
+// rights is pinned to visible comments no matter what the query asked for.
+func (s *Service) ListComments(
+	ctx context.Context,
+	actor Actor,
+	filter CommentListFilter,
+) ([]Comment, string, error) {
+	if actor.SiteID == "" {
+		return nil, "", ErrPermissionDenied
+	}
+	filter.SiteID = actor.SiteID
+	if filter.TargetType != "" {
+		if !filter.TargetType.Valid() || filter.TargetType == TargetUser {
+			return nil, "", ErrInvalidInput
+		}
+	}
+
+	moderator := CanModerate(actor)
+	for _, status := range filter.Statuses {
+		if !ValidCommentStatus(status) {
+			return nil, "", ErrInvalidInput
+		}
+		if !moderator && status != CommentStatusVisible {
+			return nil, "", ErrPermissionDenied
+		}
+	}
+	if len(filter.Statuses) == 0 {
+		if moderator {
+			filter.Statuses = []string{
+				CommentStatusVisible,
+				CommentStatusPending,
+				CommentStatusHidden,
+				CommentStatusDeleted,
+			}
+		} else {
+			filter.Statuses = []string{CommentStatusVisible}
+		}
+	}
+	if filter.Limit <= 0 || filter.Limit > 100 {
+		filter.Limit = 20
+	}
+
+	items, err := s.repo.ListComments(ctx, filter)
+	if err != nil {
+		return nil, "", err
+	}
+
+	next := ""
+	if len(items) == filter.Limit && len(items) > 0 {
+		last := items[len(items)-1]
+		next = page.Cursor{Key: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID}.Encode()
+	}
+	return items, next, nil
+}
+
+// ModerateComment changes the visibility of a comment.
+//
+// Hiding is reversible and never touches the body, so a moderation decision keeps the
+// evidence intact. Permanent removal is the delete endpoint's job.
+func (s *Service) ModerateComment(ctx context.Context, actor Actor, commentID, status string) (Comment, error) {
+	if !CanModerate(actor) {
+		return Comment{}, ErrPermissionDenied
+	}
+	if status != CommentStatusVisible && status != CommentStatusHidden {
+		return Comment{}, ErrInvalidInput
+	}
+
+	comment, err := s.repo.FindComment(ctx, actor.SiteID, commentID)
+	if err != nil {
+		return Comment{}, err
+	}
+	if comment.Status == CommentStatusDeleted {
+		return Comment{}, ErrInvalidInput
+	}
+	if comment.Status == status {
+		return comment, nil
+	}
+
+	comment.Status = status
+	comment.UpdatedAt = s.now()
+
+	return s.repo.UpdateComment(ctx, comment, site.AuditEntry{
+		SiteID:  actor.SiteID,
+		ActorID: actor.UserID,
+		Action:  "community.comment.moderated",
+		Target:  comment.ID,
+		Detail:  map[string]any{"status": status},
 		At:      s.now(),
 	})
 }

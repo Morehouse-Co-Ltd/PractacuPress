@@ -16,6 +16,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
@@ -32,6 +33,13 @@ type staticResolver struct{ site site.Site }
 func (s staticResolver) Resolve(context.Context, string) (site.Site, error) { return s.site, nil }
 
 func newAPIHarness(t *testing.T) *apiHarness {
+	t.Helper()
+	return newAPIHarnessWithMail(t, nil)
+}
+
+// newAPIHarnessWithMail is the harness variant used by the password reset tests: a
+// nil sender is exactly the "no SMTP configured" deployment.
+func newAPIHarnessWithMail(t *testing.T, sender mailer.Sender) *apiHarness {
 	t.Helper()
 	ctx := context.Background()
 
@@ -58,6 +66,7 @@ func newAPIHarness(t *testing.T) *apiHarness {
 			Memory: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
 		}),
 		Tokens: issuer,
+		Mailer: sender,
 	})
 	require.NoError(t, err)
 

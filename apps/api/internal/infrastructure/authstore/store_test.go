@@ -27,6 +27,11 @@ type harness struct {
 }
 
 func newHarness(t *testing.T) *harness {
+	return newHarnessWith(t, nil)
+}
+
+// newHarnessWith lets a test change the service configuration before it is built.
+func newHarnessWith(t *testing.T, tweak func(*auth.ServiceConfig)) *harness {
 	t.Helper()
 	ctx := context.Background()
 
@@ -45,13 +50,18 @@ func newHarness(t *testing.T) *harness {
 	})
 	require.NoError(t, err)
 
-	service, err := auth.NewService(auth.ServiceConfig{
+	cfg := auth.ServiceConfig{
 		Repository: authstore.New(handle.Client),
 		Hasher: auth.NewArgon2idHasher(auth.Argon2Params{
 			Memory: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
 		}),
 		Tokens: issuer,
-	})
+	}
+	if tweak != nil {
+		tweak(&cfg)
+	}
+
+	service, err := auth.NewService(cfg)
 	require.NoError(t, err)
 
 	return &harness{ctx: ctx, service: service, db: handle, issuer: issuer, siteID: siteRow.ID}
@@ -84,6 +94,25 @@ func TestRegisterIssuesUsableSession(t *testing.T) {
 	require.Equal(t, session.User.ID, principal.UserID)
 	require.Equal(t, h.siteID, principal.SiteID)
 	require.Equal(t, site.RoleMember, principal.Role)
+}
+
+func TestBootstrapFirstAdminPromotesOnlyTheFirstAccount(t *testing.T) {
+	h := newHarnessWith(t, func(cfg *auth.ServiceConfig) {
+		cfg.BootstrapFirstAdmin = true
+	})
+
+	owner := h.register(t, "owner@example.com")
+	member := h.register(t, "member@example.com")
+
+	ownerPrincipal, err := h.issuerVerify(owner.AccessToken)
+	require.NoError(t, err)
+	require.Equal(t, site.RolePlatformAdmin, ownerPrincipal.Role,
+		"the first account of a desktop install must be able to administer the site")
+
+	memberPrincipal, err := h.issuerVerify(member.AccessToken)
+	require.NoError(t, err)
+	require.Equal(t, site.RoleMember, memberPrincipal.Role,
+		"later accounts keep the plain member role")
 }
 
 func TestRegisterRejectsDuplicateEmailCaseInsensitively(t *testing.T) {

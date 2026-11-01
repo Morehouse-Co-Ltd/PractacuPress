@@ -37,6 +37,8 @@ var (
 	ErrInvalidInput = errors.New("auth: invalid input")
 	// ErrPermissionToSite means the account is not a member of the target site.
 	ErrPermissionToSite = errors.New("auth: not a member of this site")
+	// ErrActionNotAllowed means the caller's role is too low for the action.
+	ErrActionNotAllowed = errors.New("auth: action not allowed")
 )
 
 // Account status values mirrored from the persistence schema.

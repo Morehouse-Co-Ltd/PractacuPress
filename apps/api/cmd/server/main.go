@@ -18,29 +18,34 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/practacu/practacu-press/apps/api/internal/analytics"
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
-			"github.com/practacu/practacu-press/apps/api/internal/messaging"
-	"github.com/practacu/practacu-press/apps/api/internal/notifications"
-	"github.com/practacu/practacu-press/apps/api/internal/outbox"
-	"github.com/practacu/practacu-press/apps/api/internal/media"
-		"github.com/practacu/practacu-press/apps/api/internal/content"
+	"github.com/practacu/practacu-press/apps/api/internal/content"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/analyticsstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/communitystore"
-		"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
-			"github.com/practacu/practacu-press/apps/api/internal/infrastructure/messagingstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/contentstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/messagingstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/notificationstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/outboxstore"
-	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
-	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/taxonomystore"
+	"github.com/practacu/practacu-press/apps/api/internal/media"
+	"github.com/practacu/practacu-press/apps/api/internal/messaging"
+	"github.com/practacu/practacu-press/apps/api/internal/notifications"
+	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/logging"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/taxonomy"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
-	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 )
 
 // Timeouts. There is deliberately no global WriteTimeout: WebSocket connections
@@ -76,6 +81,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
+	handle.ConfigurePool(cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, cfg.DBConnMaxLifetime)
 	defer func() {
 		if closeErr := handle.Close(); closeErr != nil {
 			logger.Error("close database", "error", closeErr)
@@ -85,6 +91,19 @@ func run() error {
 	securityClient, closeSecurity := dialSecurity(ctx, cfg, logger)
 	defer closeSecurity()
 
+	// The Windows launcher starts this process against an empty SQLite file. Making
+	// the database usable is part of startup there, not a separate operator step:
+	// without a site the setup wizard has nothing to configure.
+	if cfg.DesktopMode {
+		siteID, err := bootstrapDesktop(startupCtx, handle, logger)
+		if err != nil {
+			return fmt.Errorf("desktop bootstrap: %w", err)
+		}
+		if cfg.DefaultSiteID == "" {
+			cfg.DefaultSiteID = siteID
+		}
+	}
+
 	authHandler, issuer, err := buildAuth(cfg, logger, handle, securityClient)
 	if err != nil {
 		return err
@@ -92,7 +111,13 @@ func run() error {
 
 	// Site resolution is always on: without it every request would fall back to a
 	// default site, which breaks tenant isolation the moment a second site exists.
-	siteService, err := site.NewService(sitestore.New(handle.Client))
+	// In production a single site without a domain only answers on a public IP
+	// literal; development, tests and the desktop launcher keep the permissive
+	// fallback so localhost still works.
+	siteService, err := site.NewService(
+		sitestore.New(handle.Client),
+		site.RequirePublicAddress(cfg.AppEnv == config.EnvProduction && !cfg.DesktopMode),
+	)
 	if err != nil {
 		return fmt.Errorf("build site service: %w", err)
 	}
@@ -102,7 +127,7 @@ func run() error {
 		return fmt.Errorf("build event replayer: %w", err)
 	}
 
-	mediaStorage, err := buildStorage(startupCtx, cfg, logger)
+	mediaStorage, mediaStorages, err := buildStorage(startupCtx, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("open media storage: %w", err)
 	}
@@ -111,6 +136,7 @@ func run() error {
 		Repository: mediastore.New(handle.Client),
 		Scanner:    securityScanner{client: securityClient},
 		Storage:    mediaStorage,
+		Storages:   mediaStorages,
 	})
 	if err != nil {
 		return fmt.Errorf("build media service: %w", err)
@@ -121,7 +147,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("build community service: %w", err)
 	}
-
 
 	hub := ws.NewHub()
 	tickets := ws.NewTicketStore(nil)
@@ -158,17 +183,35 @@ func run() error {
 		return fmt.Errorf("build content service: %w", err)
 	}
 
+	analyticsService, err := analytics.NewService(analytics.ServiceConfig{
+		Repository: analyticsstore.New(handle.Client),
+	})
+	if err != nil {
+		return fmt.Errorf("build analytics service: %w", err)
+	}
+
+	taxonomyService, err := taxonomy.NewService(taxonomy.ServiceConfig{
+		Repository: taxonomystore.New(handle.Client),
+	})
+	if err != nil {
+		return fmt.Errorf("build taxonomy service: %w", err)
+	}
+
 	router := ginrouter.New(ginrouter.Dependencies{
 		Config:       cfg,
 		Logger:       logger,
 		Readiness:    handle.Ping,
 		SiteResolver: siteService,
+		Install:      siteService,
 		AccessTokens: issuer,
 		Auth:         authHandler,
 		Sites: site.NewHandler(siteService, site.HandlerConfig{
-			UserID: func(c *gin.Context) (string, bool) {
+			Principal: func(c *gin.Context) (string, string, bool) {
 				principal, ok := middleware.PrincipalFrom(c)
-				return principal.UserID, ok
+				return principal.UserID, principal.SiteID, ok
+			},
+			Site: func(c *gin.Context) (site.Site, bool) {
+				return middleware.SiteFrom(c)
 			},
 			RequestID: middleware.RequestIDFrom,
 		}),
@@ -221,6 +264,8 @@ func run() error {
 				}
 				return media.Actor{UserID: principal.UserID, SiteID: principal.SiteID}, true
 			},
+			// Anonymous downloads are scoped by the resolved host; uploads never are.
+			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
 		}),
 		Community: community.NewHandler(communityService, community.HandlerConfig{
 			Principal: func(c *gin.Context) (community.Actor, bool) {
@@ -234,6 +279,7 @@ func run() error {
 					Role:   principal.Role,
 				}, true
 			},
+			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
 		}),
 		Content: content.NewHandler(contentService, content.HandlerConfig{
 			Principal: func(c *gin.Context) (content.Actor, bool) {
@@ -249,14 +295,42 @@ func run() error {
 			},
 			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
 		}),
+		Analytics: analytics.NewHandler(analyticsService, analytics.HandlerConfig{
+			Principal: func(c *gin.Context) (analytics.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return analytics.Actor{}, false
+				}
+				return analytics.Actor{
+					UserID: principal.UserID,
+					SiteID: principal.SiteID,
+					Role:   principal.Role,
+				}, true
+			},
+			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
+		}),
+		Taxonomy: taxonomy.NewHandler(taxonomyService, taxonomy.HandlerConfig{
+			Principal: func(c *gin.Context) (taxonomy.Actor, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return taxonomy.Actor{}, false
+				}
+				return taxonomy.Actor{
+					UserID: principal.UserID,
+					SiteID: principal.SiteID,
+					Role:   principal.Role,
+				}, true
+			},
+			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
+		}),
 	})
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
+		ReadTimeout:       cfg.HTTPReadTimeout,
 	}
 
 	serveErr := make(chan error, 1)
@@ -301,6 +375,12 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 		Repository: authstore.New(handle.Client),
 		Hasher:     choosePasswordHasher(cfg, logger, security),
 		Tokens:     issuer,
+		// A desktop install has no operator console to promote its first account,
+		// so registration does it once. Every other deployment keeps plain members.
+		BootstrapFirstAdmin: cfg.DesktopMode,
+		Mailer:              buildMailer(cfg, logger),
+		PublicBaseURL:       cfg.PublicBaseURL,
+		Logger:              logger,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("build auth service: %w", err)
@@ -309,6 +389,10 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 	handler := auth.NewHandler(service, auth.HandlerConfig{
 		SecureCookies: cfg.CookieSecure,
 		CookieDomain:  cfg.CookieDomain,
+		// Credential endpoints get a second, tighter budget than the global one: a
+		// login burst must not be able to saturate the Argon2 path in the security
+		// service, and password guessing benefits from being slow.
+		CredentialLimiter: buildCredentialLimiter(cfg),
 		SiteID: func(c *gin.Context) string {
 			if resolved, ok := middleware.SiteFrom(c); ok {
 				return resolved.ID
@@ -320,6 +404,54 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 	})
 
 	return handler, issuer, nil
+}
+
+// buildCredentialLimiter returns the per client budget for password consuming
+// endpoints, or nil when the tier is disabled.
+//
+// It uses its own store on purpose: sharing the global store would make a burst of
+// ordinary requests spend the credential budget, and a login attempt spend the browsing
+// budget.
+func buildCredentialLimiter(cfg config.Config) gin.HandlerFunc {
+	if cfg.CredentialRateLimitPerMinute <= 0 {
+		return nil
+	}
+	return middleware.RateLimit(
+		middleware.NewMemoryRateLimitStore(nil),
+		middleware.Policy{Limit: cfg.CredentialRateLimitPerMinute, Window: time.Minute},
+	)
+}
+
+// buildMailer returns the SMTP sender, or nil when no relay is configured.
+//
+// Nil is meaningful rather than lazy: the auth service reports password reset as
+// unavailable instead of accepting requests it cannot deliver.
+func buildMailer(cfg config.Config, logger *slog.Logger) mailer.Sender {
+	if cfg.SMTPHost == "" {
+		logger.Info("SMTP is not configured: password reset is disabled")
+		return nil
+	}
+	sender, err := mailer.New(mailer.Config{
+		Host:       cfg.SMTPHost,
+		Port:       cfg.SMTPPort,
+		Encryption: cfg.SMTPEncryption,
+		Username:   cfg.SMTPUsername,
+		Password:   cfg.SMTPPassword,
+		From:       cfg.SMTPFrom,
+		FromName:   cfg.SMTPFromName,
+	})
+	if err != nil {
+		// Config.Load already validated these values; reaching here means a caller
+		// assembled Config by hand, which is a programming error worth failing on.
+		panic(fmt.Sprintf("build mailer: %v", err))
+	}
+	logger.Info("SMTP relay configured",
+		"host", cfg.SMTPHost,
+		"port", cfg.SMTPPort,
+		"encryption", cfg.SMTPEncryption,
+		"from", cfg.SMTPFrom,
+	)
+	return sender
 }
 
 // securitySanitizer adapts the security service client to the content module's
@@ -473,31 +605,75 @@ func runOutbox(ctx context.Context, logger *slog.Logger, worker *outbox.Worker) 
 	}
 }
 
-// buildStorage selects the media storage implementation.
+// buildStorage selects the media storage implementations.
 //
-// Both implementations satisfy the same port, so nothing downstream knows which one is
-// in use; the choice stays a deployment concern.
-func buildStorage(ctx context.Context, cfg config.Config, logger *slog.Logger) (media.Storage, error) {
-	if cfg.StorageDriver == "s3" {
+// It returns the global adapter plus an optional override per media purpose. Both
+// implementations satisfy the same port, so nothing downstream knows which one is in
+// use; the choice stays a deployment concern. A purpose without an override (driver
+// inherit) is simply absent from the map and falls back to the global adapter.
+func buildStorage(ctx context.Context, cfg config.Config, logger *slog.Logger) (media.Storage, map[media.Purpose]media.Storage, error) {
+	global, err := buildStorageAdapter(ctx, cfg, cfg.StorageDriver, cfg.StorageDir, cfg.S3Bucket, cfg.S3Prefix, "", logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	overrides := make(map[media.Purpose]media.Storage)
+	for _, scope := range config.StorageScopeNames() {
+		scopeCfg := cfg.StorageScopes[scope]
+		if scopeCfg.Driver == "" || scopeCfg.Driver == config.StorageDriverInherit {
+			continue
+		}
+
+		store, buildErr := buildStorageAdapter(
+			ctx, cfg, scopeCfg.Driver, scopeCfg.LocalDir, scopeCfg.S3Bucket, scopeCfg.S3Prefix, scope, logger,
+		)
+		if buildErr != nil {
+			return nil, nil, fmt.Errorf("%s storage: %w", scope, buildErr)
+		}
+		overrides[media.Purpose(scope)] = store
+	}
+
+	return global, overrides, nil
+}
+
+// buildStorageAdapter constructs one adapter. scope is empty for the global adapter and
+// only used for logging.
+func buildStorageAdapter(
+	ctx context.Context,
+	cfg config.Config,
+	driver, localDir, bucket, prefix, scope string,
+	logger *slog.Logger,
+) (media.Storage, error) {
+	attributes := []any{}
+	if scope != "" {
+		attributes = append(attributes, "scope", scope)
+	}
+
+	switch driver {
+	case config.StorageDriverS3:
 		store, err := media.NewS3Storage(ctx, media.S3Config{
-			Bucket:    cfg.S3Bucket,
+			Bucket:    bucket,
 			Region:    cfg.S3Region,
 			Endpoint:  cfg.S3Endpoint,
 			AccessKey: cfg.S3AccessKey,
 			SecretKey: cfg.S3SecretKey,
-			Prefix:    cfg.S3Prefix,
+			Prefix:    prefix,
 		})
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("media storage ready", "driver", "s3", "bucket", store.Bucket())
+		logger.Info("media storage ready", append(attributes, "driver", "s3", "bucket", store.Bucket())...)
 		return store, nil
-	}
 
-	store, err := media.NewLocalStorage(cfg.StorageDir)
-	if err != nil {
-		return nil, err
+	case config.StorageDriverLocal:
+		store, err := media.NewLocalStorage(localDir)
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("media storage ready", append(attributes, "driver", "local", "dir", store.Root())...)
+		return store, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported storage driver %q", driver)
 	}
-	logger.Info("media storage ready", "driver", "local", "dir", store.Root())
-	return store, nil
 }

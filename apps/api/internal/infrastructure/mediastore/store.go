@@ -77,6 +77,7 @@ func (s *Store) MarkUploadUploaded(ctx context.Context, uploadID string, at time
 	}
 	return nil
 }
+
 // MarkUploadCompleted closes a session. Marking twice is a no-op.
 func (s *Store) MarkUploadCompleted(ctx context.Context, uploadID string, at time.Time) error {
 	affected, err := s.client.MediaUpload.Update().
@@ -113,6 +114,12 @@ func (s *Store) InsertAsset(ctx context.Context, asset media.Asset) (media.Asset
 		SetCreatedAt(asset.CreatedAt).
 		SetUpdatedAt(asset.CreatedAt)
 
+	// Empty means "caller did not decide" (legacy rows): leave the field out so the
+	// schema default applies instead of tripping the purpose validator with "".
+	if asset.Purpose != "" {
+		builder.SetPurpose(string(asset.Purpose))
+	}
+
 	if asset.ReasonCode != "" {
 		builder.SetScanReason(asset.ReasonCode)
 	}
@@ -137,6 +144,21 @@ func (s *Store) FindAsset(ctx context.Context, siteID, assetID string) (media.As
 	}
 	return toAsset(row), nil
 }
+
+// DeleteAsset removes an asset record inside a site scope.
+func (s *Store) DeleteAsset(ctx context.Context, siteID, assetID string) error {
+	deleted, err := s.client.MediaAsset.Delete().
+		Where(mediaasset.IDEQ(assetID), mediaasset.SiteIDEQ(siteID)).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return media.ErrNotFound
+	}
+	return nil
+}
+
 func toUpload(row *entgen.MediaUpload) media.Upload {
 	return media.Upload{
 		ID:           row.ID,
@@ -163,6 +185,11 @@ func toAsset(row *entgen.MediaAsset) media.Asset {
 		Size:       row.Size,
 		ScanStatus: media.ScanStatus(row.ScanStatus),
 		CreatedAt:  row.CreatedAt,
+	}
+	// NULL means the row predates per purpose storage: an empty purpose routes it to
+	// the global adapter, which is where its bytes actually are.
+	if row.Purpose != nil {
+		asset.Purpose = media.Purpose(*row.Purpose)
 	}
 	if row.ScanReason != nil {
 		asset.ReasonCode = *row.ScanReason

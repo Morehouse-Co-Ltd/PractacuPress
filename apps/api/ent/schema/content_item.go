@@ -60,6 +60,10 @@ func (ContentItem) Fields() []ent.Field {
 		field.Text("rendered_html").Default(""),
 		field.String("policy_version").MaxLen(64).Default(""),
 		field.String("category_id").MaxLen(36).Optional().Nillable(),
+		// Tags are a JSON encoded array of short labels. They are not queried as a
+		// set yet, so a JSON column keeps the portable schema free of join tables
+		// while preserving the order the author chose.
+		field.Text("tags").Default("[]"),
 		field.Time("published_at").Optional().Nillable(),
 		field.Time("archived_at").Optional().Nillable(),
 		createdField(),

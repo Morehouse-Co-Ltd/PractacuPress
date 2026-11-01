@@ -48,6 +48,9 @@ type Notification func(*sql.Selector)
 // OutboxEvent is the predicate function for outboxevent builders.
 type OutboxEvent func(*sql.Selector)
 
+// PageView is the predicate function for pageview builders.
+type PageView func(*sql.Selector)
+
 // Reaction is the predicate function for reaction builders.
 type Reaction func(*sql.Selector)
 
@@ -57,8 +60,14 @@ type Session func(*sql.Selector)
 // Site is the predicate function for site builders.
 type Site func(*sql.Selector)
 
+// SiteCustomization is the predicate function for sitecustomization builders.
+type SiteCustomization func(*sql.Selector)
+
 // SiteMember is the predicate function for sitemember builders.
 type SiteMember func(*sql.Selector)
+
+// TaxonomyTerm is the predicate function for taxonomyterm builders.
+type TaxonomyTerm func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

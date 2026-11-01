@@ -27,6 +27,8 @@ type MediaAsset struct {
 	MimeType string `json:"mime_type,omitempty"`
 	// Size holds the value of the "size" field.
 	Size int64 `json:"size,omitempty"`
+	// Purpose holds the value of the "purpose" field.
+	Purpose *string `json:"purpose,omitempty"`
 	// ScanStatus holds the value of the "scan_status" field.
 	ScanStatus string `json:"scan_status,omitempty"`
 	// ScanReason holds the value of the "scan_reason" field.
@@ -45,7 +47,7 @@ func (*MediaAsset) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case mediaasset.FieldSize:
 			values[i] = new(sql.NullInt64)
-		case mediaasset.FieldID, mediaasset.FieldSiteID, mediaasset.FieldOwnerID, mediaasset.FieldStorageKey, mediaasset.FieldMimeType, mediaasset.FieldScanStatus, mediaasset.FieldScanReason:
+		case mediaasset.FieldID, mediaasset.FieldSiteID, mediaasset.FieldOwnerID, mediaasset.FieldStorageKey, mediaasset.FieldMimeType, mediaasset.FieldPurpose, mediaasset.FieldScanStatus, mediaasset.FieldScanReason:
 			values[i] = new(sql.NullString)
 		case mediaasset.FieldCreatedAt, mediaasset.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -99,6 +101,13 @@ func (_m *MediaAsset) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field size", values[i])
 			} else if value.Valid {
 				_m.Size = value.Int64
+			}
+		case mediaasset.FieldPurpose:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field purpose", values[i])
+			} else if value.Valid {
+				_m.Purpose = new(string)
+				*_m.Purpose = value.String
 			}
 		case mediaasset.FieldScanStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -175,6 +184,11 @@ func (_m *MediaAsset) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("size=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Size))
+	builder.WriteString(", ")
+	if v := _m.Purpose; v != nil {
+		builder.WriteString("purpose=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("scan_status=")
 	builder.WriteString(_m.ScanStatus)

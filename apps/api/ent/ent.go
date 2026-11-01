@@ -26,10 +26,13 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/notification"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
+	"github.com/practacu/practacu-press/apps/api/ent/pageview"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
+	"github.com/practacu/practacu-press/apps/api/ent/sitecustomization"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
+	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
@@ -107,10 +110,13 @@ func checkColumn(t, c string) error {
 			moderationreport.Table:   moderationreport.ValidColumn,
 			notification.Table:       notification.ValidColumn,
 			outboxevent.Table:        outboxevent.ValidColumn,
+			pageview.Table:           pageview.ValidColumn,
 			reaction.Table:           reaction.ValidColumn,
 			session.Table:            session.ValidColumn,
 			site.Table:               site.ValidColumn,
+			sitecustomization.Table:  sitecustomization.ValidColumn,
 			sitemember.Table:         sitemember.ValidColumn,
+			taxonomyterm.Table:       taxonomyterm.ValidColumn,
 			user.Table:               user.ValidColumn,
 			useridentity.Table:       useridentity.ValidColumn,
 			verificationtoken.Table:  verificationtoken.ValidColumn,

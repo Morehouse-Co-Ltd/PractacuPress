@@ -177,6 +177,18 @@ func (f OutboxEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OutboxEventMutation", m)
 }
 
+// The PageViewFunc type is an adapter to allow the use of ordinary
+// function as PageView mutator.
+type PageViewFunc func(context.Context, *ent.PageViewMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PageViewFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PageViewMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PageViewMutation", m)
+}
+
 // The ReactionFunc type is an adapter to allow the use of ordinary
 // function as Reaction mutator.
 type ReactionFunc func(context.Context, *ent.ReactionMutation) (ent.Value, error)
@@ -213,6 +225,18 @@ func (f SiteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error)
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SiteMutation", m)
 }
 
+// The SiteCustomizationFunc type is an adapter to allow the use of ordinary
+// function as SiteCustomization mutator.
+type SiteCustomizationFunc func(context.Context, *ent.SiteCustomizationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SiteCustomizationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SiteCustomizationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SiteCustomizationMutation", m)
+}
+
 // The SiteMemberFunc type is an adapter to allow the use of ordinary
 // function as SiteMember mutator.
 type SiteMemberFunc func(context.Context, *ent.SiteMemberMutation) (ent.Value, error)
@@ -223,6 +247,18 @@ func (f SiteMemberFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SiteMemberMutation", m)
+}
+
+// The TaxonomyTermFunc type is an adapter to allow the use of ordinary
+// function as TaxonomyTerm mutator.
+type TaxonomyTermFunc func(context.Context, *ent.TaxonomyTermMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TaxonomyTermFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TaxonomyTermMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TaxonomyTermMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

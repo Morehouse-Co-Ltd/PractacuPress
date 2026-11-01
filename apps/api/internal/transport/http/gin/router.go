@@ -12,6 +12,7 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
@@ -36,6 +37,24 @@ func New(deps Dependencies) *gin.Engine {
 		middleware.ErrorHandler(deps.Logger),
 	)
 
+	// Bound request work and body size before anything else reads them. The two
+	// streaming routes (the socket and media downloads) opt out of the deadline: they
+	// are long lived by design, which is also why the server sets no global WriteTimeout.
+	if deps.Config.HTTPRequestTimeout > 0 {
+		r.Use(middleware.RequestTimeout(deps.Config.HTTPRequestTimeout, middleware.LongLivedRequests))
+	}
+	if deps.Config.MaxRequestBodyBytes > 0 {
+		r.Use(middleware.BodyLimit(
+			deps.Config.MaxRequestBodyBytes,
+			// The upload endpoint is the one route that legitimately carries megabytes:
+			// its ceiling is the media module's attachment limit plus multipart framing.
+			middleware.BodyLimitRule{
+				Prefix: "/api/v1/media/uploads/",
+				Limit:  media.MaxAttachmentBytes + (1 << 20),
+			},
+		))
+	}
+
 	if len(deps.Config.CORSAllowedOrigins) > 0 {
 		r.Use(middleware.CORS(middleware.CORSConfig{
 			AllowedOrigins:   deps.Config.CORSAllowedOrigins,
@@ -50,25 +69,37 @@ func New(deps Dependencies) *gin.Engine {
 		))
 	}
 
+	// Trusted proxies are resolved once: both the setup status endpoint and the
+	// site resolver middleware need them, and a configuration error must fail the
+	// same way for both.
+	trusted, err := middleware.NewTrustedProxies(deps.Config.TrustedProxies)
+	if err != nil {
+		// Load validates this at startup; reaching here means the caller built
+		// Config by hand, which is a programming error worth failing loudly.
+		panic(fmt.Sprintf("ginrouter: %v", err))
+	}
+
 	r.GET("/healthz", healthz)
 	r.GET("/readyz", readyz(deps.Readiness))
+	// Mounted on the engine rather than the versioned group on purpose: the group
+	// rejects a request before any handler when no site resolves, and "no site" is
+	// exactly what this endpoint has to report. The full path stays under /api/v1
+	// so clients and the contract see one prefix.
+	r.GET("/api/v1/setup/status", setupStatus(deps.Install, trusted))
 
 	v1 := r.Group("/api/v1")
 	if deps.SiteResolver != nil {
-		trusted, err := middleware.NewTrustedProxies(deps.Config.TrustedProxies)
-		if err != nil {
-			// Load validates this at startup; reaching here means the caller built
-			// Config by hand, which is a programming error worth failing loudly.
-			panic(fmt.Sprintf("ginrouter: %v", err))
-		}
 		v1.Use(middleware.ResolveSite(trusted, deps.SiteResolver))
 	}
 	v1.GET("/openapi.json", openAPIDocument)
 
-	if deps.Auth != nil || deps.Sites != nil || deps.Content != nil || deps.Community != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil {
+	if deps.Auth != nil || deps.Sites != nil || deps.Content != nil || deps.Community != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil {
 		var guard, optionalAuth gin.HandlerFunc
 		if deps.AccessTokens != nil {
-			guard = middleware.RequireAuth(deps.AccessTokens)
+			// The guard binds the token to the resolved site: a token minted on site A
+			// must never authenticate a request for site B, whose hostname is what
+			// selected the tenant in the first place.
+			guard = middleware.RequireAuthForSite(deps.AccessTokens)
 			optionalAuth = middleware.OptionalAuth(deps.AccessTokens)
 		} else {
 			guard = func(c *gin.Context) {
@@ -82,13 +113,13 @@ func New(deps Dependencies) *gin.Engine {
 			deps.Auth.Routes(v1, guard)
 		}
 		if deps.Sites != nil {
-			deps.Sites.Routes(v1, guard)
+			deps.Sites.Routes(v1, guard, optionalAuth)
 		}
 		if deps.Content != nil {
 			deps.Content.Routes(v1, guard, optionalAuth)
 		}
 		if deps.Community != nil {
-			deps.Community.Routes(v1, guard)
+			deps.Community.Routes(v1, guard, optionalAuth)
 		}
 		if deps.Media != nil {
 			deps.Media.Routes(v1, guard, optionalAuth)
@@ -104,6 +135,12 @@ func New(deps Dependencies) *gin.Engine {
 		}
 		if deps.Events != nil {
 			deps.Events.Routes(v1, guard)
+		}
+		if deps.Analytics != nil {
+			deps.Analytics.Routes(v1, guard, optionalAuth)
+		}
+		if deps.Taxonomy != nil {
+			deps.Taxonomy.Routes(v1, guard, optionalAuth)
 		}
 	}
 
@@ -167,6 +204,42 @@ func openAPIDocument(c *gin.Context) {
 		"servers": []gin.H{{"url": "/api/v1"}},
 		"paths":   gin.H{},
 	})
+}
+
+// setupStatus tells a browser whether the install it remembers still exists.
+//
+// The frontend stores its install configuration in localStorage, which survives a
+// deleted data directory. When the server has no site (or a different one) the page
+// would otherwise render an empty site and the wizard would be unreachable, so this
+// endpoint is the tie breaker. It is public: it exposes the site id and name, both
+// of which the page already renders, and nothing about members.
+func setupStatus(report InstallReporter, trusted middleware.TrustedProxies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if report == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"installed": false,
+				"reason":    "not_configured",
+			})
+			return
+		}
+
+		status, err := report.InstallStatus(c.Request.Context(), middleware.RequestHost(c, trusted))
+		if err != nil {
+			problem := apperr.Internal(err).WithRequestID(middleware.RequestIDFrom(c))
+			middleware.AbortProblem(c, problem)
+			return
+		}
+
+		body := gin.H{"installed": status.Installed, "has_admin": status.HasAdmin}
+		if status.Reason != "" {
+			body["reason"] = status.Reason
+		}
+		if status.SiteID != "" {
+			body["site_id"] = status.SiteID
+			body["site_name"] = status.SiteName
+		}
+		c.JSON(http.StatusOK, body)
+	}
 }
 
 func noRoute(c *gin.Context) {
