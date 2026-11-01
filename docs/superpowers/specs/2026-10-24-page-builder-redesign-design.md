@@ -175,7 +175,11 @@ export interface BlockInstance {
 - 旧区块类型、动画、area、思维链 id 不变。
 - 导入/导出继续走 `SiteCustomization` 整体 JSON。
 - 页面模板继续可用；不强制升级已有模板。
-- 真实后端不存储页面编排，编排仍保存在本地安装配置中，行为与现状一致。
+- ~~真实后端不存储页面编排，编排仍保存在本地安装配置中，行为与现状一致。~~
+  **2026-11-01 修订**：页面编排与整份站点设计（主题、布局、页面、区块、自定义 CSS、置顶、封面）已改为服务端持久化，接口见
+  `packages/contracts/openapi/openapi.yaml` 的 `GET/PUT /sites/{siteID}/customization`；
+  浏览器 localStorage 降级为「首屏立即绘制的缓存 + 离线回退」，不再是唯一副本。
+  实现与验证记录见 `docs/audit/2026-11-01-high-fixes.md` §1。
 
 ## 10. 验收标准
 

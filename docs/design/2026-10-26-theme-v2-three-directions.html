@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第二套主题 · 三个原创方向（设计初稿）</title>
+<style>
+/* ============ 说明：这是一份结构初稿 ============
+   同一批内容、同一组深色令牌，三种互不相同的版式骨架。
+   三块都能在真实站点里落地：只用 CSS 变量与既有的区块数据。 */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: #e8e5dd;
+  color: #1a1a15;
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+:root {
+  --doc-ink: #1a1a15;
+  --doc-muted: #6b685c;
+  --doc-faint: #948f80;
+  --doc-line: #d5d0c3;
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", ui-serif, Georgia, serif;
+  --sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", "Consolas", ui-monospace, monospace;
+  --w: 1360px;
+}
+
+/* ---------------- 文档外壳 ---------------- */
+
+.doc { width: var(--w); margin: 0 auto; padding: 56px 0 80px; }
+.doc-head { display: grid; grid-template-columns: 1fr 380px; gap: 56px; align-items: end; padding-bottom: 28px; border-bottom: 2px solid var(--doc-ink); }
+.kick { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--doc-faint); }
+.doc-head h1 { margin: 14px 0 0; font-size: 40px; font-weight: 600; letter-spacing: -.028em; line-height: 1.18; }
+.doc-head h1 em { font-style: normal; background: linear-gradient(transparent 62%, #f6d98a 62%); }
+.doc-lede { margin: 16px 0 0; font-size: 14.5px; line-height: 1.85; color: #41403a; max-width: 620px; }
+.doc-note { font-size: 12.5px; line-height: 1.85; color: var(--doc-muted); border-left: 2px solid var(--doc-line); padding-left: 14px; }
+.doc-note b { color: var(--doc-ink); font-weight: 600; }
+
+/* ---------------- 一块板 ---------------- */
+
+.board { margin-top: 44px; border: 1px solid var(--doc-line); border-radius: 18px; background: #efede6; overflow: hidden; }
+.board-head { display: grid; grid-template-columns: 76px 1fr 460px; gap: 28px; padding: 26px 30px; border-bottom: 1px solid var(--doc-line); align-items: start; }
+.tag { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; color: #fff; background: #1a1a15; border-radius: 999px; padding: 5px 9px; text-align: center; }
+.board-head h2 { margin: 0; font-size: 25px; font-weight: 600; letter-spacing: -.02em; }
+.oneline { margin: 8px 0 0; font-size: 13.5px; color: #4a4841; line-height: 1.6; }
+.facts { margin: 0; display: grid; gap: 9px; }
+.facts div { display: grid; grid-template-columns: 40px 1fr; gap: 10px; }
+.facts dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; color: var(--doc-faint); padding-top: 2px; }
+.facts dd { margin: 0; font-size: 12.5px; line-height: 1.55; color: #3d3b35; }
+.board-page-wrap { overflow-x: auto; background: #0f0e13; }
+.board-foot { padding: 16px 30px; font-size: 12.5px; line-height: 1.7; color: #46443d; background: #eae7df; }
+.why { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #fff; background: #4a4841; border-radius: 4px; padding: 3px 7px; margin-right: 10px; }
+
+/* ---------------- 深色页面基底 ---------------- */
+
+.page {
+  --bg: #16151b; --card: #1c1b23; --card2: #22212b;
+  --ink: #f4f3f7; --soft: #cfcddb; --muted: #9a98ab; --faint: #6f6d80;
+  --line: #2a2933; --line2: #3a3846; --accent: #c4b5fd; --accent-ink: #1b1826;
+  width: var(--w); background: var(--bg); color: var(--ink); font-family: var(--sans);
+}
+.inner { padding: 0 56px 48px; }
+.page h1, .page h2, .page h3 { margin: 0; }
+.meta { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; color: var(--faint); }
+
+/* 图位：用渐变代替照片，标明比例 */
+.media { position: relative; overflow: hidden; background: var(--card2); }
+.media::after {
+  content: attr(data-ratio);
+  position: absolute; right: 8px; bottom: 8px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+  color: rgb(255 255 255 / .42);
+}
+.m1 { background: radial-gradient(120% 120% at 18% 0%, #556680 0%, #2a323f 46%, #141821 100%); }
+.m2 { background: linear-gradient(150deg, #4a3d4f 0%, #26222b 62%, #17141c 100%); }
+.m3 { background: radial-gradient(110% 100% at 80% 10%, #5c5041 0%, #2d2721 58%, #191612 100%); }
+.m4 { background: linear-gradient(200deg, #384a4d 0%, #212b2d 60%, #141a1b 100%); }
+.m5 { background: linear-gradient(120deg, #4c3c50 0%, #322842 50%, #1a1620 100%); }
+
+/* =========================================================
+   方向 A ——「刊号」
+   ========================================================= */
+#a .page { --bg: #141317; --line: #2a2731; --line2: #413d4b; --accent: #d9b26a; --accent-ink: #17140d; }
+
+.masthead { display: flex; align-items: flex-end; justify-content: space-between; padding: 40px 0 16px; }
+.brand-name { font-family: var(--serif); font-size: 42px; font-weight: 600; letter-spacing: .08em; line-height: 1; }
+.brand-sub { margin-top: 10px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--faint); }
+.mast-issue { text-align: right; }
+.issue-no { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--soft); }
+.issue-date { margin-top: 6px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; color: var(--faint); }
+.rule-double { height: 9px; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--line2); }
+.mast-nav { display: flex; align-items: center; gap: 24px; padding: 13px 0 15px; font-size: 12.5px; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); }
+.mast-nav a { color: inherit; text-decoration: none; }
+.mast-nav a.on { color: var(--ink); padding-bottom: 3px; border-bottom: 2px solid var(--accent); }
+.mast-nav .spacer { flex: 1; }
+.nav-tool { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--soft); border: 1px solid var(--line2); border-radius: 999px; padding: 4px 10px; }
+
+.a-grid { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 52px; padding-top: 30px; }
+
+.lead { display: grid; grid-template-columns: 1.06fr 1fr; gap: 36px; align-items: center; }
+.lead .media { aspect-ratio: 16 / 10; border-radius: 2px; }
+.kicker { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--accent); }
+.lead h1 { margin-top: 14px; font-family: var(--serif); font-size: 34px; font-weight: 600; line-height: 1.24; letter-spacing: -.005em; }
+.deck { margin: 16px 0 0; font-size: 13.5px; line-height: 1.85; color: var(--soft); }
+.byline { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; color: var(--faint); }
+.thick-rule { margin: 34px 0 0; height: 2px; background: var(--line2); }
+
+.a-list { display: grid; grid-template-columns: 1fr 1fr; }
+.a-item { padding: 20px 0 22px; border-top: 1px solid var(--line); }
+.a-item:nth-child(odd) { padding-right: 30px; border-right: 1px solid var(--line); }
+.a-item:nth-child(even) { padding-left: 30px; }
+.a-item:nth-child(1), .a-item:nth-child(2) { border-top: 0; padding-top: 26px; }
+.a-item .num { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--faint); }
+.a-item h3 { margin-top: 8px; font-family: var(--serif); font-size: 19px; font-weight: 600; line-height: 1.42; }
+.a-item p { margin: 9px 0 0; font-size: 12.5px; line-height: 1.75; color: var(--muted); }
+.a-item .meta { margin-top: 11px; }
+
+.a-side { border-left: 1px solid var(--line); padding-left: 26px; }
+.side-block + .side-block { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--line); }
+.side-title { font-family: var(--mono); font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
+.issue-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 11px; }
+.issue-list li { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--soft); }
+.issue-list li.now { color: var(--accent); }
+.issue-list li span { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+.cat-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 11px; }
+.cat-list li { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--soft); }
+.cat-list li i { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+.side-note { margin: 12px 0 14px; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.input-line { border-bottom: 1px solid var(--line2); padding: 8px 0; font-size: 12px; color: var(--faint); }
+.side-stamp { margin-top: 30px; border: 1px solid var(--line2); border-radius: 2px; padding: 12px; text-align: center; font-family: var(--mono); font-size: 9px; letter-spacing: .16em; color: var(--faint); line-height: 1.7; }
+
+/* =========================================================
+   方向 B ——「双轨」
+   ========================================================= */
+#b .page { --bg: #15171b; --accent: #7fd4c1; }
+
+.b-top { display: flex; align-items: center; gap: 30px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.b-brand { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+.b-brand .dom { font-family: var(--mono); font-size: 10px; font-weight: 400; letter-spacing: .06em; color: var(--faint); margin-left: 8px; }
+.b-tabs { display: flex; gap: 4px; }
+.b-tabs a { font-size: 12.5px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; }
+.b-tabs a.on { color: var(--ink); background: var(--card2); }
+.b-tools { margin-left: auto; display: flex; gap: 8px; }
+.pill { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--soft); border: 1px solid var(--line2); border-radius: 999px; padding: 6px 12px; }
+
+.b-hero { padding: 46px 0 34px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 56px; align-items: end; }
+.b-hero h1 { font-size: 40px; font-weight: 600; line-height: 1.24; letter-spacing: -.035em; }
+.b-hero h1 .ac { color: var(--accent); }
+.b-hero p { margin: 16px 0 0; font-size: 13.5px; line-height: 1.85; color: var(--muted); max-width: 540px; }
+.b-stats { display: grid; gap: 10px; padding-bottom: 6px; }
+.b-stats div { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
+.b-stats b { font-family: var(--mono); font-size: 17px; font-weight: 500; }
+.b-stats span { font-size: 11.5px; letter-spacing: .08em; color: var(--muted); }
+
+.b-tracks { position: relative; }
+.b-day { position: relative; }
+.b-daymark { position: relative; display: flex; justify-content: center; padding: 26px 0 20px; }
+.b-daymark::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
+.b-daymark span { position: relative; background: var(--bg); padding: 0 16px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; color: var(--soft); }
+.b-daybody { position: relative; display: flex; gap: 96px; padding-bottom: 8px; }
+.b-daybody::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: 14px; width: 1px; background: linear-gradient(to bottom, transparent 0, #4a4757 18px, #4a4757 100%); }
+.b-col { flex: 1; min-width: 0; }
+.b-item + .b-item { margin-top: 26px; }
+
+.b-long .media { aspect-ratio: 16 / 9; border-radius: 6px; }
+.b-long h2 { margin-top: 15px; font-size: 21px; font-weight: 600; line-height: 1.42; letter-spacing: -.01em; }
+.b-long p { margin: 10px 0 0; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+.b-long .meta { margin-top: 12px; }
+
+.short-tag { display: inline-block; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent); border-radius: 3px; padding: 2px 5px; }
+.b-short h3 { margin-top: 10px; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.b-short p { margin: 8px 0 0; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+.b-short .meta { margin-top: 10px; }
+
+/* =========================================================
+   方向 C ——「光箱」
+   ========================================================= */
+#c .page { --bg: #141317; --accent: #f0a35e; --card: #1b1a21; }
+
+.c-top { display: flex; align-items: center; gap: 30px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.c-title { display: flex; align-items: flex-end; justify-content: space-between; padding: 40px 0 22px; }
+.c-kicker { font-family: var(--mono); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--accent); }
+.c-title h1 { margin-top: 12px; font-size: 38px; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; }
+.c-chips { display: flex; gap: 7px; }
+.c-chips span { font-size: 11.5px; color: var(--muted); border: 1px solid var(--line2); border-radius: 3px; padding: 6px 11px; }
+.c-chips span.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+.film { height: 12px; border-radius: 1px; background: repeating-linear-gradient(90deg, #3a3845 0 9px, #1e1d26 9px 24px); }
+.film.top { margin-bottom: 22px; }
+.film.bot { margin-top: 22px; }
+
+.c-grid { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 40px; }
+.c-sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.c-frame { border: 1px solid var(--line); border-radius: 4px; background: var(--card); padding: 8px 8px 11px; }
+.c-frame .media { aspect-ratio: 3 / 2; border-radius: 2px; }
+.c-cap { display: flex; align-items: baseline; gap: 9px; margin-top: 10px; }
+.c-no { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: var(--accent); }
+.c-frame h3 { font-size: 13.5px; font-weight: 600; line-height: 1.5; }
+.c-frame .meta { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
+.c-frame.is-hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, 0 18px 40px -26px rgb(0 0 0 / .9); }
+.c-frame.is-hover .media { filter: saturate(1.18) brightness(1.08); }
+.hover-note { position: absolute; left: 8px; top: 8px; font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--accent-ink); background: var(--accent); border-radius: 2px; padding: 3px 6px; }
+
+.c-side { border-left: 1px solid var(--line); padding-left: 24px; }
+.dark-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.dark-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.c-side .side-block + .side-block { margin-top: 26px; }
+.recent { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
+.recent li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; font-size: 12px; line-height: 1.6; color: var(--soft); }
+.recent li b { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--faint); padding-top: 2px; }
+.expo { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.expo span { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; color: var(--muted); border: 1px solid var(--line); border-radius: 2px; padding: 4px 7px; }
+.batch { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.batch li { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+
+/* ---------------- 文档尾 ---------------- */
+.doc-foot { margin-top: 44px; padding-top: 26px; border-top: 2px solid var(--doc-ink); display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+.doc-foot h4 { margin: 0 0 8px; font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--doc-faint); }
+.doc-foot p { margin: 0; font-size: 12.5px; line-height: 1.75; color: #43413a; }
+@media (max-width: 1420px) {
+  :root { --w: 100%; }
+  .doc { padding-left: 20px; padding-right: 20px; }
+  .board-head { grid-template-columns: 76px 1fr; }
+  .facts { grid-column: 1 / -1; }
+}
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <header class="doc-head">
+    <div>
+      <div class="kick">设计初稿 · 2026.10.26 · 第二套主题</div>
+      <h1>不照着参考站再拼一遍：<br>三个<em>原创结构</em></h1>
+      <p class="doc-lede">
+        现在的「夜航」把 hidesg.ink 的骨架搬了过来：双卡首屏、渐变分类胶囊、封面双列 + 粘性侧栏。
+        做出来不难看，但它是一次临摹——换个站点，这套形就会被认出来。
+        下面三个方向只保留三条定位（深色优先 / 双栏 / 图片要有面积），骨架各自重新发明。
+      </p>
+    </div>
+    <div class="doc-note">
+      <b>怎么看这份稿</b><br>
+      三块板用的是同一批内容、同一组深色令牌，所以它们不是三种配色，而是三种结构。
+      换主色、换内容都成立，说明结构本身站得住。<br><br>
+      图位用渐变代替照片，标了比例；这不是配图方案，只看版面。
+    </div>
+  </header>
+
+  <!-- ================= 方向 A ================= -->
+  <section class="board">
+    <div class="board-head">
+      <div class="tag">方向 A</div>
+      <div>
+        <h2>刊号</h2>
+        <p class="oneline">用线、字重和栏宽分层，不用卡片、不用色块。</p>
+      </div>
+      <dl class="facts">
+        <div><dt>结构</dt><dd>刊头 → 跨栏头条 → 双栏文字目录 → 右侧期次栏</dd></div>
+        <div><dt>节奏</dt><dd>版心 1248；1px 细线是唯一分层手段，圆角 0–2px</dd></div>
+        <div><dt>适合</dt><dd>写作型站点：更新稳定、以文字为主、图片做点缀</dd></div>
+      </dl>
+    </div>
+    <div class="board-page-wrap">
+      <div class="page">
+        <div class="inner">
+          <header class="masthead">
+            <div>
+              <div class="brand-name">夜航</div>
+              <div class="brand-sub">独立写作 · 城市笔记</div>
+            </div>
+            <div class="mast-issue">
+              <div class="issue-no">第 047 期</div>
+              <div class="issue-date">2026.10.26 星期二</div>
+            </div>
+          </header>
+          <div class="rule-double"></div>
+          <nav class="mast-nav">
+            <a class="on" href="#">首页</a><a href="#">文库</a><a href="#">分类</a><a href="#">标签</a><a href="#">关于</a>
+            <span class="spacer"></span>
+            <span class="nav-tool">搜索 /</span><span class="nav-tool">夜间</span>
+          </nav>
+
+          <div class="a-grid">
+            <main>
+              <article class="lead">
+                <div class="media m1" data-ratio="16:10"></div>
+                <div>
+                  <div class="kicker">本期头条 · 城市笔记</div>
+                  <h1>凌晨四点的便利店，和一份没有交出去的稿子</h1>
+                  <p class="deck">我把它写了七遍，每一遍都卡在同一个地方：怎么解释，为什么留下来比离开更难。</p>
+                  <div class="byline">林深 · 12 分钟阅读 · 长文</div>
+                </div>
+              </article>
+
+              <div class="thick-rule"></div>
+
+              <div class="a-list">
+                <article class="a-item">
+                  <div class="num">02</div>
+                  <h3>把一台旧笔记本改造成写作机</h3>
+                  <p>断网、单色屏、只留一个编辑器。三周之后我发现，限制比自律管用。</p>
+                  <div class="meta">工具 · 8 分钟 · 54 条讨论</div>
+                </article>
+                <article class="a-item">
+                  <div class="num">03</div>
+                  <h3>给博客写一套主题系统，比写一篇好文章难</h3>
+                  <p>令牌、变体、预设、导入导出。真正难的不是样式，是让人改不坏。</p>
+                  <div class="meta">设计 · 14 分钟 · 31 条讨论</div>
+                </article>
+                <article class="a-item">
+                  <div class="num">04</div>
+                  <h3>关于雨的七个短句</h3>
+                  <p>写在九个不同的夜里，最后删到只剩七句。删掉的那两句最能说明我。</p>
+                  <div class="meta">短句 · 3 分钟 · 12 条讨论</div>
+                </article>
+                <article class="a-item">
+                  <div class="num">05</div>
+                  <h3>城市边缘的三十六张</h3>
+                  <p>高架桥下、废弃站台、凌晨的洗车房。这组照片拍了两年。</p>
+                  <div class="meta">摄影 · 图文 · 88 条讨论</div>
+                </article>
+                <article class="a-item">
+                  <div class="num">06</div>
+                  <h3>为什么我把评论区的排序改成了正序</h3>
+                  <p>按时间读和按热度读，得到的社区气质完全不同。这是个小决定。</p>
+                  <div class="meta">运营 · 6 分钟 · 47 条讨论</div>
+                </article>
+                <article class="a-item">
+                  <div class="num">07</div>
+                  <h3>读《夜航西飞》的第三个冬天</h3>
+                  <p>同一本书重读三次，每次划的句子都不一样。这次划的是关于离开的那段。</p>
+                  <div class="meta">阅读 · 9 分钟 · 23 条讨论</div>
+                </article>
+              </div>
+            </main>
+
+            <aside class="a-side">
+              <div class="side-block">
+                <div class="side-title">期次</div>
+                <ul class="issue-list">
+                  <li class="now">第 047 期 <span>当期</span></li>
+                  <li>第 046 期 <span>10.19</span></li>
+                  <li>第 045 期 <span>10.12</span></li>
+                  <li>第 044 期 <span>10.05</span></li>
+                  <li>第 043 期 <span>09.28</span></li>
+                </ul>
+              </div>
+              <div class="side-block">
+                <div class="side-title">栏目</div>
+                <ul class="cat-list">
+                  <li>城市笔记 <i>24</i></li>
+                  <li>工具 <i>18</i></li>
+                  <li>设计 <i>14</i></li>
+                  <li>摄影 <i>12</i></li>
+                  <li>短句 <i>41</i></li>
+                </ul>
+              </div>
+              <div class="side-block">
+                <div class="side-title">订阅</div>
+                <p class="side-note">每周一封，只在周日晚上发。只写这一周真正想通的事。</p>
+                <div class="input-line">你的邮箱</div>
+              </div>
+              <div class="side-stamp">ISSUE 047<br>SET IN SERIF<br>· 2026 ·</div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="board-foot">
+      <span class="why">为什么不算抄</span>
+      参考站的卡片语言被整段删掉：没有圆角卡片、没有渐变胶囊、没有悬浮导航。层级全部由版式建立——头条跨栏、目录分双栏、栏间只用一根 1px 线。深色下它像一份夜里的报纸，而不是一个 App。
+    </div>
+  </section>
+
+  <!-- ================= 方向 B ================= -->
+  <section class="board">
+    <div class="board-head">
+      <div class="tag">方向 B</div>
+      <div>
+        <h2>双轨</h2>
+        <p class="oneline">两栏不是「主 + 侧」，是长文与短记两条并行的时间轨。</p>
+      </div>
+      <dl class="facts">
+        <div><dt>结构</dt><dd>紧凑顶栏 → 一句话首屏 → 中缝时间轴双轨（无侧栏）</dd></div>
+        <div><dt>节奏</dt><dd>左右两栏等权；一天一条横标尺，中缝 96px 走竖轴</dd></div>
+        <div><dt>适合</dt><dd>社区型站点：长文与短记混发、日更、有人味</dd></div>
+      </dl>
+    </div>
+    <div class="board-page-wrap">
+      <div class="page">
+        <div class="inner">
+          <header class="b-top">
+            <div class="b-brand">夜航<span class="dom">night.in</span></div>
+            <nav class="b-tabs"><a class="on" href="#">全部</a><a href="#">长文</a><a href="#">短记</a><a href="#">归档</a></nav>
+            <div class="b-tools"><span class="pill">搜索 /</span><span class="pill">夜间</span></div>
+          </header>
+
+          <section class="b-hero">
+            <div>
+              <h1>记录深夜还在<span class="ac">运转</span>的东西。</h1>
+              <p>长文写完整的事，短记写没写完的念头。两条轨道并排往前走，谁也不等谁。</p>
+            </div>
+            <div class="b-stats">
+              <div><b>128</b><span>长文</span></div>
+              <div><b>342</b><span>短记</span></div>
+              <div><b>3</b><span>今日更新</span></div>
+            </div>
+          </section>
+
+          <div class="b-tracks">
+            <section class="b-day">
+              <div class="b-daymark"><span>10.26</span></div>
+              <div class="b-daybody">
+                <div class="b-col l">
+                  <article class="b-item">
+                    <div class="b-long">
+                      <div class="media m2" data-ratio="16:9"></div>
+                      <h2>给博客写一套主题系统，比写一篇好文章难</h2>
+                      <p>令牌、变体、预设、导入导出。真正难的不是样式，是让别人改不坏它。</p>
+                      <div class="meta">长文 · 14 分钟 · 23:10</div>
+                    </div>
+                  </article>
+                </div>
+                <div class="b-col r">
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>把首页的卡片全部删掉之后</h3>
+                      <p>剩下的空间安静得有点吓人，但标题终于能自己站住了。</p>
+                      <div class="meta">02:14</div>
+                    </div>
+                  </article>
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>凌晨的便利店有六个人，四个在写东西</h3>
+                      <p>我不知道他们在写什么，但那种安静是一样的。</p>
+                      <div class="meta">01:02</div>
+                    </div>
+                  </article>
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>改到第七遍才敢按发布</h3>
+                      <p>前面六遍都在改开头。最后删掉的那一段，其实是全文最想说的话。</p>
+                      <div class="meta">00:31</div>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </section>
+
+            <section class="b-day">
+              <div class="b-daymark"><span>10.25</span></div>
+              <div class="b-daybody">
+                <div class="b-col l">
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>今天把评论的排序从热度改成时间</h3>
+                      <p>第二天就有人来问为什么。说明这个开关比想象中重要。</p>
+                      <div class="meta">23:40</div>
+                    </div>
+                  </article>
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>读到一句话：结构就是省略</h3>
+                      <p>记住它，因为今天正在做这件事。</p>
+                      <div class="meta">21:08</div>
+                    </div>
+                  </article>
+                </div>
+                <div class="b-col r">
+                  <article class="b-item">
+                    <div class="b-long">
+                      <div class="media m3" data-ratio="16:9"></div>
+                      <h2>城市边缘的三十六张</h2>
+                      <p>高架桥下、废弃站台、凌晨的洗车房。这组照片拍了两年，删掉了六百多张。</p>
+                      <div class="meta">摄影 · 图文 · 19:20</div>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </section>
+
+            <section class="b-day">
+              <div class="b-daymark"><span>10.24</span></div>
+              <div class="b-daybody">
+                <div class="b-col l">
+                  <article class="b-item">
+                    <div class="b-long">
+                      <div class="media m4" data-ratio="16:9"></div>
+                      <h2>把一台旧笔记本改造成写作机</h2>
+                      <p>断网、单色屏、只留一个编辑器。三周之后我发现，限制比自律管用得多。</p>
+                      <div class="meta">长文 · 8 分钟 · 22:40</div>
+                    </div>
+                  </article>
+                </div>
+                <div class="b-col r">
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>雨停了，楼下有人在搬花</h3>
+                      <p>搬了七趟。我数到第七趟的时候，觉得自己也该起来做点什么。</p>
+                      <div class="meta">05:36</div>
+                    </div>
+                  </article>
+                  <article class="b-item">
+                    <div class="b-short">
+                      <span class="short-tag">短记</span>
+                      <h3>删掉了两句最得意的话</h3>
+                      <p>文章短了三百字，读起来反而不喘了。</p>
+                      <div class="meta">03:02</div>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="board-foot">
+      <span class="why">为什么不算抄</span>
+      它把「双栏」这件事重新定义了：参考站的右栏是侧栏（放作者卡和统计），这里的右栏是内容。栏位承载的是内容形态，不是主次关系；日期走中缝，成为版面的轴，而不是卡片角上的小灰字。左栏长文有图、右栏短记无图，密度差本身就是节奏。
+    </div>
+  </section>
+
+  <!-- ================= 方向 C ================= -->
+  <section class="board">
+    <div class="board-head">
+      <div class="tag">方向 C</div>
+      <div>
+        <h2>光箱</h2>
+        <p class="oneline">首页是一张接触印样：每篇文章是一帧，悬停才显影。</p>
+      </div>
+      <dl class="facts">
+        <div><dt>结构</dt><dd>标题块 → 胶卷齿孔条 → 双列画幅 → 暗房侧栏</dd></div>
+        <div><dt>节奏</dt><dd>3:2 画幅统一（35mm），帧号与冲印信息走画幅中缝，圆角 2–4px</dd></div>
+        <div><dt>适合</dt><dd>图像型站点：摄影、插画、产品截图，文字密度低</dd></div>
+      </dl>
+    </div>
+    <div class="board-page-wrap">
+      <div class="page">
+        <div class="inner">
+          <header class="c-top">
+            <div class="b-brand">夜航<span class="dom">night.in</span></div>
+            <nav class="b-tabs"><a class="on" href="#">作品</a><a href="#">笔记</a><a href="#">归档</a><a href="#">关于</a></nav>
+            <div class="b-tools"><span class="pill">搜索 /</span><span class="pill">夜间</span></div>
+          </header>
+
+          <section class="c-title">
+            <div>
+              <div class="c-kicker">接触印样 · 2026 秋</div>
+              <h1>最近冲印</h1>
+            </div>
+            <div class="c-chips"><span class="on">全部 12</span><span>摄影 6</span><span>笔记 4</span><span>设计 2</span></div>
+          </section>
+
+          <div class="film top"></div>
+
+          <div class="c-grid">
+            <main class="c-sheet">
+              <article class="c-frame is-hover">
+                <div class="media m1" data-ratio="3:2"><span class="hover-note">悬停显影</span></div>
+                <div class="c-cap"><span class="c-no">018</span><h3>城市边缘 · 高架桥下</h3></div>
+                <div class="meta"><span>摄影</span><span>10.26</span></div>
+              </article>
+              <article class="c-frame">
+                <div class="media m3" data-ratio="3:2"></div>
+                <div class="c-cap"><span class="c-no">017</span><h3>凌晨四点的便利店</h3></div>
+                <div class="meta"><span>摄影</span><span>10.25</span></div>
+              </article>
+              <article class="c-frame">
+                <div class="media m2" data-ratio="3:2"></div>
+                <div class="c-cap"><span class="c-no">016</span><h3>主题系统 · 令牌总览</h3></div>
+                <div class="meta"><span>设计</span><span>10.24</span></div>
+              </article>
+              <article class="c-frame">
+                <div class="media m4" data-ratio="3:2"></div>
+                <div class="c-cap"><span class="c-no">015</span><h3>雨天的窗与七盏灯</h3></div>
+                <div class="meta"><span>摄影</span><span>10.23</span></div>
+              </article>
+              <article class="c-frame">
+                <div class="media m5" data-ratio="3:2"></div>
+                <div class="c-cap"><span class="c-no">014</span><h3>旧笔记本 · 改造前后</h3></div>
+                <div class="meta"><span>笔记</span><span>10.22</span></div>
+              </article>
+              <article class="c-frame">
+                <div class="media m1" data-ratio="3:2" style="filter:saturate(.6)"></div>
+                <div class="c-cap"><span class="c-no">013</span><h3>废弃站台 · 第三卷</h3></div>
+                <div class="meta"><span>摄影</span><span>10.20</span></div>
+              </article>
+            </main>
+
+            <aside class="c-side">
+              <div class="side-block">
+                <div class="dark-title">最近冲印</div>
+                <ul class="recent">
+                  <li><b>018</b><span>城市边缘 · 高架桥下</span></li>
+                  <li><b>017</b><span>凌晨四点的便利店</span></li>
+                  <li><b>016</b><span>主题系统 · 令牌总览</span></li>
+                  <li><b>015</b><span>雨天的窗与七盏灯</span></li>
+                </ul>
+              </div>
+              <div class="side-block">
+                <div class="dark-title">曝光</div>
+                <div class="expo">
+                  <span>摄影 6</span><span>笔记 4</span><span>设计 2</span>
+                  <span>城市 9</span><span>夜 11</span><span>工具 3</span>
+                </div>
+              </div>
+              <div class="side-block">
+                <div class="dark-title">批次</div>
+                <ul class="batch">
+                  <li><span>2026.10</span><span>6 帧</span></li>
+                  <li><span>2026.09</span><span>11 帧</span></li>
+                  <li><span>2026.08</span><span>14 帧</span></li>
+                  <li><span>2026.07</span><span>9 帧</span></li>
+                </ul>
+              </div>
+            </aside>
+          </div>
+
+          <div class="film bot"></div>
+        </div>
+      </div>
+    </div>
+    <div class="board-foot">
+      <span class="why">为什么不算抄</span>
+      参考站的封面卡是「图 + 标题 + 标签 + 数据」的通用积木；这里是暗房的物理逻辑：统一画幅、帧号、冲印日期、批次统计。悬停显影有理由（从暗到亮），不是为了动而动。代价也很清楚——纯文字站点会显得空，所以它和前两个方向是二选一，不是替代。
+    </div>
+  </section>
+
+  <!-- ================= 收尾 ================= -->
+  <footer class="doc-foot">
+    <div>
+      <h4>共同约束</h4>
+      <p>三个方向都不动数据与组件契约：只用 CSS 变量，沿用现有 14 个编排组件，侧栏可空。</p>
+    </div>
+    <div>
+      <h4>移动端降级</h4>
+      <p>A：双栏目录→单栏，刊头收成两行。B：中缝日期移到条目前，双轨合并成一条时间流。C：两列→单列，齿孔条保留。</p>
+    </div>
+    <div>
+      <h4>还差什么</h4>
+      <p>确认方向后补：文章页（三种骨架里最难的一页）、归档、分类、搜索、404，以及浅色重配。</p>
+    </div>
+    <div>
+      <h4>请你决定</h4>
+      <p>挑一个方向，或者指出哪块对、哪块不对。我按选定方向出完整页面稿，再谈改造量。</p>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

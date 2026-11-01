@@ -12,9 +12,27 @@
 
 # Dependencies and generated caches
 node_modules/
+/apps/web/dist/
+/apps/web/.runtime/
+/apps/launcher/web/dist/
 .DS_Store
 Thumbs.db
+
+# Windows 启动器打包产物
+/release/
 
 # Rust build artifacts
 target/
 .tmpbuild/
+
+# 本地临时产物（冒烟测试打包输出）
+.tmp/
+apps/web/.tmp/
+
+# 本地浏览器 profile（截图/审计工具产生的 Chrome 缓存，含 Cookie，勿入库）
+*.prof/
+*.prof2/
+
+# 冒烟测试遗留的注册凭据（含 JWT）
+/.reg.json
+/.workbuddy/
