@@ -11,6 +11,7 @@ import { useInView } from '../../lib/hooks';
 import { playBlockAnimation } from '../../lib/blockAnimations';
 import { styleDeclarations } from '../../lib/blockStyles';
 import { motionReduced } from '../../lib/performance';
+import { useT } from '../../lib/i18n';
 import { CLASSIC_RENDERERS } from './Classic';
 import { NIGHT_RENDERERS } from './Nightflight';
 import { CONTENT_RENDERERS } from './ContentBlocks';
@@ -122,17 +123,22 @@ export function ScreenRenderer({
   /** 当前界面；留言箱用它区分不同页面的留言。 */
   scope?: ScreenScope;
 }) {
+  const t = useT();
   const device = useViewportDevice();
   const blocks = screenBlocksForDevice(layout, device).filter((block) => !block.hidden);
   if (!blocks.length) return null;
   return (
     <ScreenScopeProvider scope={scope ?? { type: 'home', id: 'home' }}>
-      {renderBlocks(blocks, variant)}
+      {renderBlocks(blocks, variant, t)}
     </ScreenScopeProvider>
   );
 }
 
-function renderBlocks(blocks: BlockInstance[], variant: LayoutVariant) {
+function renderBlocks(
+  blocks: BlockInstance[],
+  variant: LayoutVariant,
+  t: ReturnType<typeof useT>,
+) {
   if (variant !== 'bento') return <>{flat(blocks)}</>;
 
   const lead: BlockInstance[] = [];
@@ -165,7 +171,7 @@ function renderBlocks(blocks: BlockInstance[], variant: LayoutVariant) {
         <div className="pp-screen-body">
           {main.length ? <div className="pp-screen-main">{flat(main)}</div> : null}
           {side.length ? (
-            <aside className="pp-screen-side" aria-label="侧栏">
+            <aside className="pp-screen-side" aria-label={t('侧栏')}>
               {side.map((block) => (
                 <BlockView key={block.id} block={block} area="side" />
               ))}

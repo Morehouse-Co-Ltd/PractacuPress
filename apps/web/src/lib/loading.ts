@@ -1,5 +1,7 @@
 import type { LoadingPreset, LoadingSettings, WebConfig } from '../types';
+import { t } from './i18n';
 import { settingBool, settingHex, settingInt, settingText } from './settings';
+import { liveCatalog } from './i18n/live';
 
 /**
  * 站点加载动画。
@@ -12,7 +14,7 @@ import { settingBool, settingHex, settingInt, settingText } from './settings';
 export const DEFAULT_LOADING: LoadingSettings = {
   enabled: false,
   preset: 'spinner',
-  text: '正在载入',
+  text: t('正在载入'),
   accent_mode: 'theme',
   accent: '#1f5c4a',
   background_mode: 'theme',
@@ -24,13 +26,16 @@ export const DEFAULT_LOADING: LoadingSettings = {
   custom_css: '',
 };
 
-export const LOADING_PRESETS: { id: LoadingPreset; name: string; note: string }[] = [
-  { id: 'spinner', name: '圆环', note: '经典旋转圆环，安静、通用。' },
-  { id: 'dots', name: '三点', note: '三个点依次跳动，适合轻快的站点。' },
-  { id: 'pulse', name: '呼吸', note: '方块呼吸，配合品牌首字很稳。' },
-  { id: 'bar', name: '进度条', note: '一条来回移动的进度线。' },
-  { id: 'orbit', name: '轨道', note: '小点绕环旋转，适合杂志与产品站。' },
+const RAW_LOADING_PRESETS: { id: LoadingPreset; name: string; note: string }[] = [
+  { id: 'spinner', name: t('圆环'), note: t('经典旋转圆环，安静、通用。') },
+  { id: 'dots', name: t('三点'), note: t('三个点依次跳动，适合轻快的站点。') },
+  { id: 'pulse', name: t('呼吸'), note: t('方块呼吸，配合品牌首字很稳。') },
+  { id: 'bar', name: t('进度条'), note: t('一条来回移动的进度线。') },
+  { id: 'orbit', name: t('轨道'), note: t('小点绕环旋转，适合杂志与产品站。') },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const LOADING_PRESETS = liveCatalog(RAW_LOADING_PRESETS);
 
 const PRESETS = new Set<LoadingPreset>(LOADING_PRESETS.map((item) => item.id));
 

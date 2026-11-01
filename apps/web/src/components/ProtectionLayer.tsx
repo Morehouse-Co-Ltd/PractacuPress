@@ -9,6 +9,7 @@ import {
   useAccessSnapshot,
 } from '../lib/access';
 import { useSiteTabPresence } from '../lib/tabPresence';
+import { useT } from '../lib/i18n';
 import { Icon } from './Icon';
 
 /**
@@ -21,24 +22,6 @@ import { Icon } from './Icon';
  * 管理后台、安装向导和编排预览一律豁免；拦截页始终提供后台入口，避免站长
  * 把自己锁在门外。
  */
-
-const COPY: Record<
-  'page_switch' | 'request' | 'tabs',
-  { title: string; body: string }
-> = {
-  page_switch: {
-    title: '切换页面过于频繁',
-    body: '短时间内打开或切换了太多页面。这通常是脚本或自动化访问的特征。',
-  },
-  request: {
-    title: '请求过于频繁',
-    body: '站点脚本在短时间内发起了太多请求。为了保护服务器，已暂时停止响应。',
-  },
-  tabs: {
-    title: '同时打开的页面过多',
-    body: '同一浏览器同时打开了太多站点页面。关闭其他页面后会自动恢复。',
-  },
-};
 
 function AccessBlocked({
   reason,
@@ -55,7 +38,23 @@ function AccessBlocked({
   tabLimit: number;
   adminPath: string;
 }) {
-  const copy = COPY[reason];
+  const t = useT();
+  // 文案在组件里取，语言切换后拦截页会跟着重渲染。
+  const copy =
+    reason === 'page_switch'
+      ? {
+          title: t('切换页面过于频繁'),
+          body: t('短时间内打开或切换了太多页面。这通常是脚本或自动化访问的特征。'),
+        }
+      : reason === 'request'
+        ? {
+            title: t('请求过于频繁'),
+            body: t('站点脚本在短时间内发起了太多请求。为了保护服务器，已暂时停止响应。'),
+          }
+        : {
+            title: t('同时打开的页面过多'),
+            body: t('同一浏览器同时打开了太多站点页面。关闭其他页面后会自动恢复。'),
+          };
   const seconds = Math.max(0, Math.ceil(retryAfterMs / 1000));
   return (
     <div className="access-block-screen" role="alertdialog" aria-modal="true" aria-label={copy.title}>
@@ -69,12 +68,12 @@ function AccessBlocked({
         {reason === 'tabs' ? (
           <div className="access-block-counter">
             <strong>{tabCount}</strong>
-            <span>/ {tabLimit} 个页面</span>
+            <span>{t('/ {limit} 个页面', { limit: tabLimit })}</span>
           </div>
         ) : (
           <div className="access-block-counter">
             <strong>{seconds}</strong>
-            <span>秒后可继续访问</span>
+            <span>{t('秒后可继续访问')}</span>
           </div>
         )}
         <div className="access-block-bar" aria-hidden>
@@ -82,8 +81,8 @@ function AccessBlocked({
         </div>
         <p className="small faint access-block-hint">
           {reason === 'tabs'
-            ? '关闭其他站点标签页后，本页会自动恢复。'
-            : '倒计时结束后会自动恢复；如果页面数据没有加载出来，请重新载入。'}
+            ? t('关闭其他站点标签页后，本页会自动恢复。')
+            : t('倒计时结束后会自动恢复；如果页面数据没有加载出来，请重新载入。')}
         </p>
         <div className="row gap-8 access-block-actions">
           <button
@@ -91,14 +90,14 @@ function AccessBlocked({
             className="btn btn-secondary btn-sm"
             onClick={() => window.location.reload()}
           >
-            <Icon name="refresh" size={14} /> 重新载入
+            <Icon name="refresh" size={14} /> {t('重新载入')}
           </button>
           <Link to={adminPath} className="btn btn-ghost btn-sm">
-            <Icon name="lock" size={14} /> 进入管理后台
+            <Icon name="lock" size={14} /> {t('进入管理后台')}
           </Link>
         </div>
         <p className="tiny faint">
-          这是浏览器端保护。服务器与网关仍会按 IP 执行请求与并发限制。
+          {t('这是浏览器端保护。服务器与网关仍会按 IP 执行请求与并发限制。')}
         </p>
       </div>
     </div>

@@ -2,12 +2,14 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/session';
 import { ROLE_LABEL } from '../lib/format';
 import { usePermissions } from '../lib/usePermissions';
+import { useT } from '../lib/i18n';
 import { AdminShell } from './AdminShell';
 import { Forbidden } from './Guards';
 import { PageLoading } from './ui';
 import { Icon } from './Icon';
 
 function AdminDenied() {
+  const t = useT();
   const { me, site } = useAuth();
   return (
     <div className="site">
@@ -21,16 +23,16 @@ function AdminDenied() {
             </span>
           </Link>
           <div className="header-actions">
-            <span className="chip">{me ? ROLE_LABEL[me.role] : '访客'}</span>
+            <span className="chip">{me ? ROLE_LABEL[me.role] : t('访客')}</span>
             <Link to="/" className="btn btn-secondary btn-sm">
-              <Icon name="arrow-left" size={14} /> 返回站点
+              <Icon name="arrow-left" size={14} /> {t('返回站点')}
             </Link>
           </div>
         </div>
       </header>
       <main className="shell shell-narrow">
         <div style={{ paddingTop: 48 }}>
-          <Forbidden need="编辑" />
+          <Forbidden need={t('编辑')} />
         </div>
       </main>
     </div>
@@ -38,10 +40,11 @@ function AdminDenied() {
 }
 
 export function AdminGate() {
+  const t = useT();
   const { status, me } = useAuth();
   const { can } = usePermissions();
   const location = useLocation();
-  if (status === 'loading') return <PageLoading label="正在确认权限" />;
+  if (status === 'loading') return <PageLoading label={t('正在确认权限')} />;
   if (!me) {
     return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
   }

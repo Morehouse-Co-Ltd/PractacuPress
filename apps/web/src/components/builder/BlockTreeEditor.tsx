@@ -12,6 +12,7 @@ import {
   removeBlock,
   updateBlock,
 } from '../../lib/blockTree';
+import { useT } from '../../lib/i18n';
 import { Badge, Button } from '../ui';
 
 /**
@@ -41,13 +42,6 @@ function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' {
   return 'content';
 }
 
-const GROUP_LABEL = {
-  layout: '布局',
-  media: '媒体',
-  data: '数据与代码',
-  content: '内容',
-} as const;
-
 const GROUP_ORDER = ['layout', 'media', 'data', 'content'] as const;
 
 function Palette({
@@ -59,23 +53,31 @@ function Palette({
   onAdd: (def: BlockDefinition) => void;
   onDragStart: (event: DragEvent<HTMLButtonElement>, def: BlockDefinition) => void;
 }) {
+  const t = useT();
   const grouped = useMemo(() => {
     const map: Record<string, BlockDefinition[]> = { layout: [], media: [], data: [], content: [] };
     for (const def of availableBlocks(variant)) map[groupOf(def.type)].push(def);
     return map;
   }, [variant]);
+  /** 分组名：中文原文作键，渲染时按当前语言取值。 */
+  const groupLabel: Record<string, string> = {
+    layout: t('布局'),
+    media: t('媒体'),
+    data: t('数据与代码'),
+    content: t('内容'),
+  };
 
   return (
     <div className="builder-palette">
       <div className="panel-head compact">
         <div>
-          <h3>组件</h3>
-          <p>点击追加，或拖到画布/分栏里。</p>
+          <h3>{t('组件')}</h3>
+          <p>{t('点击追加，或拖到画布/分栏里。')}</p>
         </div>
       </div>
       {GROUP_ORDER.map((group) => (
         <details className="palette-group" key={group} open={group !== 'content'}>
-          <summary className="field-label">{GROUP_LABEL[group]}</summary>
+          <summary className="field-label">{groupLabel[group]}</summary>
           <div className="palette-grid">
             {grouped[group].map((def) => (
               <button
@@ -101,12 +103,14 @@ function Palette({
 function DropZone({
   onDropBlock,
   onDropNew,
-  label = '拖到这里',
+  label,
 }: {
   onDropBlock: (id: string) => void;
   onDropNew: (type: string) => void;
   label?: string;
 }) {
+  const t = useT();
+  const dropLabel = label ?? t('拖到这里');
   const [over, setOver] = useState(false);
   return (
     <div
@@ -131,7 +135,7 @@ function DropZone({
           (blockId.startsWith('new:') ? blockId.slice(4) : '');
         if (type) onDropNew(type);
       }}
-      data-drop-label={label}
+      data-drop-label={dropLabel}
     />
   );
 }
@@ -152,6 +156,7 @@ export function BlockTreeEditor({
   /** 双击组件行：把预览视角移动到该组件。 */
   onLocate: (id: string) => void;
 }) {
+  const t = useT();
   const selected = findBlock(blocks, selectedId ?? '');
   const total = countBlocks(blocks);
   const full = total >= MAX_BLOCKS;
@@ -295,7 +300,7 @@ export function BlockTreeEditor({
                 <button
                   type="button"
                   className="tree-toggle"
-                  aria-label={isCollapsed ? '展开子组件' : '收起子组件'}
+                  aria-label={isCollapsed ? t('展开子组件') : t('收起子组件')}
                   aria-expanded={!isCollapsed}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -312,22 +317,29 @@ export function BlockTreeEditor({
                 <strong>{block.title || block.type}</strong>
                 <span className="tree-meta">
                   <Badge tone="muted">{block.type}</Badge>
-                  {cols > 0 ? <span className="tree-child-count">{childCount} 子项</span> : null}
+                  {cols > 0 ? (
+                    <span className="tree-child-count">{t('{count} 子项', { count: childCount })}</span>
+                  ) : null}
                   {block.animation !== 'none' ? <span>{block.animation}</span> : null}
-                  {block.hidden ? <span>已隐藏</span> : null}
+                  {block.hidden ? <span>{t('已隐藏')}</span> : null}
                 </span>
               </span>
               <span className="tree-actions" onClick={(event) => event.stopPropagation()}>
-                <button type="button" className="icon-btn" title="上移" onClick={() => move(block.id, -1)}>
+                <button type="button" className="icon-btn" title={t('上移')} onClick={() => move(block.id, -1)}>
                   ↑
                 </button>
-                <button type="button" className="icon-btn" title="下移" onClick={() => move(block.id, 1)}>
+                <button type="button" className="icon-btn" title={t('下移')} onClick={() => move(block.id, 1)}>
                   ↓
                 </button>
-                <button type="button" className="icon-btn" title={block.hidden ? '显示' : '隐藏'} onClick={() => toggleHidden(block)}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title={block.hidden ? t('显示') : t('隐藏')}
+                  onClick={() => toggleHidden(block)}
+                >
                   {block.hidden ? '◌' : '◉'}
                 </button>
-                <button type="button" className="icon-btn danger" title="删除" onClick={() => remove(block.id)}>
+                <button type="button" className="icon-btn danger" title={t('删除')} onClick={() => remove(block.id)}>
                   ×
                 </button>
               </span>
@@ -368,12 +380,12 @@ export function BlockTreeEditor({
                       }}
                     >
                       <p className="tree-column-label">
-                        {block.type === 'columns' ? `第 ${column} 栏` : '子组件'}
+                        {block.type === 'columns' ? t('第 {index} 栏', { index: column }) : t('子组件')}
                         <span>{children.length}</span>
                       </p>
                       {renderRows(children, block.id, depth + 1)}
                       <DropZone
-                        label={`拖入第 ${column} 栏`}
+                        label={t('拖入第 {index} 栏', { index: column })}
                         onDropBlock={(id) =>
                           onChange(
                             moveBlock(blocks, id, {
@@ -393,7 +405,7 @@ export function BlockTreeEditor({
                           disabled={full}
                           onClick={() => addChild(block.id, column, 'text')}
                         >
-                          文本
+                          {t('文本')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -402,7 +414,7 @@ export function BlockTreeEditor({
                           disabled={full}
                           onClick={() => addChild(block.id, column, 'columns')}
                         >
-                          分栏
+                          {t('分栏')}
                         </Button>
                         <Button
                           variant="ghost"
@@ -411,7 +423,7 @@ export function BlockTreeEditor({
                           disabled={full}
                           onClick={() => addChild(block.id, column, 'container')}
                         >
-                          容器
+                          {t('容器')}
                         </Button>
                       </div>
                     </div>
@@ -422,7 +434,7 @@ export function BlockTreeEditor({
 
             {parentId === null ? (
               <DropZone
-                label="拖到这里排序"
+                label={t('拖到这里排序')}
                 onDropBlock={(id) => onChange(moveBlock(blocks, id, { parentId: null, index: index + 1 }))}
                 onDropNew={(type) => addAt({ parentId: null }, type)}
               />
@@ -446,27 +458,28 @@ export function BlockTreeEditor({
       />
       <div className="panel-head compact">
         <div>
-          <h3>页面结构</h3>
+          <h3>{t('页面结构')}</h3>
           <p>
-            {total} 个区块{selected ? ` · 已选「${selected.block.title || selected.block.type}」` : ''}
+            {t('{count} 个区块', { count: total })}
+            {selected ? t(' · 已选「{title}」', { title: selected.block.title || selected.block.type }) : ''}
           </p>
         </div>
       </div>
       {blocks.length === 0 ? (
         <div className="builder-empty">
-          <p>还没有区块。从上方组件库点击添加，或把组件拖进来。</p>
+          <p>{t('还没有区块。从上方组件库点击添加，或把组件拖进来。')}</p>
         </div>
       ) : (
         <>
           {renderRows(blocks, null)}
           <DropZone
-            label="拖到页面末尾"
+            label={t('拖到页面末尾')}
             onDropBlock={(id) => onChange(moveBlock(blocks, id, { parentId: null, index: blocks.length }))}
             onDropNew={(type) => addAt({ parentId: null }, type)}
           />
         </>
       )}
-      {full ? <p className="field-hint">已达到 200 个区块上限，删除一些再添加。</p> : null}
+      {full ? <p className="field-hint">{t('已达到 200 个区块上限，删除一些再添加。')}</p> : null}
     </div>
   );
 }

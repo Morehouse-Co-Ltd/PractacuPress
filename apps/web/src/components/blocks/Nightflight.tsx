@@ -14,6 +14,7 @@ import { useRangeAnalytics } from '../../lib/useAnalytics';
 import { useCustomization, heroLines } from '../../lib/customize';
 import { autoSpanForRank, normalizeTileSpan } from '../../lib/homeTiles';
 import type { RangeStats } from '../../lib/analytics';
+import { useT } from '../../lib/i18n';
 
 /**
  * 夜航区块（第二套主题）。
@@ -48,6 +49,7 @@ const HERO_RATIO_CLASS: Record<string, string> = {
 
 /** 首屏搜索框：回车跳到搜索结果页，和头部搜索同一个落点。 */
 function HeroSearch({ placeholder }: { placeholder: string }) {
+  const t = useT();
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
   return (
@@ -67,9 +69,9 @@ function HeroSearch({ placeholder }: { placeholder: string }) {
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
         placeholder={placeholder}
-        aria-label="搜索站内内容"
+        aria-label={t('搜索站内内容')}
       />
-      <button type="submit">搜索</button>
+      <button type="submit">{t('搜索')}</button>
     </form>
   );
 }
@@ -90,6 +92,7 @@ function rankPopular(all: Content[], stats: RangeStats, limit: number) {
 
 /** 首屏右卡：紧凑的热门榜单（默认纯文字，可开缩略图）。 */
 function HeroPopular({ heading, limit, cover }: { heading: string; limit: number; cover: boolean }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const { stats } = useRangeAnalytics('30d', false);
   const rows = rankPopular(all, stats, Math.min(10, Math.max(1, limit)));
@@ -101,7 +104,7 @@ function HeroPopular({ heading, limit, cover }: { heading: string; limit: number
           <h2>{heading}</h2>
           <span className="nf-popular-badge">
             <Icon name="chart" size={12} />
-            30 天
+            {t('30 天')}
           </span>
         </div>
       ) : null}
@@ -124,10 +127,14 @@ function HeroPopular({ heading, limit, cover }: { heading: string; limit: number
                 <span className="nf-popular-body">
                   <strong>{item.title}</strong>
                   <span className="nf-popular-meta">
-                    <span className="nf-kind">{item.kind === 'article' ? '文章' : '帖子'}</span>
+                    <span className="nf-kind">
+                      {item.kind === 'article' ? t('文章') : t('帖子')}
+                    </span>
                     <span className="dot" aria-hidden />
                     <Icon name="eye" size={11} />
-                    {views > 0 ? `${views} 次阅读` : `${readingTime(item.rendered_html)} 分钟`}
+                    {views > 0
+                      ? t('{count} 次阅读', { count: views })
+                      : t('{count} 分钟', { count: readingTime(item.rendered_html) })}
                   </span>
                 </span>
               </Link>
@@ -135,17 +142,20 @@ function HeroPopular({ heading, limit, cover }: { heading: string; limit: number
           ))}
         </ol>
       ) : (
-        <p className="nf-popular-empty">还没有已发布内容，热门榜会在有阅读记录后出现。</p>
+        <p className="nf-popular-empty">
+          {t('还没有已发布内容，热门榜会在有阅读记录后出现。')}
+        </p>
       )}
 
       <Link to="/articles" className="nf-popular-more">
-        全部文章 <Icon name="arrow-right" size={13} />
+        {t('全部文章')} <Icon name="arrow-right" size={13} />
       </Link>
     </div>
   );
 }
 
 function HeroCards({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { site } = useAuth();
   const { all } = useFeed();
   const { customization } = useCustomization();
@@ -161,7 +171,7 @@ function HeroCards({ block }: { block: BlockInstance }) {
   const cta = blockProp(block, 'cta', '更多推荐').trim();
   const showDomain = blockProp(block, 'show_domain', true);
   const showSearch = blockProp(block, 'show_search', true);
-  const placeholder = blockProp(block, 'search_placeholder', '').trim() || '搜索文章';
+  const placeholder = blockProp(block, 'search_placeholder', '').trim() || t('搜索文章');
   const rightMode = blockProp<string>(block, 'right_mode', 'popular');
   const popularHeading = blockProp(block, 'popular_heading', '热门文章').trim();
   const popularLimit = blockProp(block, 'popular_limit', 6);
@@ -231,6 +241,7 @@ function HeroCards({ block }: { block: BlockInstance }) {
 /* ---------------------------------------------------------------- 分类 */
 
 function CategoryPills({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { taxonomy } = useTaxonomy();
   const categories = taxonomy.categories;
   const source = blockProp<string>(block, 'source', 'manual');
@@ -260,15 +271,17 @@ function CategoryPills({ block }: { block: BlockInstance }) {
   if (!items.length) {
     return (
       <div className="nf-cats">
-        <p className="block-empty-hint">还没有分类。可以在属性里切到「自动读取分类」，或手动添加胶囊。</p>
+        <p className="block-empty-hint">
+          {t('还没有分类。可以在属性里切到「自动读取分类」，或手动添加胶囊。')}
+        </p>
       </div>
     );
   }
   return (
-    <nav className="nf-cats" aria-label="分类">
+    <nav className="nf-cats" aria-label={t('分类')}>
       {items.slice(0, 4).map((item, index) => {
         const color = item.color || '#5b8cff';
-        const label = item.label || `分类 ${index + 1}`;
+        const label = item.label || t('分类 {count}', { count: index + 1 });
         const style = { '--cat': color } as CSSProperties;
         const body = (
           <>
@@ -296,13 +309,19 @@ function CategoryPills({ block }: { block: BlockInstance }) {
 /* ---------------------------------------------------------------- 精选 */
 
 function FeaturePost({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const showSummary = blockProp(block, 'show_summary', true);
   const feature = all[0];
   if (loading) return <Skeleton lines={4} />;
   if (!feature) {
     return (
-      <EmptyState compact icon="file" title="还没有精选" body="发布第一篇文章，这里会把它放在聚光灯下。" />
+      <EmptyState
+        compact
+        icon="file"
+        title={t('还没有精选')}
+        body={t('发布第一篇文章，这里会把它放在聚光灯下。')}
+      />
     );
   }
   return (
@@ -312,10 +331,12 @@ function FeaturePost({ block }: { block: BlockInstance }) {
       </Link>
       <div className="nf-feature-body">
         <div className="nf-meta">
-          <span className="nf-kind">{feature.kind === 'article' ? '文章' : '帖子'}</span>
+          <span className="nf-kind">
+            {feature.kind === 'article' ? t('文章') : t('帖子')}
+          </span>
           <span>{timeAgo(feature.published_at ?? feature.created_at)}</span>
           <span className="dot" aria-hidden />
-          <span>{readingTime(feature.rendered_html)} 分钟</span>
+          <span>{t('{count} 分钟', { count: readingTime(feature.rendered_html) })}</span>
         </div>
         <h2>
           <Link to={contentUrl(feature)}>{feature.title}</Link>
@@ -329,6 +350,7 @@ function FeaturePost({ block }: { block: BlockInstance }) {
 /* ---------------------------------------------------------------- 列表 */
 
 function SectionHeading({ title, count, to }: { title: string; count?: number; to?: string }) {
+  const t = useT();
   if (!title) return null;
   return (
     <div className="nf-heading">
@@ -337,7 +359,7 @@ function SectionHeading({ title, count, to }: { title: string; count?: number; t
       {typeof count === 'number' ? <span className="nf-heading-count">{count}</span> : null}
       {to ? (
         <Link to={to} className="nf-heading-more">
-          全部 <Icon name="arrow-right" size={13} />
+          {t('全部')} <Icon name="arrow-right" size={13} />
         </Link>
       ) : null}
     </div>
@@ -357,6 +379,7 @@ function MoreLink({ label }: { label: string }) {
 }
 
 function PostList({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const heading = blockProp(block, 'heading', '最新文章').trim();
   const limit = blockProp(block, 'limit', 18);
@@ -364,7 +387,7 @@ function PostList({ block }: { block: BlockInstance }) {
   const showMeta = blockProp(block, 'show_meta', true);
   const showNumber = blockProp(block, 'show_number', true);
   const showMore = blockProp(block, 'show_more', true);
-  const moreLabel = blockProp(block, 'more_label', '查看更多').trim() || '查看更多';
+  const moreLabel = blockProp(block, 'more_label', '查看更多').trim() || t('查看更多');
   const items = all.slice(0, Math.min(30, Math.max(1, limit)));
 
   if (loading) {
@@ -376,7 +399,14 @@ function PostList({ block }: { block: BlockInstance }) {
     );
   }
   if (!items.length) {
-    return <EmptyState compact icon="file" title="还没有文章" body="发布内容后，这里会出现文章卡片。" />;
+    return (
+      <EmptyState
+        compact
+        icon="file"
+        title={t('还没有文章')}
+        body={t('发布内容后，这里会出现文章卡片。')}
+      />
+    );
   }
   return (
     <section className="nf-list-wrap">
@@ -394,7 +424,7 @@ function PostList({ block }: { block: BlockInstance }) {
             </Link>
             <div className="nf-row-body">
               <div className="nf-meta">
-                <span className="nf-kind">{item.kind === 'article' ? '文章' : '帖子'}</span>
+                <span className="nf-kind">{item.kind === 'article' ? t('文章') : t('帖子')}</span>
                 {showMeta ? <span>{timeAgo(item.published_at ?? item.created_at)}</span> : null}
               </div>
               <h3>
@@ -415,32 +445,32 @@ function PostList({ block }: { block: BlockInstance }) {
 
 /* ---------------------------------------------------------------- 网格 */
 
-const TABS: { key: 'all' | 'article' | 'post'; label: string }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'article', label: '文章' },
-  { key: 'post', label: '帖子' },
-];
-
 function PostGrid({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const [tab, setTab] = useState<'all' | 'article' | 'post'>('all');
+  const tabs: { key: 'all' | 'article' | 'post'; label: string }[] = [
+    { key: 'all', label: t('全部') },
+    { key: 'article', label: t('文章') },
+    { key: 'post', label: t('帖子') },
+  ];
   const heading = blockProp(block, 'heading', '最新文章').trim();
   const showTabs = blockProp(block, 'tabs', true);
   const limit = blockProp(block, 'limit', 18);
   const showSummary = blockProp(block, 'show_summary', true);
   const showMeta = blockProp(block, 'show_meta', true);
   const showMore = blockProp(block, 'show_more', true);
-  const moreLabel = blockProp(block, 'more_label', '查看更多').trim() || '查看更多';
+  const moreLabel = blockProp(block, 'more_label', '查看更多').trim() || t('查看更多');
   const pool = tab === 'all' ? all : all.filter((item) => item.kind === tab);
   const items = pool.slice(0, Math.min(30, Math.max(1, limit)));
 
   const bar =
     heading || showTabs ? (
       <div className="nf-bar">
-        <span className="nf-bar-chip">{all.length} 篇</span>
+        <span className="nf-bar-chip">{t('{count} 篇', { count: all.length })}</span>
         {showTabs ? (
-          <div className="nf-bar-tabs" role="tablist" aria-label="内容类型">
-            {TABS.map((item) => (
+          <div className="nf-bar-tabs" role="tablist" aria-label={t('内容类型')}>
+            {tabs.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -458,7 +488,7 @@ function PostGrid({ block }: { block: BlockInstance }) {
         )}
         {showMore ? null : (
           <Link to="/articles" className="nf-bar-more">
-            更多 <Icon name="arrow-right" size={13} />
+            {t('更多')} <Icon name="arrow-right" size={13} />
           </Link>
         )}
       </div>
@@ -479,7 +509,12 @@ function PostGrid({ block }: { block: BlockInstance }) {
     return (
       <div className="nf-grid-wrap">
         {bar}
-        <EmptyState compact icon="file" title="还没有内容" body="发布内容后，这里会出现封面卡。" />
+        <EmptyState
+          compact
+          icon="file"
+          title={t('还没有内容')}
+          body={t('发布内容后，这里会出现封面卡。')}
+        />
       </div>
     );
   }
@@ -494,8 +529,10 @@ function PostGrid({ block }: { block: BlockInstance }) {
             </Link>
             <div className="nf-tile-body">
               <div className="nf-tile-tags">
-                <span className="nf-chip-kind">{item.kind === 'article' ? '文章' : '帖子'}</span>
-                <span>{readingTime(item.rendered_html)} 分钟阅读</span>
+                <span className="nf-chip-kind">
+                  {item.kind === 'article' ? t('文章') : t('帖子')}
+                </span>
+                <span>{t('{count} 分钟阅读', { count: readingTime(item.rendered_html) })}</span>
               </div>
               <h3>
                 <Link to={contentUrl(item)}>{item.title}</Link>
@@ -524,6 +561,7 @@ function PostGrid({ block }: { block: BlockInstance }) {
  * 格子越大显示的信息越多：1×1 只有标题，2×1 加类型与阅读量，2×2 再加摘要。
  */
 function Spotlight({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const { stats } = useRangeAnalytics('30d', false);
   const { customization } = useCustomization();
@@ -565,7 +603,7 @@ function Spotlight({ block }: { block: BlockInstance }) {
           <h2>{heading}</h2>
           <span className="nf-heading-count">{rows.length}</span>
           <Link to="/articles" className="nf-heading-more">
-            全部 <Icon name="arrow-right" size={13} />
+            {t('全部')} <Icon name="arrow-right" size={13} />
           </Link>
         </div>
       ) : null}
@@ -585,10 +623,12 @@ function Spotlight({ block }: { block: BlockInstance }) {
             <span className="nf-spot-body">
               {showMeta ? (
                 <span className="nf-spot-kicker">
-                  <em>{item.kind === 'article' ? '文章' : '帖子'}</em>
+                  <em>{item.kind === 'article' ? t('文章') : t('帖子')}</em>
                   <span className="dot" aria-hidden />
                   <Icon name="eye" size={10} />
-                  {views > 0 ? views : readingTime(item.rendered_html)} {views > 0 ? '次' : '分钟'}
+                  {views > 0
+                    ? t('{count} 次', { count: views })
+                    : t('{count} 分钟', { count: readingTime(item.rendered_html) })}
                 </span>
               ) : null}
               <strong>{item.title}</strong>
@@ -604,14 +644,17 @@ function Spotlight({ block }: { block: BlockInstance }) {
 /* ---------------------------------------------------------------- 侧栏 */
 
 function AuthorCard({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { site, me } = useAuth();
-  const name = blockProp(block, 'name', '').trim() || site?.name || '编辑部';
+  const name = blockProp(block, 'name', '').trim() || site?.name || t('编辑部');
   const bio =
-    blockProp(block, 'bio', '').trim() || site?.description || '写作者拥有自己的稿子，读者被当作邻居。';
+    blockProp(block, 'bio', '').trim() ||
+    site?.description ||
+    t('写作者拥有自己的稿子，读者被当作邻居。');
   const links = blockItems(block, 'links').filter((item) => item.link);
   return (
     <aside className="nf-widget nf-author">
-      <p className="nf-author-hi">欢迎光临</p>
+      <p className="nf-author-hi">{t('欢迎光临')}</p>
       <Avatar name={me?.user.display_name ?? name} size={58} />
       <strong>{name}</strong>
       <p>{bio}</p>
@@ -630,16 +673,19 @@ function AuthorCard({ block }: { block: BlockInstance }) {
 }
 
 function TagCloud({ block }: { block: BlockInstance }) {
+  const t = useT();
   const items = blockItems(block, 'items');
-  if (!items.length) return <p className="block-empty-hint">还没有标签。在「页面编排 → 编排」里添加。</p>;
+  if (!items.length) {
+    return <p className="block-empty-hint">{t('还没有标签。在「页面编排 → 编排」里添加。')}</p>;
+  }
   const max = Math.max(...items.map((item) => Number(item.weight) || 1), 1);
   return (
     <section className="nf-widget">
-      <h3 className="nf-widget-title">标签</h3>
+      <h3 className="nf-widget-title">{t('标签')}</h3>
       <div className="nf-tags">
         {items.map((item, index) => {
           const weight = Math.min(max, Math.max(1, Number(item.weight) || 1));
-          const label = item.label || `标签 ${index + 1}`;
+          const label = item.label || t('标签 {count}', { count: index + 1 });
           const body = (
             <>
               #{label}
@@ -662,6 +708,7 @@ function TagCloud({ block }: { block: BlockInstance }) {
 }
 
 function StatList({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { config } = useAuth();
   const { all, loading } = useFeed();
   const showCount = blockProp(block, 'show_count', true);
@@ -672,12 +719,13 @@ function StatList({ block }: { block: BlockInstance }) {
   const days = Math.max(1, Math.round((Date.now() - createdAt) / 86_400_000));
 
   const rows: { icon: 'file' | 'clock' | 'code'; label: string; value: string }[] = [];
-  if (showCount) rows.push({ icon: 'file', label: '文章总数', value: String(all.length) });
-  if (showDays) rows.push({ icon: 'clock', label: '建站天数', value: `${days} 天` });
+  if (showCount) rows.push({ icon: 'file', label: t('文章总数'), value: String(all.length) });
+  if (showDays)
+    rows.push({ icon: 'clock', label: t('建站天数'), value: t('{count} 天', { count: days }) });
   if (showWords)
     rows.push({
       icon: 'code',
-      label: '全站字数',
+      label: t('全站字数'),
       value: words > 999 ? `${(words / 1000).toFixed(1)}k` : String(words),
     });
 
@@ -699,6 +747,7 @@ function StatList({ block }: { block: BlockInstance }) {
 }
 
 function Archive({ block }: { block: BlockInstance }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const heading = blockProp(block, 'heading', '归档').trim();
   const limit = blockProp(block, 'limit', 3);
@@ -711,7 +760,9 @@ function Archive({ block }: { block: BlockInstance }) {
   }
   const rows = [...buckets.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, limit);
   if (loading) return <Skeleton lines={3} />;
-  if (!rows.length) return <p className="block-empty-hint">还没有已发布内容，归档会自动按月份统计。</p>;
+  if (!rows.length) {
+    return <p className="block-empty-hint">{t('还没有已发布内容，归档会自动按月份统计。')}</p>;
+  }
   return (
     <section className="nf-widget">
       {heading ? <h3 className="nf-widget-title">{heading}</h3> : null}
@@ -720,10 +771,8 @@ function Archive({ block }: { block: BlockInstance }) {
           const [year, month] = key.split('-');
           return (
             <div key={key}>
-              <span>
-                {Number(month)} 月 {year}
-              </span>
-              <b>{count} 篇</b>
+              <span>{t('{month} 月 {year}', { month: Number(month), year })}</span>
+              <b>{t('{count} 篇', { count })}</b>
             </div>
           );
         })}
@@ -745,8 +794,11 @@ function QuoteCard({ block }: { block: BlockInstance }) {
 }
 
 function Timeline({ block }: { block: BlockInstance }) {
+  const t = useT();
   const items = blockItems(block, 'items');
-  if (!items.length) return <p className="block-empty-hint">还没有节点。在「页面编排 → 编排」里添加。</p>;
+  if (!items.length) {
+    return <p className="block-empty-hint">{t('还没有节点。在「页面编排 → 编排」里添加。')}</p>;
+  }
   return (
     <ol className="nf-widget nf-timeline">
       {items.map((item, index) => (
@@ -760,13 +812,14 @@ function Timeline({ block }: { block: BlockInstance }) {
 }
 
 function SearchLauncher({ block }: { block: BlockInstance }) {
+  const t = useT();
   const label = blockProp(block, 'label', '搜索文章').trim();
   const hint = blockProp(block, 'hint', '').trim();
   return (
     <button type="button" className="nf-search" onClick={() => dispatchInterfaceCommand('search')}>
       <Icon name="search" size={16} />
       <span>
-        <strong>{label || '搜索文章'}</strong>
+        <strong>{label || t('搜索文章')}</strong>
         {hint ? <em>{hint}</em> : null}
       </span>
       <kbd>Shift</kbd>
@@ -775,21 +828,21 @@ function SearchLauncher({ block }: { block: BlockInstance }) {
   );
 }
 
-const HINTS: { keys: string[]; label: string }[] = [
-  { keys: ['Shift', 'K'], label: '命令面板' },
-  { keys: ['Shift', 'S'], label: '搜索' },
-  { keys: ['Shift', 'D'], label: '深浅切换' },
-  { keys: ['Shift', 'H'], label: '回首页' },
-];
-
 function CommandHints() {
+  const t = useT();
+  const hints: { keys: string[]; label: string }[] = [
+    { keys: ['Shift', 'K'], label: t('命令面板') },
+    { keys: ['Shift', 'S'], label: t('搜索') },
+    { keys: ['Shift', 'D'], label: t('深浅切换') },
+    { keys: ['Shift', 'H'], label: t('回首页') },
+  ];
   return (
     <section className="nf-widget">
       <h3 className="nf-widget-title">
-        <Icon name="command" size={13} /> 快捷键
+        <Icon name="command" size={13} /> {t('快捷键')}
       </h3>
       <div className="nf-hints">
-        {HINTS.map((hint) => (
+        {hints.map((hint) => (
           <span className="nf-hint" key={hint.label}>
             <span>{hint.label}</span>
             <span className="nf-hint-keys">

@@ -3045,6 +3045,23 @@ img {
 .wiz-top .shell { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .wiz-progress-text { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .wiz-progress-text b { color: var(--ink); font-weight: 500; }
+/* 安装语言切换：与进度文字同一行，靠右对齐；两个胶囊按钮，当前语言实心。 */
+.wiz-top-right { display: flex; align-items: center; gap: 16px; flex: none; }
+.wiz-lang { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: #fff; }
+.wiz-lang-btn {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.wiz-lang-btn:hover { color: var(--ink); }
+.wiz-lang-btn.is-active { background: var(--ink); color: #fff; }
 .wiz-body {
   flex: 1;
   width: 100%;
@@ -3214,6 +3231,16 @@ img {
 .option-body strong { display: block; font-size: 13.5px; font-weight: 500; }
 .option-body p { margin-top: 3px; font-size: 12px; line-height: 1.65; color: var(--muted); }
 .option-tag { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ok); margin-top: 5px; display: inline-block; }
+/* 直接放进卡片里的原生单选/复选：钉住尺寸并居中，否则会被 flex 拉伸成椭圆（英文说明换行时尤其明显）。 */
+.option > input[type='radio'],
+.option > input[type='checkbox'] {
+  flex: none;
+  align-self: center;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--ink);
+}
 .option-radio {
   width: 15px;
   height: 15px;

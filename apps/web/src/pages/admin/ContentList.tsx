@@ -12,6 +12,7 @@ import {
   formatDateTime,
   isSiteAdmin,
 } from '../../lib/format';
+import { useT } from '../../lib/i18n';
 import {
   Badge,
   Button,
@@ -35,17 +36,8 @@ import { useToast } from '../../lib/toast';
 type StatusFilter = 'all' | ContentStatus;
 type KindFilter = 'all' | ContentKind;
 
-const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'published', label: '已发布' },
-  { key: 'pending_review', label: '待审核' },
-  { key: 'draft', label: '草稿' },
-  { key: 'rejected', label: '已退回' },
-  { key: 'pending_security_check', label: '安全检查中' },
-  { key: 'archived', label: '已归档' },
-];
-
 export function ContentListPage() {
+  const t = useT();
   const { me } = useAuth();
   const backend = useBackend();
   const toast = useToast();
@@ -56,7 +48,7 @@ export function ContentListPage() {
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState('');
   const [confirming, setConfirming] = useState<{ item: Content; action: ContentAction } | null>(null);
-  useTitle('内容库');
+  useTitle(t('内容库'));
 
   const data = useAsync(async () => {
     const [articles, posts] = await Promise.all([
@@ -91,15 +83,22 @@ export function ContentListPage() {
   const togglePin = (item: Content) => {
     if (pinOf(item.id)) {
       update({ pins: customization.pins.filter((entry) => entry.id !== item.id) });
-      toast.push('ok', '已取消置顶', `《${item.title}》不再出现在首页精选。`);
+      toast.push('ok', t('已取消置顶'), t('《{title}》不再出现在首页精选。', { title: item.title }));
       return;
     }
     if (customization.pins.length >= MAX_PINS) {
-      toast.push('error', `最多置顶 ${MAX_PINS} 篇`, '先在列表里取消一篇再试。');
+      toast.push('error', t('最多置顶 {count} 篇', { count: MAX_PINS }), t('先在列表里取消一篇再试。'));
       return;
     }
     update({ pins: [...customization.pins, { id: item.id, span: '1x1' }] });
-    toast.push('ok', '已置顶到首页', `《${item.title}》排在首页精选第 ${customization.pins.length + 1} 位。`);
+    toast.push(
+      'ok',
+      t('已置顶到首页'),
+      t('《{title}》排在首页精选第 {position} 位。', {
+        title: item.title,
+        position: customization.pins.length + 1,
+      }),
+    );
   };
   const setPinSpan = (id: string, span: TileSpan) => {
     update({ pins: customization.pins.map((entry) => (entry.id === id ? { ...entry, span } : entry)) });
@@ -109,6 +108,7 @@ export function ContentListPage() {
     setBusyId(item.id);
     try {
       const updated = await backend.contentAction(item.kind, item.id, action, reason);
+      // 活动日志的 actor / action / detail 会落盘（localStorage），属于存档数据而非实时文案，保持中文。
       noteActivity(
         backend,
         me?.user.display_name ?? '管理员',
@@ -116,10 +116,21 @@ export function ContentListPage() {
         item.title,
         `状态：${STATUS_LABEL[updated.status]}`,
       );
-      toast.push('ok', `${ACTION_LABEL[action]}成功`, `《${item.title}》现在是「${STATUS_LABEL[updated.status]}」`);
+      toast.push(
+        'ok',
+        t('{action}成功', { action: ACTION_LABEL[action] }),
+        t('《{title}》现在是「{status}」', {
+          title: item.title,
+          status: STATUS_LABEL[updated.status],
+        }),
+      );
       data.reload();
     } catch (err) {
-      toast.push('error', `${ACTION_LABEL[action]}失败`, err instanceof Error ? err.message : undefined);
+      toast.push(
+        'error',
+        t('{action}失败', { action: ACTION_LABEL[action] }),
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       setBusyId('');
       setConfirming(null);
@@ -134,19 +145,29 @@ export function ContentListPage() {
     return null;
   };
 
+  const statusTabs: { key: StatusFilter; label: string }[] = [
+    { key: 'all', label: t('全部') },
+    { key: 'published', label: t('已发布') },
+    { key: 'pending_review', label: t('待审核') },
+    { key: 'draft', label: t('草稿') },
+    { key: 'rejected', label: t('已退回') },
+    { key: 'pending_security_check', label: t('安全检查中') },
+    { key: 'archived', label: t('已归档') },
+  ];
+
   return (
     <>
       <div className="admin-page-head">
         <div>
-          <h1>内容库</h1>
-          <p>文章与帖子的统一视图。状态由服务端状态机决定，前端只展示允许的动作。</p>
+          <h1>{t('内容库')}</h1>
+          <p>{t('文章与帖子的统一视图。状态由服务端状态机决定，前端只展示允许的动作。')}</p>
         </div>
         <div className="admin-page-actions">
           <Link to="/admin/content/new/post" className="btn btn-secondary btn-sm">
-            新建帖子
+            {t('新建帖子')}
           </Link>
           <Link to="/admin/content/new/article" className="btn btn-primary btn-sm">
-            <Icon name="plus" size={14} /> 新建文章
+            <Icon name="plus" size={14} /> {t('新建文章')}
           </Link>
         </div>
       </div>
@@ -157,16 +178,16 @@ export function ContentListPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索标题、摘要或作者"
-            aria-label="搜索内容"
+            placeholder={t('搜索标题、摘要或作者')}
+            aria-label={t('搜索内容')}
           />
         </div>
         <div className="row gap-6">
           {(
             [
-              { key: 'all' as const, label: '全部类型' },
-              { key: 'article' as const, label: '文章' },
-              { key: 'post' as const, label: '帖子' },
+              { key: 'all' as const, label: t('全部类型') },
+              { key: 'article' as const, label: t('文章') },
+              { key: 'post' as const, label: t('帖子') },
             ]
           ).map((entry) => (
             <button
@@ -180,16 +201,16 @@ export function ContentListPage() {
           ))}
         </div>
         <span className="toolbar-spacer" />
-        <span className="tiny faint">{filtered.length} 条</span>
+        <span className="tiny faint">{t('{count} 条', { count: filtered.length })}</span>
         <Button variant="ghost" size="sm" icon="refresh" onClick={data.reload}>
-          刷新
+          {t('刷新')}
         </Button>
       </div>
 
       <Tabs
         value={status}
         onChange={setStatus}
-        items={STATUS_TABS.map((tab) => ({
+        items={statusTabs.map((tab) => ({
           ...tab,
           count: counts.get(tab.key) ?? 0,
         }))}
@@ -197,8 +218,8 @@ export function ContentListPage() {
 
       {data.error ? (
         <div className="mt-20">
-          <Callout tone="danger" icon="alert" title="无法读取内容">
-            {data.error instanceof Error ? data.error.message : '请求失败。'}
+          <Callout tone="danger" icon="alert" title={t('无法读取内容')}>
+            {data.error instanceof Error ? data.error.message : t('请求失败。')}
           </Callout>
         </div>
       ) : null}
@@ -212,15 +233,15 @@ export function ContentListPage() {
           <div className="panel-body">
             <EmptyState
               icon="file"
-              title={query || status !== 'all' ? '没有符合条件的内容' : '内容库还是空的'}
+              title={query || status !== 'all' ? t('没有符合条件的内容') : t('内容库还是空的')}
               body={
                 query || status !== 'all'
-                  ? '换一个状态或关键词。列表只包含当前账户可见的内容。'
-                  : '创建第一篇草稿，或者等待成员提交审核。'
+                  ? t('换一个状态或关键词。列表只包含当前账户可见的内容。')
+                  : t('创建第一篇草稿，或者等待成员提交审核。')
               }
               action={
                 <Link to="/admin/content/new/article" className="btn btn-secondary btn-sm">
-                  新建草稿
+                  {t('新建草稿')}
                 </Link>
               }
             />
@@ -230,14 +251,14 @@ export function ContentListPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>标题</th>
-                  <th>封面</th>
-                  <th>类型</th>
-                  <th>状态</th>
-                  <th>首页精选</th>
-                  <th>作者</th>
-                  <th>更新时间</th>
-                  <th style={{ textAlign: 'right' }}>操作</th>
+                  <th>{t('标题')}</th>
+                  <th>{t('封面')}</th>
+                  <th>{t('类型')}</th>
+                  <th>{t('状态')}</th>
+                  <th>{t('首页精选')}</th>
+                  <th>{t('作者')}</th>
+                  <th>{t('更新时间')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('操作')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -270,8 +291,14 @@ export function ContentListPage() {
                         <Link
                           to={`/admin/content/${item.kind}/${item.id}`}
                           className="content-cover-thumb"
-                          aria-label={`编辑《${item.title}》的封面`}
-                          title={visibleCover ? '自定义封面 · 点击编辑' : cover ? '封面已隐藏' : '自动生成封面 · 点击编辑'}
+                          aria-label={t('编辑《{title}》的封面', { title: item.title })}
+                          title={
+                            visibleCover
+                              ? t('自定义封面 · 点击编辑')
+                              : cover
+                                ? t('封面已隐藏')
+                                : t('自动生成封面 · 点击编辑')
+                          }
                         >
                           {visibleCover ? (
                             <img
@@ -281,11 +308,11 @@ export function ContentListPage() {
                               style={coverImageStyle(visibleCover)}
                             />
                           ) : cover?.hidden ? (
-                            <span className="content-cover-hidden">隐藏</span>
+                            <span className="content-cover-hidden">{t('隐藏')}</span>
                           ) : (
                             <Cover seed={item.id} label={item.title} ratio="16 / 10" />
                           )}
-                          {visibleCover ? <span className="content-cover-flag">自定义</span> : null}
+                          {visibleCover ? <span className="content-cover-flag">{t('自定义')}</span> : null}
                         </Link>
                       </td>
                       <td>
@@ -300,8 +327,8 @@ export function ContentListPage() {
                             type="button"
                             role="switch"
                             aria-checked={!!pinOf(item.id)}
-                            aria-label={`${item.title} 置顶到首页`}
-                            title={item.status === 'published' ? '置顶到首页精选' : '草稿不会出现在首页'}
+                            aria-label={t('{title} 置顶到首页', { title: item.title })}
+                            title={item.status === 'published' ? t('置顶到首页精选') : t('草稿不会出现在首页')}
                             className={`switch${pinOf(item.id) ? ' is-on' : ''}`}
                             onClick={() => togglePin(item)}
                           >
@@ -310,7 +337,7 @@ export function ContentListPage() {
                           {pinOf(item.id) ? (
                             <Select
                               value={pinOf(item.id)?.span ?? '1x1'}
-                              aria-label="占格大小"
+                              aria-label={t('占格大小')}
                               onChange={(event) => setPinSpan(item.id, event.target.value as TileSpan)}
                             >
                               {TILE_SPANS.map((span) => (
@@ -344,11 +371,11 @@ export function ContentListPage() {
                           ) : null}
                           {item.actions.includes('reject') ? (
                             <Link to="/admin/review" className="btn btn-ghost btn-sm">
-                              去审核
+                              {t('去审核')}
                             </Link>
                           ) : null}
                           <Link to={`/admin/content/${item.kind}/${item.id}`} className="btn btn-ghost btn-sm">
-                            编辑
+                            {t('编辑')}
                           </Link>
                         </div>
                       </td>
@@ -362,30 +389,38 @@ export function ContentListPage() {
       </div>
 
       <p className="tiny faint mt-16">
-        列表最多载入每种类型 100 条，状态筛选在浏览器内完成。站点管理员权限：
-        {isSiteAdmin(me?.role) ? '已具备' : '不具备（不影响内容操作）'}。
+        {t('列表最多载入每种类型 100 条，状态筛选在浏览器内完成。站点管理员权限：{status}。', {
+          status: isSiteAdmin(me?.role) ? t('已具备') : t('不具备（不影响内容操作）'),
+        })}
       </p>
 
       <Modal
         open={!!confirming}
-        title={confirming ? `${ACTION_LABEL[confirming.action]}《${confirming.item.title}》？` : ''}
+        title={
+          confirming
+            ? t('{action}《{title}》？', {
+                action: ACTION_LABEL[confirming.action],
+                title: confirming.item.title,
+              })
+            : ''
+        }
         description={
           confirming?.action === 'archive'
-            ? '归档后内容会从公开列表移出，但已有链接仍然有效。'
-            : '恢复后内容会重新进入公开列表。'
+            ? t('归档后内容会从公开列表移出，但已有链接仍然有效。')
+            : t('恢复后内容会重新进入公开列表。')
         }
         onClose={() => setConfirming(null)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirming(null)}>
-              取消
+              {t('取消')}
             </Button>
             <Button
               variant={confirming?.action === 'archive' ? 'danger' : 'primary'}
               loading={busyId === confirming?.item.id}
               onClick={() => confirming && void runAction(confirming.item, confirming.action)}
             >
-              确认{confirming ? ACTION_LABEL[confirming.action] : ''}
+              {confirming ? t('确认{action}', { action: ACTION_LABEL[confirming.action] }) : t('确认')}
             </Button>
           </>
         }

@@ -5,6 +5,8 @@
  * 徽标并链接到全国互联网安全管理服务平台，因此这里把号段解析成 official query 链接。
  */
 
+import { useT } from '../lib/i18n';
+
 const POLICE_QUERY = 'https://beian.mps.gov.cn/#/query/webSearch?code=';
 const ICP_PORTAL = 'https://beian.miit.gov.cn/';
 
@@ -20,6 +22,7 @@ export function policeHref(text: string): string {
 }
 
 export function PoliceBadge({ size = 14 }: { size?: number }) {
+  const t = useT();
   return (
     <svg
       className="police-badge"
@@ -47,7 +50,7 @@ export function PoliceBadge({ size = 14 }: { size?: number }) {
         fontFamily="serif"
         fill="#1f5fd0"
       >
-        公
+        {t('公')}
       </text>
     </svg>
   );

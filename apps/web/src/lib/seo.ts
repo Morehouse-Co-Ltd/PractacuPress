@@ -2,6 +2,10 @@ import { useEffect, useMemo } from 'react';
 import type { Content, SeoSettings } from '../types';
 import { useAuth } from './session';
 import { useCustomization } from './customize';
+import { getLocale, t } from './i18n';
+
+/** Open Graph 用的是 `zh_CN` / `en_US` 这种下划线写法，和 BCP 47 不同。 */
+const OG_LOCALE = { 'zh-CN': 'zh_CN', en: 'en_US' } as const;
 
 /**
  * 单页应用的 SEO 层。
@@ -119,7 +123,7 @@ export function applySeo(payload: SeoPayload): void {
   setMeta('property', 'og:description', payload.description);
   setMeta('property', 'og:url', payload.canonical);
   setMeta('property', 'og:image', payload.image);
-  setMeta('property', 'og:locale', 'zh_CN');
+  setMeta('property', 'og:locale', OG_LOCALE[getLocale()]);
 
   setMeta('name', 'twitter:card', payload.image ? 'summary_large_image' : 'summary');
   setMeta('name', 'twitter:title', payload.title);
@@ -261,11 +265,11 @@ export function articleJsonLd(options: {
     description: content.summary || undefined,
     datePublished: content.published_at || content.created_at,
     dateModified: content.updated_at,
-    author: { '@type': 'Person', name: options.author || content.author_name || '佚名' },
+    author: { '@type': 'Person', name: options.author || content.author_name || t('佚名') },
     publisher: { '@type': 'Organization', name: options.publisher || options.siteName },
     image: options.image || undefined,
     mainEntityOfPage: { '@type': 'WebPage', '@id': options.url },
-    inLanguage: 'zh-CN',
+    inLanguage: getLocale(),
   };
 }
 
@@ -337,7 +341,7 @@ export function robotsTxt(options: { origin: string; indexable: boolean }): stri
     'User-agent: *',
     'Allow: /',
     '',
-    '# 后台与接口不参与收录',
+    t('# 后台与接口不参与收录'),
     'Disallow: /admin',
     'Disallow: /api',
     'Disallow: /login',

@@ -1,4 +1,5 @@
 import type { MailEncryption, MailSettings, WebConfig } from '../types';
+import { t } from './i18n';
 
 /**
  * 服务端邮件（SMTP）设置。
@@ -20,9 +21,9 @@ export const DEFAULT_MAIL: MailSettings = {
 };
 
 export const ENCRYPTION_OPTIONS: { value: MailEncryption; label: string; port: string }[] = [
-  { value: 'starttls', label: 'STARTTLS（推荐）', port: '587' },
+  { value: 'starttls', label: t('STARTTLS（推荐）'), port: '587' },
   { value: 'ssl', label: 'SSL / TLS', port: '465' },
-  { value: 'none', label: '不加密', port: '25' },
+  { value: 'none', label: t('不加密'), port: '25' },
 ];
 
 export function defaultPortFor(encryption: MailEncryption): string {
@@ -58,12 +59,12 @@ export function mailSettingsReady(mail: MailSettings): boolean {
 /** 生成服务端环境变量片段；密码只在本次会话里拼进去。 */
 export function smtpEnvSnippet(mail: MailSettings, password = ''): string {
   const lines = [
-    '# 由 Practacu Press 的「登录设置 → 邮件通知」生成',
-    '# 这些值属于服务端环境变量，不要提交到仓库',
+    t('# 由 Practacu Press 的「登录设置 → 邮件通知」生成'),
+    t('# 这些值属于服务端环境变量，不要提交到仓库'),
     '',
   ];
   if (!mail.host.trim()) {
-    lines.push('# 还没有填写 SMTP 主机，找回密码暂时不可用');
+    lines.push(t('# 还没有填写 SMTP 主机，找回密码暂时不可用'));
     return lines.join('\n');
   }
 
@@ -72,12 +73,12 @@ export function smtpEnvSnippet(mail: MailSettings, password = ''): string {
   lines.push(`SMTP_ENCRYPTION=${mail.encryption}`);
   if (mail.username.trim()) {
     lines.push(`SMTP_USERNAME=${mail.username.trim()}`);
-    lines.push(`SMTP_PASSWORD=${password.trim() || '<在服务端填写>'}`);
+    lines.push(`SMTP_PASSWORD=${password.trim() || t('<在服务端填写>')}`);
   }
   lines.push(`SMTP_FROM=${mail.from.trim()}`);
   if (mail.from_name.trim()) lines.push(`SMTP_FROM_NAME=${mail.from_name.trim()}`);
   lines.push('');
-  lines.push('# 重置邮件里的链接指向这个地址；留空则使用请求来源');
-  lines.push(`PUBLIC_BASE_URL=${mail.public_base_url.trim() || '<你的站点地址，例如 https://press.example.com>'}`);
+  lines.push(t('# 重置邮件里的链接指向这个地址；留空则使用请求来源'));
+  lines.push(`PUBLIC_BASE_URL=${mail.public_base_url.trim() || t('<你的站点地址，例如 https://press.example.com>')}`);
   return lines.join('\n');
 }

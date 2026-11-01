@@ -60,8 +60,12 @@ const common: Dictionary = {
   操作失败: 'Something went wrong',
   请求失败: 'Request failed',
   未知错误: 'Unknown error',
+  访客: 'Guest',
+  返回站点: 'Back to site',
+  回到后台: 'Back to dashboard',
   '共 {count} 篇文章': { one: '1 article', other: '{count} articles' },
   '{count} 条评论': { one: '1 comment', other: '{count} comments' },
+  佚名: 'Anonymous',
 };
 
 export default common;

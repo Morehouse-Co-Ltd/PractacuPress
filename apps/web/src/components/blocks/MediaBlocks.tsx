@@ -6,6 +6,7 @@ import { styleDeclarations } from '../../lib/blockStyles';
 import { renderMarkdown, sanitizeHtml } from '../../lib/markdown';
 import { useAuth } from '../../lib/session';
 import { readPerformance } from '../../lib/performance';
+import { useT } from '../../lib/i18n';
 
 /**
  * 页面编排器的新媒体/文本区块。
@@ -62,6 +63,7 @@ function TextBlock({ block }: { block: BlockInstance }) {
 }
 
 function ImageBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const lazy = useLazyMedia();
   const source = blockProp<string>(block, 'source', 'url');
   const src = safeUrl(blockProp(block, 'src', ''));
@@ -81,7 +83,7 @@ function ImageBlock({ block }: { block: BlockInstance }) {
         className="pp-media-image pp-solid-image"
         data-radius={radius}
         role="img"
-        aria-label={alt || '纯色装饰块'}
+        aria-label={alt || t('纯色装饰块')}
         style={{ aspectRatio: ratio, background: color, borderRadius: radiusCss }}
       />
     );
@@ -100,7 +102,9 @@ function ImageBlock({ block }: { block: BlockInstance }) {
   }
 
   if (!src) {
-    return <div className="pp-media-empty">在右侧填写图片地址，或把图片来源切到「纯色块」。</div>;
+    return (
+      <div className="pp-media-empty">{t('在右侧填写图片地址，或把图片来源切到「纯色块」。')}</div>
+    );
   }
   const image = (
     <img
@@ -128,11 +132,12 @@ function ImageBlock({ block }: { block: BlockInstance }) {
 }
 
 function VideoBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const lazy = useLazyMedia();
   const src = safeUrl(blockProp(block, 'src', ''));
   const videoRef = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(true);
-  if (!src) return <div className="pp-media-empty">在右侧填写 MP4/WebM 地址后显示。</div>;
+  if (!src) return <div className="pp-media-empty">{t('在右侧填写 MP4/WebM 地址后显示。')}</div>;
   const poster = safeUrl(blockProp(block, 'poster', ''));
   const caption = blockProp(block, 'caption', '');
   const showControls = blockProp(block, 'show_controls', true);
@@ -166,9 +171,9 @@ function VideoBlock({ block }: { block: BlockInstance }) {
             type="button"
             className="pp-video-toggle"
             onClick={togglePlay}
-            aria-label={paused ? '播放视频' : '暂停视频'}
+            aria-label={paused ? t('播放视频') : t('暂停视频')}
           >
-            {paused ? '▶ 播放' : '❚❚ 暂停'}
+            {paused ? t('▶ 播放') : t('❚❚ 暂停')}
           </button>
         ) : null}
       </div>
@@ -178,6 +183,7 @@ function VideoBlock({ block }: { block: BlockInstance }) {
 }
 
 function WebsiteBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const lazy = useLazyMedia();
   const url = safeUrl(blockProp(block, 'url', ''));
   const title = blockProp(block, 'title', '') || domainOf(url);
@@ -186,14 +192,14 @@ function WebsiteBlock({ block }: { block: BlockInstance }) {
   const mode = blockProp<string>(block, 'mode', 'card');
   const height = Math.min(900, Math.max(240, Number(blockProp(block, 'height', 420))));
 
-  if (!url) return <div className="pp-media-empty">在右侧填写网站地址后显示。</div>;
+  if (!url) return <div className="pp-media-empty">{t('在右侧填写网站地址后显示。')}</div>;
 
   if (mode === 'iframe') {
     return (
       <div className="pp-website pp-website-iframe">
         <iframe
           src={url}
-          title={title || '嵌入网站'}
+          title={title || t('嵌入网站')}
           loading={lazy ? 'lazy' : 'eager'}
           referrerPolicy="no-referrer"
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
@@ -228,6 +234,7 @@ function WebsiteBlock({ block }: { block: BlockInstance }) {
 }
 
 function SlideshowBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const lazy = useLazyMedia();
   const slides = useMemo(() => blockItems(block, 'slides'), [block]);
   const interval = Math.min(20, Math.max(2, Number(blockProp(block, 'interval', 5)))) * 1000;
@@ -248,7 +255,7 @@ function SlideshowBlock({ block }: { block: BlockInstance }) {
     return () => window.clearInterval(timer);
   }, [autoplay, interval, paused, slides.length]);
 
-  if (!slides.length) return <div className="pp-media-empty">在右侧添加幻灯片后显示。</div>;
+  if (!slides.length) return <div className="pp-media-empty">{t('在右侧添加幻灯片后显示。')}</div>;
 
   const go = (delta: number) => {
     setIndex((current) => (current + delta + slides.length) % slides.length);
@@ -261,7 +268,7 @@ function SlideshowBlock({ block }: { block: BlockInstance }) {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       role="region"
-      aria-label="幻灯片"
+      aria-label={t('幻灯片')}
     >
       {slides.map((slide, itemIndex) => {
         const image = safeUrl(slide.image);
@@ -287,7 +294,7 @@ function SlideshowBlock({ block }: { block: BlockInstance }) {
               {slide.text ? <p>{slide.text}</p> : null}
               {link ? (
                 <a href={link} target="_blank" rel="noreferrer noopener">
-                  查看 ↗
+                  {t('查看 ↗')}
                 </a>
               ) : null}
             </div>
@@ -296,10 +303,10 @@ function SlideshowBlock({ block }: { block: BlockInstance }) {
       })}
       {slides.length > 1 ? (
         <>
-          <button type="button" className="pp-slide-nav pp-slide-prev" onClick={() => go(-1)} aria-label="上一张">
+          <button type="button" className="pp-slide-nav pp-slide-prev" onClick={() => go(-1)} aria-label={t('上一张')}>
             ‹
           </button>
-          <button type="button" className="pp-slide-nav pp-slide-next" onClick={() => go(1)} aria-label="下一张">
+          <button type="button" className="pp-slide-nav pp-slide-next" onClick={() => go(1)} aria-label={t('下一张')}>
             ›
           </button>
           <div className="pp-slide-dots">
@@ -309,7 +316,7 @@ function SlideshowBlock({ block }: { block: BlockInstance }) {
                 type="button"
                 className={`pp-slide-dot${itemIndex === index ? ' is-active' : ''}`}
                 onClick={() => setIndex(itemIndex)}
-                aria-label={`第 ${itemIndex + 1} 张`}
+                aria-label={t('第 {count} 张', { count: itemIndex + 1 })}
                 aria-current={itemIndex === index}
               />
             ))}

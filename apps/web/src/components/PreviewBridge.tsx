@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { playBlockAnimation } from '../lib/blockAnimations';
+import { useT } from '../lib/i18n';
 
 const MIME_BLOCK = 'application/x-pp-block';
 const MIME_NEW = 'application/x-pp-new';
@@ -14,6 +15,8 @@ const MIME_NEW = 'application/x-pp-new';
  * 普通前台访问不会注册任何行为；消息只接受同源来源。
  */
 export function PreviewBridge() {
+  const t = useT();
+
   useEffect(() => {
     if (window.parent === window) return;
 
@@ -35,7 +38,7 @@ export function PreviewBridge() {
       clearResize();
       const handle = document.createElement('div');
       handle.className = 'pp-resize-handle';
-      handle.title = '拖拽调整组件大小';
+      handle.title = t('拖拽调整组件大小');
       handle.addEventListener('pointerdown', (event) => {
         event.preventDefault();
         event.stopPropagation();

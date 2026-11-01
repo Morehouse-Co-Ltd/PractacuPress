@@ -12,6 +12,7 @@ import {
 } from '../lib/markdownInput';
 import type { BlockKind, InlineClosureMatch } from '../lib/markdownInput';
 import { noteBlock } from '../lib/richBlocks';
+import { useT } from '../lib/i18n';
 import { EditorToolbar } from './EditorToolbar';
 import { SlashMenu } from './SlashMenu';
 import type { SlashItem } from './SlashMenu';
@@ -124,26 +125,6 @@ function inlineClosureHtml(match: InlineClosureMatch): string {
   }
 }
 
-const INLINE_HINT: Record<InlineClosureMatch['kind'], string> = {
-  bold: '粗体',
-  italic: '斜体',
-  code: '行内代码',
-  strike: '删除线',
-  link: '链接',
-};
-
-const BLOCK_HINT: Partial<Record<BlockKind, string>> = {
-  h2: '二级标题',
-  h3: '三级标题',
-  h4: '四级标题',
-  ul: '无序列表',
-  ol: '有序列表',
-  quote: '引用',
-  code: '代码块',
-  task: '任务列表',
-  hr: '分割线',
-};
-
 export interface EditorCommands {
   heading: (level: 2 | 3 | 4) => void;
   paragraph: () => void;
@@ -175,7 +156,7 @@ export function RichTextEditor({
   revision,
   onChange,
   disabled = false,
-  placeholder = '从这里开始写。选中文字可以加粗、加链接，工具栏能插入图片、表格与分栏。',
+  placeholder,
   onRequestDialog,
 }: {
   initialHtml: string;
@@ -187,6 +168,9 @@ export function RichTextEditor({
   /** 斜杠面板里需要参数的指令：有外部处理器时交给它，否则用内置工具栏弹窗。 */
   onRequestDialog?: (kind: EditorDialogKind) => void;
 }) {
+  const t = useT();
+  const placeholderText =
+    placeholder ?? t('从这里开始写。选中文字可以加粗、加链接，工具栏能插入图片、表格与分栏。');
   const surfaceRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
   const emitted = useRef('');
@@ -312,6 +296,8 @@ export function RichTextEditor({
       bold: () => run('bold'),
       italic: () => run('italic'),
       strike: () => run('strikeThrough'),
+      // 下面两处无选区时插入的是会随稿件存盘的示例文字（`代码`、`在这里写代码`），
+      // 属于内容而不是界面文案，规则同 `lib/richBlocks.ts` 的区块构造函数：保持原文，不走 `t()`。
       inlineCode: () => {
         const selected = window.getSelection()?.toString() ?? '';
         insertHtml(`<code>${escapeHtml(selected || '代码')}</code>`);
@@ -413,8 +399,32 @@ export function RichTextEditor({
     collapseToBlock(block, 'start');
   };
 
+  /** 行内 Markdown 闭合后的提示词。 */
+  const inlineHint: Record<InlineClosureMatch['kind'], string> = {
+    bold: t('粗体'),
+    italic: t('斜体'),
+    code: t('行内代码'),
+    strike: t('删除线'),
+    link: t('链接'),
+  };
+
+  /** 块级 Markdown 前缀的提示词。 */
+  const blockHint: Partial<Record<BlockKind, string>> = {
+    h2: t('二级标题'),
+    h3: t('三级标题'),
+    h4: t('四级标题'),
+    ul: t('无序列表'),
+    ol: t('有序列表'),
+    quote: t('引用'),
+    code: t('代码块'),
+    task: t('任务列表'),
+    hr: t('分割线'),
+  };
+
   const convertedHint = (kind: BlockKind) =>
-    kind === 'hr' ? '已插入分割线' : `已转成${BLOCK_HINT[kind] ?? '富文本'}`;
+    kind === 'hr'
+      ? t('已插入分割线')
+      : t('已转成{target}', { target: blockHint[kind] ?? t('富文本') });
 
   /** 尝试把块级前缀转成富文本；返回是否发生了转换。 */
   const convertBlockPrefix = (block: HTMLElement, before: string): boolean => {
@@ -436,7 +446,7 @@ export function RichTextEditor({
         removeBlockPrefix(block, prefixLength);
         document.execCommand('insertText', false, '☐ ');
         restoreCaretAfterCommand('end', block);
-        flashHint('已转成任务列表');
+        flashHint(t('已转成任务列表'));
         return true;
       }
       return false;
@@ -519,7 +529,7 @@ export function RichTextEditor({
     selection.removeAllRanges();
     selection.addRange(range);
     document.execCommand('insertHTML', false, inlineClosureHtml(inlineMatch));
-    flashHint(`已转成${INLINE_HINT[inlineMatch.kind]}`);
+    flashHint(t('已转成{target}', { target: inlineHint[inlineMatch.kind] }));
     return true;
   };
 
@@ -587,39 +597,39 @@ export function RichTextEditor({
     switch (item.action.command) {
       case 'h2':
         commands.heading(2);
-        flashHint('已转成二级标题');
+        flashHint(t('已转成二级标题'));
         break;
       case 'h3':
         commands.heading(3);
-        flashHint('已转成三级标题');
+        flashHint(t('已转成三级标题'));
         break;
       case 'h4':
         commands.heading(4);
-        flashHint('已转成四级标题');
+        flashHint(t('已转成四级标题'));
         break;
       case 'ul':
         commands.list('ul');
-        flashHint('已转成无序列表');
+        flashHint(t('已转成无序列表'));
         break;
       case 'ol':
         commands.list('ol');
-        flashHint('已转成有序列表');
+        flashHint(t('已转成有序列表'));
         break;
       case 'quote':
         commands.quote();
-        flashHint('已转成引用');
+        flashHint(t('已转成引用'));
         break;
       case 'code':
         commands.codeBlock();
-        flashHint('已插入代码块');
+        flashHint(t('已插入代码块'));
         break;
       case 'divider':
         commands.divider();
-        flashHint('已插入分割线');
+        flashHint(t('已插入分割线'));
         break;
       case 'note':
         commands.insert(noteBlock('info'));
-        flashHint('已插入提示框');
+        flashHint(t('已插入提示框'));
         break;
     }
   };
@@ -711,10 +721,10 @@ export function RichTextEditor({
         suppressContentEditableWarning
         role="textbox"
         aria-multiline="true"
-        aria-label="正文"
+        aria-label={t('正文')}
         aria-activedescendant={slash ? (slashActiveId ?? undefined) : undefined}
         aria-controls={slash ? 'pp-slash-menu' : undefined}
-        data-placeholder={placeholder}
+        data-placeholder={placeholderText}
         data-empty="true"
         spellCheck={false}
         onInput={handleInput}
@@ -745,10 +755,10 @@ export function RichTextEditor({
         </p>
       ) : null}
       {disabled ? (
-        <p className="rich-editor-note">只读：当前状态不允许修改正文。</p>
+        <p className="rich-editor-note">{t('只读：当前状态不允许修改正文。')}</p>
       ) : (
         <p className="rich-editor-note">
-          所见即所得编辑；保存时序列化为 Markdown，公开页由服务端渲染并清洗。
+          {t('所见即所得编辑；保存时序列化为 Markdown，公开页由服务端渲染并清洗。')}
         </p>
       )}
     </div>

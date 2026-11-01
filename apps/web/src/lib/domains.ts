@@ -1,4 +1,5 @@
 import type { DomainSettings, TlsSettings, WebConfig } from '../types';
+import { t } from './i18n';
 import { settingBool, settingList, settingText } from './settings';
 
 /**
@@ -252,12 +253,12 @@ export function domainAllowed(
 /** 保存前的逐条校验；返回空串表示通过。 */
 export function domainEntryError(value: string): string {
   const trimmed = value.trim();
-  if (!trimmed) return '域名不能为空。';
-  if (/\s/.test(trimmed)) return '域名不能包含空格。';
+  if (!trimmed) return t('域名不能为空。');
+  if (/\s/.test(trimmed)) return t('域名不能包含空格。');
   const normalized = normalizeDomain(trimmed);
-  if (!normalized) return '不是有效的域名。';
+  if (!normalized) return t('不是有效的域名。');
   if (normalized.startsWith('*.') && normalized.slice(2).split('.').length < 2) {
-    return '通配域名至少需要两级，例如 *.example.com。';
+    return t('通配域名至少需要两级，例如 *.example.com。');
   }
   return '';
 }

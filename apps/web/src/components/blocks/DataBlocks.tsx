@@ -4,6 +4,7 @@ import type { BlockInstance, Content } from '../../types';
 import { blockItems, blockProp } from '../../lib/blocks';
 import { excerpt, formatDate, readingTime } from '../../lib/format';
 import { useRangeAnalytics } from '../../lib/useAnalytics';
+import { useT } from '../../lib/i18n';
 import { ContentCover } from '../Cover';
 import { useFeed } from './FeedContext';
 
@@ -24,6 +25,7 @@ function Grid({ columns, children }: { columns: number; children: ReactNode }) {
 }
 
 function StatsBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const title = blockProp(block, 'title', '');
   const columns = Math.min(4, Math.max(2, Number(blockProp(block, 'columns', 3))));
   const items = blockItems(block, 'items');
@@ -38,12 +40,12 @@ function StatsBlock({ block }: { block: BlockInstance }) {
                 {item.value || '—'}
                 <span>{item.suffix || ''}</span>
               </strong>
-              <span>{item.label || '指标'}</span>
+              <span>{item.label || t('指标')}</span>
             </div>
           ))}
         </Grid>
       ) : (
-        <div className="pp-media-empty">在右侧添加指标后显示。</div>
+        <div className="pp-media-empty">{t('在右侧添加指标后显示。')}</div>
       )}
     </section>
   );
@@ -56,6 +58,7 @@ function ChartSvg({
   points: { label: string; value: number; color: string }[];
   kind: string;
 }) {
+  const t = useT();
   const max = Math.max(...points.map((point) => point.value), 1);
   const width = 640;
   const height = 240;
@@ -68,7 +71,7 @@ function ChartSvg({
     const radius = 74;
     const circumference = 2 * Math.PI * radius;
     return (
-      <svg className="pp-chart-svg" viewBox="0 0 320 220" role="img" aria-label="环形图">
+      <svg className="pp-chart-svg" viewBox="0 0 320 220" role="img" aria-label={t('环形图')}>
         {points.map((point, index) => {
           const length = (point.value / total) * circumference;
           const circle = (
@@ -107,7 +110,7 @@ function ChartSvg({
     });
     const path = coords.map((point) => `${point.x},${point.y}`).join(' ');
     return (
-      <svg className="pp-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="折线图">
+      <svg className="pp-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t('折线图')}>
         <polyline points={path} fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinejoin="round" />
         {coords.map((point, index) => (
           <g key={index}>
@@ -120,7 +123,7 @@ function ChartSvg({
   }
 
   return (
-    <svg className="pp-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="柱状图">
+    <svg className="pp-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t('柱状图')}>
       {points.map((point, index) => {
         const barHeight = Math.max(2, (point.value / max) * (height - 42));
         const x = gap + index * (barWidth + gap);
@@ -145,6 +148,7 @@ function ChartSvg({
 }
 
 function ChartBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const title = blockProp(block, 'title', '');
   const kind = blockProp<string>(block, 'kind', 'bar');
   const source = blockProp<string>(block, 'source', 'manual');
@@ -183,11 +187,13 @@ function ChartBlock({ block }: { block: BlockInstance }) {
               ))}
             </div>
           ) : null}
-          {source === 'local_visits' ? <p className="pp-data-note">数据来自这台浏览器的站点访问记录。</p> : null}
+          {source === 'local_visits' ? (
+            <p className="pp-data-note">{t('数据来自这台浏览器的站点访问记录。')}</p>
+          ) : null}
         </>
       ) : (
         <div className="pp-media-empty">
-          这个图表还没有数据。手动填写，或把数据来源切到“本机访问统计”。
+          {t('这个图表还没有数据。手动填写，或把数据来源切到“本机访问统计”。')}
         </div>
       )}
     </section>
@@ -195,6 +201,7 @@ function ChartBlock({ block }: { block: BlockInstance }) {
 }
 
 function ListBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const title = blockProp(block, 'title', '');
   const style = blockProp<string>(block, 'style', 'plain');
   const items = blockItems(block, 'items');
@@ -209,7 +216,7 @@ function ListBlock({ block }: { block: BlockInstance }) {
                 {style === 'ordered' ? <span className="pp-list-index">{String(index + 1).padStart(2, '0')}</span> : null}
                 {style === 'icon' ? <span className="pp-list-icon">•</span> : null}
                 <span>
-                  <strong>{item.title || '条目'}</strong>
+                  <strong>{item.title || t('条目')}</strong>
                   {item.text ? <span>{item.text}</span> : null}
                 </span>
               </>
@@ -228,7 +235,7 @@ function ListBlock({ block }: { block: BlockInstance }) {
           })}
         </ol>
       ) : (
-        <div className="pp-media-empty">在右侧添加列表条目后显示。</div>
+        <div className="pp-media-empty">{t('在右侧添加列表条目后显示。')}</div>
       )}
     </section>
   );
@@ -251,16 +258,17 @@ function ArticleCard({
   showMeta: boolean;
   showTags: boolean;
 }) {
+  const t = useT();
   return (
     <Link className={`pp-article-card is-${layout}`} to={contentUrl(item)}>
       <ContentCover id={item.id} label={item.title} className="pp-article-cover" ratio="16 / 9" accent />
       <span className="pp-article-copy">
-        <span className="pp-article-kind">{item.kind === 'article' ? '文章' : '帖子'}</span>
+        <span className="pp-article-kind">{item.kind === 'article' ? t('文章') : t('帖子')}</span>
         <strong>{item.title}</strong>
         {showExcerpt && item.summary ? <span className="pp-article-excerpt">{excerpt(item.summary, 90)}</span> : null}
         {showMeta ? (
           <span className="pp-article-meta">
-            {formatDate(item.published_at ?? item.created_at)} · {readingTime(item.rendered_html)} 分钟
+            {formatDate(item.published_at ?? item.created_at)} · {t('{count} 分钟', { count: readingTime(item.rendered_html) })}
           </span>
         ) : null}
         {showTags && item.tags?.length ? (
@@ -276,6 +284,7 @@ function ArticleCard({
 }
 
 function ArticlesBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const feed = useFeed();
   const local = useRangeAnalytics('30d', false);
   const title = blockProp(block, 'title', '');
@@ -300,7 +309,7 @@ function ArticlesBlock({ block }: { block: BlockInstance }) {
     <section className="pp-data-block">
       {title ? <h2 className="pp-data-title">{title}</h2> : null}
       {feed.loading ? (
-        <div className="pp-media-empty">正在读取文章…</div>
+        <div className="pp-media-empty">{t('正在读取文章…')}</div>
       ) : items.length ? (
         <div
           className={`pp-article-grid is-${layout}`}
@@ -318,14 +327,15 @@ function ArticlesBlock({ block }: { block: BlockInstance }) {
           ))}
         </div>
       ) : (
-        <div className="pp-media-empty">还没有已发布文章。</div>
+        <div className="pp-media-empty">{t('还没有已发布文章。')}</div>
       )}
-      {source === 'popular' ? <p className="pp-data-note">热门排序来自这台浏览器的访问记录。</p> : null}
+      {source === 'popular' ? <p className="pp-data-note">{t('热门排序来自这台浏览器的访问记录。')}</p> : null}
     </section>
   );
 }
 
 function CodeBlock({ block }: { block: BlockInstance }) {
+  const t = useT();
   const html = blockProp<string>(block, 'html', '');
   const css = blockProp<string>(block, 'css', '');
   const js = blockProp<string>(block, 'js', '');
@@ -337,7 +347,7 @@ ${css}
   return (
     <iframe
       className="pp-code-frame"
-      title="自定义代码"
+      title={t('自定义代码')}
       sandbox="allow-scripts"
       srcDoc={doc}
       style={{ height }}

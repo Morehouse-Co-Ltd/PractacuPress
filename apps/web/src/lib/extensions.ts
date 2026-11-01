@@ -14,6 +14,7 @@ import {
   MAX_CUSTOM_EXTENSIONS,
   readCustomization,
 } from './customize';
+import { t } from './i18n';
 
 /**
  * 创作者扩展：清单校验、编辑器默认值、导入导出与沙箱文档拼装。
@@ -82,9 +83,9 @@ export function createExtension(partial: Partial<CustomExtension> = {}): CustomE
   const icon = clampText(partial.icon, EXTENSION_ICON_MAX).trim();
   return {
     id,
-    name: clampText(partial.name, EXTENSION_LIMITS.name).trim() || '未命名扩展',
+    name: clampText(partial.name, EXTENSION_LIMITS.name).trim() || t('未命名扩展'),
     version: clampText(partial.version, EXTENSION_LIMITS.version).trim() || '1.0.0',
-    author: clampText(partial.author, EXTENSION_LIMITS.author).trim() || '未署名',
+    author: clampText(partial.author, EXTENSION_LIMITS.author).trim() || t('未署名'),
     description: clampText(partial.description, EXTENSION_LIMITS.description),
     ...(icon ? { icon } : {}),
     enabled: partial.enabled === true,
@@ -121,27 +122,29 @@ function normalizeExtensionList(value: unknown): CustomExtension[] {
 function collectManifests(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') {
-    throw new Error('扩展文件的顶层必须是对象或数组。');
+    throw new Error(t('扩展文件的顶层必须是对象或数组。'));
   }
   const record = data as Record<string, unknown>;
   if (record.extension !== undefined) {
     if (record.format !== undefined && record.format !== EXTENSION_FILE_FORMAT) {
-      throw new Error('这不是 Practacu 扩展文件：format 应为 practacu-extension。');
+      throw new Error(t('这不是 Practacu 扩展文件：format 应为 practacu-extension。'));
     }
     if (record.version !== undefined && record.version !== EXTENSION_FILE_VERSION) {
-      throw new Error(`不支持的扩展文件版本：${String(record.version)}，当前只支持 1。`);
+      throw new Error(
+        t('不支持的扩展文件版本：{version}，当前只支持 1。', { version: String(record.version) }),
+      );
     }
     return [record.extension];
   }
   if (Array.isArray(record.extensions)) {
     if (record.format !== undefined && record.format !== EXTENSION_BUNDLE_FORMAT) {
-      throw new Error('这不是 Practacu 扩展合集文件：format 应为 practacu-extensions。');
+      throw new Error(t('这不是 Practacu 扩展合集文件：format 应为 practacu-extensions。'));
     }
     return record.extensions;
   }
   // 裸清单：没有外层包装，直接就是一个 CustomExtension。
   if (typeof record.name === 'string' || typeof record.id === 'string') return [record];
-  throw new Error('文件里没有扩展清单：需要 extension 字段、extensions 数组或 name 字段。');
+  throw new Error(t('文件里没有扩展清单：需要 extension 字段、extensions 数组或 name 字段。'));
 }
 
 /**
@@ -152,16 +155,18 @@ function collectManifests(data: unknown): unknown[] {
  */
 export function parseExtensionFile(text: string): CustomExtension[] {
   const raw = typeof text === 'string' ? text.trim() : '';
-  if (!raw) throw new Error('请先选择扩展文件，或粘贴扩展清单 JSON。');
+  if (!raw) throw new Error(t('请先选择扩展文件，或粘贴扩展清单 JSON。'));
   let data: unknown;
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error('文件不是有效的 JSON，请检查是否复制完整（包括首尾大括号）。');
+    throw new Error(t('文件不是有效的 JSON，请检查是否复制完整（包括首尾大括号）。'));
   }
   const candidates = collectManifests(data);
   if (candidates.length > MAX_IMPORTED_EXTENSIONS) {
-    throw new Error(`一次最多导入 ${MAX_IMPORTED_EXTENSIONS} 个扩展，请拆分文件后再试。`);
+    throw new Error(
+      t('一次最多导入 {count} 个扩展，请拆分文件后再试。', { count: MAX_IMPORTED_EXTENSIONS }),
+    );
   }
   const valid: unknown[] = [];
   for (const item of candidates) {
@@ -171,11 +176,15 @@ export function parseExtensionFile(text: string): CustomExtension[] {
     valid.push(item);
   }
   if (!valid.length) {
-    throw new Error(`没有可导入的扩展：每个清单都需要非空的 name（扩展名称），一次最多 ${MAX_IMPORTED_EXTENSIONS} 个。`);
+    throw new Error(
+      t('没有可导入的扩展：每个清单都需要非空的 name（扩展名称），一次最多 {count} 个。', {
+        count: MAX_IMPORTED_EXTENSIONS,
+      }),
+    );
   }
   const normalized = normalizeExtensionList(valid);
   if (!normalized.length) {
-    throw new Error('扩展清单没有通过校验：请检查 name、slots、pages 与 permissions 字段。');
+    throw new Error(t('扩展清单没有通过校验：请检查 name、slots、pages 与 permissions 字段。'));
   }
   return normalized;
 }
@@ -226,41 +235,46 @@ export function downloadJson(fileName: string, value: unknown): void {
  * 展示文案
  * ------------------------------------------------------------------ */
 
+/*
+ * 下面几张展示文案表用 getter 提供：它们在模块加载期就被页面取用，
+ * 若在加载期求值，切换语言后标签会一直停在加载时的语言上。
+ */
+
 export const SLOT_LABELS: Record<ExtensionSlot, string> = {
-  site_header: '站点页头',
-  site_footer: '站点页脚',
-  home_top: '首页顶部',
-  home_bottom: '首页底部',
-  article_top: '文章顶部',
-  article_bottom: '文章底部',
-  article_side: '文章侧栏',
-  floating: '悬浮窗',
+  get site_header() { return t('站点页头'); },
+  get site_footer() { return t('站点页脚'); },
+  get home_top() { return t('首页顶部'); },
+  get home_bottom() { return t('首页底部'); },
+  get article_top() { return t('文章顶部'); },
+  get article_bottom() { return t('文章底部'); },
+  get article_side() { return t('文章侧栏'); },
+  get floating() { return t('悬浮窗'); },
 };
 
 export const PAGE_SCOPE_LABELS: Record<ExtensionPageScope, string> = {
-  all: '全部页面',
-  home: '首页',
-  article: '文章页',
-  list: '列表页',
-  search: '搜索页',
+  get all() { return t('全部页面'); },
+  get home() { return t('首页'); },
+  get article() { return t('文章页'); },
+  get list() { return t('列表页'); },
+  get search() { return t('搜索页'); },
 };
 
 export const PERMISSION_LABELS: Record<ExtensionPermission, string> = {
-  notify: '通知',
-  open_link: '打开链接',
-  navigate: '站内跳转',
-  clipboard: '剪贴板',
-  theme: '主题信息',
-  storage: '本地存储',
+  get notify() { return t('通知'); },
+  get open_link() { return t('打开链接'); },
+  get navigate() { return t('站内跳转'); },
+  get clipboard() { return t('剪贴板'); },
+  get theme() { return t('主题信息'); },
+  get storage() { return t('本地存储'); },
 };
 
 export const PERMISSION_HINTS: Record<ExtensionPermission, string> = {
-  notify: '在宿主页面右下角弹出一条提示。',
-  open_link: '在新标签页打开 http(s) 链接。',
-  navigate: '跳转到站内路径（以 / 开头）。',
-  clipboard: '把一段文字写入访客剪贴板。',
-  theme: '读取并使用站点的颜色与字体令牌。',
-  storage: '按扩展 id 隔离的本地键值存储。',
+  get notify() { return t('在宿主页面右下角弹出一条提示。'); },
+  get open_link() { return t('在新标签页打开 http(s) 链接。'); },
+  get navigate() { return t('跳转到站内路径（以 / 开头）。'); },
+  get clipboard() { return t('把一段文字写入访客剪贴板。'); },
+  get theme() { return t('读取并使用站点的颜色与字体令牌。'); },
+  get storage() { return t('按扩展 id 隔离的本地键值存储。'); },
 };
 
 /** 挂载位置的中文名。 */

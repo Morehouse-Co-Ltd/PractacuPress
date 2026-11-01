@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { AuthProviderId, Me, Session, Site, SessionState, WebConfig } from '../types';
 import type { Backend } from './backend';
+import { useT } from './i18n';
 
 interface AuthValue extends SessionState {
   config: WebConfig;
@@ -39,6 +40,7 @@ export function AuthProvider({
   onConfigChange?: (patch: Partial<WebConfig>) => void;
   children: ReactNode;
 }) {
+  const t = useT();
   const [state, setState] = useState<SessionState>({
     status: 'loading',
     session: null,
@@ -111,12 +113,12 @@ export function AuthProvider({
   const providerLogin = useCallback(
     async (provider: AuthProviderId) => {
       if (!backend.demoProviderLogin) {
-        throw new Error('当前后端还没有实现这种登录方式。');
+        throw new Error(t('当前后端还没有实现这种登录方式。'));
       }
       const session = await backend.demoProviderLogin(provider);
       await hydrate(session);
     },
-    [backend, hydrate],
+    [backend, hydrate, t],
   );
 
   const register = useCallback(
@@ -215,7 +217,8 @@ export function AuthProvider({
 }
 
 export function useAuth(): AuthValue {
+  const t = useT();
   const value = useContext(AuthContext);
-  if (!value) throw new Error('useAuth 必须在 AuthProvider 内使用');
+  if (!value) throw new Error(t('useAuth 必须在 AuthProvider 内使用'));
   return value;
 }

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../../lib/i18n';
 import type { BuilderDevice } from '../../types';
 import { Button } from '../ui';
 
 export type PreviewDevice = BuilderDevice;
 
-const DEVICES: { key: PreviewDevice; label: string; width: string }[] = [
-  { key: 'desktop', label: '桌面', width: '100%' },
-  { key: 'tablet', label: '平板', width: '768px' },
-  { key: 'mobile', label: '手机', width: '390px' },
+const DEVICES: { key: PreviewDevice; width: string }[] = [
+  { key: 'desktop', width: '100%' },
+  { key: 'tablet', width: '768px' },
+  { key: 'mobile', width: '390px' },
 ];
 
 /**
@@ -43,6 +44,7 @@ export function PreviewFrame({
   split?: boolean;
   onSplitChange?: (enabled: boolean) => void;
 }) {
+  const t = useT();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [ownDevice, setOwnDevice] = useState<PreviewDevice>('desktop');
   const activeDevice = device ?? ownDevice;
@@ -52,6 +54,11 @@ export function PreviewFrame({
   };
   const [nonce, setNonce] = useState(0);
   const width = DEVICES.find((item) => item.key === activeDevice)?.width ?? '100%';
+  const deviceLabels: Record<PreviewDevice, string> = {
+    desktop: t('桌面'),
+    tablet: t('平板'),
+    mobile: t('手机'),
+  };
   const origin = typeof window === 'undefined' ? '' : window.location.origin;
 
   useEffect(() => {
@@ -100,7 +107,7 @@ export function PreviewFrame({
   return (
     <div className="builder-preview panel">
       <div className="builder-preview-toolbar">
-        <div className="row gap-4" role="group" aria-label="预览宽度">
+        <div className="row gap-4" role="group" aria-label={t('预览宽度')}>
           {DEVICES.map((item) => (
             <button
               key={item.key}
@@ -109,26 +116,29 @@ export function PreviewFrame({
               onClick={() => chooseDevice(item.key)}
               aria-pressed={activeDevice === item.key}
             >
-              {item.label}
+              {deviceLabels[item.key]}
             </button>
           ))}
           {onSplitChange ? (
-            <label className="builder-split-switch" title="开启后，桌面 / 平板 / 手机各用一份独立编排">
+            <label
+              className="builder-split-switch"
+              title={t('开启后，桌面 / 平板 / 手机各用一份独立编排')}
+            >
               <input
                 type="checkbox"
                 checked={!!split}
                 onChange={(event) => onSplitChange(event.target.checked)}
               />
-              <span>不同设备分割</span>
+              <span>{t('不同设备分割')}</span>
             </label>
           ) : null}
         </div>
         <div className="row gap-4">
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => setNonce((value) => value + 1)}>
-            刷新
+            {t('刷新')}
           </Button>
           <Button variant="ghost" size="sm" icon="external" onClick={() => window.open(url, '_blank', 'noopener')}>
-            新窗口
+            {t('新窗口')}
           </Button>
         </div>
       </div>
@@ -136,7 +146,7 @@ export function PreviewFrame({
         <iframe
           key={nonce}
           ref={frameRef}
-          title="真实前台预览"
+          title={t('真实前台预览')}
           src={url}
           style={{ maxWidth: width }}
           onLoad={() => {
@@ -149,7 +159,7 @@ export function PreviewFrame({
         />
       </div>
       <p className="builder-preview-hint">
-        预览就是真实前台。单击区块选中组件，双击区块或左侧结构树里的组件，视角会平滑定位到对应位置。
+        {t('预览就是真实前台。单击区块选中组件，双击区块或左侧结构树里的组件，视角会平滑定位到对应位置。')}
       </p>
     </div>
   );

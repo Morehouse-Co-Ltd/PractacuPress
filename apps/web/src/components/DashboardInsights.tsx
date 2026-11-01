@@ -5,14 +5,9 @@ import { useTaxonomy } from '../lib/useTaxonomy';
 import { useRangeAnalytics } from '../lib/useAnalytics';
 import type { AnalyticsRange } from '../lib/analytics';
 import { formatDateTime, timeAgo } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { Badge, EmptyState, Skeleton } from './ui';
 import { Icon } from './Icon';
-
-const RANGES: { value: AnalyticsRange; label: string }[] = [
-  { value: '24h', label: '24h' },
-  { value: '7d', label: '7 天' },
-  { value: '30d', label: '30 天' },
-];
 
 function contentUrl(item: Content): string {
   return `/${item.kind === 'article' ? 'a' : 'p'}/${item.id}`;
@@ -23,8 +18,14 @@ function contentUrl(item: Content): string {
  * 时间范围切换在卡片右上角，图表、来源页面与最近记录都在这里阅读。
  */
 export function DashboardAnalytics() {
+  const t = useT();
   const [range, setRange] = useState<AnalyticsRange>('7d');
   const { stats, source, loading } = useRangeAnalytics(range);
+  const ranges: { value: AnalyticsRange; label: string }[] = [
+    { value: '24h', label: '24h' },
+    { value: '7d', label: t('7 天') },
+    { value: '30d', label: t('30 天') },
+  ];
   const max = Math.max(...stats.series.map((point) => point.count), 1);
   const recent = stats.recent.slice(0, 6);
 
@@ -39,14 +40,14 @@ export function DashboardAnalytics() {
       <div className="dash-analytics-head">
         <div>
           <span className="eyebrow">Traffic</span>
-          <h2>访问记录</h2>
+          <h2>{t('访问记录')}</h2>
           <p>
-            站点前台的访问趋势、来源页面与最近记录。
-            <span className="tiny faint"> · {loading ? '更新中' : source === 'backend' ? '服务端统计' : '本机统计'}</span>
+            {t('站点前台的访问趋势、来源页面与最近记录。')}
+            <span className="tiny faint"> · {loading ? t('更新中') : source === 'backend' ? t('服务端统计') : t('本机统计')}</span>
           </p>
         </div>
-        <div className="range-switch" role="group" aria-label="统计时间范围">
-          {RANGES.map((item) => (
+        <div className="range-switch" role="group" aria-label={t('统计时间范围')}>
+          {ranges.map((item) => (
             <button
               key={item.value}
               type="button"
@@ -62,23 +63,26 @@ export function DashboardAnalytics() {
 
       <div className="dash-analytics-metrics">
         <div>
-          <span>浏览量</span>
+          <span>{t('浏览量')}</span>
           <b>{stats.views}</b>
-          <em>{RANGES.find((item) => item.value === range)?.label}</em>
+          <em>{ranges.find((item) => item.value === range)?.label}</em>
         </div>
         <div>
-          <span>独立会话</span>
+          <span>{t('独立会话')}</span>
           <b>{stats.sessions}</b>
-          <em>同一浏览器会话去重</em>
+          <em>{t('同一浏览器会话去重')}</em>
         </div>
         <div>
-          <span>实时在线</span>
+          <span>{t('实时在线')}</span>
           <b>{stats.online}</b>
-          <em>最近 5 分钟</em>
+          <em>{t('最近 5 分钟')}</em>
         </div>
       </div>
 
-      <div className="analytics-chart analytics-line-chart" aria-label={`${range} 访问量`}>
+      <div
+        className="analytics-chart analytics-line-chart"
+        aria-label={t('{range} 访问量', { range })}
+      >
         {(() => {
           const width = 640;
           const height = 190;
@@ -92,7 +96,11 @@ export function DashboardAnalytics() {
           const line = points.map((point) => `${point.x},${point.y}`).join(' ');
           const area = `M ${pad} ${height - pad} L ${points.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${width - pad} ${height - pad} Z`;
           return (
-            <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${range} 访问量折线图`}>
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              role="img"
+              aria-label={t('{range} 访问量折线图', { range })}
+            >
               {[0.25, 0.5, 0.75].map((ratio) => (
                 <line
                   key={ratio}
@@ -113,7 +121,7 @@ export function DashboardAnalytics() {
                   r={point.count ? 3 : 2}
                   className="analytics-dot"
                 >
-                  <title>{`${point.label} · ${point.count} 次`}</title>
+                  <title>{t('{label} · {count} 次', { label: point.label, count: point.count })}</title>
                 </circle>
               ))}
               {points.map((point, index) =>
@@ -137,18 +145,18 @@ export function DashboardAnalytics() {
       <div className="dash-analytics-bottom">
         <div>
           <div className="dash-mini-head">
-            <strong>热门页面</strong>
-            <span>{stats.topPages.length} 个</span>
+            <strong>{t('热门页面')}</strong>
+            <span>{t('{count} 个', { count: stats.topPages.length })}</span>
           </div>
           {stats.topPages.length === 0 ? (
-            <p className="tiny faint">这个时间范围内还没有访问。</p>
+            <p className="tiny faint">{t('这个时间范围内还没有访问。')}</p>
           ) : (
             <div className="dash-rank-list">
               {stats.topPages.slice(0, 5).map((page, index) => (
                 <div key={page.path}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <strong className="mono">{page.path}</strong>
-                  <em>{page.count} 次</em>
+                  <em>{t('{count} 次', { count: page.count })}</em>
                 </div>
               ))}
             </div>
@@ -157,11 +165,11 @@ export function DashboardAnalytics() {
 
         <div>
           <div className="dash-mini-head">
-            <strong>最近访问</strong>
-            <span>最新 6 条</span>
+            <strong>{t('最近访问')}</strong>
+            <span>{t('最新 6 条')}</span>
           </div>
           {recent.length === 0 ? (
-            <p className="tiny faint">打开站点前台后，这里会出现访问记录。</p>
+            <p className="tiny faint">{t('打开站点前台后，这里会出现访问记录。')}</p>
           ) : (
             <div className="dash-visit-list">
               {recent.map((visit) => (
@@ -180,6 +188,7 @@ export function DashboardAnalytics() {
 
 /** 仪表盘的热门文章卡片：按详情页阅读次数排序。 */
 export function DashboardPopular({ items: pool, loading }: { items: Content[]; loading: boolean }) {
+  const t = useT();
   const { taxonomy } = useTaxonomy();
   const { stats } = useRangeAnalytics('30d');
   const counts = useMemo(
@@ -203,18 +212,23 @@ export function DashboardPopular({ items: pool, loading }: { items: Content[]; l
     <section className="panel dashboard-popular">
       <div className="panel-head">
         <div>
-          <h3>热门文章</h3>
-          <p>按文章详情页阅读次数排序。</p>
+          <h3>{t('热门文章')}</h3>
+          <p>{t('按文章详情页阅读次数排序。')}</p>
         </div>
         <Link to="/articles" className="btn btn-ghost btn-sm">
-          全部 <Icon name="arrow-right" size={13} />
+          {t('全部')} <Icon name="arrow-right" size={13} />
         </Link>
       </div>
       <div className="panel-body" style={{ paddingTop: 4 }}>
         {loading ? (
           <Skeleton lines={5} />
         ) : items.length === 0 ? (
-          <EmptyState compact icon="file" title="还没有文章" body="发布内容后，这里会出现热门文章。" />
+          <EmptyState
+            compact
+            icon="file"
+            title={t('还没有文章')}
+            body={t('发布内容后，这里会出现热门文章。')}
+          />
         ) : (
           <div className="dash-popular-list">
             {items.map((item, index) => {
@@ -229,7 +243,9 @@ export function DashboardPopular({ items: pool, loading }: { items: Content[]; l
                       {timeAgo(item.published_at ?? item.created_at)}
                     </em>
                   </span>
-                  <Badge tone={index < 3 ? 'accent' : 'muted'}>{counts.get(item.id) ?? 0} 次</Badge>
+                  <Badge tone={index < 3 ? 'accent' : 'muted'}>
+                    {t('{count} 次', { count: counts.get(item.id) ?? 0 })}
+                  </Badge>
                 </Link>
               );
             })}
@@ -242,6 +258,7 @@ export function DashboardPopular({ items: pool, loading }: { items: Content[]; l
 
 /** 仪表盘的最近文章卡片，放在热门文章下方同一列。 */
 export function DashboardRecent({ items: pool, loading }: { items: Content[]; loading: boolean }) {
+  const t = useT();
   const items = useMemo(
     () =>
       [...pool]
@@ -255,18 +272,23 @@ export function DashboardRecent({ items: pool, loading }: { items: Content[]; lo
     <section className="panel dashboard-recent">
       <div className="panel-head">
         <div>
-          <h3>最近文章</h3>
-          <p>按发布时间倒序。</p>
+          <h3>{t('最近文章')}</h3>
+          <p>{t('按发布时间倒序。')}</p>
         </div>
         <Link to="/admin/content" className="btn btn-ghost btn-sm">
-          全部 <Icon name="arrow-right" size={13} />
+          {t('全部')} <Icon name="arrow-right" size={13} />
         </Link>
       </div>
       <div className="panel-body" style={{ paddingTop: 4 }}>
         {loading ? (
           <Skeleton lines={4} />
         ) : items.length === 0 ? (
-          <EmptyState compact icon="file" title="还没有文章" body="发布内容后，这里会出现最近文章。" />
+          <EmptyState
+            compact
+            icon="file"
+            title={t('还没有文章')}
+            body={t('发布内容后，这里会出现最近文章。')}
+          />
         ) : (
           <div className="dash-recent-list">
             {items.map((item) => (

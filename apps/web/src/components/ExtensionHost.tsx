@@ -7,6 +7,7 @@ import {
   type ExtensionDocumentContext,
 } from '../lib/extensions';
 import { copyText } from '../lib/clipboard';
+import { useT } from '../lib/i18n';
 import { useToast } from '../lib/toast';
 import { cx } from './ui';
 
@@ -92,6 +93,7 @@ export function ExtensionHost({
   preview = false,
   className,
 }: ExtensionHostProps) {
+  const t = useT();
   const toast = useToast();
   const navigate = useNavigate();
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -167,7 +169,13 @@ export function ExtensionHost({
       const required = MESSAGE_PERMISSION[type];
       if (required && !state.extension.permissions.includes(required)) {
         // 未授权：直接忽略，不执行、不报错，只在调试面板留一行。
-        console.debug(`[扩展 ${state.extension.name}] 未声明 ${required} 权限，已忽略 ${type} 请求。`);
+        console.debug(
+          t('[扩展 {name}] 未声明 {permission} 权限，已忽略 {type} 请求。', {
+            name: state.extension.name,
+            permission: required,
+            type,
+          }),
+        );
         return;
       }
 
@@ -193,7 +201,9 @@ export function ExtensionHost({
         case 'open': {
           const href = stringField(payload.href, 1000).trim();
           if (!/^https?:\/\//i.test(href)) {
-            console.debug(`[扩展 ${state.extension.name}] 只允许打开 http(s) 链接。`);
+            console.debug(
+              t('[扩展 {name}] 只允许打开 http(s) 链接。', { name: state.extension.name }),
+            );
             return;
           }
           window.open(href, '_blank', 'noopener');
@@ -203,7 +213,9 @@ export function ExtensionHost({
           const path = stringField(payload.path, 500).trim();
           // 只允许站内绝对路径；`//evil.com` 会被浏览器当作协议相对外链，必须排掉。
           if (!path.startsWith('/') || path.startsWith('//')) {
-            console.debug(`[扩展 ${state.extension.name}] 只能跳转到站内路径。`);
+            console.debug(
+              t('[扩展 {name}] 只能跳转到站内路径。', { name: state.extension.name }),
+            );
             return;
           }
           navigate(path);
@@ -239,7 +251,7 @@ export function ExtensionHost({
 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [navigate, toast]);
+  }, [navigate, toast, t]);
 
   // 扩展内容变化（保存后 updated_at 改变）时重挂 iframe，脚本从头执行。
   const frameKey = `${extension.id}:${extension.updated_at}`;

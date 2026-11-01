@@ -11,8 +11,10 @@ import { Avatar } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { useToast } from '../../lib/toast';
 import { useSeo, personJsonLd } from '../../lib/seo';
+import { useT } from '../../lib/i18n';
 
 export function ProfilePage() {
+  const t = useT();
   const { id = '' } = useParams();
   const { me, site, config } = useAuth();
   const { can } = usePermissions();
@@ -40,12 +42,14 @@ export function ProfilePage() {
     demo.demoFollowing().then((ids) => setFollowing(ids.includes(id)));
   }, [demo, id]);
 
-  const name = profile.data?.display_name ?? (profile.loading ? '' : '未知用户');
+  const name = profile.data?.display_name ?? (profile.loading ? '' : t('未知用户'));
   useSeo({
-    title: name || '成员',
+    title: name || t('成员'),
     path: `/u/${id}`,
     type: 'profile',
-    description: name ? `${name} 在 ${site?.name ?? '本站'} 主页与已发布内容。` : undefined,
+    description: name
+      ? t('{name} 在 {site} 主页与已发布内容。', { name, site: site?.name ?? t('本站') })
+      : undefined,
     jsonLd: name
       ? [personJsonLd({ name, url: `${window.location.origin}/u/${id}` })]
       : [],
@@ -57,9 +61,9 @@ export function ProfilePage() {
     try {
       const result = await backend.toggleFollow(id);
       setFollowing(result.active);
-      toast.push('ok', result.active ? '已关注' : '已取消关注');
+      toast.push('ok', result.active ? t('已关注') : t('已取消关注'));
     } catch (err) {
-      toast.push('error', '操作失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('操作失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -81,11 +85,11 @@ export function ProfilePage() {
         <div style={{ paddingTop: 56 }}>
           <EmptyState
             icon="user"
-            title="无法打开这个主页"
-            body="这位成员不在当前站点里，或主页还没有公开。"
+            title={t('无法打开这个主页')}
+            body={t('这位成员不在当前站点里，或主页还没有公开。')}
             action={
               <Link to="/" className="btn btn-secondary btn-sm">
-                返回首页
+                {t('返回首页')}
               </Link>
             }
           />
@@ -106,18 +110,21 @@ export function ProfilePage() {
           <h1>{user.display_name}</h1>
           <p>
             {role ? `${ROLE_LABEL[role as keyof typeof ROLE_LABEL]} · ` : ''}
-            加入于 {formatDate(user.created_at)} · {site?.name ?? '本站'}
+            {t('加入于 {date} · {site}', {
+              date: formatDate(user.created_at),
+              site: site?.name ?? t('本站'),
+            })}
           </p>
         </div>
         <div className="profile-actions">
           {own ? (
             <>
               <Link to="/notifications" className="btn btn-secondary btn-sm">
-                我的通知
+                {t('我的通知')}
               </Link>
               {can('moderate_content') || can('manage_site') ? (
                 <Link to="/admin" className="btn btn-primary btn-sm">
-                  管理后台
+                  {t('管理后台')}
                 </Link>
               ) : null}
             </>
@@ -129,11 +136,11 @@ export function ProfilePage() {
               loading={busy}
               onClick={toggleFollow}
             >
-              {following ? '已关注' : '关注'}
+              {following ? t('已关注') : t('关注')}
             </Button>
           ) : personal ? null : (
             <Link to={`/login?next=${encodeURIComponent(`/u/${id}`)}`} className="btn btn-primary btn-sm">
-              登录后关注
+              {t('登录后关注')}
             </Link>
           )}
         </div>
@@ -142,28 +149,35 @@ export function ProfilePage() {
       <div className="profile-stats">
         <div>
           <b>{authored.data?.length ?? 0}</b>
-          <span>已发布内容</span>
+          <span>{t('已发布内容')}</span>
         </div>
         <div>
           <b className="is-small">{formatDate(user.created_at)}</b>
-          <span>加入时间</span>
+          <span>{t('加入时间')}</span>
         </div>
         <div>
-          <b className="is-small">{own ? '本人' : following ? '已关注' : '未关注'}</b>
-          <span>关注状态</span>
+          <b className="is-small">{own ? t('本人') : following ? t('已关注') : t('未关注')}</b>
+          <span>{t('关注状态')}</span>
         </div>
       </div>
 
       <section className="mt-32">
         <div className="section-head">
-          <h2 style={{ fontSize: 24 }}>{own ? '我的文章与帖子' : 'TA 的文章与帖子'}</h2>
-          <span className="tiny faint">{authored.data?.length ?? 0} 篇</span>
+          <h2 style={{ fontSize: 24 }}>{own ? t('我的文章与帖子') : t('TA 的文章与帖子')}</h2>
+          <span className="tiny faint">
+            {t('{count} 篇', { count: authored.data?.length ?? 0 })}
+          </span>
         </div>
 
         {authored.loading ? (
           <Skeleton lines={5} />
         ) : !authored.data?.length ? (
-          <EmptyState compact icon="file" title="还没有已发布的内容" body="草稿与被退回的稿子不会出现在公开主页。" />
+          <EmptyState
+            compact
+            icon="file"
+            title={t('还没有已发布的内容')}
+            body={t('草稿与被退回的稿子不会出现在公开主页。')}
+          />
         ) : (
           <div className="archive-list">
             {authored.data.map((entry) => (
@@ -171,8 +185,10 @@ export function ProfilePage() {
                 <span className="archive-date">{formatDate(entry.published_at ?? entry.created_at)}</span>
                 <div>
                   <div className="row gap-8 mb-8">
-                    <span className="chip">{entry.kind === 'article' ? '文章' : '帖子'}</span>
-                    <span className="tiny faint">{readingTime(entry.rendered_html)} 分钟</span>
+                    <span className="chip">{entry.kind === 'article' ? t('文章') : t('帖子')}</span>
+                    <span className="tiny faint">
+                      {t('{count} 分钟', { count: readingTime(entry.rendered_html) })}
+                    </span>
                   </div>
                   <h2>
                     <Link to={`/${entry.kind === 'article' ? 'a' : 'p'}/${entry.id}`}>{entry.title}</Link>

@@ -6,6 +6,7 @@ import { useSeo } from '../../lib/seo';
 import { Callout } from '../../components/ui';
 import { FeedProvider, useFeed } from '../../components/blocks/FeedContext';
 import { ScreenRenderer } from '../../components/blocks';
+import { useT } from '../../lib/i18n';
 
 /**
  * 首页：不再手写任何 markup，全部由「外观 → 页面编排」里的
@@ -14,21 +15,22 @@ import { ScreenRenderer } from '../../components/blocks';
  */
 
 function FeedError() {
+  const t = useT();
   const { error, reload } = useFeed();
   if (!error) return null;
   return (
-    <Callout tone="danger" icon="alert" title="无法读取内容">
+    <Callout tone="danger" icon="alert" title={t('无法读取内容')}>
       {error instanceof ApiError && error.code === 'unauthenticated'
-        ? '这个站点设置为「登录后浏览」，请先登录。'
+        ? t('这个站点设置为「登录后浏览」，请先登录。')
         : error instanceof Error
           ? error.message
-          : '请求失败。'}
+          : t('请求失败。')}
       <div className="mt-12">
         <Link to="/login" className="btn btn-secondary btn-sm">
-          去登录
+          {t('去登录')}
         </Link>
         <button type="button" className="btn btn-ghost btn-sm" onClick={reload}>
-          重试
+          {t('重试')}
         </button>
       </div>
     </Callout>

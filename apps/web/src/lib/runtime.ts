@@ -5,6 +5,8 @@
  * 没有运行时接口，此时读取失败，界面按“启动时确定”处理。
  */
 
+import { t } from './i18n';
+
 export interface RuntimeApiInfo {
   /** 启动器是否托管了本机 API 进程。 */
   managed: boolean;
@@ -98,7 +100,7 @@ export async function changePort(
     | (Partial<PortChangeResult> & { message?: string })
     | null;
   if (!res.ok || !body?.ok) {
-    throw new Error(body?.message || '端口切换失败，请稍后再试。');
+    throw new Error(body?.message || t('端口切换失败，请稍后再试。'));
   }
   return body as PortChangeResult;
 }

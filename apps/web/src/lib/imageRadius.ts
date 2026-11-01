@@ -5,16 +5,22 @@
  * --r-lg，夜航双栏则与首屏两张 16px 大卡、卡片底座保持一致），这样换主题
  * 时图片不需要重新设置。其余档位是明确的像素值，直接在图片上内联。
  */
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
+
 export type ImageRadius = 'theme' | 'none' | 'sm' | 'md' | 'lg' | 'xl';
 
-export const IMAGE_RADIUS_OPTIONS: { value: ImageRadius; label: string }[] = [
-  { value: 'theme', label: '跟随主题' },
-  { value: 'none', label: '直角（0）' },
-  { value: 'sm', label: '小圆角（8px）' },
-  { value: 'md', label: '中圆角（12px）' },
-  { value: 'lg', label: '大圆角（16px）' },
-  { value: 'xl', label: '超大圆角（24px）' },
+const RAW_IMAGE_RADIUS_OPTIONS: { value: ImageRadius; label: string }[] = [
+  { value: 'theme', label: t('跟随主题') },
+  { value: 'none', label: t('直角（0）') },
+  { value: 'sm', label: t('小圆角（8px）') },
+  { value: 'md', label: t('中圆角（12px）') },
+  { value: 'lg', label: t('大圆角（16px）') },
+  { value: 'xl', label: t('超大圆角（24px）') },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const IMAGE_RADIUS_OPTIONS = liveCatalog(RAW_IMAGE_RADIUS_OPTIONS);
 
 const RADIUS_PX: Record<Exclude<ImageRadius, 'theme'>, string> = {
   none: '0px',

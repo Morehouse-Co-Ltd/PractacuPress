@@ -9,8 +9,10 @@ import { KIND_LABEL, formatDate, readingTime } from '../../lib/format';
 import { Badge, Button, Callout, EmptyState, Input, Skeleton } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { useSeo } from '../../lib/seo';
+import { useT } from '../../lib/i18n';
 
 export function ArchivePage({ kind }: { kind: ContentKind }) {
+  const t = useT();
   const { site, status, config } = useAuth();
   const backend = useBackend();
   const pageSize = readPerformance(config).archive_limit;
@@ -27,13 +29,13 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
     path: kind === 'article' ? '/articles' : '/posts',
     description:
       kind === 'article'
-        ? '全部已发布文章，按时间倒序。'
-        : '全部已发布帖子，按时间倒序。',
+        ? t('全部已发布文章，按时间倒序。')
+        : t('全部已发布帖子，按时间倒序。'),
     jsonLd: [
       {
         '@type': 'CollectionPage',
         name: KIND_LABEL[kind],
-        description: kind === 'article' ? '全部已发布文章' : '全部已发布帖子',
+        description: kind === 'article' ? t('全部已发布文章') : t('全部已发布帖子'),
       },
     ],
   });
@@ -72,8 +74,8 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
 
   const description =
     kind === 'article'
-      ? '较长的稿子，允许修订与审核。已发布内容冻结，修改需要重新走流程。'
-      : '短内容与讨论帖。适合一句话、一个链接，或者一次编辑部周会。';
+      ? t('较长的稿子，允许修订与审核。已发布内容冻结，修改需要重新走流程。')
+      : t('短内容与讨论帖。适合一句话、一个链接，或者一次编辑部周会。');
 
   return (
     <div className="shell">
@@ -87,27 +89,27 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="在当前列表中筛选标题"
-              aria-label="筛选"
+              placeholder={t('在当前列表中筛选标题')}
+              aria-label={t('筛选')}
             />
           </div>
           <span className="tiny muted">
-            公开阅读 · 已载入 {published.length} 篇
+            {t('公开阅读 · 已载入 {count} 篇', { count: published.length })}
           </span>
         </div>
       </header>
 
       {error ? (
         <div className="mt-24">
-          <Callout tone="danger" icon="alert" title="无法读取列表">
+          <Callout tone="danger" icon="alert" title={t('无法读取列表')}>
             {error instanceof ApiError && error.code === 'unauthenticated'
-              ? '这个站点设置为「登录后浏览」，请先登录。'
+              ? t('这个站点设置为「登录后浏览」，请先登录。')
               : error instanceof Error
                 ? error.message
-                : '请求失败。'}
+                : t('请求失败。')}
             <div className="mt-12">
               <Link to="/login" className="btn btn-secondary btn-sm">
-                去登录
+                {t('去登录')}
               </Link>
             </div>
           </Callout>
@@ -123,8 +125,8 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
           <div className="mt-24">
             <EmptyState
               icon={kind === 'article' ? 'file' : 'message'}
-              title={query ? '没有匹配的内容' : `还没有${KIND_LABEL[kind]}`}
-              body={query ? '换一个关键词试试。' : '发布后会出现在这里。'}
+              title={query ? t('没有匹配的内容') : kind === 'article' ? t('还没有文章') : t('还没有帖子')}
+              body={query ? t('换一个关键词试试。') : t('发布后会出现在这里。')}
             />
           </div>
         ) : (
@@ -135,14 +137,16 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
                 <div className="row gap-8 mb-8">
                   <Badge tone="muted">{KIND_LABEL[item.kind]}</Badge>
                   {item.status !== 'published' ? <Badge tone="warn">{item.status}</Badge> : null}
-                  <span className="tiny faint">{readingTime(item.rendered_html)} 分钟</span>
+                  <span className="tiny faint">
+                    {t('{count} 分钟', { count: readingTime(item.rendered_html) })}
+                  </span>
                 </div>
                 <h2>
                   <Link to={`/${item.kind === 'article' ? 'a' : 'p'}/${item.id}`}>{item.title}</Link>
                 </h2>
                 <p>{item.summary ?? ''}</p>
               </div>
-              <span className="archive-author">{item.author_name ?? '编辑部'}</span>
+              <span className="archive-author">{item.author_name ?? t('编辑部')}</span>
             </article>
           ))
         )}
@@ -151,25 +155,29 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
       {hasMore ? (
         <div className="feed-more">
           <Button variant="secondary" loading={loadingMore} onClick={() => void load(cursor)}>
-            加载更多
+            {t('加载更多')}
           </Button>
         </div>
       ) : items.length > 0 ? (
         <p className="center tiny faint" style={{ padding: '28px 0' }}>
-          已经到底了。共 {items.length} 篇。
+          {t('已经到底了。共 {count} 篇。', { count: items.length })}
         </p>
       ) : null}
 
       {status !== 'anonymous' ? (
         <p className="tiny faint mt-16">
-          公开列表只展示已发布内容。草稿、待审核与已归档的稿件在<Link to="/admin/content" className="text-link"> 内容库 </Link>里。
+          {t('公开列表只展示已发布内容。草稿、待审核与已归档的稿件在')}
+          <Link to="/admin/content" className="text-link">
+            {t(' 内容库 ')}
+          </Link>
+          {t('里。')}
         </p>
       ) : null}
 
       {site?.visibility_mode === 'members_only' ? (
         <div className="mt-24">
-          <Callout tone="info" icon="lock" title="这是一个仅成员可见的站点">
-            匿名访客会收到 401。登录后可以继续阅读。
+          <Callout tone="info" icon="lock" title={t('这是一个仅成员可见的站点')}>
+            {t('匿名访客会收到 401。登录后可以继续阅读。')}
           </Callout>
         </div>
       ) : null}

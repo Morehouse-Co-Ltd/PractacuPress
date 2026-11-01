@@ -5,6 +5,7 @@ import { useAuth } from '../lib/session';
 import { useBackend, isDemo } from '../lib/backend';
 import { ROLE_LABEL, VISIBILITY_LABEL, PUBLISH_LABEL } from '../lib/format';
 import { useClickOutside } from '../lib/hooks';
+import { useT } from '../lib/i18n';
 import { isPersonalSite } from '../lib/site';
 import { navPages, useCustomization, useThemeMode } from '../lib/customize';
 import {
@@ -44,6 +45,7 @@ function isNavActive(pathname: string, key: string): boolean {
 const AUTH_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 export function SiteChrome() {
+  const t = useT();
   const { me, site, status, unread, logout, config } = useAuth();
   const { customization } = useCustomization();
   const { can } = usePermissions();
@@ -258,7 +260,7 @@ export function SiteChrome() {
         style={{ '--header-blur': `${headerBlurAmount}px` } as CSSProperties}
       >
         <div className="shell header-inner">
-          <Link to="/" className="brand" aria-label={`${siteName} 首页`}>
+          <Link to="/" className="brand" aria-label={t('{site} 首页', { site: siteName })}>
             <span className="brand-mark">{Array.from(siteName)[0] ?? 'P'}</span>
             <span>
               <span className="brand-text">{siteName}</span>
@@ -267,13 +269,13 @@ export function SiteChrome() {
           </Link>
 
           {!bare && showHeaderShortcuts && socialLinks.length ? (
-            <div className="brand-shortcuts" aria-label="快捷链接">
+            <div className="brand-shortcuts" aria-label={t('快捷链接')}>
               {socialLinks.map((link) => renderSocialLink(link, true))}
             </div>
           ) : null}
 
           {bare ? null : (
-            <nav className={`site-nav nav-align-${navAlignOf(layout)}`} aria-label="主导航">
+            <nav className={`site-nav nav-align-${navAlignOf(layout)}`} aria-label={t('主导航')}>
               {navItems.map(renderNavItem)}
             </nav>
           )}
@@ -281,12 +283,12 @@ export function SiteChrome() {
           <div className="header-actions">
             {bare ? (
               <Link to="/" className="btn btn-ghost btn-sm">
-                <Icon name="arrow-left" size={14} /> 返回首页
+                <Icon name="arrow-left" size={14} /> {t('返回首页')}
               </Link>
             ) : layout.show_search ? (
               <>
                 <SiteSearch />
-                <Link to="/search" className="icon-btn search-mobile" aria-label="搜索">
+                <Link to="/search" className="icon-btn search-mobile" aria-label={t('搜索')}>
                   <Icon name="search" size={17} />
                 </Link>
               </>
@@ -295,15 +297,19 @@ export function SiteChrome() {
               <>
                 {can('write_content') ? (
                   <Link to="/admin/content/new/article" className="btn btn-primary btn-sm header-write">
-                    写文章
+                    {t('写文章')}
                   </Link>
                 ) : null}
-                <Link to="/notifications" className="icon-btn bell-wrap" aria-label={`通知${unread ? `，${unread} 条未读` : ''}`}>
+                <Link
+                  to="/notifications"
+                  className="icon-btn bell-wrap"
+                  aria-label={unread ? t('通知，{count} 条未读', { count: unread }) : t('通知')}
+                >
                   <Icon name="bell" size={18} />
                   {unread > 0 ? <span className="bell-dot" /> : null}
                 </Link>
                 {personal ? null : (
-                  <Link to="/messages" className="icon-btn header-mail" aria-label="私信">
+                  <Link to="/messages" className="icon-btn header-mail" aria-label={t('私信')}>
                     <Icon name="mail" size={18} />
                   </Link>
                 )}
@@ -325,34 +331,34 @@ export function SiteChrome() {
                         <strong>{me.user.display_name}</strong>
                         <span>
                           {ROLE_LABEL[me.role]}
-                          {demo ? ' · 演示数据' : ''}
+                          {demo ? ` · ${t('演示数据')}` : ''}
                         </span>
                       </div>
                       <Link to={`/u/${me.user.id}`} className="menu-item" role="menuitem">
-                        <Icon name="user" size={15} /> 个人主页
+                        <Icon name="user" size={15} /> {t('个人主页')}
                       </Link>
                       {can('write_content') ? (
                         <Link to="/admin/content/new/article" className="menu-item" role="menuitem">
-                          <Icon name="edit" size={15} /> 新建文章
+                          <Icon name="edit" size={15} /> {t('新建文章')}
                         </Link>
                       ) : null}
                       <Link to="/notifications" className="menu-item" role="menuitem">
-                        <Icon name="bell" size={15} /> 通知
+                        <Icon name="bell" size={15} /> {t('通知')}
                         {unread > 0 ? <span className="admin-nav-badge">{unread}</span> : null}
                       </Link>
                       {personal ? null : (
                         <Link to="/messages" className="menu-item" role="menuitem">
-                          <Icon name="mail" size={15} /> 私信
+                          <Icon name="mail" size={15} /> {t('私信')}
                         </Link>
                       )}
                       {adminAccess ? (
                         <Link to="/admin" className="menu-item" role="menuitem">
-                          <Icon name="grid" size={15} /> 管理后台
+                          <Icon name="grid" size={15} /> {t('管理后台')}
                         </Link>
                       ) : null}
                       <div className="menu-sep" />
                       <button type="button" className="menu-item" role="menuitem" onClick={handleLogout}>
-                        <Icon name="logout" size={15} /> 退出登录
+                        <Icon name="logout" size={15} /> {t('退出登录')}
                       </button>
                     </div>
                   ) : null}
@@ -361,27 +367,27 @@ export function SiteChrome() {
             ) : status === 'anonymous' ? (
               personal ? (
                 <Link to="/login" className="btn btn-ghost btn-sm">
-                  管理员登录
+                  {t('管理员登录')}
                 </Link>
               ) : (
                 <>
                   <Link to="/login" className="btn btn-ghost btn-sm">
-                    登录
+                    {t('登录')}
                   </Link>
                   <Link to="/register" className="btn btn-primary btn-sm">
-                    开始使用
+                    {t('开始使用')}
                   </Link>
                 </>
               )
             ) : (
-              <span className="spinner spinner-sm" aria-label="载入中" />
+              <span className="spinner spinner-sm" aria-label={t('载入中')} />
             )}
 
             <button
               type="button"
               className="icon-btn mode-toggle"
-              aria-label={themeMode === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
-              title={themeMode === 'dark' ? '浅色模式（Shift+D）' : '深色模式（Shift+D）'}
+              aria-label={themeMode === 'dark' ? t('切换到浅色模式') : t('切换到深色模式')}
+              title={themeMode === 'dark' ? t('浅色模式（Shift+D）') : t('深色模式（Shift+D）')}
               onClick={toggleThemeMode}
             >
               <Icon name={themeMode === 'dark' ? 'sun' : 'moon'} size={17} />
@@ -391,7 +397,7 @@ export function SiteChrome() {
               <button
                 type="button"
                 className="icon-btn mobile-only"
-                aria-label="打开菜单"
+                aria-label={t('打开菜单')}
                 aria-expanded={mobileOpen}
                 onClick={() => setMobileOpen((open) => !open)}
               >
@@ -458,18 +464,21 @@ export function SiteChrome() {
               })}
               {me ? (
                 <>
-                  <Link to={`/u/${me.user.id}`}>个人主页</Link>
-                  <Link to="/notifications">通知{unread > 0 ? `（${unread}）` : ''}</Link>
-                  {personal ? null : <Link to="/messages">私信</Link>}
-                  {adminAccess ? <Link to="/admin">管理后台</Link> : null}
-                  {can('write_content') ? <Link to="/admin/content/new/article">写文章</Link> : null}
+                  <Link to={`/u/${me.user.id}`}>{t('个人主页')}</Link>
+                  <Link to="/notifications">
+                    {t('通知')}
+                    {unread > 0 ? t('（{count}）', { count: unread }) : ''}
+                  </Link>
+                  {personal ? null : <Link to="/messages">{t('私信')}</Link>}
+                  {adminAccess ? <Link to="/admin">{t('管理后台')}</Link> : null}
+                  {can('write_content') ? <Link to="/admin/content/new/article">{t('写文章')}</Link> : null}
                 </>
               ) : personal ? (
-                <Link to="/login">管理员登录</Link>
+                <Link to="/login">{t('管理员登录')}</Link>
               ) : (
                 <>
-                  <Link to="/login">登录</Link>
-                  <Link to="/register">注册</Link>
+                  <Link to="/login">{t('登录')}</Link>
+                  <Link to="/register">{t('注册')}</Link>
                 </>
               )}
             </div>
@@ -480,7 +489,7 @@ export function SiteChrome() {
       {!bare && activeTopTab?.children?.length && activeSubStyle === 'bar' ? (
         <div className="site-subnav">
           <div className="shell">
-            <nav className="subnav-pill" aria-label={`${activeTopTab.label} 二级导航`}>
+            <nav className="subnav-pill" aria-label={t('{name} 二级导航', { name: activeTopTab.label })}>
               {activeTopTab.children.map((child) =>
                 renderSubnavChild(child, layout.nav_sub_show_icons),
               )}
@@ -506,7 +515,7 @@ export function SiteChrome() {
                 announceText
               )}
             </p>
-            <button type="button" className="announce-close" onClick={dismissAnnounce} aria-label="关闭公告">
+            <button type="button" className="announce-close" onClick={dismissAnnounce} aria-label={t('关闭公告')}>
               <Icon name="close" size={14} />
             </button>
           </div>
@@ -557,13 +566,13 @@ export function SiteChrome() {
                     ) : (
                       <>
                         <span className="chip">
-                          {site ? VISIBILITY_LABEL[site.visibility_mode] : '公开浏览'}
+                          {site ? VISIBILITY_LABEL[site.visibility_mode] : t('公开浏览')}
                         </span>
                         <span className="chip">
-                          {site ? PUBLISH_LABEL[site.publish_mode] : '审核发布'}
+                          {site ? PUBLISH_LABEL[site.publish_mode] : t('审核发布')}
                         </span>
-                        {personal ? <span className="chip">个人博客</span> : null}
-                        {demo ? <span className="chip">演示数据</span> : null}
+                        {personal ? <span className="chip">{t('个人博客')}</span> : null}
+                        {demo ? <span className="chip">{t('演示数据')}</span> : null}
                       </>
                     )}
                   </div>
@@ -595,22 +604,27 @@ export function SiteChrome() {
                       </a>
                     );
                   })}
-                  {column.links.length ? null : <span className="faint">（还没有条目）</span>}
+                  {column.links.length ? null : <span className="faint">{t('（还没有条目）')}</span>}
                 </div>
               ))}
             </div>
 
             {socialLinks.length ? (
-              <div className="footer-shortcuts" aria-label="快捷链接">
+              <div className="footer-shortcuts" aria-label={t('快捷链接')}>
                 {socialLinks.map((link) => renderSocialLink(link, false))}
               </div>
             ) : null}
 
             <div className="footer-bottom">
               <span>
-                {(layout.footer_text || '© {year} {site}. 由写作者与读者共同维护。')
-                  .replace(/\{year\}/g, String(new Date().getFullYear()))
-                  .replace(/\{site\}/g, siteName)}
+                {layout.footer_text
+                  ? layout.footer_text
+                      .replace(/\{year\}/g, String(new Date().getFullYear()))
+                      .replace(/\{site\}/g, siteName)
+                  : t('© {year} {site}. 由写作者与读者共同维护。', {
+                      year: new Date().getFullYear(),
+                      site: siteName,
+                    })}
               </span>
               <span className="row gap-10" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
                 {layout.show_filing ? (

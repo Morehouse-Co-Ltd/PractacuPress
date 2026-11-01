@@ -21,6 +21,7 @@ import { DEFAULT_ACCESS } from '../../lib/access';
 import { DEFAULT_DOMAINS } from '../../lib/domains';
 import { useTitle } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
+import { useT } from '../../lib/i18n';
 import {
   Badge,
   Button,
@@ -34,17 +35,13 @@ import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 
 const RESET_SCOPES = [
-  {
-    id: 'branding',
-    name: '品牌与页脚',
-    note: '首页首屏、品牌副标题、公告条、版权文案与自定义 CSS；导航 Tab 与页脚栏目保留。',
-  },
-  { id: 'home', name: '首页编排', note: '按当前布局变体恢复默认组件。' },
-  { id: 'pages', name: '自定义页面编排', note: '按模板重建组件；页面正文与标题保留。' },
-  { id: 'loading', name: '加载动画', note: '关闭加载画面并回到圆环预设。' },
-  { id: 'performance', name: '性能设置', note: '首屏条数、请求缓存与服务器参数回到默认。' },
-  { id: 'access', name: '访问限制', note: '关闭浏览器端保护并恢复默认阈值。' },
-  { id: 'domains', name: '域名绑定', note: '关闭白名单并清空别名、CORS 与代理地址。' },
+  { id: 'branding' },
+  { id: 'home' },
+  { id: 'pages' },
+  { id: 'loading' },
+  { id: 'performance' },
+  { id: 'access' },
+  { id: 'domains' },
 ] as const;
 
 type ResetScope = (typeof RESET_SCOPES)[number]['id'];
@@ -65,9 +62,10 @@ function HeroPreview({
   fallbackLede: string;
   bento: boolean;
 }) {
+  const t = useT();
   return (
     <div className={`hero-preview${bento ? ' is-bento' : ''}`}>
-      <span className="hero-preview-tag">{bento ? '夜航 · 左侧黑卡' : '原版 · 首屏'}</span>
+      <span className="hero-preview-tag">{bento ? t('夜航 · 左侧黑卡') : t('原版 · 首屏')}</span>
       <p className="hero-kicker">{kicker.trim() || fallbackKicker}</p>
       <p className="hero-preview-title">
         {(title.trim() ? title : DEFAULT_HERO.title).split('\n').map((line, index) => (
@@ -84,13 +82,14 @@ function HeroPreview({
         ))}
       </p>
       <p className="hero-preview-lede">{lede.trim() || fallbackLede}</p>
-      {bento ? <span className="hero-preview-search">搜索文章、笔记或标签</span> : null}
+      {bento ? <span className="hero-preview-search">{t('搜索文章、笔记或标签')}</span> : null}
     </div>
   );
 }
 
 export function AppearancePage() {
-  useTitle('外观');
+  const t = useT();
+  useTitle(t('外观'));
   const { site, updateConfig } = useAuth();
   const { customization, update } = useCustomization();
   const toast = useToast();
@@ -111,12 +110,26 @@ export function AppearancePage() {
   const layout = customization.layout;
   const bento = layout.variant === 'bento';
   const themeBundle = activeTheme(customization.active_theme, customization.themes ?? []);
-  const themeName = themeBundle?.name ?? '自定义主题';
+  const themeName = themeBundle?.name ?? t('自定义主题');
   const sections = themeSections(themeBundle);
   const hiddenSections = APPEARANCE_SECTIONS.filter((item) => !sections.includes(item.id));
   const nav = siteNavTabs(layout, navPages(customization));
   const enabledCount = EXTENSIONS.filter((item) => customization.extensions[item.id]).length;
   const setLayout = (patch: Partial<typeof layout>) => update({ layout: { ...layout, ...patch } });
+
+  /** 重置范围的名称与说明属于界面文案，取值时翻译。 */
+  const scopeCopy: Record<ResetScope, { name: string; note: string }> = {
+    branding: {
+      name: t('品牌与页脚'),
+      note: t('首页首屏、品牌副标题、公告条、版权文案与自定义 CSS；导航 Tab 与页脚栏目保留。'),
+    },
+    home: { name: t('首页编排'), note: t('按当前布局变体恢复默认组件。') },
+    pages: { name: t('自定义页面编排'), note: t('按模板重建组件；页面正文与标题保留。') },
+    loading: { name: t('加载动画'), note: t('关闭加载画面并回到圆环预设。') },
+    performance: { name: t('性能设置'), note: t('首屏条数、请求缓存与服务器参数回到默认。') },
+    access: { name: t('访问限制'), note: t('关闭浏览器端保护并恢复默认阈值。') },
+    domains: { name: t('域名绑定'), note: t('关闭白名单并清空别名、CORS 与代理地址。') },
+  };
 
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
@@ -125,7 +138,7 @@ export function AppearancePage() {
       const text = await file.text();
       setPendingImport(parseCustomizationFile(text));
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : '无法读取这个文件。');
+      setImportError(err instanceof Error ? err.message : t('无法读取这个文件。'));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
     }
@@ -134,7 +147,7 @@ export function AppearancePage() {
   const applyImport = () => {
     if (!pendingImport) return;
     update(pendingImport);
-    toast.push('ok', '配置已导入', '外观、页面与扩展都已替换。');
+    toast.push('ok', t('配置已导入'), t('外观、页面与扩展都已替换。'));
     setPendingImport(null);
   };
 
@@ -167,24 +180,24 @@ export function AppearancePage() {
     if (resetScopes.access) updateConfig({ access: DEFAULT_ACCESS });
     if (resetScopes.domains) updateConfig({ domains: DEFAULT_DOMAINS });
     setResetOpen(false);
-    toast.push('ok', '已恢复选中的默认设置', '文章、页面正文、评论、账户与媒体都没有变化。');
+    toast.push('ok', t('已恢复选中的默认设置'), t('文章、页面正文、评论、账户与媒体都没有变化。'));
   };
 
   const selectedScopeCount = Object.values(resetScopes).filter(Boolean).length;
 
   return (
-    <RoleGate capability="manage_site" need="站点管理员">
+    <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
         <div>
-          <h1>外观</h1>
+          <h1>{t('外观')}</h1>
           <p>
-            首页首屏、品牌、公告条与自定义 CSS。导航 Tab 与页脚栏目在「主题设置」里；
-            显示哪些分区由当前主题决定。
+            {t('首页首屏、品牌、公告条与自定义 CSS。导航 Tab 与页脚栏目在「主题设置」里；')}{' '}
+            {t('显示哪些分区由当前主题决定。')}
           </p>
         </div>
         <div className="admin-page-actions">
           <Link to="/admin/themes" className="btn btn-secondary btn-sm">
-            <Icon name="palette" size={14} /> 主题设置
+            <Icon name="palette" size={14} /> {t('主题设置')}
           </Link>
           <Button
             variant="secondary"
@@ -192,13 +205,13 @@ export function AppearancePage() {
             icon="download"
             onClick={() => downloadCustomization(customization, site?.name ?? 'Practacu Press')}
           >
-            导出配置
+            {t('导出配置')}
           </Button>
           <Link to="/admin/theme" className="btn btn-primary btn-sm">
-            <Icon name="layers" size={14} /> 页面编排
+            <Icon name="layers" size={14} /> {t('页面编排')}
           </Link>
           <Button variant="secondary" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
-            预览站点
+            {t('预览站点')}
           </Button>
         </div>
       </div>
@@ -209,28 +222,36 @@ export function AppearancePage() {
             <Icon name="palette" size={16} />
           </span>
           <div>
-            <strong>当前主题「{themeName}」{bento ? ' · 双栏' : ' · 单栏'}</strong>
+            <strong>
+              {t('当前主题「{name}」', { name: themeName })}
+              {bento ? t(' · 双栏') : t(' · 单栏')}
+            </strong>
             <p>
-              这套主题启用了 {sections.length}/{APPEARANCE_SECTIONS.length} 个外观分区
-              {hiddenSections.length
-                ? `；未启用的分区（${hiddenSections.map((item) => item.name).join('、')}）不在本页显示。`
-                : '，本页显示全部设置。'}
+              {t('这套主题启用了 {enabled}/{total} 个外观分区{tail}', {
+                enabled: sections.length,
+                total: APPEARANCE_SECTIONS.length,
+                tail: hiddenSections.length
+                  ? t('；未启用的分区（{names}）不在本页显示。', {
+                      names: hiddenSections.map((item) => item.name).join('、'),
+                    })
+                  : t('，本页显示全部设置。'),
+              })}
             </p>
           </div>
         </div>
         <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
           <Link to="/admin/themes" className="btn btn-secondary btn-sm">
-            换主题 / 改绑定
+            {t('换主题 / 改绑定')}
           </Link>
           <Link to="/admin/themes" className="btn btn-ghost btn-sm">
-            导航与页脚
+            {t('导航与页脚')}
           </Link>
         </div>
       </div>
 
       {importError ? (
         <div className="mb-20">
-          <Callout tone="danger" icon="alert" title="导入失败">
+          <Callout tone="danger" icon="alert" title={t('导入失败')}>
             {importError}
           </Callout>
         </div>
@@ -242,42 +263,44 @@ export function AppearancePage() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>首页首屏</h3>
+                  <h3>{t('首页首屏')}</h3>
                   <p>
                     {bento
-                      ? '夜航会把它放进左侧黑卡：眉题在上、标题两行、副标题在下；区块自己填了标题时以区块为准。'
-                      : '首页最上方那句话。留空时使用站点名称与简介。'}
+                      ? t('夜航会把它放进左侧黑卡：眉题在上、标题两行、副标题在下；区块自己填了标题时以区块为准。')
+                      : t('首页最上方那句话。留空时使用站点名称与简介。')}
                   </p>
                 </div>
                 <button type="button" className="link-btn" onClick={() => setLayout({ hero: DEFAULT_HERO })}>
-                  恢复默认
+                  {t('恢复默认')}
                 </button>
               </div>
               <div className="panel-body">
                 <div className="form-stack">
                   <Field
-                    label="眉题"
+                    label={t('眉题')}
                     htmlFor="layout-hero-kicker"
                     aside={`${layout.hero.kicker.length}/80`}
                     hint={
                       bento
-                        ? '显示在黑卡标题上方的小字。留空则不显示。'
-                        : '标题上方的小字。留空显示「站点名 · 独立出版」。'
+                        ? t('显示在黑卡标题上方的小字。留空则不显示。')
+                        : t('标题上方的小字。留空显示「站点名 · 独立出版」。')
                     }
                   >
                     <Input
                       id="layout-hero-kicker"
                       value={layout.hero.kicker}
                       maxLength={80}
-                      placeholder={bento ? '独立出版 · 每周更新' : 'Practacu Press · 独立出版'}
+                      placeholder={bento ? t('独立出版 · 每周更新') : t('Practacu Press · 独立出版')}
                       onChange={(event) => setLayout({ hero: { ...layout.hero, kicker: event.target.value } })}
                     />
                   </Field>
                   <Field
-                    label="主标题"
+                    label={t('主标题')}
                     htmlFor="layout-hero-title"
                     aside={`${layout.hero.title.length}/200`}
-                    hint={`换行即换行；用 *文字* 标记斜体强调色，${bento ? '夜航最多显示 2 行。' : '最多 4 行。'}`}
+                    hint={t('换行即换行；用 *文字* 标记斜体强调色，{limit}', {
+                      limit: bento ? t('夜航最多显示 2 行。') : t('最多 4 行。'),
+                    })}
                   >
                     <Textarea
                       id="layout-hero-title"
@@ -289,10 +312,10 @@ export function AppearancePage() {
                     />
                   </Field>
                   <Field
-                    label="副标题"
+                    label={t('副标题')}
                     htmlFor="layout-hero-lede"
                     aside={`${layout.hero.lede.length}/300`}
-                    hint={bento ? '显示在黑卡标题下方；留空则不显示。' : '留空显示站点简介。'}
+                    hint={bento ? t('显示在黑卡标题下方；留空则不显示。') : t('留空显示站点简介。')}
                   >
                     <Textarea
                       id="layout-hero-lede"
@@ -307,9 +330,11 @@ export function AppearancePage() {
                     kicker={layout.hero.kicker}
                     title={layout.hero.title}
                     lede={layout.hero.lede}
-                    fallbackKicker={bento ? '' : `${site?.name ?? 'Practacu Press'} · 独立出版`}
+                    fallbackKicker={
+                      bento ? '' : t('{name} · 独立出版', { name: site?.name ?? 'Practacu Press' })
+                    }
                     fallbackLede={
-                      site?.description || '一间小而安静的编辑部。写作者拥有自己的稿子，读者被当作邻居。'
+                      site?.description || t('一间小而安静的编辑部。写作者拥有自己的稿子，读者被当作邻居。')
                     }
                     bento={bento}
                   />
@@ -322,13 +347,13 @@ export function AppearancePage() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>品牌与导航</h3>
-                  <p>品牌名下方那行小字；页头显示哪些入口由主题设置里的 Tab 决定。</p>
+                  <h3>{t('品牌与导航')}</h3>
+                  <p>{t('品牌名下方那行小字；页头显示哪些入口由主题设置里的 Tab 决定。')}</p>
                 </div>
               </div>
               <div className="panel-body">
                 <div className="form-stack">
-                  <Field label="品牌副标题" htmlFor="layout-brand" hint="留空则显示默认英文副标题。">
+                  <Field label={t('品牌副标题')} htmlFor="layout-brand" hint={t('留空则显示默认英文副标题。')}>
                     <Input
                       id="layout-brand"
                       value={layout.brand_sub}
@@ -339,8 +364,8 @@ export function AppearancePage() {
 
                   <div className="nav-summary">
                     <p className="field-label">
-                      页头 Tab
-                      <Badge tone={nav.auto ? 'muted' : 'accent'}>{nav.auto ? '自动' : '自定义'}</Badge>
+                      {t('页头 Tab')}
+                      <Badge tone={nav.auto ? 'muted' : 'accent'}>{nav.auto ? t('自动') : t('自定义')}</Badge>
                     </p>
                     <div className="chrome-preview">
                       {nav.tabs.length ? (
@@ -350,16 +375,19 @@ export function AppearancePage() {
                           </span>
                         ))
                       ) : (
-                        <span className="tiny faint">没有 Tab，页头只显示品牌与操作区。</span>
+                        <span className="tiny faint">{t('没有 Tab，页头只显示品牌与操作区。')}</span>
                       )}
                     </div>
                     <p className="field-hint">
-                      想改文字、换页面或加外链，去
-                      <Link to="/admin/themes" className="text-link"> 主题设置 → 导航与页脚 </Link>
-                      ；自定义页面勾选“加入站点导航”后会自动出现在自动模式的 Tab 里。
+                      {t('想改文字、换页面或加外链，去')}{' '}
+                      <Link to="/admin/themes" className="text-link">
+                        {' '}
+                        {t('主题设置 → 导航与页脚')}{' '}
+                      </Link>
+                      {t('；自定义页面勾选“加入站点导航”后会自动出现在自动模式的 Tab 里。')}
                     </p>
                     <p className="field-hint">
-                      页脚的栏目、条目、版权文案与备案信息同样在「主题设置 → 导航与页脚」。
+                      {t('页脚的栏目、条目、版权文案与备案信息同样在「主题设置 → 导航与页脚」。')}
                     </p>
                   </div>
                 </div>
@@ -371,28 +399,32 @@ export function AppearancePage() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>公告条</h3>
-                  <p>开启「站点公告条」扩展后，这段文字会显示在页头下方，读者可以关闭。</p>
+                  <h3>{t('公告条')}</h3>
+                  <p>{t('开启「站点公告条」扩展后，这段文字会显示在页头下方，读者可以关闭。')}</p>
                 </div>
                 <Badge tone={customization.extensions.announcement ? 'ok' : 'muted'}>
-                  {customization.extensions.announcement ? '已开启' : '未开启'}
+                  {customization.extensions.announcement ? t('已开启') : t('未开启')}
                 </Badge>
               </div>
               <div className="panel-body">
                 <div className="form-stack">
-                  <Field label="公告内容" htmlFor="layout-announce" aside={`${layout.announcement.length}/240`}>
+                  <Field
+                    label={t('公告内容')}
+                    htmlFor="layout-announce"
+                    aside={`${layout.announcement.length}/240`}
+                  >
                     <Input
                       id="layout-announce"
                       value={layout.announcement}
                       maxLength={240}
-                      placeholder="例如：本周六晚八点，线上读稿会。"
+                      placeholder={t('例如：本周六晚八点，线上读稿会。')}
                       onChange={(event) => setLayout({ announcement: event.target.value })}
                     />
                   </Field>
                   <Field
-                    label="公告链接"
+                    label={t('公告链接')}
                     htmlFor="layout-announce-link"
-                    hint="可选。支持站内路径（/about）或 http(s) 链接。"
+                    hint={t('可选。支持站内路径（/about）或 http(s) 链接。')}
                   >
                     <Input
                       id="layout-announce-link"
@@ -404,8 +436,12 @@ export function AppearancePage() {
                   </Field>
                   {!customization.extensions.announcement ? (
                     <p className="field-hint">
-                      还没有开启：去<Link to="/admin/extensions" className="text-link"> 扩展 </Link>
-                      打开“站点公告条”。
+                      {t('还没有开启：去')}
+                      <Link to="/admin/extensions" className="text-link">
+                        {' '}
+                        {t('扩展')}{' '}
+                      </Link>
+                      {t('打开“站点公告条”。')}
                     </p>
                   ) : null}
                 </div>
@@ -417,11 +453,13 @@ export function AppearancePage() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>自定义 CSS</h3>
-                  <p>只在前台生效，适合微调间距、字体或加一条自己的规则。</p>
+                  <h3>{t('自定义 CSS')}</h3>
+                  <p>{t('只在前台生效，适合微调间距、字体或加一条自己的规则。')}</p>
                 </div>
                 <Badge tone={customization.custom_css ? 'accent' : 'muted'}>
-                  {customization.custom_css ? `${customization.custom_css.length} 字符` : '未使用'}
+                  {customization.custom_css
+                    ? t('{count} 字符', { count: customization.custom_css.length })
+                    : t('未使用')}
                 </Badge>
               </div>
               <div className="panel-body">
@@ -431,20 +469,21 @@ export function AppearancePage() {
                   maxLength={20000}
                   style={{ minHeight: 180, fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.7 }}
                   placeholder={'.site-header { border-bottom-width: 2px; }'}
-                  aria-label="自定义 CSS"
+                  aria-label={t('自定义 CSS')}
                 />
-                <Callout tone="warn" icon="alert" title="只粘贴自己信任的 CSS">
-                  自定义 CSS 不会进入管理后台，也不会执行脚本。不要粘贴来路不明的样式；外部 url() 会把访问者IP暴露给第三方。
+                <Callout tone="warn" icon="alert" title={t('只粘贴自己信任的 CSS')}>
+                  {t('自定义 CSS 不会进入管理后台，也不会执行脚本。不要粘贴来路不明的样式；外部 url() 会把访问者IP暴露给第三方。')}
                 </Callout>
               </div>
             </section>
           ) : null}
 
           {hiddenSections.length ? (
-            <Callout tone="info" icon="palette" title="当前主题没有启用全部外观分区">
-              被主题隐藏的分区：
-              {hiddenSections.map((item) => item.name).join('、')}。数据没有丢失，
-              想让它们回来可以在「主题设置 → 主题绑定的外观功能」里勾选。
+            <Callout tone="info" icon="palette" title={t('当前主题没有启用全部外观分区')}>
+              {t('被主题隐藏的分区：')}{' '}
+              {hiddenSections.map((item) => item.name).join('、')}
+              {t('。数据没有丢失，')}{' '}
+              {t('想让它们回来可以在「主题设置 → 主题绑定的外观功能」里勾选。')}
             </Callout>
           ) : null}
 
@@ -454,48 +493,54 @@ export function AppearancePage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>品牌与页面</h3>
-                <p>配色、版式、导航与页脚都在主题设置里。</p>
+                <h3>{t('品牌与页面')}</h3>
+                <p>{t('配色、版式、导航与页脚都在主题设置里。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <div className="mini-list">
                 <div className="mini-row">
-                  <span className="mini-label">当前主题</span>
+                  <span className="mini-label">{t('当前主题')}</span>
                   <span className="mini-value">{themeName}</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">当前版式</span>
-                  <span className="mini-value">{bento ? '双栏' : '单栏'}</span>
+                  <span className="mini-label">{t('当前版式')}</span>
+                  <span className="mini-value">{bento ? t('双栏') : t('单栏')}</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">外观分区</span>
+                  <span className="mini-label">{t('外观分区')}</span>
                   <span className="mini-value">
                     {sections.length}/{APPEARANCE_SECTIONS.length}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">扩展</span>
-                  <span className="mini-value">{enabledCount} / {EXTENSIONS.length} 已开启</span>
+                  <span className="mini-label">{t('扩展')}</span>
+                  <span className="mini-value">
+                    {t('{enabled} / {total} 已开启', { enabled: enabledCount, total: EXTENSIONS.length })}
+                  </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">自定义页面</span>
-                  <span className="mini-value">{customization.pages.length} 个</span>
+                  <span className="mini-label">{t('自定义页面')}</span>
+                  <span className="mini-value">
+                    {t('{count} 个', { count: customization.pages.length })}
+                  </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">备案信息</span>
-                  <span className="mini-value">{layout.icp || layout.police ? '已填写' : '未填写'}</span>
+                  <span className="mini-label">{t('备案信息')}</span>
+                  <span className="mini-value">
+                    {layout.icp || layout.police ? t('已填写') : t('未填写')}
+                  </span>
                 </div>
               </div>
               <div className="row gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
                 <Link to="/admin/themes" className="btn btn-secondary btn-sm">
-                  主题设置
+                  {t('主题设置')}
                 </Link>
                 <Link to="/admin/extensions" className="btn btn-ghost btn-sm">
-                  管理扩展
+                  {t('管理扩展')}
                 </Link>
                 <Link to="/admin/pages" className="btn btn-ghost btn-sm">
-                  管理页面
+                  {t('管理页面')}
                 </Link>
               </div>
             </div>
@@ -504,14 +549,14 @@ export function AppearancePage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>导入与导出</h3>
-                <p>把外观、页面与扩展搬到另一台浏览器。</p>
+                <h3>{t('导入与导出')}</h3>
+                <p>{t('把外观、页面与扩展搬到另一台浏览器。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <p className="tiny faint" style={{ lineHeight: 1.8 }}>
-                导出的 JSON 包含主题、导航 Tab、页脚栏目、自定义页面与扩展开关，
-                不包含账户、文章或图片。
+                {t('导出的 JSON 包含主题、导航 Tab、页脚栏目、自定义页面与扩展开关，')}{' '}
+                {t('不包含账户、文章或图片。')}
               </p>
               <div className="row gap-8 mt-12" style={{ flexWrap: 'wrap' }}>
                 <Button
@@ -520,10 +565,10 @@ export function AppearancePage() {
                   icon="download"
                   onClick={() => downloadCustomization(customization, site?.name ?? 'Practacu Press')}
                 >
-                  导出 JSON
+                  {t('导出 JSON')}
                 </Button>
                 <Button variant="secondary" size="sm" icon="upload" onClick={() => fileRef.current?.click()}>
-                  导入
+                  {t('导入')}
                 </Button>
                 <input
                   ref={fileRef}
@@ -534,19 +579,19 @@ export function AppearancePage() {
                 />
               </div>
               <p className="tiny faint mt-12">
-                导入会覆盖当前的外观、页面与扩展；账户与内容不受影响。
+                {t('导入会覆盖当前的外观、页面与扩展；账户与内容不受影响。')}
               </p>
             </div>
           </section>
 
           <div className="danger-zone">
-            <h3>恢复默认站点设置</h3>
+            <h3>{t('恢复默认站点设置')}</h3>
             <p>
-              可以只重置品牌文案、首页/页面编排、加载动画、性能、访问限制或域名绑定。
-              文章、页面正文、评论、账户与媒体不会被删除。
+              {t('可以只重置品牌文案、首页/页面编排、加载动画、性能、访问限制或域名绑定。')}{' '}
+              {t('文章、页面正文、评论、账户与媒体不会被删除。')}
             </p>
             <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={() => setResetOpen(true)}>
-              选择范围
+              {t('选择范围')}
             </Button>
           </div>
         </aside>
@@ -554,33 +599,35 @@ export function AppearancePage() {
 
       <Modal
         open={!!pendingImport}
-        title="导入这份配置？"
-        description="当前外观、页面与扩展会被文件里的内容替换。"
+        title={t('导入这份配置？')}
+        description={t('当前外观、页面与扩展会被文件里的内容替换。')}
         onClose={() => setPendingImport(null)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setPendingImport(null)}>
-              取消
+              {t('取消')}
             </Button>
-            <Button onClick={applyImport}>替换并保存</Button>
+            <Button onClick={applyImport}>{t('替换并保存')}</Button>
           </>
         }
       >
         <Callout tone="warn" icon="alert">
-          这是一次整体替换：导入文件里的页面列表会覆盖本地页面。请确认已经导出备份。
+          {t('这是一次整体替换：导入文件里的页面列表会覆盖本地页面。请确认已经导出备份。')}
         </Callout>
       </Modal>
 
       <Modal
         open={resetOpen}
-        title="恢复哪些默认设置？"
-        description={`已选择 ${selectedScopeCount} 项。只影响设置，不删除内容、账户或媒体。`}
+        title={t('恢复哪些默认设置？')}
+        description={t('已选择 {count} 项。只影响设置，不删除内容、账户或媒体。', {
+          count: selectedScopeCount,
+        })}
         onClose={() => setResetOpen(false)}
         width={640}
         footer={
           <>
             <Button variant="ghost" onClick={() => setResetOpen(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button
               variant="danger"
@@ -588,7 +635,7 @@ export function AppearancePage() {
               onClick={applyReset}
               icon="refresh"
             >
-              恢复选中项
+              {t('恢复选中项')}
             </Button>
           </>
         }
@@ -606,7 +653,7 @@ export function AppearancePage() {
                 })
               }
             >
-              全选
+              {t('全选')}
             </button>
             <button
               type="button"
@@ -619,7 +666,7 @@ export function AppearancePage() {
                 })
               }
             >
-              清空
+              {t('清空')}
             </button>
           </div>
           <div className="reset-scope-grid">
@@ -636,14 +683,14 @@ export function AppearancePage() {
                   }
                 />
                 <span>
-                  <strong>{scope.name}</strong>
-                  <em>{scope.note}</em>
+                  <strong>{scopeCopy[scope.id].name}</strong>
+                  <em>{scopeCopy[scope.id].note}</em>
                 </span>
               </label>
             ))}
           </div>
-          <Callout tone="warn" icon="alert" title="恢复后仍可手动重新配置">
-            这个操作不会备份；需要保留当前外观时，请先用右侧「导出 JSON」。
+          <Callout tone="warn" icon="alert" title={t('恢复后仍可手动重新配置')}>
+            {t('这个操作不会备份；需要保留当前外观时，请先用右侧「导出 JSON」。')}
           </Callout>
         </div>
       </Modal>

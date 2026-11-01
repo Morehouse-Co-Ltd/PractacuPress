@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Icon } from '../Icon';
+import { useT } from '../../lib/i18n';
 import { clampPanelPosition, snapPanelPosition, type PanelPosition } from '../../lib/panelPosition';
 
 /**
@@ -82,6 +83,7 @@ export function FloatingPanel({
   aside?: ReactNode;
   children: ReactNode;
 }) {
+  const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -246,7 +248,7 @@ export function FloatingPanel({
     >
       <div
         className="builder-float-head"
-        title="按住拖动面板；拖到左右边缘会自动吸附，双击复位"
+        title={t('按住拖动面板；拖到左右边缘会自动吸附，双击复位')}
         onPointerDown={beginDrag}
         onDoubleClick={(event) => {
           if ((event.target as HTMLElement).closest('button, a')) return;
@@ -259,7 +261,12 @@ export function FloatingPanel({
         <span className="builder-float-title">{title}</span>
         <span className="builder-float-actions">
           {aside}
-          <button type="button" className="builder-float-close" onClick={onClose} aria-label={`收起${title}面板`}>
+          <button
+            type="button"
+            className="builder-float-close"
+            onClick={onClose}
+            aria-label={t('收起{title}面板', { title })}
+          >
             <Icon name="close" size={14} />
           </button>
         </span>

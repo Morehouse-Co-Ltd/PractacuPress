@@ -5,6 +5,8 @@ import type {
   WebConfig,
 } from '../types';
 import type { IconName } from '../components/Icon';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 
 /**
  * 邮箱之外的登录方式（手机验证码、Google、GitHub、微信）。
@@ -38,50 +40,50 @@ export interface ProviderMeta {
   endpoint: string;
 }
 
-export const PROVIDER_META: ProviderMeta[] = [
+const RAW_PROVIDER_META: ProviderMeta[] = [
   {
     id: 'phone',
-    name: '手机验证码',
+    name: t('手机验证码'),
     icon: 'message',
-    summary: '用手机号与短信验证码登录。',
-    detail: '需要短信服务商、签名与模板，密钥只存服务端。',
+    summary: t('用手机号与短信验证码登录。'),
+    detail: t('需要短信服务商、签名与模板，密钥只存服务端。'),
     fields: [
       {
         key: 'note',
-        label: '短信服务商',
-        placeholder: '阿里云短信 / 腾讯云短信',
+        label: t('短信服务商'),
+        placeholder: t('阿里云短信 / 腾讯云短信'),
       },
       {
         key: 'client_id',
-        label: '短信签名',
+        label: t('短信签名'),
         placeholder: 'Practacu',
         required: true,
       },
       {
         key: 'extra',
-        label: '模板编号',
+        label: t('模板编号'),
         placeholder: 'SMS_000000',
         required: true,
-        hint: '验证码模板，例如「您的验证码是 ${code}，5 分钟内有效」。',
+        hint: t('验证码模板，例如「您的验证码是 ${code}，5 分钟内有效」。'),
       },
     ],
     secretLabel: 'AccessSecret',
-    secretPlaceholder: '短信服务商 AccessSecret',
+    secretPlaceholder: t('短信服务商 AccessSecret'),
     endpoint: 'POST /api/v1/auth/phone/code · POST /api/v1/auth/phone/verify',
   },
   {
     id: 'google',
     name: 'Google',
     icon: 'globe',
-    summary: '用 Google 账户授权登录。',
-    detail: '需要 OAuth 客户端与已登记的回调地址。',
+    summary: t('用 Google 账户授权登录。'),
+    detail: t('需要 OAuth 客户端与已登记的回调地址。'),
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: '000000000000-xxxx.apps.googleusercontent.com', required: true },
       {
         key: 'redirect_uri',
-        label: '回调地址',
+        label: t('回调地址'),
         placeholder: 'https://press.example.com/api/v1/auth/oauth/google/callback',
-        hint: '必须与 Google Cloud Console 里登记的完全一致。',
+        hint: t('必须与 Google Cloud Console 里登记的完全一致。'),
       },
       { key: 'extra', label: 'Scope', placeholder: 'openid email profile' },
     ],
@@ -93,13 +95,13 @@ export const PROVIDER_META: ProviderMeta[] = [
     id: 'github',
     name: 'GitHub',
     icon: 'code',
-    summary: '用 GitHub 账户授权登录。',
-    detail: '适合技术站点；需要 OAuth App。',
+    summary: t('用 GitHub 账户授权登录。'),
+    detail: t('适合技术站点；需要 OAuth App。'),
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'Iv1.xxxxxxxxxxxx', required: true },
       {
         key: 'redirect_uri',
-        label: '回调地址',
+        label: t('回调地址'),
         placeholder: 'https://press.example.com/api/v1/auth/oauth/github/callback',
       },
       { key: 'extra', label: 'Scope', placeholder: 'read:user user:email' },
@@ -110,25 +112,28 @@ export const PROVIDER_META: ProviderMeta[] = [
   },
   {
     id: 'wechat',
-    name: '微信',
+    name: t('微信'),
     icon: 'message',
-    summary: '用微信扫码或公众号授权登录。',
-    detail: '需要开放平台网站应用或公众号网页授权。',
+    summary: t('用微信扫码或公众号授权登录。'),
+    detail: t('需要开放平台网站应用或公众号网页授权。'),
     fields: [
       { key: 'client_id', label: 'AppID', placeholder: 'wx0000000000000000', required: true },
       {
         key: 'redirect_uri',
-        label: '回调地址',
+        label: t('回调地址'),
         placeholder: 'https://press.example.com/api/v1/auth/oauth/wechat/callback',
       },
       { key: 'extra', label: 'Scope', placeholder: 'snsapi_login' },
-      { key: 'note', label: '账号类型', placeholder: '开放平台网站应用 / 公众号' },
+      { key: 'note', label: t('账号类型'), placeholder: t('开放平台网站应用 / 公众号') },
     ],
     secretLabel: 'AppSecret',
-    secretPlaceholder: '微信 AppSecret',
+    secretPlaceholder: t('微信 AppSecret'),
     endpoint: 'GET /api/v1/auth/oauth/wechat/start',
   },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const PROVIDER_META = liveCatalog(RAW_PROVIDER_META);
 
 export const PROVIDER_BY_ID: Record<AuthProviderId, ProviderMeta> = PROVIDER_META.reduce(
   (acc, item) => ({ ...acc, [item.id]: item }),
@@ -197,7 +202,10 @@ export function authEnvSnippet(
   settings: AuthSettings,
   secrets: Partial<Record<AuthProviderId, string>> = {},
 ): string {
-  const lines: string[] = ['# 由 Practacu Press 安装引导生成', '# 机密值只写到服务端环境变量，不要提交到仓库'];
+  const lines: string[] = [
+    t('# 由 Practacu Press 安装引导生成'),
+    t('# 机密值只写到服务端环境变量，不要提交到仓库'),
+  ];
   for (const id of AUTH_PROVIDER_IDS) {
     const item = settings[id];
     if (!item.enabled) continue;
@@ -214,15 +222,15 @@ export function authEnvSnippet(
     if (id === 'phone') {
       if (item.note) lines.push(`SMS_PROVIDER=${item.note}`);
       if (item.extra) lines.push(`SMS_TEMPLATE_CODE=${item.extra}`);
-      lines.push('SMS_ACCESS_KEY_ID=<在服务端填写>');
-      lines.push(`SMS_ACCESS_SECRET=${secrets.phone?.trim() || '<在服务端填写>'}`);
+      lines.push(`SMS_ACCESS_KEY_ID=${t('<在服务端填写>')}`);
+      lines.push(`SMS_ACCESS_SECRET=${secrets.phone?.trim() || t('<在服务端填写>')}`);
     } else {
       if (item.redirect_uri) lines.push(`${prefix}_REDIRECT_URI=${item.redirect_uri}`);
       if (item.extra) lines.push(`${prefix}_SCOPE=${item.extra}`);
       const secretKey = id === 'wechat' ? 'WECHAT_APP_SECRET' : `${prefix}_CLIENT_SECRET`;
-      lines.push(`${secretKey}=${secrets[id]?.trim() || '<在服务端填写>'}`);
+      lines.push(`${secretKey}=${secrets[id]?.trim() || t('<在服务端填写>')}`);
     }
   }
-  if (lines.length === 2) lines.push('', '# 暂未启用邮箱之外的登录方式');
+  if (lines.length === 2) lines.push('', t('# 暂未启用邮箱之外的登录方式'));
   return lines.join('\n');
 }

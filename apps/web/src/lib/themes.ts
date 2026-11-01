@@ -1,5 +1,7 @@
 import type { AppearanceSectionId, LayoutVariant, SiteTheme, ThemeSettings } from '../types';
+import { t } from './i18n';
 import { applyPreset, DEFAULT_THEME, normalizeThemeSettings } from './theme';
+import { liveCatalog } from './i18n/live';
 
 /**
  * “大主题”：一次切换配色、排版与布局变体（原版单栏 / 夜航双栏）。
@@ -20,16 +22,19 @@ export interface BuiltinThemeDefinition {
 }
 
 /** 外观分区清单：id、名称与用途说明。顺序即外观页的显示顺序。 */
-export const APPEARANCE_SECTIONS: {
+const RAW_APPEARANCE_SECTIONS: {
   id: AppearanceSectionId;
   name: string;
   note: string;
 }[] = [
-  { id: 'hero', name: '首页首屏', note: '眉题、主标题与副标题；单栏与双栏都会读取。' },
-  { id: 'branding', name: '品牌副标题', note: '品牌名下方那行小字。' },
-  { id: 'announcement', name: '公告条', note: '页头下方的可关闭公告。' },
-  { id: 'custom_css', name: '自定义 CSS', note: '只在前台生效的补充样式。' },
+  { id: 'hero', name: t('首页首屏'), note: t('眉题、主标题与副标题；单栏与双栏都会读取。') },
+  { id: 'branding', name: t('品牌副标题'), note: t('品牌名下方那行小字。') },
+  { id: 'announcement', name: t('公告条'), note: t('页头下方的可关闭公告。') },
+  { id: 'custom_css', name: t('自定义 CSS'), note: t('只在前台生效的补充样式。') },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const APPEARANCE_SECTIONS = liveCatalog(RAW_APPEARANCE_SECTIONS);
 
 export const DEFAULT_APPEARANCE_SECTIONS: AppearanceSectionId[] = APPEARANCE_SECTIONS.map(
   (item) => item.id,
@@ -37,22 +42,25 @@ export const DEFAULT_APPEARANCE_SECTIONS: AppearanceSectionId[] = APPEARANCE_SEC
 
 const APPEARANCE_IDS = new Set<string>(DEFAULT_APPEARANCE_SECTIONS);
 
-export const BUILTIN_THEMES: BuiltinThemeDefinition[] = [
+const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
   {
     id: 'default',
-    name: '原版',
-    note: '纸白浅色 · 经典单栏，适合安静的长文阅读。',
+    name: t('原版'),
+    note: t('纸白浅色 · 经典单栏，适合安静的长文阅读。'),
     preset: 'paper',
     variant: 'classic',
   },
   {
     id: 'night',
-    name: '夜航',
-    note: '暖黑暗色 · 双栏杂志布局，适合社区与图片较多的站点。',
+    name: t('夜航'),
+    note: t('暖黑暗色 · 双栏杂志布局，适合社区与图片较多的站点。'),
     preset: 'night',
     variant: 'bento',
   },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const BUILTIN_THEMES = liveCatalog(RAW_BUILTIN_THEMES);
 
 export const BUILTIN_THEME_IDS = new Set(BUILTIN_THEMES.map((item) => item.id));
 
@@ -64,7 +72,7 @@ export const BUILTIN_THEME_IDS = new Set(BUILTIN_THEMES.map((item) => item.id));
 export const THEME_MARKETPLACE_URL = '';
 
 export function variantLabel(variant: LayoutVariant): string {
-  return variant === 'bento' ? '双栏' : '单栏';
+  return variant === 'bento' ? t('双栏') : t('单栏');
 }
 
 export function builtinThemeBundle(id: string): SiteTheme | null {
@@ -206,9 +214,9 @@ export function parseThemeFile(raw: string): SiteTheme {
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error('文件不是有效的 JSON。');
+    throw new Error(t('文件不是有效的 JSON。'));
   }
-  if (!data || typeof data !== 'object') throw new Error('文件内容不是一个主题对象。');
+  if (!data || typeof data !== 'object') throw new Error(t('文件内容不是一个主题对象。'));
   const record = data as Record<string, unknown>;
   const customization =
     record.customization && typeof record.customization === 'object'
@@ -216,7 +224,7 @@ export function parseThemeFile(raw: string): SiteTheme {
       : null;
   const themeSource = record.theme ?? customization?.theme;
   if (!themeSource || typeof themeSource !== 'object') {
-    throw new Error('文件里没有可识别的主题配置。');
+    throw new Error(t('文件里没有可识别的主题配置。'));
   }
   const layoutSource =
     record.layout && typeof record.layout === 'object'
@@ -226,7 +234,7 @@ export function parseThemeFile(raw: string): SiteTheme {
         : null;
   const rawVariant = record.variant ?? record.layout_variant ?? layoutSource?.variant;
   const variant: LayoutVariant = rawVariant === 'bento' ? 'bento' : 'classic';
-  const name = themeText(record.name ?? record.site, '导入的主题', 40).trim() || '导入的主题';
+  const name = themeText(record.name ?? record.site, t('导入的主题'), 40).trim() || t('导入的主题');
   const note = themeText(record.note ?? record.summary, '', 160);
   const appearance = normalizeAppearance(record.appearance);
   return {

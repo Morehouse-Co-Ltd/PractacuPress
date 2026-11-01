@@ -36,6 +36,7 @@ import { ArticleToc, useArticleToc, useCodeCopy } from '../../components/Article
 import { useToast } from '../../lib/toast';
 import { useSeo, articleJsonLd, breadcrumbJsonLd } from '../../lib/seo';
 import { firstImage } from '../../lib/markdown';
+import { useT } from '../../lib/i18n';
 
 interface CommentNode extends Comment {
   children: CommentNode[];
@@ -80,6 +81,7 @@ function CommentItem({
   onDelete: (comment: Comment) => void;
   busy: boolean;
 }) {
+  const t = useT();
   const [replyBody, setReplyBody] = useState('');
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(node.body);
@@ -89,32 +91,32 @@ function CommentItem({
   return (
     <div className={`comment${depth > 0 ? ' is-nested' : ''}`} style={depth > 0 ? { marginLeft: Math.min(depth, 2) * 26 } : undefined}>
       <div className="comment-head">
-        <Avatar name={node.author_name ?? '读者'} size={26} />
-        <strong>{node.author_name ?? '读者'}</strong>
+        <Avatar name={node.author_name ?? t('读者')} size={26} />
+        <strong>{node.author_name ?? t('读者')}</strong>
         {node.created_at ? <time>{formatDate(node.created_at)}</time> : null}
-        {deleted ? <Badge tone="muted">已删除</Badge> : null}
-        {node.status === 'pending_review' ? <Badge tone="warn">待审核</Badge> : null}
+        {deleted ? <Badge tone="muted">{t('已删除')}</Badge> : null}
+        {node.status === 'pending_review' ? <Badge tone="warn">{t('待审核')}</Badge> : null}
         <span className="comment-actions">
           {!deleted && node.status !== 'pending_review' && meId ? (
             <button type="button" className="link-btn" onClick={() => onReply(node.id)}>
-              回复
+              {t('回复')}
             </button>
           ) : null}
           {!deleted && own ? (
             <button type="button" className="link-btn" onClick={() => setEditing((v) => !v)}>
-              编辑
+              {t('编辑')}
             </button>
           ) : null}
           {!deleted && (own || moderator) ? (
             <button type="button" className="link-btn is-danger" onClick={() => onDelete(node)}>
-              删除
+              {t('删除')}
             </button>
           ) : null}
         </span>
       </div>
 
       {deleted ? (
-        <p className="comment-deleted">该评论已删除。</p>
+        <p className="comment-deleted">{t('该评论已删除。')}</p>
       ) : editing ? (
         <div className="comment-reply-box">
           <Textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} maxLength={5000} />
@@ -127,10 +129,10 @@ function CommentItem({
                 setEditing(false);
               }}
             >
-              保存
+              {t('保存')}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              取消
+              {t('取消')}
             </Button>
           </div>
         </div>
@@ -144,7 +146,7 @@ function CommentItem({
             autoFocus
             value={replyBody}
             onChange={(e) => setReplyBody(e.target.value)}
-            placeholder={`回复 ${node.author_name ?? '这条评论'}…`}
+            placeholder={t('回复 {name}…', { name: node.author_name ?? t('这条评论') })}
             maxLength={5000}
             style={{ minHeight: 76 }}
           />
@@ -157,10 +159,10 @@ function CommentItem({
                 setReplyBody('');
               }}
             >
-              发送回复
+              {t('发送回复')}
             </Button>
             <Button size="sm" variant="ghost" onClick={onCancelReply}>
-              取消
+              {t('取消')}
             </Button>
           </div>
         </div>
@@ -191,6 +193,7 @@ function CommentItem({
 }
 
 export function ContentDetailPage({ kind }: { kind: ContentKind }) {
+  const t = useT();
   const { id = '' } = useParams();
   const { me, site } = useAuth();
   const { customization } = useCustomization();
@@ -227,7 +230,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     publishedAt: item?.published_at,
     modifiedAt: item?.updated_at,
     author: item?.author_name,
-    keywords: item?.kind === 'article' ? ['文章'] : ['帖子'],
+    keywords: item?.kind === 'article' ? [t('文章')] : [t('帖子')],
     jsonLd: item
       ? [
           articleJsonLd({
@@ -239,9 +242,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             author: item.author_name,
           }),
           breadcrumbJsonLd([
-            { name: '首页', url: `${window.location.origin}/` },
+            { name: t('首页'), url: `${window.location.origin}/` },
             {
-              name: kind === 'article' ? '文章' : '帖子',
+              name: kind === 'article' ? t('文章') : t('帖子'),
               url: `${window.location.origin}/${kind === 'article' ? 'articles' : 'posts'}`,
             },
             { name: item.title, url: `${window.location.origin}/${kind === 'article' ? 'a' : 'p'}/${item.id}` },
@@ -287,9 +290,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     try {
       const result: ToggleResult = await backend.toggleReaction(kind, id, 'like');
       setReaction(result.active);
-      toast.push('ok', result.active ? '已点赞' : '已取消点赞');
+      toast.push('ok', result.active ? t('已点赞') : t('已取消点赞'));
     } catch (err) {
-      toast.push('error', '操作失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('操作失败'), err instanceof Error ? err.message : undefined);
     }
   };
 
@@ -298,9 +301,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     try {
       const result = await backend.toggleBookmark(kind, id);
       setBookmarked(result.active);
-      toast.push('ok', result.active ? '已加入收藏' : '已取消收藏');
+      toast.push('ok', result.active ? t('已加入收藏') : t('已取消收藏'));
     } catch (err) {
-      toast.push('error', '操作失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('操作失败'), err instanceof Error ? err.message : undefined);
     }
   };
 
@@ -309,16 +312,16 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     try {
       const result = await backend.toggleFollow(item.author_id);
       setFollowing(result.active);
-      toast.push('ok', result.active ? '已关注作者' : '已取消关注');
+      toast.push('ok', result.active ? t('已关注作者') : t('已取消关注'));
     } catch (err) {
-      toast.push('error', '操作失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('操作失败'), err instanceof Error ? err.message : undefined);
     }
   };
 
   const share = async () => {
     const ok = await copyText(window.location.href);
-    if (ok) toast.push('ok', '链接已复制');
-    else toast.push('error', '无法复制链接', '请从地址栏手动复制。');
+    if (ok) toast.push('ok', t('链接已复制'));
+    else toast.push('error', t('无法复制链接'), t('请从地址栏手动复制。'));
   };
 
   const shareNative = async () => {
@@ -339,7 +342,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     if (!text.trim()) return;
     if (!me) return requireLogin();
     if (!can('comment')) {
-      toast.push('error', '没有评论权限', '站长可以在用户组里开启这项能力。');
+      toast.push('error', t('没有评论权限'), t('站长可以在用户组里开启这项能力。'));
       return;
     }
     setBusy(true);
@@ -357,12 +360,16 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       setReplyTo(null);
       comments.reload();
       if (commentSettings.require_review && demo) {
-        toast.push('ok', parentId ? '回复已提交' : '评论已提交', '通过审核后才会公开显示。');
+        toast.push(
+          'ok',
+          parentId ? t('回复已提交') : t('评论已提交'),
+          t('通过审核后才会公开显示。'),
+        );
       } else {
-        toast.push('ok', parentId ? '回复已发送' : '评论已发布');
+        toast.push('ok', parentId ? t('回复已发送') : t('评论已发布'));
       }
     } catch (err) {
-      toast.push('error', '发送失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('发送失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -374,9 +381,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     try {
       await backend.updateComment(commentId, text);
       comments.reload();
-      toast.push('ok', '评论已更新');
+      toast.push('ok', t('评论已更新'));
     } catch (err) {
-      toast.push('error', '更新失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('更新失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -389,9 +396,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       await backend.deleteComment(deleting.id);
       setDeleting(null);
       comments.reload();
-      toast.push('ok', '评论已删除');
+      toast.push('ok', t('评论已删除'));
     } catch (err) {
-      toast.push('error', '删除失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('删除失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -417,17 +424,17 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
         <div style={{ paddingTop: 64 }}>
           <EmptyState
             icon={notFound ? 'file' : 'lock'}
-            title={notFound ? '这篇内容不存在' : '暂时无法打开'}
+            title={notFound ? t('这篇内容不存在') : t('暂时无法打开')}
             body={
               content.error instanceof ApiError
                 ? content.error.message
                 : content.error instanceof Error
                   ? content.error.message
-                  : '请稍后重试。'
+                  : t('请稍后重试。')
             }
             action={
               <Link to={kind === 'article' ? '/articles' : '/posts'} className="btn btn-secondary btn-sm">
-                返回列表
+                {t('返回列表')}
               </Link>
             }
           />
@@ -448,34 +455,36 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
         <article className="article">
           <div className="article-head">
             <Link to={kind === 'article' ? '/articles' : '/posts'} className="back-link">
-              <Icon name="arrow-left" size={13} /> 返回{KIND_LABEL[kind]}列表
+              <Icon name="arrow-left" size={13} /> {t('返回{kind}列表', { kind: KIND_LABEL[kind] })}
             </Link>
             <div className="article-kicker">
               <span>{KIND_LABEL[kind]}</span>
               <span className="dot" />
-              <span>安全策略 · {item.policy_version}</span>
+              <span>{t('安全策略 · {version}', { version: item.policy_version })}</span>
               {isUnpublished ? <StatusBadge status={item.status} /> : null}
             </div>
             <h1>{item.title}</h1>
             {item.summary ? <p className="article-lede">{item.summary}</p> : null}
             <div className="article-meta">
               <span className="author-line">
-                <Avatar name={item.author_name ?? '编辑部'} size={32} />
+                <Avatar name={item.author_name ?? t('编辑部')} size={32} />
                 <span>
-                  <span className="author-name">{item.author_name ?? '编辑部'}</span>
+                  <span className="author-name">{item.author_name ?? t('编辑部')}</span>
                   <span className="meta-text" style={{ display: 'block' }}>
                     {formatDateTime(item.published_at ?? item.created_at)}
                   </span>
                 </span>
               </span>
               <span className="dot" />
-              <span className="meta-text">{readingTime(item.rendered_html)} 分钟阅读</span>
+              <span className="meta-text">
+                {t('{count} 分钟阅读', { count: readingTime(item.rendered_html) })}
+              </span>
               <div className="article-meta-actions">
-                <button type="button" className="icon-btn" onClick={share} aria-label="复制链接">
+                <button type="button" className="icon-btn" onClick={share} aria-label={t('复制链接')}>
                   <Icon name="copy" size={16} />
                 </button>
                 {me && can('moderate_content') ? (
-                  <Link to={`/admin/content/${item.kind}/${item.id}`} className="icon-btn" aria-label="在后台编辑">
+                  <Link to={`/admin/content/${item.kind}/${item.id}`} className="icon-btn" aria-label={t('在后台编辑')}>
                     <Icon name="edit" size={16} />
                   </Link>
                 ) : null}
@@ -524,7 +533,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                     onClick={toggleReaction}
                     aria-pressed={reaction}
                   >
-                    <Icon name="thumb" size={15} /> {reaction ? '已点赞' : '点赞'}
+                    <Icon name="thumb" size={15} /> {reaction ? t('已点赞') : t('点赞')}
                   </button>
                   <button
                     type="button"
@@ -532,21 +541,21 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                     onClick={toggleBookmark}
                     aria-pressed={bookmarked}
                   >
-                    <Icon name="bookmark" size={15} /> {bookmarked ? '已收藏' : '收藏'}
+                    <Icon name="bookmark" size={15} /> {bookmarked ? t('已收藏') : t('收藏')}
                   </button>
                 </>
               ) : null}
               {extensions.share ? (
                 <button type="button" className="reaction-btn" onClick={shareNative}>
-                  <Icon name="arrow-up-right" size={15} /> 分享
+                  <Icon name="arrow-up-right" size={15} /> {t('分享')}
                 </button>
               ) : null}
               <button type="button" className="reaction-btn" onClick={share}>
-                <Icon name="copy" size={15} /> 复制链接
+                <Icon name="copy" size={15} /> {t('复制链接')}
               </button>
             </div>
             <span className="tiny faint">
-              {item.updated_at ? `最后更新 ${formatDate(item.updated_at)}` : ''}
+              {item.updated_at ? t('最后更新 {date}', { date: formatDate(item.updated_at) }) : ''}
             </span>
           </div>
 
@@ -554,8 +563,8 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             <div className="author-card">
               <Avatar name={item.author_name} size={44} />
               <div className="author-main">
-                <strong>{item.author_name ?? '作者'}</strong>
-                <p>写作者 · 已发布内容归作者所有</p>
+                <strong>{item.author_name ?? t('作者')}</strong>
+                <p>{t('写作者 · 已发布内容归作者所有')}</p>
               </div>
               {me && me.user.id !== item.author_id ? (
                 <Button
@@ -564,11 +573,11 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                   icon={following ? 'check' : 'plus'}
                   onClick={toggleFollow}
                 >
-                  {following ? '已关注' : '关注作者'}
+                  {following ? t('已关注') : t('关注作者')}
                 </Button>
               ) : (
                 <Link to={`/u/${item.author_id}`} className="btn btn-secondary btn-sm">
-                  作者主页
+                  {t('作者主页')}
                 </Link>
               )}
             </div>
@@ -576,28 +585,29 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
           <section className="comments">
             <div className="comments-head">
-              <h2>讨论</h2>
+              <h2>{t('讨论')}</h2>
               <span>
                 {!commentSettings.enabled
-                  ? '评论已关闭'
+                  ? t('评论已关闭')
                   : comments.loading
-                    ? '正在载入'
+                    ? t('正在载入')
                     : comments.data?.supported
-                      ? `${visibleComments} 条评论`
-                      : '暂时无法读取评论'}
+                      ? t('{count} 条评论', { count: visibleComments })
+                      : t('暂时无法读取评论')}
               </span>
             </div>
 
             {!commentSettings.enabled ? (
               <Callout tone="info" icon="message">
-                本站已经关闭评论。站长可以在「后台 → 评论与审核 → 评论设置」里重新开启。
+                {t('本站已经关闭评论。站长可以在「后台 → 评论与审核 → 评论设置」里重新开启。')}
               </Callout>
             ) : (
               <>
                 {comments.data?.supported === false ? (
-                  <Callout tone="warn" icon="alert" title="评论可以写入，但暂时读不回来">
-                    当前后端还没有提供评论列表接口。评论已经保存，接口补齐后就会显示出来；
-                    演示模式下评论是完整的。
+                  <Callout tone="warn" icon="alert" title={t('评论可以写入，但暂时读不回来')}>
+                    {t(
+                      '当前后端还没有提供评论列表接口。评论已经保存，接口补齐后就会显示出来； 演示模式下评论是完整的。',
+                    )}
                   </Callout>
                 ) : null}
 
@@ -608,7 +618,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                         <div className="row gap-8">
                           <Avatar name={me.user.display_name} size={28} />
                           <span className="small muted">
-                            以 <strong style={{ color: 'var(--ink)' }}>{me.user.display_name}</strong> 的身份评论
+                            {t('以')}{' '}
+                            <strong style={{ color: 'var(--ink)' }}>{me.user.display_name}</strong>{' '}
+                            {t('的身份评论')}
                           </span>
                         </div>
                         {commentSettings.notice ? (
@@ -617,34 +629,36 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                         {commentSettings.require_review ? (
                           <p className="field-hint">
                             {demo
-                              ? '本站开启先审后发：评论通过审核后才会公开显示。'
-                              : '先审后发目前只在演示模式生效；真实后端需要接入站点级评论策略。'}
+                              ? t('本站开启先审后发：评论通过审核后才会公开显示。')
+                              : t('先审后发目前只在演示模式生效；真实后端需要接入站点级评论策略。')}
                           </p>
                         ) : null}
                         <Textarea
                           value={body}
                           onChange={(e) => setBody(e.target.value)}
-                          placeholder="写下你的回应。请遵守站点的讨论规则。"
+                          placeholder={t('写下你的回应。请遵守站点的讨论规则。')}
                           maxLength={5000}
                         />
                         <div className="comment-form-foot">
                           <span>{body.length}/5000</span>
                           <Button size="sm" loading={busy} onClick={() => void submitComment(body)} disabled={!body.trim()}>
-                            发表评论
+                            {t('发表评论')}
                           </Button>
                         </div>
                       </div>
                     ) : (
                       <div className="comment-form">
-                        <p className="small muted">当前账户没有发表评论的权限。站长可以在「用户组」里开启。</p>
+                        <p className="small muted">
+                          {t('当前账户没有发表评论的权限。站长可以在「用户组」里开启。')}
+                        </p>
                       </div>
                     )
                   ) : (
                     <div className="comment-form">
-                      <p className="small muted">登录后可以参与讨论、回复其他读者。</p>
+                      <p className="small muted">{t('登录后可以参与讨论、回复其他读者。')}</p>
                       <div>
                         <Link to={`/login?next=${encodeURIComponent(url)}`} className="btn btn-primary btn-sm">
-                          登录后评论
+                          {t('登录后评论')}
                         </Link>
                       </div>
                     </div>
@@ -658,10 +672,10 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                 ) : tree.length === 0 ? (
                   <p className="comment-empty">
                     {comments.data?.supported === false
-                      ? '评论列表不可用。'
+                      ? t('评论列表不可用。')
                       : me && can('comment')
-                        ? '还没有人说话。你可以第一个。'
-                        : '还没有评论。'}
+                        ? t('还没有人说话。你可以第一个。')
+                        : t('还没有评论。')}
                   </p>
                 ) : (
                   <div className="comment-list">
@@ -699,9 +713,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
         {related.data?.length ? (
           <section style={{ maxWidth: 720, margin: '56px auto 0' }}>
             <div className="section-head">
-              <h2 style={{ fontSize: 22 }}>继续阅读</h2>
+              <h2 style={{ fontSize: 22 }}>{t('继续阅读')}</h2>
               <Link to={kind === 'article' ? '/articles' : '/posts'} className="rule-link">
-                全部{KIND_LABEL[kind]}
+                {t('全部{kind}', { kind: KIND_LABEL[kind] })}
               </Link>
             </div>
             {related.data.map((entry) => (
@@ -712,7 +726,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                     <Link to={`/${entry.kind === 'article' ? 'a' : 'p'}/${entry.id}`}>{entry.title}</Link>
                   </h3>
                   <div className="story-meta">
-                    <span>{entry.author_name ?? '编辑部'}</span>
+                    <span>{entry.author_name ?? t('编辑部')}</span>
                     <span>{formatDate(entry.published_at ?? entry.created_at)}</span>
                   </div>
                 </div>
@@ -723,16 +737,16 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
         <Modal
           open={!!deleting}
-          title="删除这条评论？"
-          description="评论会被标记为已删除，回复仍然保留。这个操作无法在界面上撤销。"
+          title={t('删除这条评论？')}
+          description={t('评论会被标记为已删除，回复仍然保留。这个操作无法在界面上撤销。')}
           onClose={() => setDeleting(null)}
           footer={
             <>
               <Button variant="ghost" onClick={() => setDeleting(null)}>
-                取消
+                {t('取消')}
               </Button>
               <Button variant="danger" loading={busy} onClick={confirmDelete}>
-                删除评论
+                {t('删除评论')}
               </Button>
             </>
           }

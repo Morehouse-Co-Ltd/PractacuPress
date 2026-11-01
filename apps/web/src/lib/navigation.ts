@@ -11,6 +11,8 @@ import type {
   SocialPlatform,
 } from '../types';
 import type { IconName } from '../components/Icon';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 
 /**
  * 顶部导航 Tab 与页脚栏目。
@@ -28,18 +30,21 @@ export const MAX_SOCIAL_LINKS = 8;
 export const MAX_FOOTER_COLUMNS = 4;
 export const MAX_FOOTER_LINKS = 8;
 
-export const SOCIAL_PLATFORM_CHOICES: { value: SocialPlatform; label: string }[] = [
+const RAW_SOCIAL_PLATFORM_CHOICES: { value: SocialPlatform; label: string }[] = [
   { value: 'github', label: 'GitHub' },
   { value: 'x', label: 'X / Twitter' },
   { value: 'mastodon', label: 'Mastodon' },
-  { value: 'rss', label: 'RSS / 订阅' },
-  { value: 'email', label: '邮箱' },
-  { value: 'website', label: '网站' },
-  { value: 'custom', label: '自定义链接' },
+  { value: 'rss', label: t('RSS / 订阅') },
+  { value: 'email', label: t('邮箱') },
+  { value: 'website', label: t('网站') },
+  { value: 'custom', label: t('自定义链接') },
 ];
 
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const SOCIAL_PLATFORM_CHOICES = liveCatalog(RAW_SOCIAL_PLATFORM_CHOICES);
+
 export function socialPlatformLabel(platform: SocialPlatform): string {
-  return SOCIAL_PLATFORM_CHOICES.find((item) => item.value === platform)?.label ?? '链接';
+  return SOCIAL_PLATFORM_CHOICES.find((item) => item.value === platform)?.label ?? t('链接');
 }
 
 /** 平台 → 内置图标。 */
@@ -65,32 +70,35 @@ export function socialIconName(platform: SocialPlatform): IconName {
 const SOCIAL_PLATFORMS = new Set<string>(SOCIAL_PLATFORM_CHOICES.map((item) => item.value));
 
 /** 导航图标候选；只允许内置图标名，避免配置里塞进任意字符串。 */
-export const NAV_ICON_CHOICES: { name: IconName; label: string }[] = [
-  { name: 'home', label: '首页' },
-  { name: 'file', label: '文章' },
-  { name: 'message', label: '帖子 / 讨论' },
-  { name: 'search', label: '搜索' },
-  { name: 'layers', label: '页面 / 分组' },
-  { name: 'grid', label: '分类 / 网格' },
-  { name: 'tag', label: '标签' },
-  { name: 'bookmark', label: '收藏' },
-  { name: 'heart', label: '喜欢' },
-  { name: 'sparkle', label: '精选' },
-  { name: 'eye', label: '浏览' },
-  { name: 'users', label: '成员' },
-  { name: 'user', label: '个人' },
-  { name: 'mail', label: '联系' },
-  { name: 'bell', label: '通知' },
-  { name: 'info', label: '关于' },
-  { name: 'globe', label: '站点 / 地球' },
-  { name: 'link', label: '链接' },
-  { name: 'image', label: '图片' },
-  { name: 'video', label: '视频' },
-  { name: 'bulb', label: '灵感' },
-  { name: 'settings', label: '设置' },
-  { name: 'shield', label: '安全' },
-  { name: 'chart', label: '数据' },
+const RAW_NAV_ICON_CHOICES: { name: IconName; label: string }[] = [
+  { name: 'home', label: t('首页') },
+  { name: 'file', label: t('文章') },
+  { name: 'message', label: t('帖子 / 讨论') },
+  { name: 'search', label: t('搜索') },
+  { name: 'layers', label: t('页面 / 分组') },
+  { name: 'grid', label: t('分类 / 网格') },
+  { name: 'tag', label: t('标签') },
+  { name: 'bookmark', label: t('收藏') },
+  { name: 'heart', label: t('喜欢') },
+  { name: 'sparkle', label: t('精选') },
+  { name: 'eye', label: t('浏览') },
+  { name: 'users', label: t('成员') },
+  { name: 'user', label: t('个人') },
+  { name: 'mail', label: t('联系') },
+  { name: 'bell', label: t('通知') },
+  { name: 'info', label: t('关于') },
+  { name: 'globe', label: t('站点 / 地球') },
+  { name: 'link', label: t('链接') },
+  { name: 'image', label: t('图片') },
+  { name: 'video', label: t('视频') },
+  { name: 'bulb', label: t('灵感') },
+  { name: 'settings', label: t('设置') },
+  { name: 'shield', label: t('安全') },
+  { name: 'chart', label: t('数据') },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const NAV_ICON_CHOICES = liveCatalog(RAW_NAV_ICON_CHOICES);
 
 const NAV_ICON_NAMES = new Set<string>(NAV_ICON_CHOICES.map((item) => item.name));
 
@@ -184,7 +192,7 @@ export function navTabGroupActive(pathname: string, tab: NavTab): boolean {
 }
 
 /** 生成一个二级入口；编辑器与配置归一化共用。 */
-export function newNavChild(label = '新入口', href = '/'): NavChild {
+export function newNavChild(label = t('新入口'), href = '/'): NavChild {
   return { id: newNavId('tab'), label, href };
 }
 
@@ -201,10 +209,10 @@ export function autoNavTabs(
   layout: Pick<LayoutSettings, 'show_articles' | 'show_posts' | 'show_search'>,
   pages: SitePage[],
 ): NavTab[] {
-  const tabs: NavTab[] = [{ id: 'tab_home', label: '首页', href: '/' }];
-  if (layout.show_articles) tabs.push({ id: 'tab_articles', label: '文章', href: '/articles' });
-  if (layout.show_posts) tabs.push({ id: 'tab_posts', label: '帖子', href: '/posts' });
-  if (layout.show_search) tabs.push({ id: 'tab_search', label: '搜索', href: '/search' });
+  const tabs: NavTab[] = [{ id: 'tab_home', label: t('首页'), href: '/' }];
+  if (layout.show_articles) tabs.push({ id: 'tab_articles', label: t('文章'), href: '/articles' });
+  if (layout.show_posts) tabs.push({ id: 'tab_posts', label: t('帖子'), href: '/posts' });
+  if (layout.show_search) tabs.push({ id: 'tab_search', label: t('搜索'), href: '/search' });
   for (const page of pages) {
     // 调用方可能已经用 navPages() 过滤过；这里再兜一层，避免草稿混进导航。
     if (page.status !== 'published' || !page.show_in_nav) continue;
@@ -367,19 +375,19 @@ export function defaultFooterColumns(): FooterColumn[] {
   return [
     {
       id: 'fcol_read',
-      title: '阅读',
+      title: t('阅读'),
       links: [
-        { id: 'flink_articles', label: '全部文章', href: '/articles' },
-        { id: 'flink_posts', label: '全部帖子', href: '/posts' },
-        { id: 'flink_search', label: '搜索', href: '/search' },
+        { id: 'flink_articles', label: t('全部文章'), href: '/articles' },
+        { id: 'flink_posts', label: t('全部帖子'), href: '/posts' },
+        { id: 'flink_search', label: t('搜索'), href: '/search' },
       ],
     },
     {
       id: 'fcol_site',
-      title: '站点',
+      title: t('站点'),
       links: [
-        { id: 'flink_about', label: '关于本站', href: '/about' },
-        { id: 'flink_admin', label: '管理后台', href: '/admin' },
+        { id: 'flink_about', label: t('关于本站'), href: '/about' },
+        { id: 'flink_admin', label: t('管理后台'), href: '/admin' },
       ],
     },
   ];
@@ -398,7 +406,6 @@ export interface FooterBrand {
   tags: string[];
 }
 
-const DEFAULT_FOOTER_DESCRIPTION = '一间小而安静的编辑部。写作者拥有自己的稿子，读者被当作邻居。';
 const DEFAULT_BRAND_SUB = 'Independent publishing';
 
 /**
@@ -418,7 +425,9 @@ export function footerBrand(
   const name = layout.footer_brand_name.trim() || siteName.trim() || 'Practacu Press';
   const sub = layout.footer_brand_sub.trim() || layout.brand_sub.trim() || DEFAULT_BRAND_SUB;
   const description =
-    layout.footer_brand_desc.trim() || siteDescription.trim() || DEFAULT_FOOTER_DESCRIPTION;
+    layout.footer_brand_desc.trim() ||
+    siteDescription.trim() ||
+    t('一间小而安静的编辑部。写作者拥有自己的稿子，读者被当作邻居。');
   return {
     name,
     sub,

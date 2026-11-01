@@ -1,33 +1,28 @@
 import type { Dictionary } from '../plural';
-import adminContent from './adminContent';
-import adminSite from './adminSite';
-import adminTheme from './adminTheme';
-import blocks from './blocks';
 import common from './common';
-import lib from './lib';
-import setup from './setup';
-import shell from './shell';
-import site from './site';
+import curated from './lib';
 
 /**
  * 全部英文文案。
  *
- * 按来源拆成若干命名空间，是为了让迁移可以并行：每个命名空间一个文件、
- * 一个人负责，写入范围互不重叠。运行期只是一张扁平的表，查表就是对象属性。
+ * 组成方式：
+ * - `common.ts`：到处都在用的通用词（保存、取消、删除……），人工维护；
+ * - `lib.ts`：非页面模块的标签表（角色、状态、相对时间……），人工维护；
+ * - `fragments/*.ts`：按**源文件**拆的译文片段，一个文件一个人负责，迁移可以并行。
  *
- * 展开顺序 = 覆盖顺序：后面的同名键会盖掉前面的。`common` 放最前面，
- * 业务表里同名键以业务为准（业务更清楚上下文）。
+ * 用 `import.meta.glob` 把片段合并进来：新增一个片段不需要改这个文件，
+ * 也就不会出现多人同时改同一个索引文件的冲突。展开顺序决定覆盖顺序，
+ * 片段放最后：具体页面的译法优先于通用词。
  */
+const fragments = import.meta.glob<Dictionary>('./fragments/*.ts', {
+  eager: true,
+  import: 'default',
+});
+
 export const DICT: Dictionary = {
   ...common,
-  ...lib,
-  ...shell,
-  ...setup,
-  ...adminSite,
-  ...adminContent,
-  ...adminTheme,
-  ...site,
-  ...blocks,
+  ...curated,
+  ...Object.assign({}, ...Object.values(fragments)),
 };
 
 export default DICT;

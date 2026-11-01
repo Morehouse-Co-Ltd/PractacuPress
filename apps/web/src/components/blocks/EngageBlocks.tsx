@@ -8,6 +8,7 @@ import { useCustomization } from '../../lib/customize';
 import { useToast } from '../../lib/toast';
 import { blockProp } from '../../lib/blocks';
 import { formatDate } from '../../lib/format';
+import { useT } from '../../lib/i18n';
 import { Avatar, Callout, EmptyState, Skeleton } from '../ui';
 import { Icon } from '../Icon';
 import { useScreenScope } from './ScreenScope';
@@ -19,6 +20,7 @@ import { useScreenScope } from './ScreenScope';
  * 因此不需要新的后端端点。先审后发由站点的评论策略决定，前端只负责展示状态。
  */
 export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
+  const t = useT();
   const { me } = useAuth();
   const backend = useBackend();
   const { can } = usePermissions();
@@ -26,9 +28,9 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
   const toast = useToast();
   const scope = useScreenScope();
 
-  const heading = blockProp(block, 'heading', '').trim() || '留言箱';
+  const heading = blockProp(block, 'heading', '').trim() || t('留言箱');
   const intro = blockProp(block, 'intro', '').trim();
-  const placeholder = blockProp(block, 'placeholder', '').trim() || '写句话吧…';
+  const placeholder = blockProp(block, 'placeholder', '').trim() || t('写句话吧…');
   const limit = Math.min(50, Math.max(3, blockProp(block, 'limit', 20)));
 
   const [items, setItems] = useState<Comment[]>([]);
@@ -44,9 +46,9 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
     try {
       const result = await backend.comments('page', scope.id);
       setItems(result.items);
-      setError(result.supported ? '' : '当前后端还没有评论列表端点，留言暂时无法显示。');
+      setError(result.supported ? '' : t('当前后端还没有评论列表端点，留言暂时无法显示。'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '留言读取失败。');
+      setError(err instanceof Error ? err.message : t('留言读取失败。'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +62,7 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
     const text = body.trim();
     if (!text || busy) return;
     if (!can('comment')) {
-      toast.push('error', '没有留言权限', '站长可以在用户组里开启这项能力。');
+      toast.push('error', t('没有留言权限'), t('站长可以在用户组里开启这项能力。'));
       return;
     }
     setBusy(true);
@@ -73,11 +75,11 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
       await load();
       toast.push(
         'ok',
-        '留言已送出',
-        customization.comments.require_review ? '通过审核后才会公开显示。' : undefined,
+        t('留言已送出'),
+        customization.comments.require_review ? t('通过审核后才会公开显示。') : undefined,
       );
     } catch (err) {
-      toast.push('error', '发送失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('发送失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -95,13 +97,13 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
           {intro ? <p>{intro}</p> : null}
         </div>
         <span className="pp-guestbook-count">
-          <Icon name="mail" size={13} /> {items.length} 条留言
+          <Icon name="mail" size={13} /> {t('{count} 条留言', { count: items.length })}
         </span>
       </div>
 
       {commentsDisabled ? (
-        <Callout tone="info" icon="info" title="留言入口已关闭">
-          站长在「站点设置 → 评论」里关闭了评论；已有留言仍然保留。
+        <Callout tone="info" icon="info" title={t('留言入口已关闭')}>
+          {t('站长在「站点设置 → 评论」里关闭了评论；已有留言仍然保留。')}
         </Callout>
       ) : me ? (
         <form
@@ -119,12 +121,12 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
               placeholder={placeholder}
               maxLength={5000}
               rows={4}
-              aria-label={`给${scope.title ?? '这个页面'}留言`}
+              aria-label={t('给{title}留言', { title: scope.title ?? t('这个页面') })}
             />
             <div className="pp-guestbook-actions">
               <span className="tiny faint">{body.length}/5000</span>
               <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !body.trim()}>
-                {busy ? '发送中…' : '留下这句话'}
+                {busy ? t('发送中…') : t('留下这句话')}
               </button>
             </div>
           </div>
@@ -132,9 +134,9 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
       ) : (
         <div className="pp-guestbook-login">
           <Icon name="mail" size={16} />
-          <span>登录后就能留言，写多写少都可以。</span>
+          <span>{t('登录后就能留言，写多写少都可以。')}</span>
           <Link to="/login" className="btn btn-secondary btn-sm">
-            去登录
+            {t('去登录')}
           </Link>
         </div>
       )}
@@ -151,12 +153,12 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
         <ul className="pp-guestbook-list">
           {sorted.slice(0, limit).map((comment) => (
             <li key={comment.id}>
-              <Avatar name={comment.author_name ?? '访客'} size={30} />
+              <Avatar name={comment.author_name ?? t('访客')} size={30} />
               <div className="pp-guestbook-body">
                 <div className="pp-guestbook-meta">
-                  <strong>{comment.author_name ?? '访客'}</strong>
+                  <strong>{comment.author_name ?? t('访客')}</strong>
                   {comment.created_at ? <span>{formatDate(comment.created_at)}</span> : null}
-                  {comment.status === 'pending_review' ? <em>待审核</em> : null}
+                  {comment.status === 'pending_review' ? <em>{t('待审核')}</em> : null}
                 </div>
                 <p>{comment.body}</p>
               </div>
@@ -164,7 +166,7 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
           ))}
         </ul>
       ) : (
-        <EmptyState compact icon="mail" title="还没有留言" body="第一句话留给你。" />
+        <EmptyState compact icon="mail" title={t('还没有留言')} body={t('第一句话留给你。')} />
       )}
     </section>
   );

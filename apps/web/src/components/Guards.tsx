@@ -3,14 +3,16 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../lib/session';
 import { ROLE_LABEL } from '../lib/format';
 import { usePermissions } from '../lib/usePermissions';
+import { useT } from '../lib/i18n';
 import type { Role } from '../types';
 import { PageLoading } from './ui';
 import { Icon } from './Icon';
 
 export function RequireAuth({ children }: { children: ReactNode }) {
+  const t = useT();
   const { status } = useAuth();
   const location = useLocation();
-  if (status === 'loading') return <PageLoading label="正在确认登录状态" />;
+  if (status === 'loading') return <PageLoading label={t('正在确认登录状态')} />;
   if (status === 'anonymous') {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?next=${next}`} replace />;
@@ -18,27 +20,33 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function Forbidden({ need = '编辑' }: { need?: string }) {
+export function Forbidden({ need }: { need?: string }) {
+  const t = useT();
   const { me, site } = useAuth();
   const { can } = usePermissions();
+  const needLabel = need ?? t('编辑');
   return (
     <div className="empty" style={{ marginTop: 40 }}>
       <span className="empty-icon">
         <Icon name="lock" size={22} />
       </span>
-      <h3>需要{need}权限</h3>
+      <h3>{t('需要{need}权限', { need: needLabel })}</h3>
       <p>
-        当前账户在「{site?.name ?? '本站'}」的角色是
-        {me ? `「${ROLE_LABEL[me.role]}」` : '未登录'}，无法访问这个页面。权限由服务端强制校验，
-        界面隐藏不能替代授权。站长可以在「用户组」里调整这一项。
+        {t(
+          '当前账户在「{site}」的角色是「{role}」，无法访问这个页面。权限由服务端强制校验，界面隐藏不能替代授权。站长可以在「用户组」里调整这一项。',
+          {
+            site: site?.name ?? t('本站'),
+            role: me ? ROLE_LABEL[me.role] : t('未登录'),
+          },
+        )}
       </p>
       <div className="empty-action" style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
         <Link to="/" className="btn btn-secondary btn-sm">
-          返回站点
+          {t('返回站点')}
         </Link>
         {can('moderate_content') ? (
           <Link to="/admin" className="btn btn-secondary btn-sm">
-            回到后台
+            {t('回到后台')}
           </Link>
         ) : null}
       </div>

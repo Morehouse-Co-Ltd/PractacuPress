@@ -17,12 +17,14 @@ import {
 import { copyText } from '../../lib/clipboard';
 import { recordActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
+import { useT } from '../../lib/i18n';
 import { Button, Callout, Field, Input, Modal } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 
 const DEMO_CODE = '246810';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
+  const t = useT();
   const { login, providerLogin, register, site, status, config } = useAuth();
   const personal = isPersonalSite(config);
   const backend = useBackend();
@@ -47,7 +49,15 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [codeSent, setCodeSent] = useState(false);
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerError, setProviderError] = useState('');
-  useTitle(mode === 'login' ? (personal ? '管理员登录' : '登录') : personal ? '注册已关闭' : '创建账户');
+  useTitle(
+    mode === 'login'
+      ? personal
+        ? t('管理员登录')
+        : t('登录')
+      : personal
+        ? t('注册已关闭')
+        : t('创建账户'),
+  );
 
   const accounts = useAsync(async () => (demo ? demo.demoMembers() : []), [backend]);
   // 忘记密码能不能用取决于服务端有没有配 SMTP；查询失败时按「可用」处理，
@@ -66,35 +76,39 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <div className="auth-main">
           <div className="auth-card">
             <p className="eyebrow">Closed</p>
-            <h1>这里不开放注册。</h1>
+            <h1>{t('这里不开放注册。')}</h1>
             <p className="auth-lede">
-              {site?.name ?? '本站'} 是个人博客，不开放自助注册。账户由站长在后台「用户管理」里创建；
-              已经有账户的成员可以直接登录。
+              {t(
+                '{site} 是个人博客，不开放自助注册。账户由站长在后台「用户管理」里创建； 已经有账户的成员可以直接登录。',
+                { site: site?.name ?? t('本站') },
+              )}
             </p>
             <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
               <Link to="/" className="btn btn-primary btn-md">
-                回到首页
+                {t('回到首页')}
               </Link>
               <Link to="/login" className="btn btn-secondary btn-md">
-                管理员登录
+                {t('管理员登录')}
               </Link>
               {canReset ? (
                 <Link to="/forgot-password" className="btn btn-ghost btn-md">
-                  忘记密码
+                  {t('忘记密码')}
                 </Link>
               ) : null}
             </div>
             <p className="tiny faint mt-16">
-              访客无需账户即可阅读全部已发布内容。如果刚完成安装，请使用安装时填写的管理员邮箱进入后台。
+              {t(
+                '访客无需账户即可阅读全部已发布内容。如果刚完成安装，请使用安装时填写的管理员邮箱进入后台。',
+              )}
             </p>
           </div>
         </div>
 
         <aside className="auth-aside" aria-hidden>
-          <p className="auth-quote">“一个人写，一个人读，也是一种出版。”</p>
+          <p className="auth-quote">{t('“一个人写，一个人读，也是一种出版。”')}</p>
           <div className="auth-aside-meta">
-            <span>{site ? VISIBILITY_LABEL[site.visibility_mode] : '公开浏览'}</span>
-            <span>个人博客</span>
+            <span>{site ? VISIBILITY_LABEL[site.visibility_mode] : t('公开浏览')}</span>
+            <span>{t('个人博客')}</span>
             <span>Ed25519 · HttpOnly Cookie</span>
           </div>
         </aside>
@@ -107,19 +121,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     setError('');
     if (mode === 'register') {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        setError('请填写有效的邮箱地址。');
+        setError(t('请填写有效的邮箱地址。'));
         return;
       }
       if (!displayName.trim()) {
-        setError('请填写显示名称。');
+        setError(t('请填写显示名称。'));
         return;
       }
       if (password.length < 8) {
-        setError('密码至少 8 位。');
+        setError(t('密码至少 8 位。'));
         return;
       }
       if (password !== confirm) {
-        setError('两次输入的密码不一致。');
+        setError(t('两次输入的密码不一致。'));
         return;
       }
     }
@@ -141,11 +155,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       setError(
         err instanceof ApiError
           ? err.code === 'unauthenticated'
-            ? '邮箱或密码不正确。'
+            ? t('邮箱或密码不正确。')
             : err.message
           : err instanceof Error
             ? err.message
-            : '请求失败。',
+            : t('请求失败。'),
       );
     } finally {
       setBusy(false);
@@ -160,7 +174,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   const openProvider = (id: AuthProviderId) => {
     if (!providerReady(id, authSettings[id])) {
-      setError(`${PROVIDER_BY_ID[id].name}还没有配置完整。请在后台「登录设置」补齐参数。`);
+      setError(
+        t('{provider}还没有配置完整。请在后台「登录设置」补齐参数。', {
+          provider: PROVIDER_BY_ID[id].name,
+        }),
+      );
       return;
     }
     setProvider(id);
@@ -172,12 +190,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   const sendCode = () => {
     if (!/^1\d{10}$/.test(phone.replace(/\s+/g, ''))) {
-      setProviderError('请填写 11 位手机号。');
+      setProviderError(t('请填写 11 位手机号。'));
       return;
     }
     setProviderError('');
     setCodeSent(true);
-    toast.push('ok', '演示验证码已生成', `真实环境由短信服务商发送；这里固定为 ${DEMO_CODE}。`);
+    toast.push(
+      'ok',
+      t('演示验证码已生成'),
+      t('真实环境由短信服务商发送；这里固定为 {code}。', { code: DEMO_CODE }),
+    );
   };
 
   const submitProvider = async () => {
@@ -185,11 +207,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     setProviderError('');
     if (provider === 'phone') {
       if (!codeSent) {
-        setProviderError('请先获取验证码。');
+        setProviderError(t('请先获取验证码。'));
         return;
       }
       if (code.trim() !== DEMO_CODE) {
-        setProviderError(`演示模式的验证码是 ${DEMO_CODE}。`);
+        setProviderError(t('演示模式的验证码是 {code}。', { code: DEMO_CODE }));
         return;
       }
     }
@@ -198,7 +220,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       await providerLogin(provider);
       navigate(next, { replace: true });
     } catch (err) {
-      setProviderError(err instanceof Error ? err.message : '登录失败。');
+      setProviderError(err instanceof Error ? err.message : t('登录失败。'));
     } finally {
       setProviderBusy(false);
     }
@@ -206,8 +228,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   const copyProviderEnv = async () => {
     const ok = await copyText(authEnvSnippet(authSettings));
-    if (ok) toast.push('ok', '服务端配置已复制');
-    else toast.push('error', '无法复制', '请手动选择内容。');
+    if (ok) toast.push('ok', t('服务端配置已复制'));
+    else toast.push('error', t('无法复制'), t('请手动选择内容。'));
   };
 
   return (
@@ -216,34 +238,41 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <div className="auth-card">
           <p className="eyebrow">{mode === 'login' ? 'Sign in' : 'Join'}</p>
           <h1>
-            {mode === 'login' ? (personal ? '回到书房。' : '回到这间房子。') : '领一把自己的钥匙。'}
+            {mode === 'login'
+              ? personal
+                ? t('回到书房。')
+                : t('回到这间房子。')
+              : t('领一把自己的钥匙。')}
           </h1>
           <p className="auth-lede">
             {mode === 'login'
               ? personal
-                ? `这是 ${site?.name ?? '本站'} 的管理员入口。站长创建的账户都可以登录；访客不需要登录就能阅读。`
-                : `登录 ${site?.name ?? '本站'}，继续阅读、评论与写作。`
-              : `注册后可以评论、收藏与投稿。${site ? `本站的发布模式是「${PUBLISH_LABEL[site.publish_mode]}」。` : ''}`}
+                ? t('这是 {site} 的管理员入口。站长创建的账户都可以登录；访客不需要登录就能阅读。', {
+                    site: site?.name ?? t('本站'),
+                  })
+                : t('登录 {site}，继续阅读、评论与写作。', { site: site?.name ?? t('本站') })
+              : t('注册后可以评论、收藏与投稿。') +
+                (site ? t('本站的发布模式是「{mode}」。', { mode: PUBLISH_LABEL[site.publish_mode] }) : '')}
           </p>
 
           <form className="auth-form" onSubmit={submit}>
             {mode === 'register' ? (
-              <Field label="显示名称" htmlFor="auth-name" hint="会出现在文章署名与评论里。">
+              <Field label={t('显示名称')} htmlFor="auth-name" hint={t('会出现在文章署名与评论里。')}>
                 <Input
                   id="auth-name"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   maxLength={120}
                   autoComplete="nickname"
-                  placeholder="例如：陈默"
+                  placeholder={t('例如：陈默')}
                 />
               </Field>
             ) : null}
 
             <Field
-              label="邮箱"
+              label={t('邮箱')}
               htmlFor="auth-email"
-              hint={personal ? '站长创建的账户都可以登录。' : undefined}
+              hint={personal ? t('站长创建的账户都可以登录。') : undefined}
             >
               <Input
                 id="auth-email"
@@ -257,9 +286,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             </Field>
 
             <Field
-              label="密码"
+              label={t('密码')}
               htmlFor="auth-password"
-              hint={mode === 'register' ? '8–128 位。建议使用长口令或密码管理器。' : undefined}
+              hint={mode === 'register' ? t('8–128 位。建议使用长口令或密码管理器。') : undefined}
               aside={
                 <span className="row gap-10" style={{ alignItems: 'center' }}>
                   {mode === 'login' && canReset ? (
@@ -267,11 +296,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                       to={`/forgot-password?email=${encodeURIComponent(email.trim())}`}
                       className="link-btn"
                     >
-                      忘记密码？
+                      {t('忘记密码？')}
                     </Link>
                   ) : null}
                   <button type="button" className="link-btn" onClick={() => setShowPassword((v) => !v)}>
-                    {showPassword ? '隐藏' : '显示'}
+                    {showPassword ? t('隐藏') : t('显示')}
                   </button>
                 </span>
               }
@@ -287,7 +316,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             </Field>
 
             {mode === 'register' ? (
-              <Field label="确认密码" htmlFor="auth-confirm">
+              <Field label={t('确认密码')} htmlFor="auth-confirm">
                 <Input
                   id="auth-confirm"
                   type={showPassword ? 'text' : 'password'}
@@ -306,20 +335,20 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             ) : null}
 
             <Button type="submit" size="lg" loading={busy} iconRight="arrow-right">
-              {mode === 'login' ? (personal ? '管理员登录' : '登录') : '创建账户'}
+              {mode === 'login' ? (personal ? t('管理员登录') : t('登录')) : t('创建账户')}
             </Button>
           </form>
 
           {mode === 'login' && !canReset ? (
             <p className="field-hint mt-12">
-              这个站点还没有配置发信服务（SMTP），找回密码暂时不可用。请联系站长。
+              {t('这个站点还没有配置发信服务（SMTP），找回密码暂时不可用。请联系站长。')}
             </p>
           ) : null}
 
           {mode === 'login' && providers.length ? (
             <div className="auth-providers-block">
               <div className="auth-divider">
-                <span>或</span>
+                <span>{t('或')}</span>
               </div>
               <div className="auth-provider-buttons">
                 {providers.map((id) => {
@@ -334,7 +363,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                     >
                       <Icon name={meta.icon} size={16} />
                       <span>{meta.name}</span>
-                      {ready ? null : <span className="auth-provider-flag">待配置</span>}
+                      {ready ? null : <span className="auth-provider-flag">{t('待配置')}</span>}
                     </button>
                   );
                 })}
@@ -344,7 +373,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
           {demo ? (
             <div className="demo-accounts">
-              <p>演示账户 · 密码统一为 practacu</p>
+              <p>{t('演示账户 · 密码统一为 practacu')}</p>
               <div className="row">
                 {(accounts.data ?? []).slice(0, 4).map((account) => (
                   <button
@@ -362,21 +391,23 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           ) : null}
 
           {personal ? (
-            <p className="auth-switch">本站是个人博客，不开放自助注册。需要账户请联系站长创建。</p>
+            <p className="auth-switch">
+              {t('本站是个人博客，不开放自助注册。需要账户请联系站长创建。')}
+            </p>
           ) : (
             <p className="auth-switch">
               {mode === 'login' ? (
                 <>
-                  还没有账户？{' '}
+                  {t('还没有账户？')}{' '}
                   <Link to={`/register?next=${encodeURIComponent(next)}`} className="text-link">
-                    创建一个
+                    {t('创建一个')}
                   </Link>
                 </>
               ) : (
                 <>
-                  已经有账户？{' '}
+                  {t('已经有账户？')}{' '}
                   <Link to={`/login?next=${encodeURIComponent(next)}`} className="text-link">
-                    直接登录
+                    {t('直接登录')}
                   </Link>
                   {canReset ? (
                     <>
@@ -385,7 +416,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                         to={`/forgot-password?email=${encodeURIComponent(email.trim())}`}
                         className="text-link"
                       >
-                        忘记密码
+                        {t('忘记密码')}
                       </Link>
                     </>
                   ) : null}
@@ -398,7 +429,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
       <aside className="auth-aside" aria-hidden>
         <p className="auth-quote">
-          “独立不是拒绝平台，而是保留搬走的能力。房子不必大，能遮雨，能招待几个朋友，就够了。”
+          {t('“独立不是拒绝平台，而是保留搬走的能力。房子不必大，能遮雨，能招待几个朋友，就够了。”')}
         </p>
         <svg className="auth-aside-art" viewBox="0 0 360 360">
           <g stroke="#d8d8cf" strokeWidth="1" fill="none">
@@ -410,23 +441,25 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           </g>
         </svg>
         <div className="auth-aside-meta">
-          <span>{site ? VISIBILITY_LABEL[site.visibility_mode] : '公开浏览'}</span>
-          <span>{site ? PUBLISH_LABEL[site.publish_mode] : '审核发布'}</span>
+          <span>{site ? VISIBILITY_LABEL[site.visibility_mode] : t('公开浏览')}</span>
+          <span>{site ? PUBLISH_LABEL[site.publish_mode] : t('审核发布')}</span>
           <span>Ed25519 · HttpOnly Cookie</span>
           <span>
-            <Icon name="shield" size={11} /> 服务端强制授权
+            <Icon name="shield" size={11} /> {t('服务端强制授权')}
           </span>
         </div>
       </aside>
 
       <Modal
         open={provider !== null}
-        title={provider ? `${PROVIDER_BY_ID[provider].name}登录` : '登录'}
+        title={
+          provider ? t('{provider}登录', { provider: PROVIDER_BY_ID[provider].name }) : t('登录')
+        }
         description={
           provider
             ? demo
-              ? '演示模式不会真的发送短信或跳转授权页；确认后会以站点管理员身份进入。'
-              : '服务端实现对应端点后，这个入口才能真正完成登录。'
+              ? t('演示模式不会真的发送短信或跳转授权页；确认后会以站点管理员身份进入。')
+              : t('服务端实现对应端点后，这个入口才能真正完成登录。')
             : undefined
         }
         onClose={() => setProvider(null)}
@@ -434,19 +467,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           provider && demo ? (
             <>
               <Button variant="ghost" onClick={() => setProvider(null)}>
-                取消
+                {t('取消')}
               </Button>
               <Button loading={providerBusy} onClick={submitProvider} iconRight="arrow-right">
-                {provider === 'phone' ? '登录' : '模拟授权并继续'}
+                {provider === 'phone' ? t('登录') : t('模拟授权并继续')}
               </Button>
             </>
           ) : (
             <>
               <Button variant="ghost" onClick={() => setProvider(null)}>
-                关闭
+                {t('关闭')}
               </Button>
               <Button variant="secondary" icon="copy" onClick={copyProviderEnv}>
-                复制服务端配置
+                {t('复制服务端配置')}
               </Button>
             </>
           )
@@ -464,7 +497,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
             {provider === 'phone' && demo ? (
               <>
-                <Field label="手机号" htmlFor="provider-phone">
+                <Field label={t('手机号')} htmlFor="provider-phone">
                   <Input
                     id="provider-phone"
                     value={phone}
@@ -477,11 +510,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   />
                 </Field>
                 <Field
-                  label="验证码"
+                  label={t('验证码')}
                   htmlFor="provider-code"
                   aside={
                     <button type="button" className="link-btn" onClick={sendCode}>
-                      {codeSent ? '重新获取' : '获取验证码'}
+                      {codeSent ? t('重新获取') : t('获取验证码')}
                     </button>
                   }
                 >
@@ -490,23 +523,24 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                     value={code}
                     inputMode="numeric"
                     maxLength={6}
-                    placeholder="6 位数字"
+                    placeholder={t('6 位数字')}
                     onChange={(event) => setCode(event.target.value)}
                   />
                 </Field>
                 {codeSent ? (
-                  <Callout tone="info" icon="message" title="演示验证码">
-                    请输入 <code className="mono">{DEMO_CODE}</code>。真实环境由短信服务商下发，前端不保存验证码。
+                  <Callout tone="info" icon="message" title={t('演示验证码')}>
+                    {t('请输入')} <code className="mono">{DEMO_CODE}</code>
+                    {t('。真实环境由短信服务商下发，前端不保存验证码。')}
                   </Callout>
                 ) : null}
               </>
             ) : null}
 
             {!demo ? (
-              <Callout tone="warn" icon="alert" title="等待服务端实现">
-                契约 v0.1.0 没有这个登录端点。服务端实现
+              <Callout tone="warn" icon="alert" title={t('等待服务端实现')}>
+                {t('契约 v0.1.0 没有这个登录端点。服务端实现')}
                 <code className="mono"> {PROVIDER_BY_ID[provider].endpoint} </code>
-                后，前端才能把用户交给提供商并接收回调。
+                {t('后，前端才能把用户交给提供商并接收回调。')}
               </Callout>
             ) : null}
 

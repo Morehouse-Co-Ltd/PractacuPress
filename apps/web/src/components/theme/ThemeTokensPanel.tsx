@@ -1,4 +1,5 @@
 import type { ThemeSettings, ThemeTokenKey } from '../../types';
+import { useT } from '../../lib/i18n';
 import { THEME_TOKENS, resolveTokens } from '../../lib/theme';
 import { Badge, Button, Callout, Toggle } from '../ui';
 
@@ -13,6 +14,7 @@ export function ThemeTokensPanel({
   theme: ThemeSettings;
   onChange: (theme: ThemeSettings) => void;
 }) {
+  const t = useT();
   const resolved = resolveTokens(theme);
   const overrides = theme.tokens ?? {};
 
@@ -25,8 +27,8 @@ export function ThemeTokensPanel({
 
   return (
     <div className="form-stack">
-      <Callout tone="info" icon="palette" title="什么时候需要高级令牌">
-        只有在预设的颜色不合用时才需要逐项覆盖。覆盖只对当前明暗模式生效；切换模式会恢复预设重配。
+      <Callout tone="info" icon="palette" title={t('什么时候需要高级令牌')}>
+        {t('只有在预设的颜色不合用时才需要逐项覆盖。覆盖只对当前明暗模式生效；切换模式会恢复预设重配。')}
       </Callout>
       <div className="token-list">
         {THEME_TOKENS.map((item) => {
@@ -44,21 +46,21 @@ export function ThemeTokensPanel({
                   <input
                     type="color"
                     value={hex}
-                    aria-label={`${item.label}颜色`}
+                    aria-label={t('{label}颜色', { label: item.label })}
                     onChange={(event) => setToken(item.key, event.target.value)}
                   />
                 ) : (
                   <span className="token-swatch" style={{ background: value }} aria-hidden />
                 )}
                 <code className="mono tiny">{value}</code>
-                {item.advanced ? <Badge tone="muted">高级</Badge> : null}
+                {item.advanced ? <Badge tone="muted">{t('高级')}</Badge> : null}
                 <Toggle
                   checked={!!override}
                   onChange={(next) => {
                     if (next) setToken(item.key, resolved[item.key]);
                     else setToken(item.key, undefined);
                   }}
-                  label={override ? '已覆盖' : '跟随预设'}
+                  label={override ? t('已覆盖') : t('跟随预设')}
                 />
               </div>
             </div>
@@ -67,7 +69,7 @@ export function ThemeTokensPanel({
       </div>
       <div className="row gap-8">
         <Button variant="secondary" size="sm" icon="refresh" onClick={() => onChange({ ...theme, tokens: undefined })}>
-          清除全部覆盖
+          {t('清除全部覆盖')}
         </Button>
       </div>
     </div>

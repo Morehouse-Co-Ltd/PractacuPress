@@ -4,6 +4,7 @@ import type { Content } from '../types';
 import { useBackend } from '../lib/backend';
 import { useClickOutside } from '../lib/hooks';
 import { KIND_LABEL, formatDate } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { Icon } from './Icon';
 
 /**
@@ -12,7 +13,9 @@ import { Icon } from './Icon';
  * 输入即搜（防抖 220ms，取前 6 条），回车进入完整搜索结果页。
  * `/` 在页面任意位置按下都会聚焦这里，除非焦点已经在输入控件里。
  */
-export function SiteSearch({ placeholder = '搜索文章与帖子' }: { placeholder?: string }) {
+export function SiteSearch({ placeholder }: { placeholder?: string }) {
+  const t = useT();
+  const hint = placeholder ?? t('搜索文章与帖子');
   const backend = useBackend();
   const navigate = useNavigate();
   const [term, setTerm] = useState('');
@@ -119,8 +122,8 @@ export function SiteSearch({ placeholder = '搜索文章与帖子' }: { placehol
               else submit(term);
             }
           }}
-          placeholder={placeholder}
-          aria-label="站内搜索"
+          placeholder={hint}
+          aria-label={t('站内搜索')}
           aria-expanded={showPop}
           autoComplete="off"
         />
@@ -128,13 +131,13 @@ export function SiteSearch({ placeholder = '搜索文章与帖子' }: { placehol
       </div>
 
       {showPop ? (
-        <div className="site-search-pop" role="listbox" aria-label="搜索结果">
+        <div className="site-search-pop" role="listbox" aria-label={t('搜索结果')}>
           {loading && !hits.length ? (
-            <p className="site-search-empty">正在搜索…</p>
+            <p className="site-search-empty">{t('正在搜索…')}</p>
           ) : hits.length === 0 ? (
             <p className="site-search-empty">
-              没有找到「{term.trim()}」
-              <span>换一个更短的词试试。</span>
+              {t('没有找到「{query}」', { query: term.trim() })}
+              <span>{t('换一个更短的词试试。')}</span>
             </p>
           ) : (
             hits.map((item, index) => (
@@ -157,9 +160,9 @@ export function SiteSearch({ placeholder = '搜索文章与帖子' }: { placehol
           )}
           <div className="site-search-foot">
             <Link to={`/search?q=${encodeURIComponent(term.trim())}`} onClick={() => setOpen(false)}>
-              查看全部结果 <Icon name="arrow-right" size={12} />
+              {t('查看全部结果')} <Icon name="arrow-right" size={12} />
             </Link>
-            <span className="tiny faint">Enter 搜索 · Esc 关闭</span>
+            <span className="tiny faint">{t('Enter 搜索 · Esc 关闭')}</span>
           </div>
         </div>
       ) : null}

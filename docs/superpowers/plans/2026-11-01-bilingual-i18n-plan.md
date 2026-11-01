@@ -26,11 +26,27 @@
 | --- | --- |
 | `apps/web/src/lib/i18n/index.ts` | store、`t`、`useT`、`useLocale`、`errorText`、`applyDocumentLocale` |
 | `apps/web/src/lib/i18n/locales.ts` | `Locale` 类型、语言清单、`normalizeLocale` |
-| `apps/web/src/lib/i18n/plural.ts` | 英文复数选择（`{one, other}`） |
-| `apps/web/src/lib/i18n/dict/index.ts` | 合并所有命名空间 |
-| `apps/web/src/lib/i18n/dict/<ns>.ts` | 单命名空间英文表，`export default {…}` |
-| `apps/web/src/lib/i18n/coverage.test.ts` | 覆盖率闸门 |
+| `apps/web/src/lib/i18n/plural.ts` | 英文复数与 `{name}` 插值 |
+| `apps/web/src/lib/i18n/labels.ts` | `labelMap`：常量查表变成「取值时翻译」 |
+| `apps/web/src/lib/i18n/dict/index.ts` | `common` + `lib` + `import.meta.glob('./fragments/*.ts')` |
+| `apps/web/src/lib/i18n/dict/common.ts` | 通用词（人工维护，不要让片段重复定义） |
+| `apps/web/src/lib/i18n/dict/lib.ts` | 非页面模块标签表（角色、状态、相对时间） |
+| `apps/web/src/lib/i18n/dict/fragments/<file>.ts` | **一个源文件一份**，命名 `pages_admin_Settings.ts` |
+| `apps/web/src/lib/i18n/coverage.test.ts` | 覆盖率闸门（缺译 / 英文含中文 / 占位符不一致） |
 | `apps/web/scripts/i18n-audit.mjs` | 未迁移文案扫描与覆盖率报告 |
+| `apps/web/scripts/e2e-i18n.mjs` | 双语端到端验收（中英切换、刷新保持、零残留中文） |
+
+### 并行迁移的配方（每个文件一次）
+
+1. 读完整文件；
+2. 把每一条用户可见中文包进 `t('原文')`，**中文一个字都不改**；
+3. `.tsx` 里加 `const t = useT()`（绝不在组件里 import 裸 `t`），`.ts` 里 import `t`；
+4. 句子里的变量改成 `{name}` 占位，英文复数写成 `{ one, other }`；
+5. 注释、类名、id、URL、块类型、**会被持久化的默认值**不翻译；
+6. 新建 `dict/fragments/<file>.ts` 放英文；已在 `common.ts` 的键不重复；
+7. `npx tsc --noEmit` 只关心自己的文件。
+
+**不做**：`lib/demoSeed.ts`、`lib/demo.ts`（演示站点的示例内容，是数据不是界面）。
 
 ---
 

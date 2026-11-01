@@ -5,6 +5,8 @@ import type {
   ThemeSoftenSettings,
   ThemeTokenKey,
 } from '../types';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 
 /**
  * 主题基础层：预设、双模式令牌与 CSS 变量输出。
@@ -62,11 +64,11 @@ const NIGHT_LIGHT: ThemeTokenSet = {
   prose: '#363636',
 };
 
-export const THEME_PRESETS: ThemePreset[] = [
+const RAW_THEME_PRESETS: ThemePreset[] = [
   {
     id: 'paper',
-    name: '纸白',
-    note: '白底墨字，克制的绿。原版主题。',
+    name: t('纸白'),
+    note: t('白底墨字，克制的绿。原版主题。'),
     mode: 'light',
     light: {
       background: '#ffffff',
@@ -101,8 +103,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: 'sand',
-    name: '暖砂',
-    note: '米色纸张与赭石强调色，适合长文。',
+    name: t('暖砂'),
+    note: t('米色纸张与赭石强调色，适合长文。'),
     mode: 'light',
     light: {
       background: '#fbf7ee',
@@ -137,8 +139,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: 'mist',
-    name: '雾蓝',
-    note: '偏冷的灰蓝底，安静的技术刊物。',
+    name: t('雾蓝'),
+    note: t('偏冷的灰蓝底，安静的技术刊物。'),
     mode: 'light',
     light: {
       background: '#f6f8fa',
@@ -173,8 +175,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: 'sage',
-    name: '灰绿',
-    note: '带一点草色的纸面，温和的读感。',
+    name: t('灰绿'),
+    note: t('带一点草色的纸面，温和的读感。'),
     mode: 'light',
     light: {
       background: '#f5f7f0',
@@ -209,8 +211,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: 'clay',
-    name: '陶土',
-    note: '暖红强调色，适合随笔与摄影。',
+    name: t('陶土'),
+    note: t('暖红强调色，适合随笔与摄影。'),
     mode: 'light',
     light: {
       background: '#fdf8f5',
@@ -245,37 +247,43 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: 'night',
-    name: '夜航',
-    note: '深色杂志风：暖黑底、薰衣草主色、封面图组织内容。',
+    name: t('夜航'),
+    note: t('深色杂志风：暖黑底、薰衣草主色、封面图组织内容。'),
     mode: 'dark',
     light: NIGHT_LIGHT,
     dark: NIGHT_DARK,
   },
   {
     id: 'dawn',
-    name: '夜航 · 浅色',
-    note: '夜航的浅色重配：冷白纸与电光蓝，结构不变。',
+    name: t('夜航 · 浅色'),
+    note: t('夜航的浅色重配：冷白纸与电光蓝，结构不变。'),
     mode: 'light',
     light: NIGHT_LIGHT,
     dark: NIGHT_DARK,
   },
 ];
 
-export const THEME_TOKENS: { key: ThemeTokenKey; label: string; hint: string; advanced: boolean }[] = [
-  { key: 'background', label: '页面底色', hint: '全站背景。', advanced: false },
-  { key: 'ink', label: '主文字', hint: '标题与强调文字。', advanced: false },
-  { key: 'accent', label: '强调色', hint: '链接、当前状态与焦点环。', advanced: false },
-  { key: 'bg_subtle', label: '卡片底', hint: '卡片与浮层，深色下必须能与底色区分。', advanced: true },
-  { key: 'bg_sunken', label: '下沉底', hint: '输入框、代码块与次级块。', advanced: true },
-  { key: 'ink_soft', label: '正文色', hint: '文章正文使用。', advanced: true },
-  { key: 'muted', label: '次要文字', hint: '说明与 meta 信息。', advanced: true },
-  { key: 'faint', label: '弱化文字', hint: '时间、计数等非关键信息。', advanced: true },
-  { key: 'line', label: '分隔线', hint: '区块之间的细线。', advanced: true },
-  { key: 'line_strong', label: '卡片描边', hint: '深色下的分层手段，1px。', advanced: true },
-  { key: 'accent_soft', label: '强调浅底', hint: '强调色的低透明度底色。', advanced: true },
-  { key: 'accent_ink', label: '强调色上的文字', hint: '主色按钮与胶囊的文字色。', advanced: true },
-  { key: 'prose', label: '阅读正文', hint: '文章页正文颜色，对比度要求最高。', advanced: true },
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const THEME_PRESETS = liveCatalog(RAW_THEME_PRESETS);
+
+const RAW_THEME_TOKENS: { key: ThemeTokenKey; label: string; hint: string; advanced: boolean }[] = [
+  { key: 'background', label: t('页面底色'), hint: t('全站背景。'), advanced: false },
+  { key: 'ink', label: t('主文字'), hint: t('标题与强调文字。'), advanced: false },
+  { key: 'accent', label: t('强调色'), hint: t('链接、当前状态与焦点环。'), advanced: false },
+  { key: 'bg_subtle', label: t('卡片底'), hint: t('卡片与浮层，深色下必须能与底色区分。'), advanced: true },
+  { key: 'bg_sunken', label: t('下沉底'), hint: t('输入框、代码块与次级块。'), advanced: true },
+  { key: 'ink_soft', label: t('正文色'), hint: t('文章正文使用。'), advanced: true },
+  { key: 'muted', label: t('次要文字'), hint: t('说明与 meta 信息。'), advanced: true },
+  { key: 'faint', label: t('弱化文字'), hint: t('时间、计数等非关键信息。'), advanced: true },
+  { key: 'line', label: t('分隔线'), hint: t('区块之间的细线。'), advanced: true },
+  { key: 'line_strong', label: t('卡片描边'), hint: t('深色下的分层手段，1px。'), advanced: true },
+  { key: 'accent_soft', label: t('强调浅底'), hint: t('强调色的低透明度底色。'), advanced: true },
+  { key: 'accent_ink', label: t('强调色上的文字'), hint: t('主色按钮与胶囊的文字色。'), advanced: true },
+  { key: 'prose', label: t('阅读正文'), hint: t('文章页正文颜色，对比度要求最高。'), advanced: true },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const THEME_TOKENS = liveCatalog(RAW_THEME_TOKENS);
 
 export const DEFAULT_SOFTEN: ThemeSoftenSettings = {
   enabled: false,

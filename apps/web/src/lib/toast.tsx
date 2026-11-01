@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Icon } from '../components/Icon';
+import { useT } from './i18n';
 
 export type ToastTone = 'ok' | 'error' | 'info';
 
@@ -25,6 +26,7 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const [items, setItems] = useState<ToastItem[]>([]);
   const seq = useRef(0);
 
@@ -57,7 +59,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <strong>{item.message}</strong>
               {item.detail ? <span>{item.detail}</span> : null}
             </span>
-            <button type="button" className="toast-close" onClick={() => remove(item.id)} aria-label="关闭提示">
+            <button
+              type="button"
+              className="toast-close"
+              onClick={() => remove(item.id)}
+              aria-label={t('关闭提示')}
+            >
               <Icon name="close" size={13} />
             </button>
           </div>
@@ -68,7 +75,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 export function useToast(): ToastApi {
+  const t = useT();
   const value = useContext(ToastContext);
-  if (!value) throw new Error('useToast 必须在 ToastProvider 内使用');
+  if (!value) throw new Error(t('useToast 必须在 ToastProvider 内使用'));
   return value;
 }

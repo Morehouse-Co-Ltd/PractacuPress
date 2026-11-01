@@ -49,11 +49,19 @@ language?: Locale; // 'zh-CN' | 'en'
 lib/i18n/
   index.ts        订阅、setLocale/getLocale、t()、useT()、useLocale()、errorText()
   locales.ts      语言清单与归一化
-  format.ts       locale 感知的日期/相对时间/数字
-  dict/index.ts   合并所有命名空间
-  dict/<ns>.ts    每个命名空间一张英文表（并行迁移时一人一个文件，互不冲突）
+  plural.ts       插值与英文复数
+  labels.ts       labelMap：把「中文查表」变成「取值时翻译」
   coverage.test.ts 覆盖率闸门
+  dict/
+    index.ts      合并 common + lib + fragments（import.meta.glob）
+    common.ts     通用词：保存、取消、删除……
+    lib.ts        非页面模块的标签表：角色、状态、相对时间……
+    fragments/    按**源文件**拆的译文片段，一个文件一个人负责
 ```
+
+**为什么按源文件拆片段**：全量迁移有 4000+ 条文案，必须并行。若所有人往同一张
+大表里追加，冲突无法避免；改成「一个源文件一个片段」后，每个人的写入范围互不重叠，
+新增片段也不需要改索引文件（`import.meta.glob` 自动合并）。
 
 对外 API：
 

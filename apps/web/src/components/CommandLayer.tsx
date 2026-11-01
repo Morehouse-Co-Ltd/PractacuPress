@@ -6,6 +6,7 @@ import { useBackend } from '../lib/backend';
 import { usePermissions } from '../lib/usePermissions';
 import { pageSearchText, useCustomization, useThemeMode } from '../lib/customize';
 import { onInterfaceCommand } from '../lib/interfaceCommands';
+import { useT } from '../lib/i18n';
 import { Icon, type IconName } from './Icon';
 
 /**
@@ -41,6 +42,7 @@ function contentUrl(item: Content): string {
 }
 
 export function CommandLayer() {
+  const t = useT();
   const navigate = useNavigate();
   const { me } = useAuth();
   const { can } = usePermissions();
@@ -64,28 +66,28 @@ export function CommandLayer() {
   /* ---------- 命令面板条目 ---------- */
   const commands = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
-      { key: 'home', label: '回首页', hint: 'Shift+H', icon: 'home', run: () => navigate('/') },
-      { key: 'articles', label: '全部文章', hint: '/articles', icon: 'file', run: () => navigate('/articles') },
-      { key: 'posts', label: '全部帖子', hint: '/posts', icon: 'message', run: () => navigate('/posts') },
-      { key: 'search', label: '搜索内容', hint: 'Shift+S', icon: 'search', run: () => setLayer('search') },
-      { key: 'mode', label: '切换深浅色', hint: 'Shift+D', icon: 'palette', run: toggle },
+      { key: 'home', label: t('回首页'), hint: 'Shift+H', icon: 'home', run: () => navigate('/') },
+      { key: 'articles', label: t('全部文章'), hint: '/articles', icon: 'file', run: () => navigate('/articles') },
+      { key: 'posts', label: t('全部帖子'), hint: '/posts', icon: 'message', run: () => navigate('/posts') },
+      { key: 'search', label: t('搜索内容'), hint: 'Shift+S', icon: 'search', run: () => setLayer('search') },
+      { key: 'mode', label: t('切换深浅色'), hint: 'Shift+D', icon: 'palette', run: toggle },
     ];
     if (me && can('write_content')) {
       items.push({
         key: 'write',
-        label: '写新文章',
+        label: t('写新文章'),
         hint: '/admin/content/new/article',
         icon: 'edit',
         run: () => navigate('/admin/content/new/article'),
       });
     }
     if (can('moderate_content') || can('manage_site')) {
-      items.push({ key: 'admin', label: '管理后台', hint: '/admin', icon: 'grid', run: () => navigate('/admin') });
+      items.push({ key: 'admin', label: t('管理后台'), hint: '/admin', icon: 'grid', run: () => navigate('/admin') });
     }
     if (can('manage_site')) {
       items.push({
         key: 'theme',
-        label: '页面编排',
+        label: t('页面编排'),
         hint: '/admin/theme',
         icon: 'layers',
         run: () => navigate('/admin/theme'),
@@ -102,7 +104,7 @@ export function CommandLayer() {
       });
     }
     return items;
-  }, [can, customization.pages, me, navigate, toggle]);
+  }, [can, customization.pages, me, navigate, t, toggle]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -214,13 +216,13 @@ export function CommandLayer() {
   return (
     <div className="pp-overlay" onClick={onOverlayClick} role="presentation">
       {layer === 'command' ? (
-        <div className="pp-command" role="dialog" aria-label="命令面板">
+        <div className="pp-command" role="dialog" aria-label={t('命令面板')}>
           <input
             ref={inputRef}
             className="pp-command-input"
             value={query}
-            placeholder="输入命令，回车执行"
-            aria-label="命令"
+            placeholder={t('输入命令，回车执行')}
+            aria-label={t('命令')}
             onChange={(e) => {
               setQuery(e.target.value);
               setActive(0);
@@ -262,17 +264,17 @@ export function CommandLayer() {
               ))}
             </div>
           ) : (
-            <p className="pp-command-empty">没有匹配的命令。</p>
+            <p className="pp-command-empty">{t('没有匹配的命令。')}</p>
           )}
         </div>
       ) : (
-        <div className="pp-search" role="dialog" aria-label="搜索">
+        <div className="pp-search" role="dialog" aria-label={t('搜索')}>
           <input
             ref={inputRef}
             className="pp-search-input"
             value={query}
-            placeholder="搜索标题、摘要与页面，回车打开第一个结果"
-            aria-label="搜索词"
+            placeholder={t('搜索标题、摘要与页面，回车打开第一个结果')}
+            aria-label={t('搜索词')}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
@@ -290,14 +292,14 @@ export function CommandLayer() {
           />
           <div className="pp-search-results">
             {query.trim().length < 2 ? (
-              <p className="pp-search-empty">至少输入 2 个字符。</p>
+              <p className="pp-search-empty">{t('至少输入 2 个字符。')}</p>
             ) : searching ? (
-              <p className="pp-search-empty">正在搜索…</p>
+              <p className="pp-search-empty">{t('正在搜索…')}</p>
             ) : pageHits.length === 0 && hits.length === 0 ? (
               <p className="pp-search-empty">
-                没有找到「{query.trim()}」。
+                {t('没有找到「{query}」。', { query: query.trim() })}
                 <Link to={`/search?q=${encodeURIComponent(query.trim())}`} onClick={close}>
-                  去搜索页看看
+                  {t('去搜索页看看')}
                 </Link>
               </p>
             ) : (
@@ -305,14 +307,16 @@ export function CommandLayer() {
                 {pageHits.map((page) => (
                   <Link key={page.id} to={`/${page.slug}`} className="pp-search-item" onClick={close}>
                     <strong>{page.title}</strong>
-                    <span>自定义页面 · {page.summary || `/${page.slug}`}</span>
+                    <span>
+                      {t('自定义页面')} · {page.summary || `/${page.slug}`}
+                    </span>
                   </Link>
                 ))}
                 {hits.map((item) => (
                   <Link key={item.id} to={contentUrl(item)} className="pp-search-item" onClick={close}>
                     <strong>{item.title}</strong>
                     <span>
-                      {item.kind === 'article' ? '文章' : '帖子'}
+                      {item.kind === 'article' ? t('文章') : t('帖子')}
                       {item.summary ? ` · ${item.summary.slice(0, 60)}` : ''}
                     </span>
                   </Link>

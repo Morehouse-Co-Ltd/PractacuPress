@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { LogicChain, LogicStep, LogicSettings, ScreenLayout } from '../../types';
+import { useT } from '../../lib/i18n';
 import {
   LOGIC_ACTIONS,
   LOGIC_CONDITIONS,
@@ -20,12 +21,6 @@ import { Icon } from '../Icon';
  * 保存后也不会执行——evaluateChain 会拒绝它。
  */
 
-const KIND_LABEL: Record<LogicStep['kind'], string> = {
-  trigger: '当…发生时',
-  condition: '如果…',
-  action: '就…',
-};
-
 function StepFieldControl({
   step,
   field,
@@ -37,6 +32,7 @@ function StepFieldControl({
   layout: ScreenLayout;
   onChange: (config: Record<string, string | number | boolean>) => void;
 }) {
+  const t = useT();
   const id = `stp-${step.id}-${field.key}`;
   const value = step.config[field.key];
   const flatBlocks = useMemo(() => {
@@ -59,8 +55,8 @@ function StepFieldControl({
           value={typeof value === 'string' ? value : ''}
           onChange={(event) => onChange({ ...step.config, [field.key]: event.target.value })}
         >
-          <option value="">选择组件…</option>
-          <option value="*">任意组件</option>
+          <option value="">{t('选择组件…')}</option>
+          <option value="*">{t('任意组件')}</option>
           {flatBlocks.map((block) => (
             <option key={block.id} value={block.id}>
               {block.label}
@@ -132,7 +128,15 @@ function ChainCard({
   onChange: (chain: LogicChain) => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const issue = chainIssue(chain);
+
+  /** 步骤种类标签：中文原文作键，渲染时按当前语言取值。 */
+  const kindLabel: Record<LogicStep['kind'], string> = {
+    trigger: t('当…发生时'),
+    condition: t('如果…'),
+    action: t('就…'),
+  };
 
   const patchStep = (id: string, patch: Partial<LogicStep>) => {
     onChange({ ...chain, steps: chain.steps.map((step) => (step.id === id ? { ...step, ...patch } : step)) });
@@ -161,8 +165,8 @@ function ChainCard({
       <div className="panel-head">
         <div>
           <h3>
-            链条 {index + 1}
-            {issue ? <Badge tone="warn">不完整</Badge> : <Badge tone="ok">就绪</Badge>}
+            {t('链条 {index}', { index: index + 1 })}
+            {issue ? <Badge tone="warn">{t('不完整')}</Badge> : <Badge tone="ok">{t('就绪')}</Badge>}
           </h3>
           <p>{describeChain(chain)}</p>
         </div>
@@ -170,15 +174,15 @@ function ChainCard({
           <Toggle
             checked={chain.enabled}
             onChange={(next) => onChange({ ...chain, enabled: next })}
-            label="启用"
+            label={t('启用')}
           />
-          <button type="button" className="icon-btn" aria-label="删除链条" onClick={onRemove}>
+          <button type="button" className="icon-btn" aria-label={t('删除链条')} onClick={onRemove}>
             <Icon name="trash" size={14} />
           </button>
         </div>
       </div>
       <div className="panel-body form-stack">
-        <Field label="链条名称" htmlFor={`chain-name-${chain.id}`} hint="只给你自己看，例如“深色时高亮统计卡”。">
+        <Field label={t('链条名称')} htmlFor={`chain-name-${chain.id}`} hint={t('只给你自己看，例如“深色时高亮统计卡”。')}>
           <Input
             id={`chain-name-${chain.id}`}
             value={chain.name}
@@ -188,7 +192,7 @@ function ChainCard({
         </Field>
 
         {chain.steps.length === 0 ? (
-          <p className="field-hint">还没有步骤。先加一个「当…发生时」。</p>
+          <p className="field-hint">{t('还没有步骤。先加一个「当…发生时」。')}</p>
         ) : (
           <div className="chain-steps">
             {chain.steps.map((step, stepIndex) => {
@@ -201,13 +205,13 @@ function ChainCard({
               return (
                 <div className={`chain-step is-${step.kind}`} key={step.id}>
                   <div className="chain-step-head">
-                    <span className="chain-step-kind">{KIND_LABEL[step.kind]}</span>
+                    <span className="chain-step-kind">{kindLabel[step.kind]}</span>
                     <strong>{stepName(step.type)}</strong>
                     {def ? <span className="faint small">{def.hint}</span> : null}
                     <button
                       type="button"
                       className="icon-btn"
-                      aria-label="删除步骤"
+                      aria-label={t('删除步骤')}
                       onClick={() => onChange({ ...chain, steps: chain.steps.filter((item) => item.id !== step.id) })}
                     >
                       <Icon name="close" size={13} />
@@ -230,14 +234,14 @@ function ChainCard({
         )}
 
         <div className="chain-add">
-          <span className="field-label">添加步骤</span>
+          <span className="field-label">{t('添加步骤')}</span>
           <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
             <Select
-              aria-label="添加触发步骤"
+              aria-label={t('添加触发步骤')}
               value=""
               onChange={(event) => event.target.value && addStep('trigger', event.target.value)}
             >
-              <option value="">当…发生时</option>
+              <option value="">{t('当…发生时')}</option>
               {LOGIC_TRIGGERS.map((item) => (
                 <option key={item.type} value={item.type}>
                   {item.name}
@@ -245,11 +249,11 @@ function ChainCard({
               ))}
             </Select>
             <Select
-              aria-label="添加条件步骤"
+              aria-label={t('添加条件步骤')}
               value=""
               onChange={(event) => event.target.value && addStep('condition', event.target.value)}
             >
-              <option value="">如果…</option>
+              <option value="">{t('如果…')}</option>
               {LOGIC_CONDITIONS.map((item) => (
                 <option key={item.type} value={item.type}>
                   {item.name}
@@ -257,11 +261,11 @@ function ChainCard({
               ))}
             </Select>
             <Select
-              aria-label="添加动作步骤"
+              aria-label={t('添加动作步骤')}
               value=""
               onChange={(event) => event.target.value && addStep('action', event.target.value)}
             >
-              <option value="">就…</option>
+              <option value="">{t('就…')}</option>
               {LOGIC_ACTIONS.map((item) => (
                 <option key={item.type} value={item.type}>
                   {item.name}
@@ -290,12 +294,13 @@ export function ChainEditor({
   layout: ScreenLayout;
   onChange: (logic: LogicSettings) => void;
 }) {
+  const t = useT();
   const [nextId, setNextId] = useState(1);
 
   const addChain = () => {
     const chain: LogicChain = {
       id: nextBlockId('chn'),
-      name: `新链条 ${nextId}`,
+      name: t('新链条 {index}', { index: nextId }),
       enabled: true,
       steps: [],
     };
@@ -305,17 +310,17 @@ export function ChainEditor({
 
   return (
     <div className="form-stack">
-      <Callout tone="info" icon="sparkle" title="思维链是纯数据，不是脚本">
-        一条链 = 触发 + 条件 + 动作。运行时只读这份配置，不执行任何动态代码，因此不会更慢也不会有注入面。
-        每条链触发后有 1.5 秒冷却，避免滚动或悬停把动作放成刷屏。
+      <Callout tone="info" icon="sparkle" title={t('思维链是纯数据，不是脚本')}>
+        {t('一条链 = 触发 + 条件 + 动作。运行时只读这份配置，不执行任何动态代码，因此不会更慢也不会有注入面。')}{' '}
+        {t('每条链触发后有 1.5 秒冷却，避免滚动或悬停把动作放成刷屏。')}
       </Callout>
 
       {logic.chains.length === 0 ? (
         <section className="panel">
           <div className="panel-body">
-            <p className="field-hint">还没有思维链。例如：滚到 60% 时闪烁一次统计卡；切到深色时显示作者卡。</p>
+            <p className="field-hint">{t('还没有思维链。例如：滚到 60% 时闪烁一次统计卡；切到深色时显示作者卡。')}</p>
             <Button className="mt-12" icon="plus" onClick={addChain}>
-              新建思维链
+              {t('新建思维链')}
             </Button>
           </div>
         </section>
@@ -335,10 +340,10 @@ export function ChainEditor({
           ))}
           <div>
             <Button variant="secondary" icon="plus" onClick={addChain} disabled={logic.chains.length >= 20}>
-              再建一条
+              {t('再建一条')}
             </Button>
             <span className="tiny faint" style={{ marginLeft: 10 }}>
-              最多 20 条。
+              {t('最多 20 条。')}
             </span>
           </div>
         </>

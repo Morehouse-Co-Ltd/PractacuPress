@@ -8,6 +8,7 @@ import {
 } from '../lib/authProviders';
 import { Badge, Callout, CopyButton, Field, Input } from './ui';
 import { Icon } from './Icon';
+import { useT } from '../lib/i18n';
 
 /**
  * 登录方式编辑器。安装引导与「站点设置 → 登录方式」共用同一套字段。
@@ -34,6 +35,7 @@ export function AuthProvidersEditor({
   /** 是否显示共享的「服务端环境变量」区块。 */
   showEnv?: boolean;
 }) {
+  const t = useT();
   const [envOpen, setEnvOpen] = useState(false);
   const providers = only ? AUTH_PROVIDER_IDS.filter((id) => id === only) : AUTH_PROVIDER_IDS;
 
@@ -60,19 +62,19 @@ export function AuthProvidersEditor({
               {item.enabled ? (
                 ready ? (
                   <Badge tone="ok" dot>
-                    已配置
+                    {t('已配置')}
                   </Badge>
                 ) : (
-                  <Badge tone="warn">待补齐</Badge>
+                  <Badge tone="warn">{t('待补齐')}</Badge>
                 )
               ) : (
-                <Badge tone="muted">未启用</Badge>
+                <Badge tone="muted">{t('未启用')}</Badge>
               )}
               <button
                 type="button"
                 role="switch"
                 aria-checked={item.enabled}
-                aria-label={`启用${meta.name}登录`}
+                aria-label={t('启用{name}登录', { name: meta.name })}
                 className={`switch${item.enabled ? ' is-on' : ''}`}
                 onClick={() => patch(id, { enabled: !item.enabled })}
               >
@@ -102,8 +104,8 @@ export function AuthProvidersEditor({
                   <Field
                     label={meta.secretLabel}
                     htmlFor={`${idPrefix}-${id}-secret`}
-                    hint="只用于生成服务端环境变量，不写入浏览器配置。"
-                    aside={secrets[id] ? <Badge tone="accent">仅本次</Badge> : null}
+                    hint={t('只用于生成服务端环境变量，不写入浏览器配置。')}
+                    aside={secrets[id] ? <Badge tone="accent">{t('仅本次')}</Badge> : null}
                   >
                     <Input
                       id={`${idPrefix}-${id}-secret`}
@@ -116,11 +118,12 @@ export function AuthProvidersEditor({
                   </Field>
                 </div>
                 <p className="auth-provider-endpoint">
-                  服务端端点：<code className="mono">{meta.endpoint}</code>
+                  {t('服务端端点：')}
+                  <code className="mono">{meta.endpoint}</code>
                 </p>
                 {!ready ? (
                   <p className="field-hint">
-                    填写带 * 的必填项后，前台登录页才会显示这个入口。
+                    {t('填写带 * 的必填项后，前台登录页才会显示这个入口。')}
                   </p>
                 ) : null}
               </div>
@@ -133,24 +136,25 @@ export function AuthProvidersEditor({
         <div className="auth-env">
           <div className="auth-env-head">
             <div>
-              <strong>服务端环境变量</strong>
+              <strong>{t('服务端环境变量')}</strong>
               <p>
                 {demo
-                  ? '演示模式不会真的发短信或跳转 OAuth；这份片段用于之后连接真实后端。'
-                  : '把这些值交给服务端；密钥留空时会显示占位符，不会被保存。'}
+                  ? t('演示模式不会真的发短信或跳转 OAuth；这份片段用于之后连接真实后端。')
+                  : t('把这些值交给服务端；密钥留空时会显示占位符，不会被保存。')}
               </p>
             </div>
             <div className="row gap-8">
-              <CopyButton value={authEnvSnippet(value, secrets)} label="复制 .env" />
+              <CopyButton value={authEnvSnippet(value, secrets)} label={t('复制 .env')} />
               <button type="button" className="link-btn" onClick={() => setEnvOpen((next) => !next)}>
-                {envOpen ? '收起' : '展开'}
+                {envOpen ? t('收起') : t('展开')}
               </button>
             </div>
           </div>
           {envOpen ? <pre className="auth-env-code">{authEnvSnippet(value, secrets)}</pre> : null}
-          <Callout tone="warn" icon="alert" title="密钥不经过前端保存">
-            浏览器的 localStorage 对同域脚本可读。Client Secret、短信 AccessSecret 与 JWT 私钥只应该存在于服务端环境变量，
-            这里填写的值仅用于拼接上面的片段。
+          <Callout tone="warn" icon="alert" title={t('密钥不经过前端保存')}>
+            {t(
+              '浏览器的 localStorage 对同域脚本可读。Client Secret、短信 AccessSecret 与 JWT 私钥只应该存在于服务端环境变量， 这里填写的值仅用于拼接上面的片段。',
+            )}
           </Callout>
         </div>
       ) : null}

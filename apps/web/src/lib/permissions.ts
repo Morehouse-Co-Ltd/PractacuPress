@@ -7,6 +7,8 @@ import type {
   SiteKind,
   VisibilityMode,
 } from '../types';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 
 /**
  * 权限组与能力矩阵。
@@ -24,17 +26,20 @@ export interface CapabilityDef {
   hint: string;
 }
 
-export const CAPABILITY_DEFS: CapabilityDef[] = [
-  { id: 'read_content', label: '阅读内容', hint: '查看已发布的文章与帖子。' },
-  { id: 'comment', label: '发表评论', hint: '在文章与帖子下参与讨论、回复他人。' },
-  { id: 'write_content', label: '创建内容', hint: '写文章、发帖子，进入内容库。' },
-  { id: 'moderate_content', label: '审核内容', hint: '处理审核队列，发布、退回与归档。' },
-  { id: 'moderate_comment', label: '管理评论', hint: '通过、隐藏与删除评论。' },
-  { id: 'manage_member', label: '管理成员', hint: '创建账户、调整角色。' },
-  { id: 'manage_site', label: '管理站点', hint: '站点设置、外观、主题、页面与扩展。' },
-  { id: 'view_log', label: '查看操作日志', hint: '阅读后台的操作记录。' },
-  { id: 'manage_permission', label: '配置权限组', hint: '修改这份能力矩阵。' },
+const RAW_CAPABILITY_DEFS: CapabilityDef[] = [
+  { id: 'read_content', label: t('阅读内容'), hint: t('查看已发布的文章与帖子。') },
+  { id: 'comment', label: t('发表评论'), hint: t('在文章与帖子下参与讨论、回复他人。') },
+  { id: 'write_content', label: t('创建内容'), hint: t('写文章、发帖子，进入内容库。') },
+  { id: 'moderate_content', label: t('审核内容'), hint: t('处理审核队列，发布、退回与归档。') },
+  { id: 'moderate_comment', label: t('管理评论'), hint: t('通过、隐藏与删除评论。') },
+  { id: 'manage_member', label: t('管理成员'), hint: t('创建账户、调整角色。') },
+  { id: 'manage_site', label: t('管理站点'), hint: t('站点设置、外观、主题、页面与扩展。') },
+  { id: 'view_log', label: t('查看操作日志'), hint: t('阅读后台的操作记录。') },
+  { id: 'manage_permission', label: t('配置权限组'), hint: t('修改这份能力矩阵。') },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const CAPABILITY_DEFS = liveCatalog(RAW_CAPABILITY_DEFS);
 
 export interface PermissionGroupDef {
   id: PermissionGroupId;
@@ -44,13 +49,16 @@ export interface PermissionGroupDef {
   hint: string;
 }
 
-export const PERMISSION_GROUPS: PermissionGroupDef[] = [
-  { id: 'guest', label: '游客', role: null, hint: '未登录访客，只能阅读公开内容。' },
-  { id: 'member', label: '成员', role: 'member', hint: '自助注册或由管理员创建，可以评论与投稿。' },
-  { id: 'moderator', label: '审核员', role: 'editor', hint: '处理内容与评论审核，可以直接发布。' },
-  { id: 'admin', label: '管理员', role: 'site_admin', hint: '管理成员、站点设置与外观。' },
-  { id: 'owner', label: '最高管理员', role: 'platform_admin', hint: '拥有全部权限，包括配置权限组。' },
+const RAW_PERMISSION_GROUPS: PermissionGroupDef[] = [
+  { id: 'guest', label: t('游客'), role: null, hint: t('未登录访客，只能阅读公开内容。') },
+  { id: 'member', label: t('成员'), role: 'member', hint: t('自助注册或由管理员创建，可以评论与投稿。') },
+  { id: 'moderator', label: t('审核员'), role: 'editor', hint: t('处理内容与评论审核，可以直接发布。') },
+  { id: 'admin', label: t('管理员'), role: 'site_admin', hint: t('管理成员、站点设置与外观。') },
+  { id: 'owner', label: t('最高管理员'), role: 'platform_admin', hint: t('拥有全部权限，包括配置权限组。') },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const PERMISSION_GROUPS = liveCatalog(RAW_PERMISSION_GROUPS);
 
 const ALL_CAPABILITIES: CapabilityId[] = CAPABILITY_DEFS.map((item) => item.id);
 
@@ -200,7 +208,16 @@ export const ROLE_CAPABILITY: Record<Role, CapabilityId> = {
   platform_admin: 'manage_permission',
 };
 
+/**
+ * 能力 → 名称。
+ *
+ * 不用一次性 reduce 生成快照：`CAPABILITY_DEFS` 里的 label 是读取时翻译的，
+ * 这里也用 getter 转发，切到英文后权限矩阵会跟着变。
+ */
 export const CAPABILITY_LABEL: Record<CapabilityId, string> = CAPABILITY_DEFS.reduce(
-  (acc, item) => ({ ...acc, [item.id]: item.label }),
+  (acc, item) => {
+    Object.defineProperty(acc, item.id, { enumerable: true, get: () => item.label });
+    return acc;
+  },
   {} as Record<CapabilityId, string>,
 );

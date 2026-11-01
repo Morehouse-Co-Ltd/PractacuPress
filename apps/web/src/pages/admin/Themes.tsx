@@ -37,6 +37,7 @@ import {
   variantLabel,
 } from '../../lib/themes';
 import { useTitle } from '../../lib/hooks';
+import { useT } from '../../lib/i18n';
 import { useToast } from '../../lib/toast';
 import { ThemeTokensPanel } from '../../components/theme/ThemeTokensPanel';
 import { LoadingPage } from './Loading';
@@ -53,13 +54,6 @@ import {
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
-
-/** 页头（最上方 Tab 栏）样式选项。 */
-const HEADER_STYLE_OPTIONS: { id: HeaderStyle; label: string; hint: string }[] = [
-  { id: 'classic', label: '经典吸顶', hint: '整条页头吸顶，滚动后加一点阴影。' },
-  { id: 'transparent', label: '顶部透明', hint: '页首透明，向下滚动后重新出现底色。' },
-  { id: 'float', label: '悬浮胶囊', hint: '滚动后收缩成圆角悬浮栏，可配高斯模糊。' },
-];
 
 function cloneTheme(theme: SiteTheme['theme']): SiteTheme['theme'] {
   return {
@@ -116,7 +110,8 @@ function ThemePreview({ bundle }: { bundle: SiteTheme }) {
 }
 
 export function ThemesPage() {
-  useTitle('主题设置');
+  const t = useT();
+  useTitle(t('主题设置'));
   const { site } = useAuth();
   const { customization, update } = useCustomization();
   const toast = useToast();
@@ -151,10 +146,10 @@ export function ThemesPage() {
   const modified = selected
     ? !themeMatches(currentTheme, customization.layout.variant, selected)
     : true;
-  const currentName = selected?.name ?? '自定义主题';
+  const currentName = selected?.name ?? t('自定义主题');
   const currentId = selected?.id ?? customization.active_theme ?? 'custom';
   const fallback = builtinThemeBundle('default');
-  const restoreLabel = selected ? '恢复主题默认' : '套用原版主题';
+  const restoreLabel = selected ? t('恢复主题默认') : t('套用原版主题');
   const layout = customization.layout;
   const isBuiltinSelected = !!selected && BUILTIN_THEME_IDS.has(selected.id);
   const selectedCustom = selected && !isBuiltinSelected ? selected : null;
@@ -169,8 +164,26 @@ export function ThemesPage() {
     update({ layout: { ...layout, ...patch } });
 
   const headerStyle = layout.header_style ?? 'classic';
+  /** 页头（最上方 Tab 栏）样式选项。 */
+  const headerStyleOptions: { id: HeaderStyle; label: string; hint: string }[] = [
+    {
+      id: 'classic',
+      label: t('经典吸顶'),
+      hint: t('整条页头吸顶，滚动后加一点阴影。'),
+    },
+    {
+      id: 'transparent',
+      label: t('顶部透明'),
+      hint: t('页首透明，向下滚动后重新出现底色。'),
+    },
+    {
+      id: 'float',
+      label: t('悬浮胶囊'),
+      hint: t('滚动后收缩成圆角悬浮栏，可配高斯模糊。'),
+    },
+  ];
   const headerStyleLabel =
-    HEADER_STYLE_OPTIONS.find((option) => option.id === headerStyle)?.label ?? '经典吸顶';
+    headerStyleOptions.find((option) => option.id === headerStyle)?.label ?? t('经典吸顶');
 
   /* ---------- 导航 Tab ---------- */
 
@@ -179,12 +192,12 @@ export function ThemesPage() {
 
   const startCustomNav = () => {
     setNavTabs(navState.tabs);
-    toast.push('ok', '已改为自定义导航', '现在可以改文字、换页面或删掉不需要的入口。');
+    toast.push('ok', t('已改为自定义导航'), t('现在可以改文字、换页面或删掉不需要的入口。'));
   };
 
   const restoreAutoNav = () => {
     update({ layout: { ...layout, nav_tabs: undefined } });
-    toast.push('ok', '已恢复自动导航', '按「首页 / 文章 / 帖子 / 搜索」与加入导航的页面生成。');
+    toast.push('ok', t('已恢复自动导航'), t('按「首页 / 文章 / 帖子 / 搜索」与加入导航的页面生成。'));
   };
 
   const editNavTab = (id: string, patch: Partial<NavTab>) => {
@@ -195,10 +208,10 @@ export function ThemesPage() {
   const addNavTab = () => {
     if (!customNav) return;
     if (customNav.length >= MAX_NAV_TABS) {
-      toast.push('error', `最多 ${MAX_NAV_TABS} 个 Tab`, '先删掉不用的入口再添加。');
+      toast.push('error', t('最多 {count} 个 Tab', { count: MAX_NAV_TABS }), t('先删掉不用的入口再添加。'));
       return;
     }
-    setNavTabs([...customNav, { id: newNavId('tab'), label: '新入口', href: '/' }]);
+    setNavTabs([...customNav, { id: newNavId('tab'), label: t('新入口'), href: '/' }]);
   };
 
   const removeNavTab = (id: string) => {
@@ -242,7 +255,11 @@ export function ThemesPage() {
         if (tab.id !== tabId) return tab;
         const children = tab.children ?? [];
         if (children.length >= MAX_NAV_CHILDREN) {
-          toast.push('error', `每个 Tab 最多 ${MAX_NAV_CHILDREN} 个二级入口`, '先删掉不用的入口。');
+          toast.push(
+            'error',
+            t('每个 Tab 最多 {count} 个二级入口', { count: MAX_NAV_CHILDREN }),
+            t('先删掉不用的入口。'),
+          );
           return tab;
         }
         return { ...tab, children: [...children, newNavChild()] };
@@ -290,7 +307,11 @@ export function ThemesPage() {
   const addSocialLink = () => {
     const links = layout.social_links ?? [];
     if (links.length >= MAX_SOCIAL_LINKS) {
-      toast.push('error', `最多 ${MAX_SOCIAL_LINKS} 条快捷链接`, '先删掉不用的链接再添加。');
+      toast.push(
+        'error',
+        t('最多 {count} 条快捷链接', { count: MAX_SOCIAL_LINKS }),
+        t('先删掉不用的链接再添加。'),
+      );
       return;
     }
     setSocialLinks([...links, newSocialLink()]);
@@ -321,12 +342,12 @@ export function ThemesPage() {
 
   const addColumn = () => {
     if (layout.footer_columns.length >= MAX_FOOTER_COLUMNS) {
-      toast.push('error', `最多 ${MAX_FOOTER_COLUMNS} 栏`, '先删掉不用的栏目再添加。');
+      toast.push('error', t('最多 {count} 栏', { count: MAX_FOOTER_COLUMNS }), t('先删掉不用的栏目再添加。'));
       return;
     }
     setFooterColumns([
       ...layout.footer_columns,
-      { id: newNavId('fcol'), title: '新栏目', links: [] },
+      { id: newNavId('fcol'), title: t('新栏目'), links: [] },
     ]);
   };
 
@@ -351,7 +372,7 @@ export function ThemesPage() {
         if (column.id !== columnId || column.links.length >= MAX_FOOTER_LINKS) return column;
         return {
           ...column,
-          links: [...column.links, { id: newNavId('flink'), label: '新条目', href: '' }],
+          links: [...column.links, { id: newNavId('flink'), label: t('新条目'), href: '' }],
         };
       }),
     );
@@ -393,12 +414,14 @@ export function ThemesPage() {
     if (announce) {
       toast.push(
         'ok',
-        `已切换到「${bundle.name}」`,
+        t('已切换到「{name}」', { name: bundle.name }),
         homeWasDefault
-          ? `配色、排版与${bundle.variant === 'bento' ? '双栏' : '单栏'}版式已一起切换，首页也同步为该主题的默认编排。`
+          ? t('配色、排版与{layout}版式已一起切换，首页也同步为该主题的默认编排。', {
+              layout: bundle.variant === 'bento' ? t('双栏') : t('单栏'),
+            })
           : bundle.variant === 'bento'
-            ? '配色、排版与双栏版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。'
-            : '配色、排版与单栏版式已一起切换；已有首页编排不会删除。',
+            ? t('配色、排版与双栏版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。')
+            : t('配色、排版与单栏版式已一起切换；已有首页编排不会删除。'),
       );
     }
   };
@@ -407,7 +430,7 @@ export function ThemesPage() {
     const bundle = selected ?? fallback;
     if (!bundle) return;
     applyBundle(bundle, false);
-    toast.push('ok', '已恢复主题默认', '当前主题的配色、排版与版式回到原始定义。');
+    toast.push('ok', t('已恢复主题默认'), t('当前主题的配色、排版与版式回到原始定义。'));
   };
 
   const pickFile = async (file: File | undefined) => {
@@ -417,7 +440,7 @@ export function ThemesPage() {
       const parsed = parseThemeFile(await file.text());
       setPendingImport(parsed);
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : '无法读取这个主题文件。');
+      setImportError(err instanceof Error ? err.message : t('无法读取这个主题文件。'));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
     }
@@ -426,7 +449,7 @@ export function ThemesPage() {
   const confirmImport = () => {
     if (!pendingImport) return;
     if (customThemes.length >= 20) {
-      setImportError('最多保存 20 套自定义主题，请先删除不用的主题。');
+      setImportError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       setPendingImport(null);
       return;
     }
@@ -437,12 +460,16 @@ export function ThemesPage() {
       layout: { ...customization.layout, variant: pendingImport.variant },
       active_theme: pendingImport.id,
     });
-    toast.push('ok', `已导入并应用「${pendingImport.name}」`, '主题只包含配色、排版与版式，不包含文章或页面。');
+    toast.push(
+      'ok',
+      t('已导入并应用「{name}」', { name: pendingImport.name }),
+      t('主题只包含配色、排版与版式，不包含文章或页面。'),
+    );
     setPendingImport(null);
   };
 
   const openSave = () => {
-    setSaveName(selected ? `${selected.name}（自定义）` : '我的主题');
+    setSaveName(selected ? `${selected.name}${t('（自定义）')}` : t('我的主题'));
     setSaveNote('');
     setSaveError('');
     setSaveOpen(true);
@@ -451,11 +478,11 @@ export function ThemesPage() {
   const saveAsCustom = () => {
     const name = saveName.trim().slice(0, 40);
     if (!name) {
-      setSaveError('主题名称不能为空。');
+      setSaveError(t('主题名称不能为空。'));
       return;
     }
     if (customThemes.length >= 20) {
-      setSaveError('最多保存 20 套自定义主题，请先删除不用的主题。');
+      setSaveError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       return;
     }
     const item: SiteTheme = {
@@ -471,7 +498,11 @@ export function ThemesPage() {
       active_theme: item.id,
     });
     setSaveOpen(false);
-    toast.push('ok', `已保存「${name}」`, '可以在主题选择区重新套用，也可以导出给其他站点。');
+    toast.push(
+      'ok',
+      t('已保存「{name}」', { name }),
+      t('可以在主题选择区重新套用，也可以导出给其他站点。'),
+    );
   };
 
   const confirmDelete = () => {
@@ -480,7 +511,7 @@ export function ThemesPage() {
     if (customization.active_theme === deleteTarget.id) {
       const next = fallback ?? {
         id: 'default',
-        name: '原版',
+        name: t('原版'),
         note: '',
         variant: 'classic' as const,
         theme: currentTheme,
@@ -495,10 +526,18 @@ export function ThemesPage() {
         ...(homeWasDefault ? { home: defaultHomeLayout(next.variant) } : {}),
         active_theme: next.id,
       });
-      toast.push('ok', `已删除并回到「${next.name}」`, '被删除的主题不再可用；站点内容没有变化。');
+      toast.push(
+        'ok',
+        t('已删除并回到「{name}」', { name: next.name }),
+        t('被删除的主题不再可用；站点内容没有变化。'),
+      );
     } else {
       update({ themes: remaining });
-      toast.push('ok', `已删除「${deleteTarget.name}」`, '当前主题没有变化。');
+      toast.push(
+        'ok',
+        t('已删除「{name}」', { name: deleteTarget.name }),
+        t('当前主题没有变化。'),
+      );
     }
     setDeleteTarget(null);
   };
@@ -506,7 +545,7 @@ export function ThemesPage() {
   const exportCurrent = () => {
     downloadThemeFile({
       id: currentId,
-      name: modified ? `${currentName}（当前调整）` : currentName,
+      name: modified ? `${currentName}${t('（当前调整）')}` : currentName,
       note: selected?.note ?? '',
       variant: customization.layout.variant,
       theme: cloneTheme(currentTheme),
@@ -528,15 +567,15 @@ export function ThemesPage() {
     const name = createName.trim().slice(0, 40);
     setCreateError('');
     if (!name) {
-      setCreateError('主题名称不能为空。');
+      setCreateError(t('主题名称不能为空。'));
       return;
     }
     if (customThemes.some((item) => item.name === name)) {
-      setCreateError('已经有同名主题，换一个名字。');
+      setCreateError(t('已经有同名主题，换一个名字。'));
       return;
     }
     if (customThemes.length >= 20) {
-      setCreateError('最多保存 20 套自定义主题，请先删除不用的主题。');
+      setCreateError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       return;
     }
     const base =
@@ -564,8 +603,10 @@ export function ThemesPage() {
     setCreateOpen(false);
     toast.push(
       'ok',
-      `已创建「${name}」`,
-      thenBuild ? '配色与版式已经就位，接下来在页面编排里搭页面。' : '可以继续微调配色，或稍后去页面编排。',
+      t('已创建「{name}」', { name }),
+      thenBuild
+        ? t('配色与版式已经就位，接下来在页面编排里搭页面。')
+        : t('可以继续微调配色，或稍后去页面编排。'),
     );
     if (thenBuild) navigate('/admin/theme');
   };
@@ -576,14 +617,14 @@ export function ThemesPage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>页头样式</h3>
-              <p>最上方 Tab 栏在页首的样子，以及向下滚动后怎么变化；深浅色主题共用。</p>
+              <h3>{t('页头样式')}</h3>
+              <p>{t('最上方 Tab 栏在页首的样子，以及向下滚动后怎么变化；深浅色主题共用。')}</p>
             </div>
             <Badge tone={headerStyle === 'classic' ? 'muted' : 'accent'}>{headerStyleLabel}</Badge>
           </div>
           <div className="panel-body form-stack">
-            <div className="header-style-grid" role="radiogroup" aria-label="页头样式">
-              {HEADER_STYLE_OPTIONS.map((option) => (
+            <div className="header-style-grid" role="radiogroup" aria-label={t('页头样式')}>
+              {headerStyleOptions.map((option) => (
                 <button
                   key={option.id}
                   type="button"
@@ -601,10 +642,10 @@ export function ThemesPage() {
 
             <div className="form-grid">
               <Field
-                label="模糊强度"
+                label={t('模糊强度')}
                 htmlFor="header-blur-amount"
                 aside="4–24 px"
-                hint="背景高斯模糊的半径；数值越大越朦胧。关闭模糊时这一项不生效。"
+                hint={t('背景高斯模糊的半径；数值越大越朦胧。关闭模糊时这一项不生效。')}
               >
                 <Input
                   id="header-blur-amount"
@@ -616,10 +657,10 @@ export function ThemesPage() {
                 />
               </Field>
               <Field
-                label="滚动触发距离"
+                label={t('滚动触发距离')}
                 htmlFor="header-threshold"
                 aside="0–240 px"
-                hint="向下滚动超过这个距离后，切换到“滚动后”的样式。"
+                hint={t('向下滚动超过这个距离后，切换到“滚动后”的样式。')}
               >
                 <Input
                   id="header-threshold"
@@ -635,13 +676,16 @@ export function ThemesPage() {
             <Toggle
               checked={layout.header_blur !== false}
               onChange={(next) => setLayout({ header_blur: next })}
-              label="背景高斯模糊"
-              description="开启后页头背景半透明并做高斯模糊；关闭则使用实色背景。悬浮胶囊只在滚动后才出现模糊层。"
+              label={t('背景高斯模糊')}
+              description={t(
+                '开启后页头背景半透明并做高斯模糊；关闭则使用实色背景。悬浮胶囊只在滚动后才出现模糊层。',
+              )}
             />
 
             <p className="field-hint">
-              三个样式都会在滚动后变化：经典加阴影、顶部透明补底色、悬浮胶囊收缩成一条圆角栏（参考截图里的
-              效果）。悬浮胶囊宽度上限 1280px，窄屏自动铺满；页首透明时请确认首屏背景上的文字仍然可读。
+              {t(
+                '三个样式都会在滚动后变化：经典加阴影、顶部透明补底色、悬浮胶囊收缩成一条圆角栏（参考截图里的 效果）。悬浮胶囊宽度上限 1280px，窄屏自动铺满；页首透明时请确认首屏背景上的文字仍然可读。',
+              )}
             </p>
           </div>
         </section>
@@ -649,22 +693,22 @@ export function ThemesPage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>顶部导航 Tab</h3>
-              <p>页头显示哪些入口、叫什么名字、指向哪个页面，都在这里决定。</p>
+              <h3>{t('顶部导航 Tab')}</h3>
+              <p>{t('页头显示哪些入口、叫什么名字、指向哪个页面，都在这里决定。')}</p>
             </div>
             <Badge tone={customNav ? 'accent' : 'muted'}>
-              {customNav ? `自定义 · ${navTabs.length} 个` : '自动'}
+              {customNav ? t('自定义 · {count} 个', { count: navTabs.length }) : t('自动')}
             </Badge>
           </div>
           <div className="panel-body">
             {customNav ? (
               <div className="form-stack">
                 <datalist id="pp-nav-targets">
-                  <option value="/">首页</option>
-                  <option value="/articles">全部文章</option>
-                  <option value="/posts">全部帖子</option>
-                  <option value="/search">搜索</option>
-                  <option value="/about">关于本站</option>
+                  <option value="/">{t('首页')}</option>
+                  <option value="/articles">{t('全部文章')}</option>
+                  <option value="/posts">{t('全部帖子')}</option>
+                  <option value="/search">{t('搜索')}</option>
+                  <option value="/about">{t('关于本站')}</option>
                   {customization.pages.map((page) => (
                     <option key={page.id} value={`/${page.slug}`}>
                       {page.title}
@@ -672,7 +716,7 @@ export function ThemesPage() {
                   ))}
                 </datalist>
                 <div className="form-grid">
-                  <Field label="导航对齐" htmlFor="nav-align">
+                  <Field label={t('导航对齐')} htmlFor="nav-align">
                     <Select
                       id="nav-align"
                       value={layout.nav_align ?? 'left'}
@@ -680,12 +724,16 @@ export function ThemesPage() {
                         setLayout({ nav_align: event.target.value as 'left' | 'center' | 'right' })
                       }
                     >
-                      <option value="left">靠左</option>
-                      <option value="center">居中</option>
-                      <option value="right">靠右</option>
+                      <option value="left">{t('靠左')}</option>
+                      <option value="center">{t('居中')}</option>
+                      <option value="right">{t('靠右')}</option>
                     </Select>
                   </Field>
-                  <Field label="图标默认位置" htmlFor="nav-icon-position" hint="单个 Tab 可以单独覆盖。">
+                  <Field
+                    label={t('图标默认位置')}
+                    htmlFor="nav-icon-position"
+                    hint={t('单个 Tab 可以单独覆盖。')}
+                  >
                     <Select
                       id="nav-icon-position"
                       value={layout.nav_icon_position ?? 'left'}
@@ -695,15 +743,15 @@ export function ThemesPage() {
                         })
                       }
                     >
-                      <option value="left">文字左侧</option>
-                      <option value="right">文字右侧</option>
-                      <option value="none">不显示图标</option>
+                      <option value="left">{t('文字左侧')}</option>
+                      <option value="right">{t('文字右侧')}</option>
+                      <option value="none">{t('不显示图标')}</option>
                     </Select>
                   </Field>
                   <Field
-                    label="二级导航默认样式"
+                    label={t('二级导航默认样式')}
                     htmlFor="nav-sub-style"
-                    hint="每个 Tab 也可以单独选择；有二级入口时才出现。"
+                    hint={t('每个 Tab 也可以单独选择；有二级入口时才出现。')}
                   >
                     <Select
                       id="nav-sub-style"
@@ -712,16 +760,16 @@ export function ThemesPage() {
                         setLayout({ nav_sub_style: event.target.value as 'bar' | 'dropdown' })
                       }
                     >
-                      <option value="bar">页头下方胶囊栏</option>
-                      <option value="dropdown">收进下拉菜单</option>
+                      <option value="bar">{t('页头下方胶囊栏')}</option>
+                      <option value="dropdown">{t('收进下拉菜单')}</option>
                     </Select>
                   </Field>
                 </div>
                 <Toggle
                   checked={layout.nav_sub_show_icons ?? true}
                   onChange={(next) => setLayout({ nav_sub_show_icons: next })}
-                  label="二级栏显示图标"
-                  description="关闭后二级栏只显示文字；下拉菜单仍显示已配置的图标。"
+                  label={t('二级栏显示图标')}
+                  description={t('关闭后二级栏只显示文字；下拉菜单仍显示已配置的图标。')}
                 />
                 {customNav.map((tab, index) => (
                   <div className="chrome-item" key={tab.id}>
@@ -730,23 +778,23 @@ export function ThemesPage() {
                       <Input
                         value={tab.label}
                         maxLength={20}
-                        placeholder="显示文字"
-                        aria-label={`第 ${index + 1} 个 Tab 的文字`}
+                        placeholder={t('显示文字')}
+                        aria-label={t('第 {index} 个 Tab 的文字', { index: index + 1 })}
                         onChange={(event) => editNavTab(tab.id, { label: event.target.value })}
                       />
                       <Input
                         value={tab.href}
                         maxLength={300}
                         list="pp-nav-targets"
-                        placeholder="/about 或 https://…"
-                        aria-label={`第 ${index + 1} 个 Tab 的链接`}
+                        placeholder={t('/about 或 https://…')}
+                        aria-label={t('第 {index} 个 Tab 的链接', { index: index + 1 })}
                         onChange={(event) => editNavTab(tab.id, { href: event.target.value })}
                       />
                       <div className="chrome-row-actions">
                         <button
                           type="button"
                           className="chrome-move"
-                          aria-label="上移"
+                          aria-label={t('上移')}
                           disabled={index === 0}
                           onClick={() => moveNavTab(tab.id, -1)}
                         >
@@ -755,7 +803,7 @@ export function ThemesPage() {
                         <button
                           type="button"
                           className="chrome-move"
-                          aria-label="下移"
+                          aria-label={t('下移')}
                           disabled={index === customNav.length - 1}
                           onClick={() => moveNavTab(tab.id, 1)}
                         >
@@ -764,7 +812,7 @@ export function ThemesPage() {
                         <button
                           type="button"
                           className="chrome-move is-danger"
-                          aria-label={`删除 ${tab.label}`}
+                          aria-label={t('删除 {name}', { name: tab.label })}
                           onClick={() => removeNavTab(tab.id)}
                         >
                           <Icon name="trash" size={13} />
@@ -773,7 +821,7 @@ export function ThemesPage() {
                     </div>
 
                     <div className="chrome-tab-extra">
-                      <Field label="图标" htmlFor={`nav-icon-${tab.id}`}>
+                      <Field label={t('图标')} htmlFor={`nav-icon-${tab.id}`}>
                         <Select
                           id={`nav-icon-${tab.id}`}
                           value={tab.icon ?? ''}
@@ -781,7 +829,7 @@ export function ThemesPage() {
                             editNavTab(tab.id, { icon: event.target.value || undefined })
                           }
                         >
-                          <option value="">无图标</option>
+                          <option value="">{t('无图标')}</option>
                           {NAV_ICON_CHOICES.map((choice) => (
                             <option key={choice.name} value={choice.name}>
                               {choice.label}
@@ -789,7 +837,7 @@ export function ThemesPage() {
                           ))}
                         </Select>
                       </Field>
-                      <Field label="图标位置" htmlFor={`nav-icon-pos-${tab.id}`}>
+                      <Field label={t('图标位置')} htmlFor={`nav-icon-pos-${tab.id}`}>
                         <Select
                           id={`nav-icon-pos-${tab.id}`}
                           value={tab.icon_position ?? ''}
@@ -803,13 +851,13 @@ export function ThemesPage() {
                             })
                           }
                         >
-                          <option value="">跟随全局</option>
-                          <option value="left">文字左侧</option>
-                          <option value="right">文字右侧</option>
-                          <option value="none">不显示</option>
+                          <option value="">{t('跟随全局')}</option>
+                          <option value="left">{t('文字左侧')}</option>
+                          <option value="right">{t('文字右侧')}</option>
+                          <option value="none">{t('不显示')}</option>
                         </Select>
                       </Field>
-                      <Field label="二级入口样式" htmlFor={`nav-sub-${tab.id}`}>
+                      <Field label={t('二级入口样式')} htmlFor={`nav-sub-${tab.id}`}>
                         <Select
                           id={`nav-sub-${tab.id}`}
                           value={tab.sub_style ?? ''}
@@ -822,9 +870,9 @@ export function ThemesPage() {
                             })
                           }
                         >
-                          <option value="">跟随全局</option>
-                          <option value="bar">胶囊栏</option>
-                          <option value="dropdown">下拉菜单</option>
+                          <option value="">{t('跟随全局')}</option>
+                          <option value="bar">{t('胶囊栏')}</option>
+                          <option value="dropdown">{t('下拉菜单')}</option>
                         </Select>
                       </Field>
                     </div>
@@ -838,7 +886,8 @@ export function ThemesPage() {
                       }}
                     >
                       <summary>
-                        二级导航 <span className="tiny faint">{tab.children?.length ?? 0}/{MAX_NAV_CHILDREN}</span>
+                        {t('二级导航')}{' '}
+                        <span className="tiny faint">{tab.children?.length ?? 0}/{MAX_NAV_CHILDREN}</span>
                       </summary>
                       {(tab.children ?? []).map((child, childIndex) => (
                         <div className="chrome-child" key={child.id}>
@@ -846,8 +895,11 @@ export function ThemesPage() {
                             <Input
                               value={child.label}
                               maxLength={20}
-                              placeholder="二级文字"
-                              aria-label={`第 ${index + 1} 个 Tab 的第 ${childIndex + 1} 个二级入口文字`}
+                              placeholder={t('二级文字')}
+                              aria-label={t('第 {tab} 个 Tab 的第 {child} 个二级入口文字', {
+                                tab: index + 1,
+                                child: childIndex + 1,
+                              })}
                               onChange={(event) =>
                                 editNavChild(tab.id, child.id, { label: event.target.value })
                               }
@@ -856,8 +908,11 @@ export function ThemesPage() {
                               value={child.href}
                               maxLength={300}
                               list="pp-nav-targets"
-                              placeholder="/category/news 或 https://…"
-                              aria-label={`第 ${index + 1} 个 Tab 的第 ${childIndex + 1} 个二级入口链接`}
+                              placeholder={t('/category/news 或 https://…')}
+                              aria-label={t('第 {tab} 个 Tab 的第 {child} 个二级入口链接', {
+                                tab: index + 1,
+                                child: childIndex + 1,
+                              })}
                               onChange={(event) =>
                                 editNavChild(tab.id, child.id, { href: event.target.value })
                               }
@@ -866,7 +921,7 @@ export function ThemesPage() {
                               <button
                                 type="button"
                                 className="chrome-move"
-                                aria-label="二级入口上移"
+                                aria-label={t('二级入口上移')}
                                 disabled={childIndex === 0}
                                 onClick={() => moveNavChild(tab.id, child.id, -1)}
                               >
@@ -875,7 +930,7 @@ export function ThemesPage() {
                               <button
                                 type="button"
                                 className="chrome-move"
-                                aria-label="二级入口下移"
+                                aria-label={t('二级入口下移')}
                                 disabled={childIndex === (tab.children?.length ?? 0) - 1}
                                 onClick={() => moveNavChild(tab.id, child.id, 1)}
                               >
@@ -884,7 +939,7 @@ export function ThemesPage() {
                               <button
                                 type="button"
                                 className="chrome-move is-danger"
-                                aria-label={`删除 ${child.label}`}
+                                aria-label={t('删除 {name}', { name: child.label })}
                                 onClick={() => removeNavChild(tab.id, child.id)}
                               >
                                 <Icon name="trash" size={13} />
@@ -894,14 +949,14 @@ export function ThemesPage() {
                           <div className="chrome-child-extra">
                             <Select
                               value={child.icon ?? ''}
-                              aria-label={`${child.label} 的图标`}
+                              aria-label={t('{name} 的图标', { name: child.label })}
                               onChange={(event) =>
                                 editNavChild(tab.id, child.id, {
                                   icon: event.target.value || undefined,
                                 })
                               }
                             >
-                              <option value="">无图标</option>
+                              <option value="">{t('无图标')}</option>
                               {NAV_ICON_CHOICES.map((choice) => (
                                 <option key={choice.name} value={choice.name}>
                                   {choice.label}
@@ -917,30 +972,30 @@ export function ThemesPage() {
                         icon="plus"
                         onClick={() => addNavChild(tab.id)}
                       >
-                        添加二级入口
+                        {t('添加二级入口')}
                       </Button>
                     </details>
                   </div>
                 ))}
                 <div className="row gap-10" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
                   <Button variant="secondary" size="sm" icon="plus" onClick={addNavTab}>
-                    添加 Tab
+                    {t('添加 Tab')}
                   </Button>
                   <button type="button" className="link-btn" onClick={restoreAutoNav}>
-                    恢复自动导航
+                    {t('恢复自动导航')}
                   </button>
                   <span className="tiny faint">
                     {customNav.length}/{MAX_NAV_TABS}
                   </span>
                 </div>
                 <p className="field-hint">
-                  站内路径以 <code className="mono">/</code> 开头；外链会在新窗口打开；
-                  链接留空时这个 Tab 只显示文字，用来做分组。
+                  {t('站内路径以')} <code className="mono">/</code>{' '}
+                  {t('开头；外链会在新窗口打开；链接留空时这个 Tab 只显示文字，用来做分组。')}
                 </p>
               </div>
             ) : (
               <div className="form-stack">
-                <div className="chrome-preview" aria-label="当前 Tab 预览">
+                <div className="chrome-preview" aria-label={t('当前 Tab 预览')}>
                   {navTabs.map((tab) => (
                     <span className="chrome-preview-tab" key={tab.id}>
                       {tab.label}
@@ -951,26 +1006,27 @@ export function ThemesPage() {
                   <Toggle
                     checked={layout.show_articles}
                     onChange={(next) => setLayout({ show_articles: next })}
-                    label="自动包含“文章”"
+                    label={t('自动包含“文章”')}
                   />
                   <Toggle
                     checked={layout.show_posts}
                     onChange={(next) => setLayout({ show_posts: next })}
-                    label="自动包含“帖子”"
+                    label={t('自动包含“帖子”')}
                   />
                   <Toggle
                     checked={layout.show_search}
                     onChange={(next) => setLayout({ show_search: next })}
-                    label="自动包含“搜索”"
+                    label={t('自动包含“搜索”')}
                   />
                 </div>
                 <p className="field-hint">
-                  自动模式：按上面的开关与勾选“加入站点导航”的页面生成（最多 {MAX_NAV_TABS} 个）。
-                  改成自定义之后，这些入口不再自动增减。
+                  {t('自动模式：按上面的开关与勾选“加入站点导航”的页面生成（最多 {count} 个）。改成自定义之后，这些入口不再自动增减。', {
+                    count: MAX_NAV_TABS,
+                  })}
                 </p>
                 <div>
                   <Button variant="secondary" size="sm" icon="edit" onClick={startCustomNav}>
-                    改为自定义 Tab
+                    {t('改为自定义 Tab')}
                   </Button>
                 </div>
               </div>
@@ -981,14 +1037,18 @@ export function ThemesPage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>软件 / 社交快捷链接</h3>
+              <h3>{t('软件 / 社交快捷链接')}</h3>
               <p>
-                配置 GitHub、X / Twitter、Mastodon、RSS 或任意网站。夜航主题会显示在页头
-                左上角品牌旁；所有主题都会在页脚最下方底栏上方显示。
+                {t(
+                  '配置 GitHub、X / Twitter、Mastodon、RSS 或任意网站。夜航主题会显示在页头 左上角品牌旁；所有主题都会在页脚最下方底栏上方显示。',
+                )}
               </p>
             </div>
             <Badge tone={(layout.social_links ?? []).length ? 'accent' : 'muted'}>
-              {(layout.social_links ?? []).length}/{MAX_SOCIAL_LINKS} 条
+              {t('{count}/{total} 条', {
+                count: (layout.social_links ?? []).length,
+                total: MAX_SOCIAL_LINKS,
+              })}
             </Badge>
           </div>
           <div className="panel-body">
@@ -999,7 +1059,7 @@ export function ThemesPage() {
                     <span className="chrome-order">{index + 1}</span>
                     <Select
                       value={link.platform}
-                      aria-label={`第 ${index + 1} 条快捷链接的平台`}
+                      aria-label={t('第 {index} 条快捷链接的平台', { index: index + 1 })}
                       onChange={(event) => {
                         const platform = event.target.value as SocialLink['platform'];
                         const previous = socialPlatformLabel(link.platform);
@@ -1021,22 +1081,22 @@ export function ThemesPage() {
                     <Input
                       value={link.label}
                       maxLength={40}
-                      placeholder="显示文字"
-                      aria-label={`第 ${index + 1} 条快捷链接的文字`}
+                      placeholder={t('显示文字')}
+                      aria-label={t('第 {index} 条快捷链接的文字', { index: index + 1 })}
                       onChange={(event) => editSocialLink(link.id, { label: event.target.value })}
                     />
                     <Input
                       value={link.url}
                       maxLength={300}
-                      placeholder="https://github.com/your-name 或 mailto:hi@example.com"
-                      aria-label={`第 ${index + 1} 条快捷链接的地址`}
+                      placeholder={t('https://github.com/your-name 或 mailto:hi@example.com')}
+                      aria-label={t('第 {index} 条快捷链接的地址', { index: index + 1 })}
                       onChange={(event) => editSocialLink(link.id, { url: event.target.value })}
                     />
                     <div className="chrome-row-actions">
                       <button
                         type="button"
                         className="chrome-move"
-                        aria-label="上移快捷链接"
+                        aria-label={t('上移快捷链接')}
                         disabled={index === 0}
                         onClick={() => moveSocialLink(link.id, -1)}
                       >
@@ -1045,7 +1105,7 @@ export function ThemesPage() {
                       <button
                         type="button"
                         className="chrome-move"
-                        aria-label="下移快捷链接"
+                        aria-label={t('下移快捷链接')}
                         disabled={index === (layout.social_links ?? []).length - 1}
                         onClick={() => moveSocialLink(link.id, 1)}
                       >
@@ -1054,7 +1114,7 @@ export function ThemesPage() {
                       <button
                         type="button"
                         className="chrome-move is-danger"
-                        aria-label={`删除 ${link.label}`}
+                        aria-label={t('删除 {name}', { name: link.label })}
                         onClick={() => removeSocialLink(link.id)}
                       >
                         <Icon name="trash" size={13} />
@@ -1065,11 +1125,11 @@ export function ThemesPage() {
               ))}
               <div>
                 <Button variant="secondary" size="sm" icon="plus" onClick={addSocialLink}>
-                  添加快捷链接
+                  {t('添加快捷链接')}
                 </Button>
               </div>
               <p className="field-hint">
-                地址支持 http(s) 与 mailto；页头只显示图标，页脚会显示图标和文字。
+                {t('地址支持 http(s) 与 mailto；页头只显示图标，页脚会显示图标和文字。')}
               </p>
             </div>
           </div>
@@ -1078,31 +1138,33 @@ export function ThemesPage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>页脚品牌区</h3>
-              <p>页脚左侧的标题、副标题与简介；每一项留空都会回退到站点信息，不填也不会出现空白。</p>
+              <h3>{t('页脚品牌区')}</h3>
+              <p>
+                {t('页脚左侧的标题、副标题与简介；每一项留空都会回退到站点信息，不填也不会出现空白。')}
+              </p>
             </div>
           </div>
           <div className="panel-body">
             <div className="form-stack">
               <Field
-                label="页脚标题"
+                label={t('页脚标题')}
                 htmlFor="footer-brand-name"
                 aside={`${layout.footer_brand_name.length}/60`}
-                hint="留空显示站点名称。"
+                hint={t('留空显示站点名称。')}
               >
                 <Input
                   id="footer-brand-name"
                   value={layout.footer_brand_name}
                   maxLength={60}
-                  placeholder="例如：Practacu Press"
+                  placeholder={t('例如：Practacu Press')}
                   onChange={(event) => setLayout({ footer_brand_name: event.target.value })}
                 />
               </Field>
               <Field
-                label="页脚副标题"
+                label={t('页脚副标题')}
                 htmlFor="footer-brand-sub"
                 aside={`${layout.footer_brand_sub.length}/60`}
-                hint="留空沿用「外观 → 品牌副标题」。"
+                hint={t('留空沿用「外观 → 品牌副标题」。')}
               >
                 <Input
                   id="footer-brand-sub"
@@ -1113,37 +1175,37 @@ export function ThemesPage() {
                 />
               </Field>
               <Field
-                label="页脚简介"
+                label={t('页脚简介')}
                 htmlFor="footer-brand-desc"
                 aside={`${layout.footer_brand_desc.length}/300`}
-                hint="留空使用站点简介；两者都为空时显示默认文案。"
+                hint={t('留空使用站点简介；两者都为空时显示默认文案。')}
               >
                 <Textarea
                   id="footer-brand-desc"
                   value={layout.footer_brand_desc}
                   maxLength={300}
                   rows={2}
-                  placeholder="一句话介绍这间编辑部。"
+                  placeholder={t('一句话介绍这间编辑部。')}
                   onChange={(event) => setLayout({ footer_brand_desc: event.target.value })}
                 />
               </Field>
               <Toggle
                 checked={layout.footer_show_tags}
                 onChange={(next) => setLayout({ footer_show_tags: next })}
-                label="显示状态标签"
-                description="公开浏览、审核发布、个人博客等状态；关闭后整行隐藏。"
+                label={t('显示状态标签')}
+                description={t('公开浏览、审核发布、个人博客等状态；关闭后整行隐藏。')}
               />
               <Field
-                label="自定义状态标签"
+                label={t('自定义状态标签')}
                 htmlFor="footer-tags"
                 aside={`${layout.footer_tags.length}/120`}
-                hint="用逗号或「、」分隔，最多 4 个；留空显示站点真实状态。"
+                hint={t('用逗号或「、」分隔，最多 4 个；留空显示站点真实状态。')}
               >
                 <Input
                   id="footer-tags"
                   value={layout.footer_tags}
                   maxLength={120}
-                  placeholder="例如：独立出版、写作、社区"
+                  placeholder={t('例如：独立出版、写作、社区')}
                   onChange={(event) => setLayout({ footer_tags: event.target.value })}
                 />
               </Field>
@@ -1154,11 +1216,14 @@ export function ThemesPage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>页脚栏目</h3>
-              <p>每栏一个标题，下面是若干「文字 + 链接」；不填链接就是纯文字。</p>
+              <h3>{t('页脚栏目')}</h3>
+              <p>{t('每栏一个标题，下面是若干「文字 + 链接」；不填链接就是纯文字。')}</p>
             </div>
             <Badge tone="muted">
-              {layout.footer_columns.length}/{MAX_FOOTER_COLUMNS} 栏
+              {t('{count}/{total} 栏', {
+                count: layout.footer_columns.length,
+                total: MAX_FOOTER_COLUMNS,
+              })}
             </Badge>
           </div>
           <div className="panel-body">
@@ -1169,14 +1234,14 @@ export function ThemesPage() {
                     <Input
                       value={column.title}
                       maxLength={20}
-                      placeholder="栏目标题，例如：阅读"
-                      aria-label="栏目标题"
+                      placeholder={t('栏目标题，例如：阅读')}
+                      aria-label={t('栏目标题')}
                       onChange={(event) => editColumn(column.id, { title: event.target.value })}
                     />
                     <button
                       type="button"
                       className="chrome-move is-danger"
-                      aria-label={`删除栏目 ${column.title}`}
+                      aria-label={t('删除栏目 {name}', { name: column.title })}
                       onClick={() => removeColumn(column.id)}
                     >
                       <Icon name="trash" size={13} />
@@ -1187,22 +1252,22 @@ export function ThemesPage() {
                       <Input
                         value={link.label}
                         maxLength={40}
-                        placeholder="显示文字"
-                        aria-label="条目文字"
+                        placeholder={t('显示文字')}
+                        aria-label={t('条目文字')}
                         onChange={(event) => editLink(column.id, link.id, { label: event.target.value })}
                       />
                       <Input
                         value={link.href}
                         maxLength={300}
                         list="pp-nav-targets"
-                        placeholder="链接（可留空）"
-                        aria-label="条目链接"
+                        placeholder={t('链接（可留空）')}
+                        aria-label={t('条目链接')}
                         onChange={(event) => editLink(column.id, link.id, { href: event.target.value })}
                       />
                       <button
                         type="button"
                         className="chrome-move is-danger"
-                        aria-label={`删除条目 ${link.label}`}
+                        aria-label={t('删除条目 {name}', { name: link.label })}
                         onClick={() => removeLink(column.id, link.id)}
                       >
                         <Icon name="close" size={13} />
@@ -1216,7 +1281,7 @@ export function ThemesPage() {
                       onClick={() => addLink(column.id)}
                       disabled={column.links.length >= MAX_FOOTER_LINKS}
                     >
-                      + 添加一条
+                      {t('+ 添加一条')}
                     </button>
                     <span className="tiny faint">
                       {column.links.length}/{MAX_FOOTER_LINKS}
@@ -1227,49 +1292,52 @@ export function ThemesPage() {
 
               <div className="row gap-10" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
                 <Button variant="secondary" size="sm" icon="plus" onClick={addColumn}>
-                  添加栏目
+                  {t('添加栏目')}
                 </Button>
                 <button
                   type="button"
                   className="link-btn"
                   onClick={() => setFooterColumns(defaultFooterColumns())}
                 >
-                  恢复默认两栏
+                  {t('恢复默认两栏')}
                 </button>
               </div>
 
               <Field
-                label="版权文案"
+                label={t('版权文案')}
                 htmlFor="footer-text"
                 aside={`${layout.footer_text.length}/200`}
-                hint="显示在最下方；支持 {year} 与 {site} 两个占位符，留空使用默认文案。"
+                hint={t('显示在最下方；支持 {year} 与 {site} 两个占位符，留空使用默认文案。')}
               >
                 <Input
                   id="footer-text"
                   value={layout.footer_text}
                   maxLength={200}
-                  placeholder="© {year} {site}. 由写作者与读者共同维护。"
+                  placeholder={t('© {year} {site}. 由写作者与读者共同维护。')}
                   onChange={(event) => setLayout({ footer_text: event.target.value })}
                 />
               </Field>
               <Field
-                label="底部右侧说明"
+                label={t('底部右侧说明')}
                 htmlFor="footer-note"
                 aside={`${layout.footer_note.length}/80`}
-                hint="显示在版权行右侧，例如版本号或备案说明；留空隐藏。"
+                hint={t('显示在版权行右侧，例如版本号或备案说明；留空隐藏。')}
               >
                 <Input
                   id="footer-note"
                   value={layout.footer_note}
                   maxLength={80}
-                  placeholder="前端 v0.1 · React"
+                  placeholder={t('前端 v0.1 · React')}
                   onChange={(event) => setLayout({ footer_note: event.target.value })}
                 />
               </Field>
               <p className="field-hint">
-                ICP 与公安网备号在
-                <Link to="/admin/settings" className="text-link"> 站点设置 → 基本信息 </Link>
-                里填写与展示；这里只管品牌区、栏目、版权与底部说明。
+                {t('ICP 与公安网备号在')}
+                <Link to="/admin/settings" className="text-link">
+                  {' '}
+                  {t('站点设置 → 基本信息')}{' '}
+                </Link>
+                {t('里填写与展示；这里只管品牌区、栏目、版权与底部说明。')}
               </p>
             </div>
           </div>
@@ -1280,41 +1348,45 @@ export function ThemesPage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>生效位置</h3>
-              <p>导航在页头，栏目在页脚；两者都跟随主题的排版。</p>
+              <h3>{t('生效位置')}</h3>
+              <p>{t('导航在页头，栏目在页脚；两者都跟随主题的排版。')}</p>
             </div>
           </div>
           <div className="panel-body">
             <div className="mini-list">
               <div className="mini-row">
-                <span className="mini-label">导航模式</span>
-                <span className="mini-value">{customNav ? '自定义' : '自动'}</span>
+                <span className="mini-label">{t('导航模式')}</span>
+                <span className="mini-value">{customNav ? t('自定义') : t('自动')}</span>
               </div>
               <div className="mini-row">
-                <span className="mini-label">Tab 数量</span>
-                <span className="mini-value">{navTabs.length} 个</span>
+                <span className="mini-label">{t('Tab 数量')}</span>
+                <span className="mini-value">{t('{count} 个', { count: navTabs.length })}</span>
               </div>
               <div className="mini-row">
-                <span className="mini-label">页脚栏目</span>
-                <span className="mini-value">{layout.footer_columns.length} 栏</span>
-              </div>
-              <div className="mini-row">
-                <span className="mini-label">条目总数</span>
+                <span className="mini-label">{t('页脚栏目')}</span>
                 <span className="mini-value">
-                  {layout.footer_columns.reduce((sum, column) => sum + column.links.length, 0)} 条
+                  {t('{count} 栏', { count: layout.footer_columns.length })}
+                </span>
+              </div>
+              <div className="mini-row">
+                <span className="mini-label">{t('条目总数')}</span>
+                <span className="mini-value">
+                  {t('{count} 条', {
+                    count: layout.footer_columns.reduce((sum, column) => sum + column.links.length, 0),
+                  })}
                 </span>
               </div>
             </div>
             <div className="row gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
               <Button variant="secondary" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
-                预览站点
+                {t('预览站点')}
               </Button>
               <Link to="/admin/pages" className="btn btn-ghost btn-sm">
-                管理页面
+                {t('管理页面')}
               </Link>
             </div>
             <p className="tiny faint mt-12">
-              某个页面的标题会直接出现在 Tab 上；改标题就去页面里改，这里不用重复维护。
+              {t('某个页面的标题会直接出现在 Tab 上；改标题就去页面里改，这里不用重复维护。')}
             </p>
           </div>
         </section>
@@ -1323,20 +1395,21 @@ export function ThemesPage() {
   );
 
   return (
-    <RoleGate capability="manage_site" need="站点管理员">
+    <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
         <div>
-          <h1>主题设置</h1>
+          <h1>{t('主题设置')}</h1>
           <p>
-            一套主题同时决定配色、排版与页面版式（单栏 / 双栏）。原版与夜航是内置大主题；
-            也可以创建、导入或删除自己的主题，并把页脚与导航 Tab 放在这里统一管理。
+            {t(
+              '一套主题同时决定配色、排版与页面版式（单栏 / 双栏）。原版与夜航是内置大主题；也可以创建、导入或删除自己的主题，并把页脚与导航 Tab 放在这里统一管理。',
+            )}
           </p>
         </div>
         <div className="admin-page-actions">
           {tab === 'theme' ? (
             <>
               <Button variant="secondary" size="sm" icon="plus" onClick={openCreate}>
-                创建主题
+                {t('创建主题')}
               </Button>
               <Button
                 variant="secondary"
@@ -1344,7 +1417,7 @@ export function ThemesPage() {
                 icon="upload"
                 onClick={() => fileRef.current?.click()}
               >
-                导入主题
+                {t('导入主题')}
               </Button>
               <Button
                 variant="secondary"
@@ -1352,18 +1425,18 @@ export function ThemesPage() {
                 icon="download"
                 onClick={() => setGetThemeOpen(true)}
               >
-                获取主题
+                {t('获取主题')}
               </Button>
               <Button variant="secondary" size="sm" icon="download" onClick={exportCurrent}>
-                导出当前主题
+                {t('导出当前主题')}
               </Button>
             </>
           ) : null}
           <Link to="/admin/theme" className="btn btn-primary btn-sm">
-            <Icon name="layers" size={14} /> 页面编排
+            <Icon name="layers" size={14} /> {t('页面编排')}
           </Link>
           <Button variant="secondary" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
-            预览站点
+            {t('预览站点')}
           </Button>
           <input
             ref={fileRef}
@@ -1376,19 +1449,19 @@ export function ThemesPage() {
       </div>
 
       {importError ? (
-        <Callout tone="danger" icon="alert" title="导入主题失败">
+        <Callout tone="danger" icon="alert" title={t('导入主题失败')}>
           {importError}
         </Callout>
       ) : null}
 
-      <div className="seg" role="group" aria-label="主题设置分区">
+      <div className="seg" role="group" aria-label={t('主题设置分区')}>
         <button
           type="button"
           className={tab === 'theme' ? 'is-on' : ''}
           onClick={() => setTab('theme')}
           aria-pressed={tab === 'theme'}
         >
-          主题与版式
+          {t('主题与版式')}
         </button>
         <button
           type="button"
@@ -1396,7 +1469,7 @@ export function ThemesPage() {
           onClick={() => setTab('chrome')}
           aria-pressed={tab === 'chrome'}
         >
-          导航与页脚
+          {t('导航与页脚')}
         </button>
         <button
           type="button"
@@ -1404,7 +1477,7 @@ export function ThemesPage() {
           onClick={() => setTab('loading')}
           aria-pressed={tab === 'loading'}
         >
-          加载动画
+          {t('加载动画')}
         </button>
       </div>
 
@@ -1420,16 +1493,16 @@ export function ThemesPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>选择主题</h3>
-                <p>上方是当前主题；点击卡片立即应用，单栏/双栏版式会一起切换。</p>
+                <h3>{t('选择主题')}</h3>
+                <p>{t('上方是当前主题；点击卡片立即应用，单栏/双栏版式会一起切换。')}</p>
               </div>
               <div className="row gap-8">
                 <Badge tone={modified ? 'warn' : 'accent'} dot={!modified}>
                   {currentName}
-                  {modified ? ' · 已微调' : ''}
+                  {modified ? t(' · 已微调') : ''}
                 </Badge>
                 <Button variant="ghost" size="sm" icon="upload" onClick={() => fileRef.current?.click()}>
-                  导入
+                  {t('导入')}
                 </Button>
               </div>
             </div>
@@ -1453,12 +1526,17 @@ export function ThemesPage() {
                         <span className="theme-bundle-copy">
                           <span className="theme-bundle-title">
                             <strong>{bundle.name}</strong>
-                            {isBuiltin ? <Badge tone="muted">内置</Badge> : <Badge tone="accent">自定义</Badge>}
-                            {isSelected ? <Badge tone="ok">使用中</Badge> : null}
+                            {isBuiltin ? (
+                              <Badge tone="muted">{t('内置')}</Badge>
+                            ) : (
+                              <Badge tone="accent">{t('自定义')}</Badge>
+                            )}
+                            {isSelected ? <Badge tone="ok">{t('使用中')}</Badge> : null}
                           </span>
-                          <span className="theme-bundle-note">{bundle.note || '一套自定义主题。'}</span>
+                          <span className="theme-bundle-note">{bundle.note || t('一套自定义主题。')}</span>
                           <span className="theme-bundle-meta">
-                            {variantLabel(bundle.variant)} · {bundle.theme.mode === 'dark' ? '深色' : '浅色'}
+                            {variantLabel(bundle.variant)} ·{' '}
+                            {bundle.theme.mode === 'dark' ? t('深色') : t('浅色')}
                           </span>
                         </span>
                       </button>
@@ -1466,8 +1544,8 @@ export function ThemesPage() {
                         <button
                           type="button"
                           className="theme-bundle-delete"
-                          aria-label={`删除主题 ${bundle.name}`}
-                          title="删除这套主题"
+                          aria-label={t('删除主题 {name}', { name: bundle.name })}
+                          title={t('删除这套主题')}
                           onClick={() => setDeleteTarget(bundle)}
                         >
                           <Icon name="trash" size={14} />
@@ -1483,20 +1561,20 @@ export function ThemesPage() {
                     </span>
                     <span className="theme-bundle-copy">
                       <span className="theme-bundle-title">
-                        <strong>创建主题</strong>
-                        <Badge tone="accent">从零开始</Badge>
+                        <strong>{t('创建主题')}</strong>
+                        <Badge tone="accent">{t('从零开始')}</Badge>
                       </span>
                       <span className="theme-bundle-note">
-                        选版式、配色起点与外观功能，建好后直接进页面编排。
+                        {t('选版式、配色起点与外观功能，建好后直接进页面编排。')}
                       </span>
-                      <span className="theme-bundle-meta">单栏 / 双栏 · 自定义外观</span>
+                      <span className="theme-bundle-meta">{t('单栏 / 双栏 · 自定义外观')}</span>
                     </span>
                   </span>
                 </button>
               </div>
               {!customThemes.length ? (
                 <p className="field-hint mt-12">
-                  还没有自定义主题。可以「创建主题」从零开始，导入 JSON，或把当前微调后的主题另存。
+                  {t('还没有自定义主题。可以「创建主题」从零开始，导入 JSON，或把当前微调后的主题另存。')}
                 </p>
               ) : null}
             </div>
@@ -1505,9 +1583,11 @@ export function ThemesPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>当前主题微调</h3>
+                <h3>{t('当前主题微调')}</h3>
                 <p>
-                  微调会保留在「{currentName}」上并标记为已微调；重新点击主题卡片可恢复原定义。
+                  {t('微调会保留在「{name}」上并标记为已微调；重新点击主题卡片可恢复原定义。', {
+                    name: currentName,
+                  })}
                 </p>
               </div>
               <div className="row gap-8">
@@ -1515,7 +1595,7 @@ export function ThemesPage() {
                   {restoreLabel}
                 </Button>
                 <Button variant="secondary" size="sm" icon="plus" onClick={openSave}>
-                  另存为主题
+                  {t('另存为主题')}
                 </Button>
               </div>
             </div>
@@ -1530,21 +1610,21 @@ export function ThemesPage() {
                     }
                   >
                     <Icon name={currentTheme.mode === 'dark' ? 'sun' : 'moon'} size={14} />
-                    {currentTheme.mode === 'dark' ? '切到浅色' : '切到深色'}
+                    {currentTheme.mode === 'dark' ? t('切到浅色') : t('切到深色')}
                   </button>
                   <Badge tone={modified ? 'warn' : 'muted'}>
-                    {modified ? '当前主题已有本地微调' : '与主题定义一致'}
+                    {modified ? t('当前主题已有本地微调') : t('与主题定义一致')}
                   </Badge>
                 </div>
 
                 <div>
-                  <p className="field-label mb-8">配色</p>
+                  <p className="field-label mb-8">{t('配色')}</p>
                   <div className="color-row">
                     {(
                       [
-                        { key: 'background' as const, label: '背景' },
-                        { key: 'ink' as const, label: '文字' },
-                        { key: 'accent' as const, label: '强调色' },
+                        { key: 'background' as const, label: t('背景') },
+                        { key: 'ink' as const, label: t('文字') },
+                        { key: 'accent' as const, label: t('强调色') },
                       ]
                     ).map((item) => (
                       <label key={item.key} className="color-field">
@@ -1563,17 +1643,17 @@ export function ThemesPage() {
                     ))}
                   </div>
                   <p className="field-hint mt-8">
-                    背景与文字会推导出边框、弱化文字与分隔线；强调色用于链接、当前状态与进度条。
+                    {t('背景与文字会推导出边框、弱化文字与分隔线；强调色用于链接、当前状态与进度条。')}
                   </p>
                 </div>
 
                 <div>
-                  <p className="field-label mb-8">标题字体</p>
+                  <p className="field-label mb-8">{t('标题字体')}</p>
                   <div className="option-grid two">
                     {(
                       [
-                        { key: 'serif' as const, name: '衬线', note: '书刊感更强，适合长文。' },
-                        { key: 'sans' as const, name: '无衬线', note: '更接近技术博客与产品文档。' },
+                        { key: 'serif' as const, name: t('衬线'), note: t('书刊感更强，适合长文。') },
+                        { key: 'sans' as const, name: t('无衬线'), note: t('更接近技术博客与产品文档。') },
                       ]
                     ).map((item) => (
                       <button
@@ -1597,7 +1677,7 @@ export function ThemesPage() {
                 </div>
 
                 <div className="form-grid">
-                  <Field label="正文字号" hint="只影响文章与自定义页面的正文。">
+                  <Field label={t('正文字号')} hint={t('只影响文章与自定义页面的正文。')}>
                     <div className="range-field">
                       <input
                         type="range"
@@ -1606,12 +1686,12 @@ export function ThemesPage() {
                         step={0.5}
                         value={currentTheme.body_size}
                         onChange={(event) => setTheme({ body_size: Number(event.target.value) })}
-                        aria-label="正文字号"
+                        aria-label={t('正文字号')}
                       />
                       <output>{currentTheme.body_size} px</output>
                     </div>
                   </Field>
-                  <Field label="正文栏宽" hint="太宽会降低长文的可读性。">
+                  <Field label={t('正文栏宽')} hint={t('太宽会降低长文的可读性。')}>
                     <div className="range-field">
                       <input
                         type="range"
@@ -1620,12 +1700,12 @@ export function ThemesPage() {
                         step={10}
                         value={currentTheme.content_width}
                         onChange={(event) => setTheme({ content_width: Number(event.target.value) })}
-                        aria-label="正文栏宽"
+                        aria-label={t('正文栏宽')}
                       />
                       <output>{currentTheme.content_width} px</output>
                     </div>
                   </Field>
-                  <Field label="圆角" hint="按钮、卡片与输入框共用这套圆角。">
+                  <Field label={t('圆角')} hint={t('按钮、卡片与输入框共用这套圆角。')}>
                     <div className="range-field">
                       <input
                         type="range"
@@ -1634,7 +1714,7 @@ export function ThemesPage() {
                         step={1}
                         value={currentTheme.radius}
                         onChange={(event) => setTheme({ radius: Number(event.target.value) })}
-                        aria-label="圆角"
+                        aria-label={t('圆角')}
                       />
                       <output>{currentTheme.radius} px</output>
                     </div>
@@ -1644,22 +1724,23 @@ export function ThemesPage() {
                 <div className="soften-editor mt-20">
                   <div className="row" style={{ justifyContent: 'space-between', gap: 14 }}>
                     <div>
-                      <strong>柔化与过渡</strong>
+                      <strong>{t('柔化与过渡')}</strong>
                       <p className="field-hint" style={{ marginTop: 4 }}>
-                        在背景、页头、页脚与卡片之间加一层柔和过渡：不同颜色的组件不再硬切，
-                        背景可以带缓慢流动的光晕。只在站点前台生效。
+                        {t(
+                          '在背景、页头、页脚与卡片之间加一层柔和过渡：不同颜色的组件不再硬切，背景可以带缓慢流动的光晕。只在站点前台生效。',
+                        )}
                       </p>
                     </div>
                     <Toggle
                       checked={soften.enabled}
                       onChange={(enabled) => setTheme({ soften: { ...soften, enabled } })}
-                      label="启用柔化"
+                      label={t('启用柔化')}
                     />
                   </div>
                   {soften.enabled ? (
                     <>
                       <div className="form-grid mt-12">
-                        <Field label="柔化强度" hint="越大，背景光晕与组件混色越明显。">
+                        <Field label={t('柔化强度')} hint={t('越大，背景光晕与组件混色越明显。')}>
                           <div className="range-field">
                             <input
                               type="range"
@@ -1670,12 +1751,12 @@ export function ThemesPage() {
                               onChange={(event) =>
                                 setTheme({ soften: { ...soften, strength: Number(event.target.value) } })
                               }
-                              aria-label="柔化强度"
+                              aria-label={t('柔化强度')}
                             />
                             <output>{soften.strength}%</output>
                           </div>
                         </Field>
-                        <Field label="过渡时长" hint="颜色变化的速度；0 表示瞬间切换。">
+                        <Field label={t('过渡时长')} hint={t('颜色变化的速度；0 表示瞬间切换。')}>
                           <div className="range-field">
                             <input
                               type="range"
@@ -1688,12 +1769,12 @@ export function ThemesPage() {
                                   soften: { ...soften, transition_ms: Number(event.target.value) },
                                 })
                               }
-                              aria-label="过渡时长"
+                              aria-label={t('过渡时长')}
                             />
                             <output>{soften.transition_ms} ms</output>
                           </div>
                         </Field>
-                        <Field label="页头模糊" hint="给吸顶页头加一点毛玻璃。">
+                        <Field label={t('页头模糊')} hint={t('给吸顶页头加一点毛玻璃。')}>
                           <div className="range-field">
                             <input
                               type="range"
@@ -1704,7 +1785,7 @@ export function ThemesPage() {
                               onChange={(event) =>
                                 setTheme({ soften: { ...soften, blur: Number(event.target.value) } })
                               }
-                              aria-label="页头模糊"
+                              aria-label={t('页头模糊')}
                             />
                             <output>{soften.blur} px</output>
                           </div>
@@ -1714,16 +1795,16 @@ export function ThemesPage() {
                         <Toggle
                           checked={soften.gradient}
                           onChange={(gradient) => setTheme({ soften: { ...soften, gradient } })}
-                          label="背景柔光渐变"
-                          description="从强调色与文字色引出两团很淡的光，减弱大块底色。"
+                          label={t('背景柔光渐变')}
+                          description={t('从强调色与文字色引出两团很淡的光，减弱大块底色。')}
                         />
                         <Toggle
                           checked={soften.blend_components}
                           onChange={(blend_components) =>
                             setTheme({ soften: { ...soften, blend_components } })
                           }
-                          label="组件颜色混色"
-                          description="页头、页脚、浮层与卡片混入少量主题色，边界不再生硬。"
+                          label={t('组件颜色混色')}
+                          description={t('页头、页脚、浮层与卡片混入少量主题色，边界不再生硬。')}
                         />
                       </div>
                     </>
@@ -1736,11 +1817,13 @@ export function ThemesPage() {
           <details className="panel advanced-theme">
             <summary className="panel-head">
               <div>
-                <h3>高级主题令牌</h3>
-                <p>逐项覆盖页面底色、正文色、分隔线、强调色等变量；不展开也能正常使用。</p>
+                <h3>{t('高级主题令牌')}</h3>
+                <p>{t('逐项覆盖页面底色、正文色、分隔线、强调色等变量；不展开也能正常使用。')}</p>
               </div>
               <span className="faint small">
-                {currentTheme.tokens ? `${Object.keys(currentTheme.tokens).length} 项覆盖` : '跟随主题'}
+                {currentTheme.tokens
+                  ? t('{count} 项覆盖', { count: Object.keys(currentTheme.tokens).length })
+                  : t('跟随主题')}
               </span>
             </summary>
             <div className="panel-body">
@@ -1754,14 +1837,18 @@ export function ThemesPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>主题绑定的外观功能</h3>
+                <h3>{t('主题绑定的外观功能')}</h3>
                 <p>
-                  勾选的分区会出现在「外观」页；取消勾选就从这个主题的外观设置里移除。
-                  内置主题固定为全部开启，自定义主题可以自己决定。
+                  {t(
+                    '勾选的分区会出现在「外观」页；取消勾选就从这个主题的外观设置里移除。 内置主题固定为全部开启，自定义主题可以自己决定。',
+                  )}
                 </p>
               </div>
               <Badge tone={selectedSections.length ? 'accent' : 'muted'}>
-                {selectedSections.length}/{APPEARANCE_SECTIONS.length} 个分区
+                {t('{count}/{total} 个分区', {
+                  count: selectedSections.length,
+                  total: APPEARANCE_SECTIONS.length,
+                })}
               </Badge>
             </div>
             <div className="panel-body">
@@ -1792,13 +1879,17 @@ export function ThemesPage() {
               <p className="field-hint mt-12">
                 {selectedCustom ? (
                   <>
-                    改动会立即写进「{selectedCustom.name}」，并随主题一起导出。改动后外观页会重新排布；
-                    如果某个分区被关掉，它在外观页就不再出现，已有文案也不会丢失。
+                    {t(
+                      '改动会立即写进「{name}」，并随主题一起导出。改动后外观页会重新排布； 如果某个分区被关掉，它在外观页就不再出现，已有文案也不会丢失。',
+                      { name: selectedCustom.name },
+                    )}
                   </>
                 ) : (
                   <>
-                    当前是内置主题「{currentName}」，外观功能由代码定义。想要自定义分区，
-                    可以先「另存为主题」或「创建主题」。
+                    {t(
+                      '当前是内置主题「{name}」，外观功能由代码定义。想要自定义分区， 可以先「另存为主题」或「创建主题」。',
+                      { name: currentName },
+                    )}
                   </>
                 )}
               </p>
@@ -1810,59 +1901,66 @@ export function ThemesPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>主题库</h3>
-                <p>主题文件包含配色、排版、版式与外观绑定。</p>
+                <h3>{t('主题库')}</h3>
+                <p>{t('主题文件包含配色、排版、版式与外观绑定。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <div className="mini-list">
                 <div className="mini-row">
-                  <span className="mini-label">内置主题</span>
-                  <span className="mini-value">{BUILTIN_THEMES.length} 套</span>
+                  <span className="mini-label">{t('内置主题')}</span>
+                  <span className="mini-value">
+                    {t('{count} 套', { count: BUILTIN_THEMES.length })}
+                  </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">自定义主题</span>
+                  <span className="mini-label">{t('自定义主题')}</span>
                   <span className="mini-value">{customThemes.length} / 20</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">当前主题</span>
+                  <span className="mini-label">{t('当前主题')}</span>
                   <span className="mini-value">{currentName}</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">版式</span>
+                  <span className="mini-label">{t('版式')}</span>
                   <span className="mini-value">{variantLabel(customization.layout.variant)}</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">状态</span>
-                  <span className="mini-value">{modified ? '已微调' : '原始定义'}</span>
+                  <span className="mini-label">{t('状态')}</span>
+                  <span className="mini-value">{modified ? t('已微调') : t('原始定义')}</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">外观功能</span>
+                  <span className="mini-label">{t('外观功能')}</span>
                   <span className="mini-value">
-                    {selectedSections.length}/{APPEARANCE_SECTIONS.length} 个分区
+                    {t('{count}/{total} 个分区', {
+                      count: selectedSections.length,
+                      total: APPEARANCE_SECTIONS.length,
+                    })}
                   </span>
                 </div>
               </div>
               <div className="row gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
                 <Button variant="secondary" size="sm" icon="plus" onClick={openCreate}>
-                  创建主题
+                  {t('创建主题')}
                 </Button>
                 <Button variant="secondary" size="sm" icon="download" onClick={exportCurrent}>
-                  导出当前主题
+                  {t('导出当前主题')}
                 </Button>
                 <Button variant="ghost" size="sm" icon="upload" onClick={() => fileRef.current?.click()}>
-                  导入主题
+                  {t('导入主题')}
                 </Button>
               </div>
               <p className="tiny faint mt-12">
-                导入主题不会覆盖文章、页面或自定义 CSS。最多保存 20 套自定义主题。
+                {t('导入主题不会覆盖文章、页面或自定义 CSS。最多保存 20 套自定义主题。')}
               </p>
             </div>
           </section>
 
           <div className="danger-zone">
-            <h3>恢复原版主题</h3>
-            <p>切回内置的原版主题，并清掉当前主题上的微调；不会删除内容或已导入的主题。</p>
+            <h3>{t('恢复原版主题')}</h3>
+            <p>
+              {t('切回内置的原版主题，并清掉当前主题上的微调；不会删除内容或已导入的主题。')}
+            </p>
             <Button
               variant="danger"
               size="sm"
@@ -1872,7 +1970,7 @@ export function ThemesPage() {
                 if (fallback) applyBundle(fallback);
               }}
             >
-              恢复原版
+              {t('恢复原版')}
             </Button>
           </div>
         </aside>
@@ -1881,20 +1979,20 @@ export function ThemesPage() {
 
       <Modal
         open={createOpen}
-        title="创建一套主题"
-        description="选好版式与配色起点，之后再微调；创建完可以直接进页面编排搭页面。"
+        title={t('创建一套主题')}
+        description={t('选好版式与配色起点，之后再微调；创建完可以直接进页面编排搭页面。')}
         onClose={() => setCreateOpen(false)}
         width={720}
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button variant="secondary" onClick={() => confirmCreate(false)}>
-              仅创建
+              {t('仅创建')}
             </Button>
             <Button onClick={() => confirmCreate(true)} icon="layers">
-              创建并编排页面
+              {t('创建并编排页面')}
             </Button>
           </>
         }
@@ -1905,20 +2003,20 @@ export function ThemesPage() {
               {createError}
             </Callout>
           ) : null}
-          <Field label="主题名称" htmlFor="theme-create-name" aside={`${createName.length}/40`}>
+          <Field label={t('主题名称')} htmlFor="theme-create-name" aside={`${createName.length}/40`}>
             <Input
               id="theme-create-name"
               value={createName}
               maxLength={40}
               onChange={(event) => setCreateName(event.target.value)}
-              placeholder="例如：夜航 · 摄影版"
+              placeholder={t('例如：夜航 · 摄影版')}
             />
           </Field>
           <Field
-            label="备注"
+            label={t('备注')}
             htmlFor="theme-create-note"
             aside={`${createNote.length}/160`}
-            hint="可选，方便在主题库里认出它。"
+            hint={t('可选，方便在主题库里认出它。')}
           >
             <Textarea
               id="theme-create-note"
@@ -1926,17 +2024,25 @@ export function ThemesPage() {
               maxLength={160}
               rows={2}
               onChange={(event) => setCreateNote(event.target.value)}
-              placeholder="暖色双栏，适合摄影与社区。"
+              placeholder={t('暖色双栏，适合摄影与社区。')}
             />
           </Field>
 
           <div>
-            <p className="field-label mb-8">版式</p>
+            <p className="field-label mb-8">{t('版式')}</p>
             <div className="option-grid two">
               {(
                 [
-                  { key: 'classic' as const, name: '单栏', note: '编辑排版风，适合长文阅读。' },
-                  { key: 'bento' as const, name: '双栏', note: '杂志网格，适合图片与社区。' },
+                  {
+                    key: 'classic' as const,
+                    name: t('单栏'),
+                    note: t('编辑排版风，适合长文阅读。'),
+                  },
+                  {
+                    key: 'bento' as const,
+                    name: t('双栏'),
+                    note: t('杂志网格，适合图片与社区。'),
+                  },
                 ]
               ).map((item) => (
                 <button
@@ -1960,12 +2066,20 @@ export function ThemesPage() {
           </div>
 
           <div>
-            <p className="field-label mb-8">配色起点</p>
+            <p className="field-label mb-8">{t('配色起点')}</p>
             <div className="option-grid two">
               {(
                 [
-                  { key: 'current' as const, name: '沿用当前主题', note: '保留现在的配色、字体与圆角。' },
-                  { key: 'blank' as const, name: '按版式取默认', note: '单栏取纸白，双栏取夜航。' },
+                  {
+                    key: 'current' as const,
+                    name: t('沿用当前主题'),
+                    note: t('保留现在的配色、字体与圆角。'),
+                  },
+                  {
+                    key: 'blank' as const,
+                    name: t('按版式取默认'),
+                    note: t('单栏取纸白，双栏取夜航。'),
+                  },
                 ]
               ).map((item) => (
                 <button
@@ -1989,7 +2103,7 @@ export function ThemesPage() {
           </div>
 
           <div>
-            <p className="field-label mb-8">外观功能</p>
+            <p className="field-label mb-8">{t('外观功能')}</p>
             <div className="appearance-bind-grid">
               {APPEARANCE_SECTIONS.map((section) => {
                 const on = createSections.includes(section.id);
@@ -2015,81 +2129,92 @@ export function ThemesPage() {
               })}
             </div>
             <p className="field-hint mt-8">
-              只影响「外观」页显示哪些设置；取消勾选后，已有文案仍然保留，随时可以再打开。
+              {t('只影响「外观」页显示哪些设置；取消勾选后，已有文案仍然保留，随时可以再打开。')}
             </p>
           </div>
 
           <Callout tone="info" icon="layers">
-            主题创建后会自动切换为当前主题。点「创建并编排页面」会直接打开页面编排，
-            为首页与自定义页面加组件。
+            {t(
+              '主题创建后会自动切换为当前主题。点「创建并编排页面」会直接打开页面编排， 为首页与自定义页面加组件。',
+            )}
           </Callout>
         </div>
       </Modal>
 
       <Modal
         open={getThemeOpen}
-        title="获取主题"
-        description="从主题市场挑选并安装主题；当前版本先预留入口与接口约定。"
+        title={t('获取主题')}
+        description={t('从主题市场挑选并安装主题；当前版本先预留入口与接口约定。')}
         onClose={() => setGetThemeOpen(false)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setGetThemeOpen(false)}>
-              关闭
+              {t('关闭')}
             </Button>
             {THEME_MARKETPLACE_URL ? (
               <Button
                 onClick={() => window.open(THEME_MARKETPLACE_URL, '_blank', 'noopener')}
                 icon="external"
               >
-                打开主题市场
+                {t('打开主题市场')}
               </Button>
             ) : null}
           </>
         }
       >
         <div className="form-stack">
-          <Callout tone="info" icon="sparkle" title="主题市场接口尚未接入">
-            入口与安装流程已经预留：接入后可以在弹窗里浏览主题、预览并一键安装到本机主题库。
-            当前版本不写入任何外部链接，接口约定与接入步骤见
+          <Callout tone="info" icon="sparkle" title={t('主题市场接口尚未接入')}>
+            {t(
+              '入口与安装流程已经预留：接入后可以在弹窗里浏览主题、预览并一键安装到本机主题库。 当前版本不写入任何外部链接，接口约定与接入步骤见',
+            )}
             <code className="mono">
               {' '}
               docs/superpowers/specs/2026-10-25-theme-marketplace-integration.md
             </code>
-            。
+            {t('。')}
           </Callout>
           <div className="mini-list">
             <div className="mini-row">
-              <span className="mini-label">计划接口</span>
+              <span className="mini-label">{t('计划接口')}</span>
               <span className="mini-value">GET /api/v1/themes/marketplace</span>
             </div>
             <div className="mini-row">
-              <span className="mini-label">安装方式</span>
-              <span className="mini-value">下载主题 JSON 后复用现有主题导入校验</span>
+              <span className="mini-label">{t('安装方式')}</span>
+              <span className="mini-value">
+                {t('下载主题 JSON 后复用现有主题导入校验')}
+              </span>
             </div>
             <div className="mini-row">
-              <span className="mini-label">安全约束</span>
-              <span className="mini-value">只接受配色、排版与版式；不导入内容与自定义 CSS</span>
+              <span className="mini-label">{t('安全约束')}</span>
+              <span className="mini-value">
+                {t('只接受配色、排版与版式；不导入内容与自定义 CSS')}
+              </span>
             </div>
           </div>
           <p className="field-hint">
-            接入时只需在 <code className="mono">lib/themes.ts</code> 的
-            <code className="mono">THEME_MARKETPLACE_URL</code> 填入地址，并实现列表拉取。
+            {t('接入时只需在')} <code className="mono">lib/themes.ts</code> {t('的')}
+            <code className="mono">THEME_MARKETPLACE_URL</code>{' '}
+            {t('填入地址，并实现列表拉取。')}
           </p>
         </div>
       </Modal>
 
       <Modal
         open={!!pendingImport}
-        title={pendingImport ? `导入主题「${pendingImport.name}」？` : '导入主题？'}
-        description="主题只包含配色、排版与单栏/双栏版式；不会导入文章、页面或自定义 CSS。"
+        title={
+          pendingImport
+            ? t('导入主题「{name}」？', { name: pendingImport.name })
+            : t('导入主题？')
+        }
+        description={t('主题只包含配色、排版与单栏/双栏版式；不会导入文章、页面或自定义 CSS。')}
         onClose={() => setPendingImport(null)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setPendingImport(null)}>
-              取消
+              {t('取消')}
             </Button>
             <Button onClick={confirmImport} icon="upload">
-              导入并应用
+              {t('导入并应用')}
             </Button>
           </>
         }
@@ -2100,14 +2225,15 @@ export function ThemesPage() {
               <ThemePreview bundle={pendingImport} />
               <div>
                 <strong>{pendingImport.name}</strong>
-                <p>{pendingImport.note || '没有备注。'}</p>
+                <p>{pendingImport.note || t('没有备注。')}</p>
                 <span className="tiny faint">
-                  {variantLabel(pendingImport.variant)} · {pendingImport.theme.mode === 'dark' ? '深色' : '浅色'}
+                  {variantLabel(pendingImport.variant)} ·{' '}
+                  {pendingImport.theme.mode === 'dark' ? t('深色') : t('浅色')}
                 </span>
               </div>
             </div>
             <Callout tone="info" icon="info">
-              导入后会立即应用。当前主题与配色会被替换；文章、页面正文与账户不受影响。
+              {t('导入后会立即应用。当前主题与配色会被替换；文章、页面正文与账户不受影响。')}
             </Callout>
           </div>
         ) : null}
@@ -2115,67 +2241,79 @@ export function ThemesPage() {
 
       <Modal
         open={!!deleteTarget}
-        title={deleteTarget ? `删除主题「${deleteTarget.name}」？` : '删除主题？'}
+        title={
+          deleteTarget
+            ? t('删除主题「{name}」？', { name: deleteTarget.name })
+            : t('删除主题？')
+        }
         description={
           deleteTarget && customization.active_theme === deleteTarget.id
-            ? '这是当前正在使用的主题；删除后会回到原版主题。'
-            : '删除后不能恢复，除非你重新导入主题文件。'
+            ? t('这是当前正在使用的主题；删除后会回到原版主题。')
+            : t('删除后不能恢复，除非你重新导入主题文件。')
         }
         onClose={() => setDeleteTarget(null)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              取消
+              {t('取消')}
             </Button>
             <Button variant="danger" onClick={confirmDelete} icon="trash">
-              删除主题
+              {t('删除主题')}
             </Button>
           </>
         }
       >
-        <p className="small muted">只删除主题定义，不会删除文章、页面、评论或媒体。</p>
+        <p className="small muted">
+          {t('只删除主题定义，不会删除文章、页面、评论或媒体。')}
+        </p>
       </Modal>
 
       <Modal
         open={saveOpen}
-        title="把当前主题另存为自定义主题"
-        description="保存当前配色、排版与版式，之后可以在主题选择区一键套用。"
+        title={t('把当前主题另存为自定义主题')}
+        description={t('保存当前配色、排版与版式，之后可以在主题选择区一键套用。')}
         onClose={() => setSaveOpen(false)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setSaveOpen(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button onClick={saveAsCustom} icon="plus">
-              保存主题
+              {t('保存主题')}
             </Button>
           </>
         }
       >
         <div className="form-stack">
           {saveError ? <Callout tone="danger" icon="alert">{saveError}</Callout> : null}
-          <Field label="主题名称" htmlFor="theme-save-name" aside={`${saveName.length}/40`}>
+          <Field label={t('主题名称')} htmlFor="theme-save-name" aside={`${saveName.length}/40`}>
             <Input
               id="theme-save-name"
               value={saveName}
               maxLength={40}
               onChange={(event) => setSaveName(event.target.value)}
-              placeholder="例如：我的夜航"
+              placeholder={t('例如：我的夜航')}
             />
           </Field>
-          <Field label="备注" htmlFor="theme-save-note" aside={`${saveNote.length}/160`} hint="可选，方便在主题库里认出它。">
+          <Field
+            label={t('备注')}
+            htmlFor="theme-save-note"
+            aside={`${saveNote.length}/160`}
+            hint={t('可选，方便在主题库里认出它。')}
+          >
             <Textarea
               id="theme-save-note"
               value={saveNote}
               maxLength={160}
               rows={2}
               onChange={(event) => setSaveNote(event.target.value)}
-              placeholder="暖色双栏，适合摄影站。"
+              placeholder={t('暖色双栏，适合摄影站。')}
             />
           </Field>
           <p className="field-hint">
-            当前主题：{currentName} · {variantLabel(customization.layout.variant)} ·{' '}
-            {site?.name ?? '当前站点'}
+            {t('当前主题：')}
+            {currentName} · {variantLabel(customization.layout.variant)} ·{' '}
+            {site?.name ?? t('当前站点')}
           </p>
         </div>
       </Modal>

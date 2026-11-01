@@ -40,6 +40,7 @@ import { accessController, AccessBlockedError, isPreviewFrame, readAccess } from
 import { HttpBackend } from './api';
 import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
 import { DemoBackend } from './demo';
+import { useT } from './i18n';
 import { configurePerformance, readPerformance } from './performance';
 
 export const CONFIG_KEY = 'pp.web.config.v1';
@@ -316,7 +317,8 @@ export function BackendProvider({ backend, children }: { backend: Backend; child
 }
 
 export function useBackend(): Backend {
+  const t = useT();
   const value = useContext(BackendContext);
-  if (!value) throw new Error('useBackend 必须在 BackendProvider 内使用');
+  if (!value) throw new Error(t('useBackend 必须在 BackendProvider 内使用'));
   return value;
 }

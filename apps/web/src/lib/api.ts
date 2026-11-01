@@ -31,6 +31,7 @@ import type {
   Upload,
 } from '../types';
 import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
+import { t } from './i18n';
 import { currentPerformance } from './performance';
 import { RequestCache } from './requestCache';
 
@@ -38,7 +39,7 @@ export class ApiError extends Error {
   readonly problem: ProblemBody;
 
   constructor(problem: ProblemBody) {
-    super(problem.message || problem.title || '请求失败');
+    super(problem.message || problem.title || t('请求失败'));
     this.name = 'ApiError';
     this.problem = problem;
   }
@@ -52,24 +53,29 @@ export class ApiError extends Error {
   }
 }
 
-const FALLBACK_MESSAGE: Record<number, { code: string; message: string }> = {
-  400: { code: 'validation_failed', message: '请求没有通过校验。' },
-  401: { code: 'unauthenticated', message: '登录状态已失效，请重新登录。' },
-  403: { code: 'permission_denied', message: '当前账户没有执行此操作的权限。' },
-  404: { code: 'not_found', message: '资源不存在，或不在当前站点内。' },
-  409: { code: 'conflict', message: '资源状态已变化，请刷新后重试。' },
-  429: { code: 'rate_limited', message: '操作过于频繁，请稍后再试。' },
-  503: { code: 'security_unavailable', message: '安全服务暂不可用，操作已被暂存。' },
+/** 兜底文案按错误码存放，取值时才翻译，语言切换后依然正确。 */
+const FALLBACK_MESSAGE: Record<number, { code: string; message: () => string }> = {
+  400: { code: 'validation_failed', message: () => t('请求没有通过校验。') },
+  401: { code: 'unauthenticated', message: () => t('登录状态已失效，请重新登录。') },
+  403: { code: 'permission_denied', message: () => t('当前账户没有执行此操作的权限。') },
+  404: { code: 'not_found', message: () => t('资源不存在，或不在当前站点内。') },
+  409: { code: 'conflict', message: () => t('资源状态已变化，请刷新后重试。') },
+  429: { code: 'rate_limited', message: () => t('操作过于频繁，请稍后再试。') },
+  503: { code: 'security_unavailable', message: () => t('安全服务暂不可用，操作已被暂存。') },
 };
 
 export function fallbackProblem(status: number): ProblemBody {
-  const known = FALLBACK_MESSAGE[status] ?? { code: 'internal', message: '服务暂时不可用。' };
+  const known = FALLBACK_MESSAGE[status] ?? {
+    code: 'internal',
+    message: () => t('服务暂时不可用。'),
+  };
+  const message = known.message();
   return {
     type: `https://docs.practacu.press/errors/${known.code}`,
-    title: known.message,
+    title: message,
     status,
     code: known.code,
-    message: known.message,
+    message,
     details: {},
     request_id: '',
   };
@@ -81,10 +87,10 @@ export async function problemFromResponse(res: Response): Promise<ProblemBody> {
     if (body && typeof body.code === 'string') {
       return {
         type: body.type ?? '',
-        title: body.title ?? body.message ?? '请求失败',
+        title: body.title ?? body.message ?? t('请求失败'),
         status: body.status ?? res.status,
         code: body.code,
-        message: body.message ?? body.title ?? '请求失败',
+        message: body.message ?? body.title ?? t('请求失败'),
         details: body.details ?? {},
         request_id: body.request_id ?? '',
       };
@@ -208,8 +214,10 @@ export class HttpBackend {
       throw new ApiError({
         ...fallbackProblem(0),
         code: 'internal',
-        title: '无法连接 API',
-        message: `无法连接 ${this.origin || window.location.origin}，请确认服务已启动。`,
+        title: t('无法连接 API'),
+        message: t('无法连接 {origin}，请确认服务已启动。', {
+          origin: this.origin || window.location.origin,
+        }),
       });
     }
 
@@ -289,7 +297,7 @@ export class HttpBackend {
         health: 'fail',
         ready: 'fail',
         openapi: false,
-        detail: err instanceof Error ? err.message : '连接失败',
+        detail: err instanceof Error ? err.message : t('连接失败'),
       };
     }
   }
@@ -662,7 +670,7 @@ export class HttpBackend {
           new ApiError({
             ...fallbackProblem(0),
             code: 'internal',
-            message: '上传过程中断，请重试。',
+            message: t('上传过程中断，请重试。'),
           }),
         );
       xhr.onload = () => {

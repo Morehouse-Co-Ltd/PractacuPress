@@ -25,6 +25,7 @@ import { Badge, Button, Callout, Modal, Select } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 import { useTitle } from '../../lib/hooks';
+import { useT } from '../../lib/i18n';
 
 /**
  * 全屏页面编排工作台。
@@ -34,7 +35,8 @@ import { useTitle } from '../../lib/hooks';
  */
 
 export function ThemeBuilderPage() {
-  useTitle('页面编排');
+  const t = useT();
+  useTitle(t('页面编排'));
   const navigate = useNavigate();
   const backend = useBackend();
   const { customization, update } = useCustomization();
@@ -62,7 +64,7 @@ export function ThemeBuilderPage() {
   const [articlePreviewUrl, setArticlePreviewUrl] = useState('');
 
   const currentTheme = activeTheme(customization.active_theme, customization.themes ?? []);
-  const themeLabel = currentTheme?.name ?? '自定义主题';
+  const themeLabel = currentTheme?.name ?? t('自定义主题');
   const targetPage = customization.pages.find((page) => page.id === target);
   const screenLayout: ScreenLayout =
     target === 'home'
@@ -135,14 +137,18 @@ export function ThemeBuilderPage() {
       });
       setDevice('desktop');
       history.reset(current);
-      toast.push('ok', '已开启不同设备分割', '桌面 / 平板 / 手机现在各有一份独立编排，切换设备再编辑。');
+      toast.push(
+        'ok',
+        t('已开启不同设备分割'),
+        t('桌面 / 平板 / 手机现在各有一份独立编排，切换设备再编辑。'),
+      );
       return;
     }
     const desktop = screenLayout.devices?.desktop?.blocks ?? history.value;
     setScreenLayout({ blocks: desktop });
     setDevice('desktop');
     history.reset(desktop);
-    toast.push('ok', '已关闭不同设备分割', '三台设备重新共用同一份编排（保留桌面版）。');
+    toast.push('ok', t('已关闭不同设备分割'), t('三台设备重新共用同一份编排（保留桌面版）。'));
   };
 
   useEffect(() => {
@@ -293,14 +299,14 @@ export function ThemeBuilderPage() {
     setResetOpen(false);
     toast.push(
       'ok',
-      target === 'home' ? '首页已恢复默认编排' : '页面编排已恢复默认',
+      target === 'home' ? t('首页已恢复默认编排') : t('页面编排已恢复默认'),
       target === 'home'
-        ? '仍可以按 Ctrl/Cmd + Z 撤销。'
+        ? t('仍可以按 Ctrl/Cmd + Z 撤销。')
         : target === 'article'
-          ? '文章页附加区块已清空；文章正文与评论区不受影响。'
+          ? t('文章页附加区块已清空；文章正文与评论区不受影响。')
           : targetPage?.template
-            ? '已按原模板重建组件；页面正文、标题和路径没有改变。'
-            : '组件已清空，页面正文仍会显示。',
+            ? t('已按原模板重建组件；页面正文、标题和路径没有改变。')
+            : t('组件已清空，页面正文仍会显示。'),
     );
   };
 
@@ -313,9 +319,12 @@ export function ThemeBuilderPage() {
           ? `/${targetPage.slug}`
           : '/';
   const targetOptions = [
-    { value: 'home', label: '首页' },
-    { value: 'article', label: '文章页' },
-    ...customization.pages.map((page) => ({ value: page.id, label: `页面：${page.title}` })),
+    { value: 'home', label: t('首页') },
+    { value: 'article', label: t('文章页') },
+    ...customization.pages.map((page) => ({
+      value: page.id,
+      label: t('页面：{title}', { title: page.title }),
+    })),
   ];
 
   const undo = () => history.undo();
@@ -338,7 +347,7 @@ export function ThemeBuilderPage() {
   }, [history.canUndo, history.canRedo]);
 
   const page = (
-    <RoleGate capability="manage_site" need="站点管理员">
+    <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div
         className={`builder-fullscreen${leftOpen ? ' is-left-open' : ''}${
           rightOpen ? ' is-right-open' : ''
@@ -362,12 +371,17 @@ export function ThemeBuilderPage() {
         />
 
         <div className="builder-floating-top">
-          <button type="button" className="builder-back" onClick={() => navigate('/admin')} aria-label="返回后台">
+          <button
+            type="button"
+            className="builder-back"
+            onClick={() => navigate('/admin')}
+            aria-label={t('返回后台')}
+          >
             <Icon name="arrow-left" size={15} />
           </button>
-          <strong className="builder-brand">页面编排</strong>
+          <strong className="builder-brand">{t('页面编排')}</strong>
           <Select
-            aria-label="编辑页面"
+            aria-label={t('编辑页面')}
             value={target}
             onChange={(event) => switchTarget(event.target.value)}
             className="builder-page-select"
@@ -379,22 +393,22 @@ export function ThemeBuilderPage() {
             ))}
           </Select>
           <Button variant="ghost" size="sm" disabled={!history.canUndo} onClick={undo}>
-            撤销
+            {t('撤销')}
           </Button>
           <Button variant="ghost" size="sm" disabled={!history.canRedo} onClick={redo}>
-            重做
+            {t('重做')}
           </Button>
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => setResetOpen(true)}>
-            恢复默认
+            {t('恢复默认')}
           </Button>
           <Badge tone="accent">{themeLabel}</Badge>
           <Link to="/admin/themes" className="btn btn-ghost btn-sm builder-appearance-link">
-            <Icon name="palette" size={14} /> 主题设置
+            <Icon name="palette" size={14} /> {t('主题设置')}
           </Link>
         </div>
 
         {leftOpen ? (
-          <FloatingPanel side="left" title="组件与结构" onClose={() => setLeftOpen(false)}>
+          <FloatingPanel side="left" title={t('组件与结构')} onClose={() => setLeftOpen(false)}>
             <BlockTreeEditor
               variant={customization.layout.variant}
               blocks={history.value}
@@ -409,18 +423,18 @@ export function ThemeBuilderPage() {
           </FloatingPanel>
         ) : (
           <button type="button" className="builder-rail builder-rail-left" onClick={() => setLeftOpen(true)}>
-            组件
+            {t('组件')}
           </button>
         )}
 
         {rightOpen ? (
           <FloatingPanel
             side="right"
-            title="区块属性"
+            title={t('区块属性')}
             onClose={() => setRightOpen(false)}
             aside={
               <button type="button" className="link-btn" onClick={() => setLogicOpen(true)}>
-                逻辑链
+                {t('逻辑链')}
               </button>
             }
           >
@@ -435,7 +449,7 @@ export function ThemeBuilderPage() {
           </FloatingPanel>
         ) : (
           <button type="button" className="builder-rail builder-rail-right" onClick={() => setRightOpen(true)}>
-            属性
+            {t('属性')}
           </button>
         )}
 
@@ -443,8 +457,10 @@ export function ThemeBuilderPage() {
 
         <Modal
           open={logicOpen}
-          title="无代码逻辑链"
-          description="当…发生时，满足条件，就执行动作。逻辑保存在安装配置里，前台由 LogicRuntime 执行。"
+          title={t('无代码逻辑链')}
+          description={t(
+            '当…发生时，满足条件，就执行动作。逻辑保存在安装配置里，前台由 LogicRuntime 执行。',
+          )}
           onClose={() => setLogicOpen(false)}
           width={980}
         >
@@ -459,34 +475,36 @@ export function ThemeBuilderPage() {
           open={resetOpen}
           title={
             target === 'home'
-              ? '恢复首页的默认编排？'
+              ? t('恢复首页的默认编排？')
               : target === 'article'
-                ? '清空文章页附加区块？'
-                : `恢复「${targetPage?.title ?? '页面'}」的默认编排？`
+                ? t('清空文章页附加区块？')
+                : targetPage
+                ? t('恢复「{name}」的默认编排？', { name: targetPage.title })
+                : t('恢复「页面」的默认编排？')
           }
           description={
             target === 'home'
-              ? '首页会回到当前布局变体的默认组件；仍可以撤销。'
+              ? t('首页会回到当前布局变体的默认组件；仍可以撤销。')
               : target === 'article'
-                ? '只会清空文章页正文之后附加的区块；文章正文、评论区与 SEO 不受影响。'
+                ? t('只会清空文章页正文之后附加的区块；文章正文、评论区与 SEO 不受影响。')
                 : targetPage?.template
-                  ? '会按原模板重建组件。页面正文、标题、路径与发布状态都不会改变。'
-                  : '这个页面没有模板，恢复后会清空组件；正文仍会显示。'
+                  ? t('会按原模板重建组件。页面正文、标题、路径与发布状态都不会改变。')
+                  : t('这个页面没有模板，恢复后会清空组件；正文仍会显示。')
           }
           onClose={() => setResetOpen(false)}
           footer={
             <>
               <Button variant="ghost" onClick={() => setResetOpen(false)}>
-                取消
+                {t('取消')}
               </Button>
               <Button variant="danger" onClick={resetCurrentPage} icon="refresh">
-                恢复默认
+                {t('恢复默认')}
               </Button>
             </>
           }
         >
-          <Callout tone="warn" icon="alert" title="只重置编排，不动内容">
-            文章、页面正文、评论、账户与媒体都不会被删除。恢复后可以按 Ctrl/Cmd + Z 撤销。
+          <Callout tone="warn" icon="alert" title={t('只重置编排，不动内容')}>
+            {t('文章、页面正文、评论、账户与媒体都不会被删除。恢复后可以按 Ctrl/Cmd + Z 撤销。')}
           </Callout>
         </Modal>
       </div>

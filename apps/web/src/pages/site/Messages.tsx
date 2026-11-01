@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { formatDateTime, relativeTime, shortId } from '../../lib/format';
+import { useT } from '../../lib/i18n';
 import {
   Avatar,
   Button,
@@ -16,6 +17,7 @@ import { Icon } from '../../components/Icon';
 import { useToast } from '../../lib/toast';
 
 export function MessagesPage() {
+  const t = useT();
   const { id } = useParams();
   const { me } = useAuth();
   const backend = useBackend();
@@ -29,7 +31,7 @@ export function MessagesPage() {
   const [demoMembers, setDemoMembers] = useState<{ id: string; display_name: string }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastReadRef = useRef('');
-  useTitle('私信');
+  useTitle(t('私信'));
 
   const conversations = useAsync(() => backend.conversations(), [backend]);
   const activeId = id ?? conversations.data?.[0]?.id ?? '';
@@ -72,7 +74,7 @@ export function MessagesPage() {
       messages.setData((prev) => [...(prev ?? []), message]);
       conversations.reload();
     } catch (err) {
-      toast.push('error', '发送失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('发送失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -88,7 +90,7 @@ export function MessagesPage() {
       conversations.reload();
       navigate(`/messages/${conv.id}`);
     } catch (err) {
-      toast.push('error', '创建失败', err instanceof Error ? err.message : undefined);
+      toast.push('error', t('创建失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -97,7 +99,7 @@ export function MessagesPage() {
   if (conversations.loading) {
     return (
       <div className="shell">
-        <PageLoading label="正在载入会话" />
+        <PageLoading label={t('正在载入会话')} />
       </div>
     );
   }
@@ -106,13 +108,19 @@ export function MessagesPage() {
     <div className={`messages${activeId ? ' has-thread' : ''}`}>
       <aside className="conv-pane">
         <div className="conv-head">
-          <h1>私信</h1>
+          <h1>{t('私信')}</h1>
           {demo ? (
-            <Button variant="ghost" size="sm" icon="plus" onClick={() => setPicker(true)} aria-label="发起会话">
-              新会话
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="plus"
+              onClick={() => setPicker(true)}
+              aria-label={t('发起会话')}
+            >
+              {t('新会话')}
             </Button>
           ) : (
-            <span className="tiny faint">仅成员可见</span>
+            <span className="tiny faint">{t('仅成员可见')}</span>
           )}
         </div>
         <div className="conv-list">
@@ -123,13 +131,13 @@ export function MessagesPage() {
               className={`conv-item${conv.id === activeId ? ' is-active' : ''}`}
               onClick={() => navigate(`/messages/${conv.id}`)}
             >
-              <Avatar name={conv.title ?? '会话'} size={34} />
+              <Avatar name={conv.title ?? t('会话')} size={34} />
               <span className="conv-main">
                 <span className="conv-title">
                   <strong>{conv.title ?? conv.members.map(shortId).join('、')}</strong>
                   <time>{relativeTime(conv.updated_at)}</time>
                 </span>
-                <span className="conv-preview">{conv.last_message || '还没有消息'}</span>
+                <span className="conv-preview">{conv.last_message || t('还没有消息')}</span>
                 {conv.unread ? <span className="conv-unread">{conv.unread}</span> : null}
               </span>
             </button>
@@ -139,12 +147,16 @@ export function MessagesPage() {
               <EmptyState
                 compact
                 icon="mail"
-                title="还没有会话"
-                body={demo ? '选择和一位成员开始对话。' : '当有人给你发消息时，会话会出现在这里。'}
+                title={t('还没有会话')}
+                body={
+                  demo
+                    ? t('选择和一位成员开始对话。')
+                    : t('当有人给你发消息时，会话会出现在这里。')
+                }
                 action={
                   demo ? (
                     <Button variant="secondary" size="sm" onClick={() => setPicker(true)}>
-                      发起会话
+                      {t('发起会话')}
                     </Button>
                   ) : null
                 }
@@ -155,7 +167,7 @@ export function MessagesPage() {
         {!demo ? (
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--line)' }}>
             <p className="tiny faint" style={{ lineHeight: 1.6 }}>
-              契约没有成员目录端点，因此无法从浏览器发起新会话；已有会话仍可正常读写。
+              {t('契约没有成员目录端点，因此无法从浏览器发起新会话；已有会话仍可正常读写。')}
             </p>
           </div>
         ) : null}
@@ -169,21 +181,25 @@ export function MessagesPage() {
                 type="button"
                 className="icon-btn conversation-back"
                 onClick={() => navigate('/messages')}
-                aria-label="返回会话列表"
+                aria-label={t('返回会话列表')}
                 style={{ display: 'none' }}
               >
                 <Icon name="chevron-left" size={17} />
               </button>
-              <Avatar name={active.title ?? '会'} size={32} />
+              <Avatar name={active.title ?? t('会')} size={32} />
               <div>
                 <h2>{active.title ?? active.members.map(shortId).join('、')}</h2>
-                <p>{active.kind === 'group' ? `群聊 · ${active.members.length} 人` : '私信'}</p>
+                <p>
+                  {active.kind === 'group'
+                    ? t('群聊 · {count} 人', { count: active.members.length })
+                    : t('私信')}
+                </p>
               </div>
             </div>
 
             <div className="thread-scroll" ref={scrollRef}>
               {messages.loading ? (
-                <PageLoading label="正在载入消息" />
+                <PageLoading label={t('正在载入消息')} />
               ) : messages.data?.length ? (
                 messages.data.map((message) => {
                   const own = message.sender_id === me?.user.id;
@@ -201,7 +217,7 @@ export function MessagesPage() {
                 <div className="thread-empty">
                   <div>
                     <Icon name="mail" size={22} />
-                    <p className="mt-12">还没有消息。说点什么吧。</p>
+                    <p className="mt-12">{t('还没有消息。说点什么吧。')}</p>
                   </div>
                 </div>
               )}
@@ -211,7 +227,7 @@ export function MessagesPage() {
               <Textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="输入消息，Enter 发送，Shift + Enter 换行"
+                placeholder={t('输入消息，Enter 发送，Shift + Enter 换行')}
                 maxLength={5000}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -221,7 +237,7 @@ export function MessagesPage() {
                 }}
               />
               <Button icon="send" loading={busy} onClick={send} disabled={!draft.trim()}>
-                发送
+                {t('发送')}
               </Button>
             </div>
           </>
@@ -229,7 +245,7 @@ export function MessagesPage() {
           <div className="thread-empty">
             <div>
               <Icon name="mail" size={26} />
-              <p className="mt-12">选择一个会话，或者开始一段新的对话。</p>
+              <p className="mt-12">{t('选择一个会话，或者开始一段新的对话。')}</p>
             </div>
           </div>
         )}
@@ -237,16 +253,16 @@ export function MessagesPage() {
 
       <Modal
         open={picker}
-        title="发起新会话"
-        description="选择一位成员就是私信；选择多位会创建群聊。"
+        title={t('发起新会话')}
+        description={t('选择一位成员就是私信；选择多位会创建群聊。')}
         onClose={() => setPicker(false)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setPicker(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button loading={busy} onClick={createConversation} disabled={!selectedMembers.length}>
-              创建会话
+              {t('创建会话')}
             </Button>
           </>
         }
@@ -270,9 +286,9 @@ export function MessagesPage() {
             </label>
           ))}
         </div>
-        {!demoMembers.length ? <p className="tiny faint">当前站点没有其他可选成员。</p> : null}
+        {!demoMembers.length ? <p className="tiny faint">{t('当前站点没有其他可选成员。')}</p> : null}
         <p className="field-hint mt-12">
-          创建后你一定是成员；私信要求恰好一位其他成员。未读游标由服务端保存。
+          {t('创建后你一定是成员；私信要求恰好一位其他成员。未读游标由服务端保存。')}
         </p>
       </Modal>
     </div>

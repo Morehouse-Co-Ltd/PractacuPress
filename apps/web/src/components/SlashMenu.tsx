@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useT } from '../lib/i18n';
 import type { EditorDialogKind } from './RichTextEditor';
 
 /**
@@ -39,134 +40,146 @@ export interface SlashItem {
   action: SlashCommand;
 }
 
-export const SLASH_ITEMS: SlashItem[] = [
-  {
-    id: 'h2',
-    label: '标题 2',
-    hint: '二级标题',
-    glyph: 'H2',
-    keywords: ['title', 'heading', 'biaoti', 'h2'],
-    action: { type: 'command', command: 'h2' },
-  },
-  {
-    id: 'h3',
-    label: '标题 3',
-    hint: '三级标题',
-    glyph: 'H3',
-    keywords: ['title', 'heading', 'biaoti', 'h3'],
-    action: { type: 'command', command: 'h3' },
-  },
-  {
-    id: 'h4',
-    label: '标题 4',
-    hint: '四级标题',
-    glyph: 'H4',
-    keywords: ['title', 'heading', 'biaoti', 'h4'],
-    action: { type: 'command', command: 'h4' },
-  },
-  {
-    id: 'ul',
-    label: '无序列表',
-    hint: '项目符号列表',
-    glyph: '•',
-    keywords: ['list', 'bullet', 'wuxu', 'ul', 'liebiao'],
-    action: { type: 'command', command: 'ul' },
-  },
-  {
-    id: 'ol',
-    label: '有序列表',
-    hint: '带编号的列表',
-    glyph: '1.',
-    keywords: ['list', 'ordered', 'youxu', 'ol', 'liebiao'],
-    action: { type: 'command', command: 'ol' },
-  },
-  {
-    id: 'quote',
-    label: '引用',
-    hint: '引用一段话',
-    glyph: '❝',
-    keywords: ['quote', 'blockquote', 'yinyong'],
-    action: { type: 'command', command: 'quote' },
-  },
-  {
-    id: 'code',
-    label: '代码块',
-    hint: '等宽字体代码段',
-    glyph: '</>',
-    keywords: ['code', 'pre', 'daima'],
-    action: { type: 'command', command: 'code' },
-  },
-  {
-    id: 'divider',
-    label: '分割线',
-    hint: '一条水平分隔线',
-    glyph: '—',
-    keywords: ['divider', 'hr', 'separator', 'fengexian'],
-    action: { type: 'command', command: 'divider' },
-  },
-  {
-    id: 'note',
-    label: '提示框',
-    hint: '带强调边的说明块',
-    glyph: '!',
-    keywords: ['note', 'callout', 'tishi', 'tishiikuang'],
-    action: { type: 'command', command: 'note' },
-  },
-  {
-    id: 'image',
-    label: '图片',
-    hint: '从素材库选择或填地址',
-    glyph: '▣',
-    keywords: ['image', 'picture', 'tupian'],
-    action: { type: 'dialog', dialog: 'image' },
-  },
-  {
-    id: 'video',
-    label: '视频',
-    hint: '生成封面卡片',
-    glyph: '▶',
-    keywords: ['video', 'shipin'],
-    action: { type: 'dialog', dialog: 'video' },
-  },
-  {
-    id: 'table',
-    label: '表格',
-    hint: '插入行列表格',
-    glyph: '▦',
-    keywords: ['table', 'biaoge'],
-    action: { type: 'dialog', dialog: 'table' },
-  },
-  {
-    id: 'columns',
-    label: '分栏',
-    hint: '两栏或三栏布局',
-    glyph: '◫',
-    keywords: ['columns', 'layout', 'fenlan'],
-    action: { type: 'dialog', dialog: 'columns' },
-  },
-  {
-    id: 'formula',
-    label: '公式',
-    hint: '行内或块级公式',
-    glyph: '∑',
-    keywords: ['formula', 'math', 'gongshi'],
-    action: { type: 'dialog', dialog: 'formula' },
-  },
-  {
-    id: 'link',
-    label: '链接',
-    hint: '文字链接或链接卡片',
-    glyph: '↗',
-    keywords: ['link', 'url', 'lianjie'],
-    action: { type: 'dialog', dialog: 'link' },
-  },
-];
+/** 取文案的函数；组件里传 `useT()` 的返回值。 */
+type Translate = ReturnType<typeof useT>;
+
+/**
+ * 斜杠指令表。
+ *
+ * 文案在取值时才翻译：中文原文作 i18n 键，传进来的 `t` 决定显示哪种语言。
+ * 所以这里是一个工厂而不是常量表——常量表在模块加载时就固定了语言。
+ */
+export function slashItems(t: Translate): SlashItem[] {
+  return [
+    {
+      id: 'h2',
+      label: t('标题 2'),
+      hint: t('二级标题'),
+      glyph: 'H2',
+      keywords: ['title', 'heading', 'biaoti', 'h2'],
+      action: { type: 'command', command: 'h2' },
+    },
+    {
+      id: 'h3',
+      label: t('标题 3'),
+      hint: t('三级标题'),
+      glyph: 'H3',
+      keywords: ['title', 'heading', 'biaoti', 'h3'],
+      action: { type: 'command', command: 'h3' },
+    },
+    {
+      id: 'h4',
+      label: t('标题 4'),
+      hint: t('四级标题'),
+      glyph: 'H4',
+      keywords: ['title', 'heading', 'biaoti', 'h4'],
+      action: { type: 'command', command: 'h4' },
+    },
+    {
+      id: 'ul',
+      label: t('无序列表'),
+      hint: t('项目符号列表'),
+      glyph: '•',
+      keywords: ['list', 'bullet', 'wuxu', 'ul', 'liebiao'],
+      action: { type: 'command', command: 'ul' },
+    },
+    {
+      id: 'ol',
+      label: t('有序列表'),
+      hint: t('带编号的列表'),
+      glyph: '1.',
+      keywords: ['list', 'ordered', 'youxu', 'ol', 'liebiao'],
+      action: { type: 'command', command: 'ol' },
+    },
+    {
+      id: 'quote',
+      label: t('引用'),
+      hint: t('引用一段话'),
+      glyph: '❝',
+      keywords: ['quote', 'blockquote', 'yinyong'],
+      action: { type: 'command', command: 'quote' },
+    },
+    {
+      id: 'code',
+      label: t('代码块'),
+      hint: t('等宽字体代码段'),
+      glyph: '</>',
+      keywords: ['code', 'pre', 'daima'],
+      action: { type: 'command', command: 'code' },
+    },
+    {
+      id: 'divider',
+      label: t('分割线'),
+      hint: t('一条水平分隔线'),
+      glyph: '—',
+      keywords: ['divider', 'hr', 'separator', 'fengexian'],
+      action: { type: 'command', command: 'divider' },
+    },
+    {
+      id: 'note',
+      label: t('提示框'),
+      hint: t('带强调边的说明块'),
+      glyph: '!',
+      keywords: ['note', 'callout', 'tishi', 'tishiikuang'],
+      action: { type: 'command', command: 'note' },
+    },
+    {
+      id: 'image',
+      label: t('图片'),
+      hint: t('从素材库选择或填地址'),
+      glyph: '▣',
+      keywords: ['image', 'picture', 'tupian'],
+      action: { type: 'dialog', dialog: 'image' },
+    },
+    {
+      id: 'video',
+      label: t('视频'),
+      hint: t('生成封面卡片'),
+      glyph: '▶',
+      keywords: ['video', 'shipin'],
+      action: { type: 'dialog', dialog: 'video' },
+    },
+    {
+      id: 'table',
+      label: t('表格'),
+      hint: t('插入行列表格'),
+      glyph: '▦',
+      keywords: ['table', 'biaoge'],
+      action: { type: 'dialog', dialog: 'table' },
+    },
+    {
+      id: 'columns',
+      label: t('分栏'),
+      hint: t('两栏或三栏布局'),
+      glyph: '◫',
+      keywords: ['columns', 'layout', 'fenlan'],
+      action: { type: 'dialog', dialog: 'columns' },
+    },
+    {
+      id: 'formula',
+      label: t('公式'),
+      hint: t('行内或块级公式'),
+      glyph: '∑',
+      keywords: ['formula', 'math', 'gongshi'],
+      action: { type: 'dialog', dialog: 'formula' },
+    },
+    {
+      id: 'link',
+      label: t('链接'),
+      hint: t('文字链接或链接卡片'),
+      glyph: '↗',
+      keywords: ['link', 'url', 'lianjie'],
+      action: { type: 'dialog', dialog: 'link' },
+    },
+  ];
+}
 
 /** 按 `/` 后面的文字过滤指令；空查询显示全部。 */
-export function filterSlashItems(query: string): SlashItem[] {
+export function filterSlashItems(query: string, t: Translate): SlashItem[] {
+  const items = slashItems(t);
   const needle = query.trim().toLowerCase();
-  if (!needle) return SLASH_ITEMS;
-  return SLASH_ITEMS.filter((item) => {
+  if (!needle) return items;
+  return items.filter((item) => {
     return (
       item.label.toLowerCase().includes(needle) ||
       item.hint.toLowerCase().includes(needle) ||
@@ -196,11 +209,14 @@ export function SlashMenu({
   onClose,
   onActiveItemChange,
 }: SlashMenuProps) {
+  const t = useT();
   const listRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
-  const items = useMemo(() => filterSlashItems(query), [query]);
+  // 指令表按当前语言生成：语言切换时 `t` 会让本组件重渲染，文案随之更新。
+  const items = filterSlashItems(query, t);
   const activeIndex = Math.min(active, Math.max(0, items.length - 1));
   const activeItem = items[activeIndex];
+  const activeItemId = activeItem ? activeItem.id : null;
 
   // 键盘 / 鼠标监听里要读到最新的候选与高亮，用 ref 避免频繁重挂监听。
   const stateRef = useRef({ items, activeIndex });
@@ -215,9 +231,10 @@ export function SlashMenu({
     setActive(0);
   }, [query]);
 
+  // 只依赖 id：每次渲染都会重建指令表，用 id 比较才不会每帧都通知父组件。
   useEffect(() => {
-    onActiveItemChange?.(activeItem ? `pp-slash-${activeItem.id}` : null);
-  }, [activeItem, onActiveItemChange]);
+    onActiveItemChange?.(activeItemId ? `pp-slash-${activeItemId}` : null);
+  }, [activeItemId, onActiveItemChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -275,13 +292,13 @@ export function SlashMenu({
       id="pp-slash-menu"
       className="slash-menu"
       role="listbox"
-      aria-label="插入指令"
+      aria-label={t('插入指令')}
       aria-activedescendant={activeItem ? `pp-slash-${activeItem.id}` : undefined}
       style={{ left: position?.left ?? 12, top: position?.top ?? 12 }}
     >
-      <p className="slash-menu-head">插入</p>
+      <p className="slash-menu-head">{t('插入')}</p>
       {items.length === 0 ? (
-        <p className="slash-menu-empty">没有匹配的指令</p>
+        <p className="slash-menu-empty">{t('没有匹配的指令')}</p>
       ) : (
         <div className="slash-menu-list">
           {items.map((item, index) => (
@@ -310,7 +327,7 @@ export function SlashMenu({
           ))}
         </div>
       )}
-      <p className="slash-menu-foot">↑↓ 选择 · Enter 插入 · Esc 关闭</p>
+      <p className="slash-menu-foot">{t('↑↓ 选择 · Enter 插入 · Esc 关闭')}</p>
     </div>
   );
 }

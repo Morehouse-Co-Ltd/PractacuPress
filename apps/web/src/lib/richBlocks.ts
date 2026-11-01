@@ -8,7 +8,9 @@
  * 不能用 div / span / figure / video / iframe：白名单会丢掉它们，只留文字。
  */
 
+import { t } from './i18n';
 import { escapeHtml } from './markdown';
+import { liveCatalog } from './i18n/live';
 
 export interface RichIcon {
   id: string;
@@ -16,25 +18,34 @@ export interface RichIcon {
   glyph: string;
 }
 
-/** 图标用字符 + CSS 呈现，避免额外图标字体与图片请求。 */
-export const RICH_ICONS: RichIcon[] = [
-  { id: 'star', label: '星标', glyph: '★' },
-  { id: 'spark', label: '灵感', glyph: '✦' },
-  { id: 'leaf', label: '叶子', glyph: '❧' },
-  { id: 'bulb', label: '想法', glyph: '☀' },
-  { id: 'pin', label: '地点', glyph: '⌖' },
-  { id: 'clock', label: '时间', glyph: '◷' },
-  { id: 'heart', label: '喜欢', glyph: '♡' },
-  { id: 'check', label: '完成', glyph: '✓' },
-  { id: 'warn', label: '注意', glyph: '!' },
-  { id: 'book', label: '阅读', glyph: '❏' },
-  { id: 'pen', label: '写作', glyph: '✎' },
-  { id: 'globe', label: '网址', glyph: '⊕' },
-  { id: 'mail', label: '邮件', glyph: '✉' },
-  { id: 'code', label: '代码', glyph: '⌘' },
-  { id: 'chart', label: '数据', glyph: '▤' },
-  { id: 'quote', label: '引文', glyph: '❝' },
+/**
+ * 图标用字符 + CSS 呈现，避免额外图标字体与图片请求。
+ *
+ * `label` 是图标选择器里的界面文案，所以走 `t()`；下面各个区块构造函数里的示例
+ * 文字（「小标题」「正文段落。」这类）会被插进稿件、随内容存盘，属于内容而不是
+ * 界面文案，因此保持原文，不在这里翻译。
+ */
+const RAW_RICH_ICONS: RichIcon[] = [
+  { id: 'star', label: t('星标'), glyph: '★' },
+  { id: 'spark', label: t('灵感'), glyph: '✦' },
+  { id: 'leaf', label: t('叶子'), glyph: '❧' },
+  { id: 'bulb', label: t('想法'), glyph: '☀' },
+  { id: 'pin', label: t('地点'), glyph: '⌖' },
+  { id: 'clock', label: t('时间'), glyph: '◷' },
+  { id: 'heart', label: t('喜欢'), glyph: '♡' },
+  { id: 'check', label: t('完成'), glyph: '✓' },
+  { id: 'warn', label: t('注意'), glyph: '!' },
+  { id: 'book', label: t('阅读'), glyph: '❏' },
+  { id: 'pen', label: t('写作'), glyph: '✎' },
+  { id: 'globe', label: t('网址'), glyph: '⊕' },
+  { id: 'mail', label: t('邮件'), glyph: '✉' },
+  { id: 'code', label: t('代码'), glyph: '⌘' },
+  { id: 'chart', label: t('数据'), glyph: '▤' },
+  { id: 'quote', label: t('引文'), glyph: '❝' },
 ];
+
+/** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
+export const RICH_ICONS = liveCatalog(RAW_RICH_ICONS);
 
 export function iconGlyph(id: string): string {
   return RICH_ICONS.find((icon) => icon.id === id)?.glyph ?? '•';

@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "node scripts/serve.mjs"
+    "start": "node scripts/serve.mjs",
+    "i18n:audit": "node scripts/i18n-audit.mjs",
+    "e2e:i18n": "node scripts/e2e-i18n.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

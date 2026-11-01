@@ -27,7 +27,7 @@ import {
 } from '../lib/authProviders';
 import { AuthProvidersEditor } from '../components/AuthProviders';
 import { errorText, useTitle } from '../lib/hooks';
-import { LOCALES, normalizeLocale, setLocale, type Locale } from '../lib/i18n';
+import { LOCALES, normalizeLocale, setLocale, useT, type Locale } from '../lib/i18n';
 import { currentPort, readRuntime, type RuntimeInfo } from '../lib/runtime';
 import { PUBLISH_LABEL, ROLE_LABEL, VISIBILITY_LABEL, slugify } from '../lib/format';
 import {
@@ -89,15 +89,9 @@ function setupCustomization(theme: Draft['theme'], language: Locale): SiteCustom
 
 const DRAFT_KEY = 'pp.setup.draft.v1';
 
-const STEPS = [
-  { key: 'welcome', label: '欢迎', hint: '从这里开始' },
-  { key: 'mode', label: '运行方式', hint: '连接后端或演示' },
-  { key: 'database', label: '数据库', hint: 'SQLite / MySQL / PostgreSQL' },
-  { key: 'admin', label: '管理员', hint: '第一个账户' },
-  { key: 'site', label: '默认站点', hint: '名称、域名与规则' },
-  { key: 'providers', label: '登录方式', hint: '邮箱、手机、OAuth' },
-  { key: 'checks', label: '检查与完成', hint: '迁移、健康检查' },
-] as const;
+const STEPS = ['welcome', 'mode', 'database', 'admin', 'site', 'providers', 'checks'] as const;
+
+type StepKey = (typeof STEPS)[number];
 
 function defaultDraft(mode: Draft['mode'] = 'demo'): Draft {
   return {
@@ -176,7 +170,8 @@ const DB_LABEL: Record<Database, string> = {
 };
 
 export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
-  useTitle('安装引导');
+  const t = useT();
+  useTitle(t('安装引导'));
   const [step, setStep] = useState(forceLive ? 1 : 0);
   const [draft, setDraft] = useState<Draft>(() => loadDraft(forceLive));
   const [error, setError] = useState('');
@@ -191,11 +186,11 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const [showExisting, setShowExisting] = useState(false);
   const [existing, setExisting] = useState({ email: '', password: '' });
   const [checks, setChecks] = useState<CheckItem[]>([
-    { key: 'ready', label: '服务就绪', detail: '等待检查', status: 'wait' },
-    { key: 'data', label: '数据存储', detail: '等待检查', status: 'wait' },
-    { key: 'security', label: '安全服务', detail: '等待检查', status: 'wait' },
-    { key: 'site', label: '站点可访问', detail: '等待检查', status: 'wait' },
-    { key: 'openapi', label: 'OpenAPI 文档', detail: '等待检查', status: 'wait' },
+    { key: 'ready', label: t('服务就绪'), detail: t('等待检查'), status: 'wait' },
+    { key: 'data', label: t('数据存储'), detail: t('等待检查'), status: 'wait' },
+    { key: 'security', label: t('安全服务'), detail: t('等待检查'), status: 'wait' },
+    { key: 'site', label: t('站点可访问'), detail: t('等待检查'), status: 'wait' },
+    { key: 'openapi', label: t('OpenAPI 文档'), detail: t('等待检查'), status: 'wait' },
   ]);
   const [done, setDone] = useState(false);
   // 上一次安装的配置被判定失效后由 App 写入：告诉用户为什么又回到了安装引导。
@@ -296,7 +291,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   };
 
   const displayBase = (base: string) =>
-    normalizeOrigin(base) || (typeof window === 'undefined' ? '同源' : window.location.origin);
+    normalizeOrigin(base) || (typeof window === 'undefined' ? t('同源') : window.location.origin);
 
   /** 真实环境默认尝试：同源 → 本地 8080，不需要用户输入地址。 */
   const candidateBases = (): string[] => {
@@ -336,7 +331,10 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           setProbe({
             state: 'fail',
             result,
-            message: `已找到 API（${displayBase(base)}），但依赖未就绪（readyz ${result.ready}）。请先执行迁移与 seed。`,
+            message: t('已找到 API（{base}），但依赖未就绪（readyz {ready}）。请先执行迁移与 seed。', {
+              base: displayBase(base),
+              ready: result.ready,
+            }),
           });
           return false;
         }
@@ -344,7 +342,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       liveRef.current = null;
       setProbe({
         state: 'fail',
-        message: `没有发现可用的后端。已尝试：${tried.map(displayBase).join('、')}。`,
+        message: t('没有发现可用的后端。已尝试：{bases}。', {
+          bases: tried.map(displayBase).join(t('、')),
+        }),
       });
       return false;
     } finally {
@@ -399,7 +399,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       setLiveMe({ user_id: me.user.id, display_name: me.user.display_name, role: me.role, site_id: me.site_id });
       setLiveSite(site);
       if (me.role !== 'site_admin' && me.role !== 'platform_admin') {
-        setError('该账户不是站点管理员，无法完成站点配置。请使用安装时创建的管理员账户，或让平台管理员提升权限。');
+        setError(t('该账户不是站点管理员，无法完成站点配置。请使用安装时创建的管理员账户，或让平台管理员提升权限。'));
         return;
       }
       if (site) {
@@ -414,7 +414,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     } catch (err) {
       if (err instanceof ApiError && err.code === 'conflict') {
         setShowExisting(true);
-        setError('该邮箱已经注册。请改用「使用已有管理员账户登录」。');
+        setError(t('该邮箱已经注册。请改用「使用已有管理员账户登录」。'));
       } else {
         setError(errorText(err));
       }
@@ -432,7 +432,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       await backend.login(existing);
       const me = await backend.me();
       if (me.role !== 'site_admin' && me.role !== 'platform_admin') {
-        setError('该账户不是站点管理员，无法完成站点配置。');
+        setError(t('该账户不是站点管理员，无法完成站点配置。'));
         return;
       }
       const site = await backend.site(me.site_id).catch(() => null);
@@ -455,7 +455,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   };
 
   const saveLiveSite = async () => {
-    if (!liveRef.current || !liveMe) throw new Error('没有可用的登录会话，请返回上一步重新登录。');
+    if (!liveRef.current || !liveMe) throw new Error(t('没有可用的登录会话，请返回上一步重新登录。'));
     const personal = draft.site.kind === 'personal';
     const visibility_mode = personal ? 'public' : draft.site.visibility_mode;
     const publish_mode = personal ? 'open' : draft.site.publish_mode;
@@ -484,32 +484,32 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     // 运行方式不需要手填地址：下一步会先用同源/本地 8080 自动连接。
     if (index === 1) return '';
     if (index === 2 && draft.database !== 'sqlite') {
-      if (!draft.db.host.trim()) return '请填写数据库主机。';
-      if (!draft.db.name.trim()) return '请填写数据库名称。';
-      if (!draft.db.user.trim()) return '请填写数据库用户。';
+      if (!draft.db.host.trim()) return t('请填写数据库主机。');
+      if (!draft.db.name.trim()) return t('请填写数据库名称。');
+      if (!draft.db.user.trim()) return t('请填写数据库用户。');
       return '';
     }
     if (index === 3) {
       if (liveMe) return '';
       if (draft.mode === 'live' && showExisting) {
-        if (!isEmail(existing.email)) return '请填写管理员邮箱。';
-        if (!existing.password) return '请填写密码。';
+        if (!isEmail(existing.email)) return t('请填写管理员邮箱。');
+        if (!existing.password) return t('请填写密码。');
         return '';
       }
-      if (!isEmail(draft.admin.email)) return '请填写有效的邮箱地址。';
-      if (!draft.admin.display_name.trim()) return '请填写显示名称。';
-      if (draft.admin.display_name.length > 120) return '显示名称不能超过 120 个字符。';
-      if (draft.admin.password.length < 8) return '密码至少 8 位。';
-      if (draft.admin.password.length > 128) return '密码不能超过 128 位。';
-      if (draft.admin.password !== draft.admin.confirm) return '两次输入的密码不一致。';
+      if (!isEmail(draft.admin.email)) return t('请填写有效的邮箱地址。');
+      if (!draft.admin.display_name.trim()) return t('请填写显示名称。');
+      if (draft.admin.display_name.length > 120) return t('显示名称不能超过 120 个字符。');
+      if (draft.admin.password.length < 8) return t('密码至少 8 位。');
+      if (draft.admin.password.length > 128) return t('密码不能超过 128 位。');
+      if (draft.admin.password !== draft.admin.confirm) return t('两次输入的密码不一致。');
       return '';
     }
     if (index === 4) {
-      if (!draft.site.name.trim()) return '站点名称不能为空。';
-      if (draft.site.name.length > 160) return '站点名称不能超过 160 个字符。';
+      if (!draft.site.name.trim()) return t('站点名称不能为空。');
+      if (draft.site.name.length > 160) return t('站点名称不能超过 160 个字符。');
       // 真实环境留空表示单站点自动匹配任意本机地址；填了未验证的域名，站点会解析不到自己。
-      if (draft.mode !== 'live' && !draft.site.domain.trim()) return '请填写访问域名。';
-      if (draft.site.description.length > 2000) return '站点简介不能超过 2000 个字符。';
+      if (draft.mode !== 'live' && !draft.site.domain.trim()) return t('请填写访问域名。');
+      if (draft.site.description.length > 2000) return t('站点简介不能超过 2000 个字符。');
       return '';
     }
     if (index === 5) {
@@ -517,7 +517,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
         (id) => draft.auth[id].enabled && !providerReady(id, draft.auth[id]),
       );
       if (incomplete.length) {
-        return `请补齐${incomplete.map((id) => PROVIDER_BY_ID[id].name).join('、')}的必填项，或者先关闭该方式。`;
+        return t('请补齐{providers}的必填项，或者先关闭该方式。', {
+          providers: incomplete.map((id) => PROVIDER_BY_ID[id].name).join(t('、')),
+        });
       }
       return '';
     }
@@ -576,6 +578,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   };
 
   const runChecks = async () => {
+    const openapiUrl = `${normalizeOrigin(draft.apiBase)}/api/v1/openapi.json`;
     const nextChecks: CheckItem[] = [];
     if (draft.mode === 'demo') {
       let storageOk = true;
@@ -587,24 +590,36 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       }
       nextChecks.push({
         key: 'ready',
-        label: '本地演示环境',
-        detail: storageOk ? '不需要后端服务，数据写入浏览器 localStorage。' : '浏览器禁用了 localStorage。',
+        label: t('本地演示环境'),
+        detail: storageOk
+          ? t('不需要后端服务，数据写入浏览器 localStorage。')
+          : t('浏览器禁用了 localStorage。'),
         status: storageOk ? 'ok' : 'fail',
       });
       nextChecks.push({
         key: 'data',
-        label: '数据存储',
-        detail: storageOk ? '演示数据可以持久化到本机。' : '无法持久化，刷新后会丢失。',
+        label: t('数据存储'),
+        detail: storageOk ? t('演示数据可以持久化到本机。') : t('无法持久化，刷新后会丢失。'),
         status: storageOk ? 'ok' : 'fail',
       });
       nextChecks.push({
         key: 'security',
-        label: '安全服务',
-        detail: '演示模式不调用 Rust 安全服务；真实发布与上传需要它可用。',
+        label: t('安全服务'),
+        detail: t('演示模式不调用 Rust 安全服务；真实发布与上传需要它可用。'),
         status: 'warn',
       });
-      nextChecks.push({ key: 'site', label: '站点可访问', detail: '演示站点将在此浏览器内立即生效。', status: 'ok' });
-      nextChecks.push({ key: 'openapi', label: 'OpenAPI 文档', detail: '接口契约版本 0.1.0（演示模式不提供在线文档）。', status: 'warn' });
+      nextChecks.push({
+        key: 'site',
+        label: t('站点可访问'),
+        detail: t('演示站点将在此浏览器内立即生效。'),
+        status: 'ok',
+      });
+      nextChecks.push({
+        key: 'openapi',
+        label: t('OpenAPI 文档'),
+        detail: t('接口契约版本 0.1.0（演示模式不提供在线文档）。'),
+        status: 'warn',
+      });
       setChecks(nextChecks);
       return;
     }
@@ -614,20 +629,23 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     const result = await backend.probe().catch(() => null);
     nextChecks.push({
       key: 'ready',
-      label: '服务就绪',
-      detail: result ? `/healthz ${result.health} · /readyz ${result.ready}` : '无法连接',
+      label: t('服务就绪'),
+      detail: result ? `/healthz ${result.health} · /readyz ${result.ready}` : t('无法连接'),
       status: result?.ready === 'ready' ? 'ok' : 'fail',
     });
     nextChecks.push({
       key: 'data',
-      label: '数据库与迁移',
-      detail: result?.ready === 'ready' ? '就绪检查覆盖数据库连接；迁移由安装脚本执行。' : '依赖未就绪，请先执行迁移。',
+      label: t('数据库与迁移'),
+      detail:
+        result?.ready === 'ready'
+          ? t('就绪检查覆盖数据库连接；迁移由安装脚本执行。')
+          : t('依赖未就绪，请先执行迁移。'),
       status: result?.ready === 'ready' ? 'ok' : 'fail',
     });
     nextChecks.push({
       key: 'security',
-      label: '安全服务',
-      detail: '没有独立的健康端点；发布与上传会 fail-closed，安全检查不可用时返回 503。',
+      label: t('安全服务'),
+      detail: t('没有独立的健康端点；发布与上传会 fail-closed，安全检查不可用时返回 503。'),
       status: 'warn',
     });
     try {
@@ -639,24 +657,26 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       const isJson = type.includes('application/json') || type.includes('problem+json');
       nextChecks.push({
         key: 'site',
-        label: '站点可访问',
+        label: t('站点可访问'),
         detail:
           res.status === 401
-            ? '站点为「登录后浏览」，匿名请求被正确拒绝（401）。'
+            ? t('站点为「登录后浏览」，匿名请求被正确拒绝（401）。')
             : !isJson
-              ? '返回的不是 JSON，可能被前端或反向代理的 fallback 接管。'
+              ? t('返回的不是 JSON，可能被前端或反向代理的 fallback 接管。')
               : res.ok
-                ? '匿名读取返回 200。'
-                : `返回 ${res.status}。`,
+                ? t('匿名读取返回 200。')
+                : t('返回 {status}。', { status: res.status }),
         status: res.status < 500 && isJson ? 'ok' : 'fail',
       });
     } catch {
-      nextChecks.push({ key: 'site', label: '站点可访问', detail: '请求失败。', status: 'fail' });
+      nextChecks.push({ key: 'site', label: t('站点可访问'), detail: t('请求失败。'), status: 'fail' });
     }
     nextChecks.push({
       key: 'openapi',
-      label: 'OpenAPI 文档',
-      detail: result?.openapi ? `${normalizeOrigin(draft.apiBase)}/api/v1/openapi.json 可读取。` : '未取到 openapi.json。',
+      label: t('OpenAPI 文档'),
+      detail: result?.openapi
+        ? t('{url} 可读取。', { url: openapiUrl })
+        : t('未取到 openapi.json。'),
       status: result?.openapi ? 'ok' : 'warn',
     });
     setChecks(nextChecks);
@@ -696,7 +716,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           auth: cloneAuth(draft.auth),
         };
       } else {
-        if (!liveMe) throw new Error('尚未完成管理员登录。');
+        if (!liveMe) throw new Error(t('尚未完成管理员登录。'));
         config = {
           version: 1,
           setup_complete: true,
@@ -742,7 +762,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                 <span className="brand-sub">Installation complete</span>
               </span>
             </div>
-            <span className="wiz-progress-text">安装完成</span>
+            <span className="wiz-progress-text">{t('安装完成')}</span>
           </div>
         </div>
         <div className="wiz-body" style={{ gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: 780 }}>
@@ -751,67 +771,67 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
               <span className="finish-mark">
                 <Icon name="check" size={26} />
               </span>
-              <h1>{draft.site.name} 已经准备好了</h1>
+              <h1>{t('{name} 已经准备好了', { name: draft.site.name })}</h1>
               <p>
                 {draft.mode === 'demo'
-                  ? '演示数据已写入此浏览器。你可以随时在「站点设置」里重新运行安装引导或重置数据。'
-                  : '管理员账户与站点规则已写入服务端。下面的地址可以用来访问站点和接口文档。'}
+                  ? t('演示数据已写入此浏览器。你可以随时在「站点设置」里重新运行安装引导或重置数据。')
+                  : t('管理员账户与站点规则已写入服务端。下面的地址可以用来访问站点和接口文档。')}
                 {draft.site.kind === 'personal'
-                  ? ' 个人博客不开放注册，访客无需账户即可阅读全部已发布内容。'
+                  ? ` ${t('个人博客不开放注册，访客无需账户即可阅读全部已发布内容。')}`
                   : ''}
               </p>
 
               <div className="address-grid">
                 <div className="address-card">
-                  <span>站点前台</span>
+                  <span>{t('站点前台')}</span>
                   <code>{origin}/</code>
                 </div>
                 <div className="address-card">
-                  <span>管理后台</span>
+                  <span>{t('管理后台')}</span>
                   <code>{origin}/admin</code>
                 </div>
                 <div className="address-card">
-                  <span>API 根路径</span>
-                  <code>{draft.mode === 'demo' ? '演示模式 · 无远程 API' : `${origin}/api/v1`}</code>
+                  <span>{t('API 根路径')}</span>
+                  <code>{draft.mode === 'demo' ? t('演示模式 · 无远程 API') : `${origin}/api/v1`}</code>
                 </div>
                 <div className="address-card">
-                  <span>OpenAPI 文档</span>
-                  <code>{draft.mode === 'demo' ? '契约 0.1.0 · 演示模式' : `${origin}/api/v1/docs`}</code>
+                  <span>{t('OpenAPI 文档')}</span>
+                  <code>{draft.mode === 'demo' ? t('契约 0.1.0 · 演示模式') : `${origin}/api/v1/docs`}</code>
                 </div>
               </div>
 
               <div className="mini-list mt-32" style={{ textAlign: 'left' }}>
                 <div className="mini-row">
-                  <span className="mini-label">管理员</span>
+                  <span className="mini-label">{t('管理员')}</span>
                   <span className="mini-value">
                     {draft.admin.display_name || (liveMe?.display_name ?? '林知远')} ·{' '}
                     {draft.admin.email || 'admin@practacu.local'}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">数据库</span>
+                  <span className="mini-label">{t('数据库')}</span>
                   <span className="mini-value">
-                    {draft.mode === 'live' ? '由后端配置' : DB_LABEL[draft.database]}
+                    {draft.mode === 'live' ? t('由后端配置') : DB_LABEL[draft.database]}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">站点形态</span>
+                  <span className="mini-label">{t('站点形态')}</span>
                   <span className="mini-value">
                     {SITE_KIND_LABEL[draft.site.kind]}
-                    {draft.site.kind === 'personal' ? ' · 仅站长可登录' : ' · 开放注册'}
+                    {draft.site.kind === 'personal' ? ` · ${t('仅站长可登录')}` : ` · ${t('开放注册')}`}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">站点规则</span>
+                  <span className="mini-label">{t('站点规则')}</span>
                   <span className="mini-value">
                     {VISIBILITY_LABEL[draft.site.visibility_mode]} · {PUBLISH_LABEL[draft.site.publish_mode]}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">登录方式</span>
+                  <span className="mini-label">{t('登录方式')}</span>
                   <span className="mini-value">
                     {[
-                      '邮箱密码',
+                      t('邮箱密码'),
                       ...AUTH_PROVIDER_IDS.filter((id) => draft.auth[id].enabled).map(
                         (id) => PROVIDER_BY_ID[id].name,
                       ),
@@ -819,20 +839,21 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">访问端口</span>
+                  <span className="mini-label">{t('访问端口')}</span>
                   <span className="mini-value mono">
                     {currentPort()}
-                    {currentPort() === 80 ? ' · 默认' : ''}（可在站点设置修改）
+                    {currentPort() === 80 ? ` · ${t('默认')}` : ''}
+                    {t('（可在站点设置修改）')}
                   </span>
                 </div>
               </div>
 
               <div className="wiz-finish-actions">
                 <a href="/admin" className="btn btn-primary btn-lg">
-                  进入管理后台 <Icon name="arrow-right" size={16} />
+                  {t('进入管理后台')} <Icon name="arrow-right" size={16} />
                 </a>
                 <a href="/" className="btn btn-secondary btn-lg">
-                  查看站点
+                  {t('查看站点')}
                 </a>
                 {draft.mode === 'live' ? (
                   <a
@@ -841,7 +862,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                     rel="noreferrer"
                     className="btn btn-ghost btn-lg"
                   >
-                    OpenAPI 文档 <Icon name="external" size={14} />
+                    {t('OpenAPI 文档')} <Icon name="external" size={14} />
                   </a>
                 ) : null}
               </div>
@@ -852,7 +873,25 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     );
   }
 
-  const current = STEPS[step];
+  const stepLabel: Record<StepKey, string> = {
+    welcome: t('欢迎'),
+    mode: t('运行方式'),
+    database: t('数据库'),
+    admin: t('管理员'),
+    site: t('默认站点'),
+    providers: t('登录方式'),
+    checks: t('检查与完成'),
+  };
+  const stepHint: Record<StepKey, string> = {
+    welcome: t('从这里开始'),
+    mode: t('连接后端或演示'),
+    database: 'SQLite / MySQL / PostgreSQL',
+    admin: t('第一个账户'),
+    site: t('名称、域名与规则'),
+    providers: t('邮箱、手机、OAuth'),
+    checks: t('迁移、健康检查'),
+  };
+  const currentKey = STEPS[step];
   const isLast = step === STEPS.length - 1;
   const healthReady = checks.find((c) => c.key === 'ready')?.status === 'ok';
   const canFinish = checks.every((c) => c.status !== 'fail') && healthReady;
@@ -870,9 +909,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           </div>
           <div className="wiz-top-right">
             <span className="wiz-progress-text">
-              第 <b>{step + 1}</b> / {STEPS.length} 步 · {current.label}
+              {t('第')} <b>{step + 1}</b> / {STEPS.length} {t('步 ·')} {stepLabel[currentKey]}
             </span>
-            <div className="wiz-lang" role="group" aria-label="安装语言 / Setup language">
+            <div className="wiz-lang" role="group" aria-label={t('安装语言 / Setup language')}>
               {LOCALES.map((item) => (
                 <button
                   key={item.id}
@@ -892,27 +931,29 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       <div className="wiz-body">
         <aside className="wiz-rail">
           <div className="wiz-rail-inner">
-            <p className="wiz-rail-label">安装进度</p>
+            <p className="wiz-rail-label">{t('安装进度')}</p>
             <ol className="wiz-steps">
-              {STEPS.map((item, index) => (
+              {STEPS.map((key, index) => (
                 <li
-                  key={item.key}
+                  key={key}
                   className={`wiz-step${index === step ? ' is-current' : ''}${index < step ? ' is-done' : ''}`}
                 >
                   <span className="wiz-step-num">
                     {index < step ? <Icon name="check" size={11} /> : index + 1}
                   </span>
                   <span className="wiz-step-text">
-                    <strong>{item.label}</strong>
+                    <strong>{stepLabel[key]}</strong>
                     <span>
-                      {item.key === 'database' && draft.mode === 'live' ? '由后端配置 · 已跳过' : item.hint}
+                      {key === 'database' && draft.mode === 'live'
+                        ? t('由后端配置 · 已跳过')
+                        : stepHint[key]}
                     </span>
                   </span>
                 </li>
               ))}
             </ol>
             <p className="wiz-rail-note">
-              引导只写入必要的站点配置。Client Secret、短信密钥与数据库连接留在服务端，不会进入浏览器。
+              {t('引导只写入必要的站点配置。Client Secret、短信密钥与数据库连接留在服务端，不会进入浏览器。')}
             </p>
           </div>
         </aside>
@@ -920,9 +961,8 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
         <div className="wiz-main">
           {resetNotice ? (
             <div className="mb-24">
-              <Callout tone="warn" icon="alert" title="服务端的站点已经不在了">
-                这台机器的 data 目录被删除或重建过，浏览器里记着的安装配置已经对不上，
-                所以重新打开了安装引导。已有的内容需要从备份的 data 目录恢复。
+              <Callout tone="warn" icon="alert" title={t('服务端的站点已经不在了')}>
+                {t('这台机器的 data 目录被删除或重建过，浏览器里记着的安装配置已经对不上， 所以重新打开了安装引导。已有的内容需要从备份的 data 目录恢复。')}
               </Callout>
             </div>
           ) : null}
@@ -931,43 +971,43 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
               <div>
                 <p className="wiz-eyebrow">Welcome</p>
                 <h1>
-                  先给这间编辑部
+                  {t('先给这间编辑部')}
                   <br />
-                  盖一座房子。
+                  {t('盖一座房子。')}
                 </h1>
                 <p>
-                  接下来六步会创建第一个管理员、一个默认站点和它的发布规则。所有选项之后都能在管理后台修改。
+                  {t('接下来六步会创建第一个管理员、一个默认站点和它的发布规则。所有选项之后都能在管理后台修改。')}
                 </p>
                 <div className="wiz-features">
                   <div className="wiz-feature">
-                    <Icon name="check" size={15} /> 一个平台管理员账户，以及一条可解释的角色边界。
+                    <Icon name="check" size={15} /> {t('一个平台管理员账户，以及一条可解释的角色边界。')}
                   </div>
                   <div className="wiz-feature">
-                    <Icon name="check" size={15} /> 一个默认站点：名称、域名、站点形态（个人博客或社区）与发布规则。
+                    <Icon name="check" size={15} /> {t('一个默认站点：名称、域名、站点形态（个人博客或社区）与发布规则。')}
                   </div>
                   <div className="wiz-feature">
-                    <Icon name="check" size={15} /> 一次健康检查，确认数据库、站点与契约文档都可达。
+                    <Icon name="check" size={15} /> {t('一次健康检查，确认数据库、站点与契约文档都可达。')}
                   </div>
                 </div>
                 <div className="wiz-stat">
                   <div>
-                    <span>角色</span>
-                    <b>4 级</b>
+                    <span>{t('角色')}</span>
+                    <b>{t('4 级')}</b>
                   </div>
                   <div>
-                    <span>阶段</span>
-                    <b>6 步</b>
+                    <span>{t('阶段')}</span>
+                    <b>{t('6 步')}</b>
                   </div>
                   <div>
-                    <span>契约</span>
+                    <span>{t('契约')}</span>
                     <b>0.1.0</b>
                   </div>
                 </div>
 
                 <div className="wiz-theme">
                   <p className="wiz-theme-label">
-                    <Icon name="palette" size={14} /> 先选一套大主题：配色、排版和单栏 / 双栏版式会一起切换。
-                    之后可在「主题设置」里微调、导入或删除自定义主题。
+                    <Icon name="palette" size={14} />{' '}
+                    {t('先选一套大主题：配色、排版和单栏 / 双栏版式会一起切换。 之后可在「主题设置」里微调、导入或删除自定义主题。')}
                   </p>
                   <div className="builtin-theme-grid">
                     {themeLibrary().map((bundle) => {
@@ -1001,7 +1041,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                           <span>
                             <strong>{bundle.name}</strong>
                             <span>
-                              {bundle.note} · {bundle.variant === 'bento' ? '双栏' : '单栏'}
+                              {bundle.note} · {bundle.variant === 'bento' ? t('双栏') : t('单栏')}
                             </span>
                           </span>
                         </button>
@@ -1009,13 +1049,15 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                     })}
                   </div>
                   <p className="field-hint mt-8">
-                    当前：
-                    {themeLibrary().find(
-                      (bundle) =>
-                        bundle.theme.preset === draft.theme.preset &&
-                        bundle.variant === draft.theme.variant,
-                    )?.name ?? '自定义'}
-                    · {draft.theme.mode === 'dark' ? '深色' : '浅色'}。页面编排与主题微调在后台「主题设置」里。
+                    {t('当前：{theme}· {mode}。页面编排与主题微调在后台「主题设置」里。', {
+                      theme:
+                        themeLibrary().find(
+                          (bundle) =>
+                            bundle.theme.preset === draft.theme.preset &&
+                            bundle.variant === draft.theme.variant,
+                        )?.name ?? t('自定义'),
+                      mode: draft.theme.mode === 'dark' ? t('深色') : t('浅色'),
+                    })}
                   </p>
                 </div>
               </div>
@@ -1057,9 +1099,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           {step === 1 ? (
             <>
               <p className="wiz-eyebrow">Runtime</p>
-              <h1 className="wiz-title">先决定这间房子接在哪里。</h1>
+              <h1 className="wiz-title">{t('先决定这间房子接在哪里。')}</h1>
               <p className="wiz-lede">
-                连接真实后端时，所有写入都会经过 Go API 与 Rust 安全服务；演示模式不需要启动任何服务，数据只保存在此浏览器。
+                {t('连接真实后端时，所有写入都会经过 Go API 与 Rust 安全服务；演示模式不需要启动任何服务，数据只保存在此浏览器。')}
               </p>
 
               <div className="wiz-content">
@@ -1078,9 +1120,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                       <Icon name="database" size={17} />
                     </span>
                     <span className="option-body">
-                      <strong>演示数据（本地）</strong>
-                      <p>无需后端。内置一组文章、成员、评论与通知，适合先看完整界面和审核流程。</p>
-                      <span className="option-tag">推荐 · 立即可用</span>
+                      <strong>{t('演示数据（本地）')}</strong>
+                      <p>{t('无需后端。内置一组文章、成员、评论与通知，适合先看完整界面和审核流程。')}</p>
+                      <span className="option-tag">{t('推荐 · 立即可用')}</span>
                     </span>
                     <span className="option-radio" />
                   </button>
@@ -1100,14 +1142,14 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                       <Icon name="server" size={17} />
                     </span>
                     <span className="option-body">
-                      <strong>真实环境</strong>
+                      <strong>{t('真实环境')}</strong>
                       <p>
                         {launcherLive
-                          ? '启动器已经在本机跑起 Go API 与 SQLite，直接连接同源接口，不需要填写地址。'
-                          : '自动连接同源接口或本机 8080 的 Go API，不需要填写地址。'}
+                          ? t('启动器已经在本机跑起 Go API 与 SQLite，直接连接同源接口，不需要填写地址。')
+                          : t('自动连接同源接口或本机 8080 的 Go API，不需要填写地址。')}
                       </p>
                       <span className="option-tag">
-                        {launcherLive ? '本机 API 已就绪 · 零配置' : '零配置 · 自动检测'}
+                        {launcherLive ? t('本机 API 已就绪 · 零配置') : t('零配置 · 自动检测')}
                       </span>
                     </span>
                     <span className="option-radio" />
@@ -1134,40 +1176,40 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                       <div className="connect-body">
                         <strong>
                           {probe.state === 'checking'
-                            ? '正在自动寻找后端…'
+                            ? t('正在自动寻找后端…')
                             : probe.state === 'done'
-                              ? '已连接到后端'
+                              ? t('已连接到后端')
                               : probe.state === 'fail'
-                                ? '没有发现可用的后端'
-                                : '等待自动连接'}
+                                ? t('没有发现可用的后端')
+                                : t('等待自动连接')}
                         </strong>
                         <p>
                           {probe.state === 'checking'
-                            ? '依次尝试同源接口与本机 127.0.0.1:8080，不需要填写地址。'
+                            ? t('依次尝试同源接口与本机 127.0.0.1:8080，不需要填写地址。')
                             : probe.state === 'done'
                               ? `${displayBase(draft.apiBase)} · healthz ${probe.result?.health} · readyz ${probe.result?.ready}`
                               : probe.state === 'fail'
-                                ? probe.message ?? '连接失败。'
-                                : '选中真实环境后会自动连接，不需要手动检测。'}
+                                ? probe.message ?? t('连接失败。')
+                                : t('选中真实环境后会自动连接，不需要手动检测。')}
                         </p>
                       </div>
                       <div className="connect-actions">
                         {probe.state === 'done' ? (
                           <>
                             <button type="button" className="link-btn" onClick={() => void connectLive()}>
-                              重新检测
+                              {t('重新检测')}
                             </button>
                             <button type="button" className="link-btn" onClick={() => setManualOpen(true)}>
-                              更换地址
+                              {t('更换地址')}
                             </button>
                           </>
                         ) : probe.state === 'fail' ? (
                           <Button size="sm" variant="secondary" onClick={() => void connectLive()} icon="refresh">
-                            重试
+                            {t('重试')}
                           </Button>
                         ) : probe.state === 'idle' ? (
                           <Button size="sm" variant="secondary" onClick={() => void connectLive()} icon="refresh">
-                            连接
+                            {t('连接')}
                           </Button>
                         ) : null}
                       </div>
@@ -1176,25 +1218,28 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                     {probe.state === 'fail' ? (
                       <div className="mt-16">
                         {launcherLive ? (
-                          <Callout tone="warn" icon="alert" title="本机 API 没有通过就绪检查">
-                            启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在
-                            <code className="mono"> {launcherApi?.log ?? 'data/api.err.log'}</code>。
+                          <Callout tone="warn" icon="alert" title={t('本机 API 没有通过就绪检查')}>
+                            {t('启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在')}
+                            <code className="mono"> {launcherApi?.log ?? 'data/api.err.log'}</code>
+                            {t('。')}
                             {launcherApi?.error ? (
                               <pre className="connect-commands">{launcherApi.error}</pre>
                             ) : null}
                           </Callout>
                         ) : runtime ? (
-                          <Callout tone="warn" icon="alert" title="这个启动器没有运行本机 API">
+                          <Callout tone="warn" icon="alert" title={t('这个启动器没有运行本机 API')}>
                             {launcherApi?.error
-                              ? '启动器尝试启动本机 API 失败了，原因如下：'
-                              : '启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。'}
+                              ? t('启动器尝试启动本机 API 失败了，原因如下：')
+                              : t('启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。')}
                             {launcherApi?.error ? (
                               <pre className="connect-commands">{launcherApi.error}</pre>
                             ) : (
                               <p>
-                                请使用完整的 Windows 压缩包重新解压（里面应同时有
-                                <code className="mono"> PractacuPress.exe </code>与
-                                <code className="mono"> PractacuPressAPI.exe</code>），或按下面的命令手动启动 Go API。
+                                {t('请使用完整的 Windows 压缩包重新解压（里面应同时有')}
+                                <code className="mono"> PractacuPress.exe </code>
+                                {t('与')}
+                                <code className="mono"> PractacuPressAPI.exe</code>
+                                {t('），或按下面的命令手动启动 Go API。')}
                               </p>
                             )}
                             {launcherApi?.error ? null : (
@@ -1204,11 +1249,13 @@ go run ./apps/api/cmd/server`}</pre>
                             )}
                           </Callout>
                         ) : (
-                          <Callout tone="warn" icon="alert" title="不用填地址，但后端需要先启动">
-                            前端会自动尝试同源与 <code className="mono">http://127.0.0.1:8080</code>。在仓库根目录启动 Go API
-                            后点「重试」即可；如果只是想先看界面，可以直接切到演示数据。
-                            后端已启动仍失败时，多半是跨域限制：开发时用 <code className="mono">npm run dev</code>
-                            （<code className="mono">/api</code> 会代理到 8080），生产用同域反向代理。
+                          <Callout tone="warn" icon="alert" title={t('不用填地址，但后端需要先启动')}>
+                            {t('前端会自动尝试同源与')} <code className="mono">http://127.0.0.1:8080</code>
+                            {t('。在仓库根目录启动 Go API 后点「重试」即可；如果只是想先看界面，可以直接切到演示数据。 后端已启动仍失败时，多半是跨域限制：开发时用')}{' '}
+                            <code className="mono">npm run dev</code>
+                            {t('（')}
+                            <code className="mono">/api</code>{' '}
+                            {t('会代理到 8080），生产用同域反向代理。')}
                             <pre className="connect-commands">{`go run ./apps/api/cmd/migrate
 go run ./apps/api/cmd/seed -driver sqlite -dsn ./data/practacu.db
 go run ./apps/api/cmd/server`}</pre>
@@ -1216,7 +1263,7 @@ go run ./apps/api/cmd/server`}</pre>
                         )}
                         <div className="row gap-8 mt-12" style={{ flexWrap: 'wrap' }}>
                           <Button size="sm" icon="arrow-right" onClick={continueWithDemo}>
-                            先以演示数据继续
+                            {t('先以演示数据继续')}
                           </Button>
                           <Button
                             size="sm"
@@ -1224,7 +1271,7 @@ go run ./apps/api/cmd/server`}</pre>
                             icon="refresh"
                             onClick={() => void connectLive()}
                           >
-                            重试连接
+                            {t('重试连接')}
                           </Button>
                           <Button
                             size="sm"
@@ -1232,7 +1279,7 @@ go run ./apps/api/cmd/server`}</pre>
                             icon="settings"
                             onClick={() => setManualOpen((value) => !value)}
                           >
-                            {manualOpen ? '收起手动设置' : '手动指定地址'}
+                            {manualOpen ? t('收起手动设置') : t('手动指定地址')}
                           </Button>
                         </div>
                       </div>
@@ -1241,8 +1288,8 @@ go run ./apps/api/cmd/server`}</pre>
                     {manualOpen ? (
                       <div className="connect-manual">
                         <Field
-                          label="API 地址"
-                          hint="只有后端不在同源、也不在本机 8080 时才需要填写。"
+                          label={t('API 地址')}
+                          hint={t('只有后端不在同源、也不在本机 8080 时才需要填写。')}
                           htmlFor="api-base"
                         >
                           <div className="row gap-8">
@@ -1261,21 +1308,21 @@ go run ./apps/api/cmd/server`}</pre>
                               onClick={() => void connectLive([normalizeOrigin(draft.apiBase)])}
                               disabled={!normalizeOrigin(draft.apiBase)}
                             >
-                              使用这个地址
+                              {t('使用这个地址')}
                             </Button>
                           </div>
                         </Field>
                         <p className="field-hint mt-8">
-                          跨域部署需要在服务端设置 <code className="mono">CORS_ALLOWED_ORIGINS</code> 并允许凭据；
-                          推荐把前端与 API 放在同一域名下由反向代理转发。
+                          {t('跨域部署需要在服务端设置')} <code className="mono">CORS_ALLOWED_ORIGINS</code>{' '}
+                          {t('并允许凭据； 推荐把前端与 API 放在同一域名下由反向代理转发。')}
                         </p>
                       </div>
                     ) : null}
                   </div>
                 ) : (
-                  <Callout tone="info" icon="info" title="演示模式写入哪里？">
-                    站点、文章、评论与上传的图片都保存在 <code className="mono">localStorage</code>。清除浏览器数据会一并清空；
-                    可在「站点设置 → 重新运行安装引导」里重置。
+                  <Callout tone="info" icon="info" title={t('演示模式写入哪里？')}>
+                    {t('站点、文章、评论与上传的图片都保存在')} <code className="mono">localStorage</code>
+                    {t('。清除浏览器数据会一并清空； 可在「站点设置 → 重新运行安装引导」里重置。')}
                   </Callout>
                 )}
               </div>
@@ -1285,9 +1332,9 @@ go run ./apps/api/cmd/server`}</pre>
           {step === 2 ? (
             <>
               <p className="wiz-eyebrow">Database</p>
-              <h1 className="wiz-title">选一个装得下稿子的柜子。</h1>
+              <h1 className="wiz-title">{t('选一个装得下稿子的柜子。')}</h1>
               <p className="wiz-lede">
-                后端支持 SQLite、MySQL 与 PostgreSQL。浏览器不能修改服务端进程的环境变量，这里选择的方案会生成一份可直接粘贴的配置片段。
+                {t('后端支持 SQLite、MySQL 与 PostgreSQL。浏览器不能修改服务端进程的环境变量，这里选择的方案会生成一份可直接粘贴的配置片段。')}
               </p>
 
               <div className="wiz-content">
@@ -1298,21 +1345,21 @@ go run ./apps/api/cmd/server`}</pre>
                         key: 'sqlite' as Database,
                         icon: 'database' as IconName,
                         title: 'SQLite',
-                        desc: '单机、演示与小规模部署的默认选择。无需额外进程，备份就是一个文件。',
-                        tag: '默认 · Windows 本地安装',
+                        desc: t('单机、演示与小规模部署的默认选择。无需额外进程，备份就是一个文件。'),
+                        tag: t('默认 · Windows 本地安装'),
                       },
                       {
                         key: 'mysql' as Database,
                         icon: 'server' as IconName,
                         title: 'MySQL',
-                        desc: '已有 MySQL 基础设施的团队。需要提供连接串与账号权限。',
+                        desc: t('已有 MySQL 基础设施的团队。需要提供连接串与账号权限。'),
                       },
                       {
                         key: 'postgres' as Database,
                         icon: 'server' as IconName,
                         title: 'PostgreSQL',
-                        desc: 'SaaS 多站点生产的推荐选择。事务与并发场景更稳。',
-                        tag: '推荐 · 生产',
+                        desc: t('SaaS 多站点生产的推荐选择。事务与并发场景更稳。'),
+                        tag: t('推荐 · 生产'),
                       },
                     ] as const
                   ).map((option) => (
@@ -1343,7 +1390,7 @@ go run ./apps/api/cmd/server`}</pre>
 
                 {draft.database !== 'sqlite' ? (
                   <div className="form-grid mt-24">
-                    <Field label="主机" htmlFor="db-host">
+                    <Field label={t('主机')} htmlFor="db-host">
                       <Input
                         id="db-host"
                         value={draft.db.host}
@@ -1351,7 +1398,7 @@ go run ./apps/api/cmd/server`}</pre>
                         autoComplete="off"
                       />
                     </Field>
-                    <Field label="端口" htmlFor="db-port">
+                    <Field label={t('端口')} htmlFor="db-port">
                       <Input
                         id="db-port"
                         value={draft.db.port}
@@ -1359,7 +1406,7 @@ go run ./apps/api/cmd/server`}</pre>
                         inputMode="numeric"
                       />
                     </Field>
-                    <Field label="数据库名" htmlFor="db-name">
+                    <Field label={t('数据库名')} htmlFor="db-name">
                       <Input
                         id="db-name"
                         value={draft.db.name}
@@ -1367,7 +1414,7 @@ go run ./apps/api/cmd/server`}</pre>
                         autoComplete="off"
                       />
                     </Field>
-                    <Field label="用户名" htmlFor="db-user">
+                    <Field label={t('用户名')} htmlFor="db-user">
                       <Input
                         id="db-user"
                         value={draft.db.user}
@@ -1375,7 +1422,11 @@ go run ./apps/api/cmd/server`}</pre>
                         autoComplete="off"
                       />
                     </Field>
-                    <Field label="密码" htmlFor="db-pass" hint="只用于生成本地配置片段，不会发送到任何地方。" >
+                    <Field
+                      label={t('密码')}
+                      htmlFor="db-pass"
+                      hint={t('只用于生成本地配置片段，不会发送到任何地方。')}
+                    >
                       <Input
                         id="db-pass"
                         type="password"
@@ -1384,7 +1435,7 @@ go run ./apps/api/cmd/server`}</pre>
                         autoComplete="new-password"
                       />
                     </Field>
-                    <Field label="字符集 / 时区" hint="所有时间以 UTC 存储，API 以 ISO 8601 返回。">
+                    <Field label={t('字符集 / 时区')} hint={t('所有时间以 UTC 存储，API 以 ISO 8601 返回。')}>
                       <Input value="utf8mb4 · UTC" readOnly disabled />
                     </Field>
                   </div>
@@ -1392,14 +1443,16 @@ go run ./apps/api/cmd/server`}</pre>
 
                 <div className="mt-24">
                   <div className="code-block-head">
-                    <span>服务端配置片段</span>
-                    <CopyButton value={envSnippet} label="复制 .env" />
+                    <span>{t('服务端配置片段')}</span>
+                    <CopyButton value={envSnippet} label={t('复制 .env')} />
                   </div>
                   <pre className="code-block">{envSnippet}</pre>
                   <p className="field-hint mt-8">
-                    把这两行写入服务端的 <code className="mono">.env</code> 或环境变量，然后执行
-                    <code className="mono"> go run ./apps/api/cmd/migrate</code>。
-                    {draft.mode === 'demo' ? ' 演示模式不会真正连接数据库。' : ''}
+                    {t('把这两行写入服务端的')} <code className="mono">.env</code>{' '}
+                    {t('或环境变量，然后执行')}
+                    <code className="mono"> go run ./apps/api/cmd/migrate</code>
+                    {t('。')}
+                    {draft.mode === 'demo' ? ` ${t('演示模式不会真正连接数据库。')}` : ''}
                   </p>
                 </div>
               </div>
@@ -1409,9 +1462,9 @@ go run ./apps/api/cmd/server`}</pre>
           {step === 3 ? (
             <>
               <p className="wiz-eyebrow">Administrator</p>
-              <h1 className="wiz-title">第一个账户，拥有全部权限。</h1>
+              <h1 className="wiz-title">{t('第一个账户，拥有全部权限。')}</h1>
               <p className="wiz-lede">
-                平台管理员可以管理站点、成员、全局安全策略与审计。至少保留一个可用的平台管理员账户。
+                {t('平台管理员可以管理站点、成员、全局安全策略与审计。至少保留一个可用的平台管理员账户。')}
               </p>
 
               <div className="wiz-content">
@@ -1419,14 +1472,17 @@ go run ./apps/api/cmd/server`}</pre>
                   <div className="status-line is-ok">
                     <Icon name="check-circle" size={15} />
                     <span>
-                      已登录为 {liveMe.display_name}（{ROLE_LABEL[liveMe.role]}）。可以继续下一步。
+                      {t('已登录为 {name}（{role}）。可以继续下一步。', {
+                        name: liveMe.display_name,
+                        role: ROLE_LABEL[liveMe.role],
+                      })}
                     </span>
                   </div>
                 ) : (
                   <>
                     {draft.mode === 'live' && showExisting ? (
                       <div className="form-stack">
-                        <Field label="管理员邮箱" htmlFor="exist-email">
+                        <Field label={t('管理员邮箱')} htmlFor="exist-email">
                           <Input
                             id="exist-email"
                             type="email"
@@ -1435,7 +1491,7 @@ go run ./apps/api/cmd/server`}</pre>
                             autoComplete="username"
                           />
                         </Field>
-                        <Field label="密码" htmlFor="exist-pass">
+                        <Field label={t('密码')} htmlFor="exist-pass">
                           <Input
                             id="exist-pass"
                             type="password"
@@ -1446,27 +1502,31 @@ go run ./apps/api/cmd/server`}</pre>
                         </Field>
                         <div className="row gap-8">
                           <Button variant="secondary" onClick={loginExisting} loading={busy}>
-                            登录并继续
+                            {t('登录并继续')}
                           </Button>
                           <Button variant="quiet" onClick={() => setShowExisting(false)}>
-                            返回创建新账户
+                            {t('返回创建新账户')}
                           </Button>
                         </div>
                       </div>
                     ) : (
                       <div className="form-stack">
                         <div className="form-grid">
-                          <Field label="显示名称" htmlFor="admin-name" hint="会出现在文章署名和成员列表里。">
+                          <Field
+                            label={t('显示名称')}
+                            htmlFor="admin-name"
+                            hint={t('会出现在文章署名和成员列表里。')}
+                          >
                             <Input
                               id="admin-name"
                               value={draft.admin.display_name}
                               onChange={(e) => updateAdmin({ display_name: e.target.value })}
                               maxLength={120}
-                              placeholder="例如：林知远"
+                              placeholder={t('例如：林知远')}
                               autoComplete="name"
                             />
                           </Field>
-                          <Field label="邮箱" htmlFor="admin-email" hint="登录凭据，也用于身份绑定。">
+                          <Field label={t('邮箱')} htmlFor="admin-email" hint={t('登录凭据，也用于身份绑定。')}>
                             <Input
                               id="admin-email"
                               type="email"
@@ -1477,7 +1537,7 @@ go run ./apps/api/cmd/server`}</pre>
                               autoComplete="email"
                             />
                           </Field>
-                          <Field label="密码" htmlFor="admin-pass" hint="8–128 位。建议使用长口令。">
+                          <Field label={t('密码')} htmlFor="admin-pass" hint={t('8–128 位。建议使用长口令。')}>
                             <Input
                               id="admin-pass"
                               type="password"
@@ -1486,7 +1546,7 @@ go run ./apps/api/cmd/server`}</pre>
                               autoComplete="new-password"
                             />
                           </Field>
-                          <Field label="确认密码" htmlFor="admin-confirm">
+                          <Field label={t('确认密码')} htmlFor="admin-confirm">
                             <Input
                               id="admin-confirm"
                               type="password"
@@ -1499,18 +1559,18 @@ go run ./apps/api/cmd/server`}</pre>
                         <div className="form-hint-row">
                           <span>
                             {draft.mode === 'demo'
-                              ? '演示模式：账户只保存在此浏览器，密码不会上传。'
-                              : '创建后会立即建立会话，并写入 Refresh Cookie。'}
+                              ? t('演示模式：账户只保存在此浏览器，密码不会上传。')
+                              : t('创建后会立即建立会话，并写入 Refresh Cookie。')}
                           </span>
                           {draft.mode === 'live' ? (
                             <button type="button" className="link-btn" onClick={() => setShowExisting(true)}>
-                              已有管理员账户？
+                              {t('已有管理员账户？')}
                             </button>
                           ) : null}
                         </div>
                         <div>
                           <Button variant="secondary" onClick={registerAdmin} loading={busy}>
-                            {draft.mode === 'demo' ? '记录管理员账户' : '创建管理员并继续'}
+                            {draft.mode === 'demo' ? t('记录管理员账户') : t('创建管理员并继续')}
                           </Button>
                         </div>
                       </div>
@@ -1518,8 +1578,8 @@ go run ./apps/api/cmd/server`}</pre>
                   </>
                 )}
 
-                <Callout tone="info" icon="shield" title="权限在服务端强制校验">
-                  角色一旦建立，所有查询与写入都会检查站点、身份、资源所有权和角色。前端隐藏按钮只改善体验，不构成安全边界。
+                <Callout tone="info" icon="shield" title={t('权限在服务端强制校验')}>
+                  {t('角色一旦建立，所有查询与写入都会检查站点、身份、资源所有权和角色。前端隐藏按钮只改善体验，不构成安全边界。')}
                 </Callout>
               </div>
             </>
@@ -1528,15 +1588,15 @@ go run ./apps/api/cmd/server`}</pre>
           {step === 4 ? (
             <>
               <p className="wiz-eyebrow">Default site</p>
-              <h1 className="wiz-title">给站点起一个名字，然后开门。</h1>
+              <h1 className="wiz-title">{t('给站点起一个名字，然后开门。')}</h1>
               <p className="wiz-lede">
-                单站点模式下，访客不会看到「租户」或「站点选择」；这里创建的就是他们唯一会看到的网站。
+                {t('单站点模式下，访客不会看到「租户」或「站点选择」；这里创建的就是他们唯一会看到的网站。')}
               </p>
 
               <div className="wiz-content">
                 <div className="form-stack">
                   <div className="form-grid">
-                    <Field label="站点名称" htmlFor="site-name" aside={`${draft.site.name.length}/160`}>
+                    <Field label={t('站点名称')} htmlFor="site-name" aside={`${draft.site.name.length}/160`}>
                       <Input
                         id="site-name"
                         value={draft.site.name}
@@ -1545,28 +1605,28 @@ go run ./apps/api/cmd/server`}</pre>
                       />
                     </Field>
                     <Field
-                      label={draft.mode === 'live' ? '访问域名（选填）' : '访问域名'}
+                      label={draft.mode === 'live' ? t('访问域名（选填）') : t('访问域名')}
                       htmlFor="site-domain"
                       hint={
                         draft.mode === 'live'
-                          ? '留空即可：单站点安装会自动匹配所有本机地址。填写自定义域名需要先完成域名验证，当前版本请留空。'
-                          : '公开访问时按域名解析站点，例如 press.example.com。'
+                          ? t('留空即可：单站点安装会自动匹配所有本机地址。填写自定义域名需要先完成域名验证，当前版本请留空。')
+                          : t('公开访问时按域名解析站点，例如 press.example.com。')
                       }
                     >
                       <Input
                         id="site-domain"
                         value={draft.site.domain}
                         onChange={(e) => updateSite({ domain: e.target.value })}
-                        placeholder={draft.mode === 'live' ? '留空 = 自动' : 'press.example.com'}
+                        placeholder={draft.mode === 'live' ? t('留空 = 自动') : 'press.example.com'}
                       />
                     </Field>
                   </div>
 
                   <Field
-                    label="站点简介"
+                    label={t('站点简介')}
                     htmlFor="site-desc"
                     aside={`${draft.site.description.length}/2000`}
-                    hint="出现在首页与页脚。留空也可以。"
+                    hint={t('出现在首页与页脚。留空也可以。')}
                   >
                     <Textarea
                       id="site-desc"
@@ -1577,12 +1637,12 @@ go run ./apps/api/cmd/server`}</pre>
                     />
                   </Field>
 
-                  <Field label="站点路径（slug）" hint="由安装时创建，创建后不可在此修改。">
+                  <Field label={t('站点路径（slug）')} hint={t('由安装时创建，创建后不可在此修改。')}>
                     <Input value={liveSite?.slug ?? (slugify(draft.site.name) || 'practacu')} readOnly disabled />
                   </Field>
 
                   <div>
-                    <p className="field-label mb-8">站点形态</p>
+                    <p className="field-label mb-8">{t('站点形态')}</p>
                     <div className="option-grid two">
                       {(['personal', 'community'] as const).map((kind) => (
                         <button
@@ -1605,8 +1665,8 @@ go run ./apps/api/cmd/server`}</pre>
                             <strong>{SITE_KIND_LABEL[kind]}</strong>
                             <p>
                               {kind === 'personal'
-                                ? '只有站长一个账户。访客可以直接阅读，注册与登录入口关闭。'
-                                : '访客可以自助注册，登录后评论、收藏与投稿。'}
+                                ? t('只有站长一个账户。访客可以直接阅读，注册与登录入口关闭。')
+                                : t('访客可以自助注册，登录后评论、收藏与投稿。')}
                             </p>
                           </span>
                           <span className="option-radio" />
@@ -1615,7 +1675,7 @@ go run ./apps/api/cmd/server`}</pre>
                     </div>
                     {draft.site.kind === 'personal' ? (
                       <p className="field-hint mt-8">
-                        个人博客固定为公开阅读、直接发布：唯一作者无法审核自己的稿件，所以没有审核队列。
+                        {t('个人博客固定为公开阅读、直接发布：唯一作者无法审核自己的稿件，所以没有审核队列。')}
                       </p>
                     ) : null}
                   </div>
@@ -1623,7 +1683,7 @@ go run ./apps/api/cmd/server`}</pre>
                   {draft.site.kind === 'community' ? (
                     <>
                       <div>
-                        <p className="field-label mb-8">访客模式</p>
+                        <p className="field-label mb-8">{t('访客模式')}</p>
                         <div className="option-grid two">
                           {(['public', 'members_only'] as const).map((mode) => (
                             <button
@@ -1640,8 +1700,8 @@ go run ./apps/api/cmd/server`}</pre>
                                 <strong>{VISIBILITY_LABEL[mode]}</strong>
                                 <p>
                                   {mode === 'public'
-                                    ? '未登录访客可以读已发布内容；草稿与审核队列仍然不可见。'
-                                    : '所有内容都要求登录。匿名请求会收到 401。'}
+                                    ? t('未登录访客可以读已发布内容；草稿与审核队列仍然不可见。')
+                                    : t('所有内容都要求登录。匿名请求会收到 401。')}
                                 </p>
                               </span>
                               <span className="option-radio" />
@@ -1651,7 +1711,7 @@ go run ./apps/api/cmd/server`}</pre>
                       </div>
 
                       <div>
-                        <p className="field-label mb-8">发布模式</p>
+                        <p className="field-label mb-8">{t('发布模式')}</p>
                         <div className="option-grid">
                           {(['open', 'review', 'role_based'] as const).map((mode) => (
                             <label
@@ -1668,10 +1728,10 @@ go run ./apps/api/cmd/server`}</pre>
                                 <strong>{PUBLISH_LABEL[mode]}</strong>
                                 <p>
                                   {mode === 'open'
-                                    ? '成员可以直接发布，适合彼此信任的小团队。'
+                                    ? t('成员可以直接发布，适合彼此信任的小团队。')
                                     : mode === 'review'
-                                      ? '成员提交后进入待审核，由编辑或管理员发布。'
-                                      : '普通成员需要审核；编辑与管理员可直接发布。'}
+                                      ? t('成员提交后进入待审核，由编辑或管理员发布。')
+                                      : t('普通成员需要审核；编辑与管理员可直接发布。')}
                                 </p>
                               </span>
                             </label>
@@ -1682,30 +1742,30 @@ go run ./apps/api/cmd/server`}</pre>
                   ) : (
                     <div className="mini-list">
                       <div className="mini-row">
-                        <span className="mini-label">访客</span>
-                        <span className="mini-value">公开阅读 · 无需账户</span>
+                        <span className="mini-label">{t('访客')}</span>
+                        <span className="mini-value">{t('公开阅读 · 无需账户')}</span>
                       </div>
                       <div className="mini-row">
-                        <span className="mini-label">账户</span>
-                        <span className="mini-value">仅站长可登录 · 注册关闭</span>
+                        <span className="mini-label">{t('账户')}</span>
+                        <span className="mini-value">{t('仅站长可登录 · 注册关闭')}</span>
                       </div>
                       <div className="mini-row">
-                        <span className="mini-label">发布</span>
-                        <span className="mini-value">直接发布 · 无审核队列</span>
+                        <span className="mini-label">{t('发布')}</span>
+                        <span className="mini-value">{t('直接发布 · 无审核队列')}</span>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {draft.site.kind === 'personal' ? (
-                  <Callout tone="info" icon="user" title="个人博客只保留一个账户">
-                    安装时创建的管理员就是站长。前台不再显示注册与登录按钮，注册页会直接关闭，登录页只接受站长邮箱。
-                    连接真实后端时，注册端点由服务端控制；要彻底关闭，需要在网关或服务端禁止
-                    <code className="mono"> POST /api/v1/register</code>。
+                  <Callout tone="info" icon="user" title={t('个人博客只保留一个账户')}>
+                    {t('安装时创建的管理员就是站长。前台不再显示注册与登录按钮，注册页会直接关闭，登录页只接受站长邮箱。 连接真实后端时，注册端点由服务端控制；要彻底关闭，需要在网关或服务端禁止')}
+                    <code className="mono"> POST /api/v1/register</code>
+                    {t('。')}
                   </Callout>
                 ) : (
                   <Callout tone="info" icon="info">
-                    这些规则保存后会立即生效。之后可以在「站点设置」里修改，所有变更都会写入审计记录。
+                    {t('这些规则保存后会立即生效。之后可以在「站点设置」里修改，所有变更都会写入审计记录。')}
                   </Callout>
                 )}
 
@@ -1716,11 +1776,11 @@ go run ./apps/api/cmd/server`}</pre>
           {step === 5 ? (
             <>
               <p className="wiz-eyebrow">Sign-in</p>
-              <h1 className="wiz-title">开门的方式，由你决定。</h1>
+              <h1 className="wiz-title">{t('开门的方式，由你决定。')}</h1>
               <p className="wiz-lede">
                 {draft.site.kind === 'personal'
-                  ? '个人博客只保留一个账户：注册关闭，邮箱与密码用于站长登录后台。手机验证码与第三方登录可以在这里打开，但登录页仍只接受站长账户。'
-                  : '邮箱与密码始终可用。手机验证码与第三方登录可以在这里直接选择并填写参数；密钥只写进服务端环境变量，不会保存在浏览器。'}
+                  ? t('个人博客只保留一个账户：注册关闭，邮箱与密码用于站长登录后台。手机验证码与第三方登录可以在这里打开，但登录页仍只接受站长账户。')
+                  : t('邮箱与密码始终可用。手机验证码与第三方登录可以在这里直接选择并填写参数；密钥只写进服务端环境变量，不会保存在浏览器。')}
               </p>
 
               <div className="wiz-content">
@@ -1731,11 +1791,11 @@ go run ./apps/api/cmd/server`}</pre>
                         <Icon name="mail" size={17} />
                       </span>
                       <span className="provider-body">
-                        <strong>邮箱与密码</strong>
-                        <p>Ed25519 JWT + HttpOnly Refresh Cookie + CSRF 双提交。</p>
+                        <strong>{t('邮箱与密码')}</strong>
+                        <p>{t('Ed25519 JWT + HttpOnly Refresh Cookie + CSRF 双提交。')}</p>
                       </span>
                       <Badge tone="ok" dot>
-                        已启用
+                        {t('已启用')}
                       </Badge>
                     </div>
 
@@ -1750,9 +1810,9 @@ go run ./apps/api/cmd/server`}</pre>
                   </div>
                 </div>
 
-                <Callout tone="info" icon="info" title="配置完成后会出现在登录页">
-                  填写完整的方式会显示在 <code className="mono">/login</code> 的邮箱表单下方。演示模式可以模拟这些入口；
-                  连接真实后端时，需要服务端实现对应的短信或 OAuth 端点——契约 v0.1.0 尚未包含它们。
+                <Callout tone="info" icon="info" title={t('配置完成后会出现在登录页')}>
+                  {t('填写完整的方式会显示在')} <code className="mono">/login</code>{' '}
+                  {t('的邮箱表单下方。演示模式可以模拟这些入口； 连接真实后端时，需要服务端实现对应的短信或 OAuth 端点——契约 v0.1.0 尚未包含它们。')}
                 </Callout>
               </div>
             </>
@@ -1761,9 +1821,9 @@ go run ./apps/api/cmd/server`}</pre>
           {step === 6 ? (
             <>
               <p className="wiz-eyebrow">Checks</p>
-              <h1 className="wiz-title">在开门之前，先绕房子走一圈。</h1>
+              <h1 className="wiz-title">{t('在开门之前，先绕房子走一圈。')}</h1>
               <p className="wiz-lede">
-                检查只读取健康端点与公开接口，不会修改数据。安全服务没有独立探针，它由发布与上传流程 fail-closed 验证。
+                {t('检查只读取健康端点与公开接口，不会修改数据。安全服务没有独立探针，它由发布与上传流程 fail-closed 验证。')}
               </p>
 
               <div className="wiz-content">
@@ -1797,44 +1857,44 @@ go run ./apps/api/cmd/server`}</pre>
 
                 <div className="row gap-8 mt-16">
                   <Button variant="secondary" onClick={() => void runChecks()} icon="refresh">
-                    重新检查
+                    {t('重新检查')}
                   </Button>
                   <span className="field-hint">
-                    {draft.mode === 'demo' ? '演示模式' : normalizeOrigin(draft.apiBase) || window.location.origin}
+                    {draft.mode === 'demo' ? t('演示模式') : normalizeOrigin(draft.apiBase) || window.location.origin}
                   </span>
                 </div>
 
                 {!canFinish ? (
-                  <Callout tone="danger" icon="alert" title="还有会阻塞安装的检查">
-                    服务就绪或数据存储未通过。请先启动后端、执行迁移，或改用演示模式。
+                  <Callout tone="danger" icon="alert" title={t('还有会阻塞安装的检查')}>
+                    {t('服务就绪或数据存储未通过。请先启动后端、执行迁移，或改用演示模式。')}
                   </Callout>
                 ) : (
-                  <Callout tone="ok" icon="check-circle" title="可以完成安装">
-                    完成后会写入站点配置并跳转到管理后台。管理员账户、站点规则与安装时间都会保留。
+                  <Callout tone="ok" icon="check-circle" title={t('可以完成安装')}>
+                    {t('完成后会写入站点配置并跳转到管理后台。管理员账户、站点规则与安装时间都会保留。')}
                   </Callout>
                 )}
 
                 <div className="mini-list mt-24">
                   <div className="mini-row">
-                    <span className="mini-label">管理员</span>
+                    <span className="mini-label">{t('管理员')}</span>
                     <span className="mini-value">
                       {draft.admin.display_name || liveMe?.display_name || '林知远'} ·{' '}
                       {draft.admin.email || 'admin@practacu.local'}
                     </span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">站点</span>
+                    <span className="mini-label">{t('站点')}</span>
                     <span className="mini-value">{draft.site.name}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">数据库（记录）</span>
+                    <span className="mini-label">{t('数据库（记录）')}</span>
                     <span className="mini-value">
-                      {draft.mode === 'live' ? '由后端配置' : DB_LABEL[draft.database]}
+                      {draft.mode === 'live' ? t('由后端配置') : DB_LABEL[draft.database]}
                     </span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">模式</span>
-                    <span className="mini-value">{draft.mode === 'demo' ? '演示数据' : '真实环境'}</span>
+                    <span className="mini-label">{t('模式')}</span>
+                    <span className="mini-value">{draft.mode === 'demo' ? t('演示数据') : t('真实环境')}</span>
                   </div>
                 </div>
               </div>
@@ -1843,7 +1903,7 @@ go run ./apps/api/cmd/server`}</pre>
 
           {error ? (
             <div className="mt-20">
-              <Callout tone="danger" icon="alert" title="无法继续">
+              <Callout tone="danger" icon="alert" title={t('无法继续')}>
                 {error}
               </Callout>
             </div>
@@ -1852,24 +1912,24 @@ go run ./apps/api/cmd/server`}</pre>
           <div className="wiz-foot">
             <span className="wiz-foot-note">
               {step === 0
-                ? '所有设置都可以在安装后修改。'
+                ? t('所有设置都可以在安装后修改。')
                 : draft.mode === 'live' && step >= 3
-                  ? `第 ${step + 1} 步，共 ${STEPS.length} 步 · 数据库由后端配置`
-                  : `第 ${step + 1} 步，共 ${STEPS.length} 步`}
+                  ? t('第 {step} 步，共 {total} 步 · 数据库由后端配置', { step: step + 1, total: STEPS.length })
+                  : t('第 {step} 步，共 {total} 步', { step: step + 1, total: STEPS.length })}
             </span>
             <div className="wiz-actions">
               {step > 0 ? (
                 <Button variant="ghost" onClick={prev} icon="arrow-left" disabled={busy}>
-                  上一步
+                  {t('上一步')}
                 </Button>
               ) : null}
               {step === 0 ? (
                 <Button size="lg" onClick={() => go(1)} iconRight="arrow-right">
-                  开始配置
+                  {t('开始配置')}
                 </Button>
               ) : isLast ? (
                 <Button size="lg" onClick={() => void next()} loading={busy} disabled={!canFinish} iconRight="check">
-                  完成安装
+                  {t('完成安装')}
                 </Button>
               ) : (
                 <Button
@@ -1881,9 +1941,9 @@ go run ./apps/api/cmd/server`}</pre>
                 >
                   {step === 3 && draft.mode === 'live' && !liveMe
                     ? showExisting
-                      ? '登录'
-                      : '创建管理员'
-                    : '继续'}
+                      ? t('登录')
+                      : t('创建管理员')
+                    : t('继续')}
                 </Button>
               )}
             </div>

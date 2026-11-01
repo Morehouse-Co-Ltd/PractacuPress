@@ -4,6 +4,8 @@ import type {
   ExtensionPermission,
   ExtensionSlot,
 } from '../types';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 import { createExtension } from './extensions';
 
 /**
@@ -27,11 +29,11 @@ export interface ExtensionTemplate {
   js: string;
 }
 
-export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
+const RAW_EXTENSION_TEMPLATES: ExtensionTemplate[] = [
   {
     id: 'author-card',
-    name: '文末作者卡',
-    description: '在文章正文之后展示一张作者名片，标题取自当前文章。',
+    name: t('文末作者卡'),
+    description: t('在文章正文之后展示一张作者名片，标题取自当前文章。'),
     icon: '作',
     slots: ['article_bottom'],
     pages: ['article'],
@@ -107,8 +109,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
   },
   {
     id: 'reading-timer',
-    name: '悬浮阅读计时',
-    description: '右下角悬浮显示本次阅读时长，可随时暂停与继续。',
+    name: t('悬浮阅读计时'),
+    description: t('右下角悬浮显示本次阅读时长，可随时暂停与继续。'),
     icon: '时',
     slots: ['floating'],
     pages: ['all'],
@@ -183,8 +185,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
   },
   {
     id: 'article-notice',
-    name: '文章顶部提示条',
-    description: '在文章封面之后显示一条可关闭的提示，并可跳转到关于页。',
+    name: t('文章顶部提示条'),
+    description: t('在文章封面之后显示一条可关闭的提示，并可跳转到关于页。'),
     icon: '提',
     slots: ['article_top'],
     pages: ['article'],
@@ -274,6 +276,14 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 })();`,
   },
 ];
+
+/**
+ * 模板名称与说明是界面文案，读取时翻译；html / css / js 是会被复制进用户扩展的
+ * 正文，属于持久化数据，不参与翻译。
+ */
+export const EXTENSION_TEMPLATES = liveCatalog(RAW_EXTENSION_TEMPLATES, {
+  skip: ['html', 'css', 'js'],
+});
 
 /** 按 id 找示例模板；未知 id 返回 undefined。 */
 export function extensionTemplateById(id: string): ExtensionTemplate | undefined {

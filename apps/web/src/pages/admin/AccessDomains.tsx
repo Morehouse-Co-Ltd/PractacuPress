@@ -1,4 +1,5 @@
 import { useTitle } from '../../lib/hooks';
+import { useT } from '../../lib/i18n';
 import { RoleGate } from '../../components/Guards';
 import { AccessPage } from './Access';
 import { DomainsPage } from './Domains';
@@ -10,15 +11,17 @@ import { DomainsPage } from './Domains';
  * 再决定从哪些域名访问，保存逻辑仍各自独立。
  */
 export function AccessDomainsPage() {
-  useTitle('访问与域名');
+  const t = useT();
+  useTitle(t('访问与域名'));
   return (
-    <RoleGate capability="manage_site" need="站点管理员">
+    <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
         <div>
-          <h1>访问与域名</h1>
+          <h1>{t('访问与域名')}</h1>
           <p>
-            限制页面切换、请求与同浏览器并发；同时设置站点主域名、别名、SSL 证书、CORS
-            与可信代理。没有主域名时，生产环境只允许公网 IP 直接访问。
+            {t(
+              '限制页面切换、请求与同浏览器并发；同时设置站点主域名、别名、SSL 证书、CORS 与可信代理。没有主域名时，生产环境只允许公网 IP 直接访问。',
+            )}
           </p>
         </div>
         <div className="admin-page-actions">
@@ -27,7 +30,7 @@ export function AccessDomainsPage() {
             className="btn btn-ghost btn-sm"
             onClick={() => window.open('/', '_blank')}
           >
-            查看前台
+            {t('查看前台')}
           </button>
         </div>
       </div>

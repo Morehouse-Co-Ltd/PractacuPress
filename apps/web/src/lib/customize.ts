@@ -50,6 +50,8 @@ import {
   normalizeSocialLinks,
 } from './navigation';
 import { DEFAULT_PERMISSIONS, normalizePermissions } from './permissions';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 import { normalizeLocale } from './i18n/locales';
 
 /**
@@ -66,7 +68,7 @@ export type { ThemePreset };
 export const DEFAULT_HERO: HeroSettings = {
   kicker: '',
   // 换行即换行；*文字* 用斜体强调色显示。
-  title: '精彩内容\n*就此展开*。',
+  title: t('精彩内容\n*就此展开*。'),
   lede: '',
 };
 
@@ -86,7 +88,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   footer_brand_desc: '',
   footer_show_tags: true,
   footer_tags: '',
-  footer_note: '前端 v0.1 · React',
+  footer_note: t('前端 v0.1 · React'),
   // undefined = 自动导航：内置入口 + 勾选“加入站点导航”的页面。
   nav_tabs: undefined,
   /** 顶部导航整体对齐与图标默认位置；单个 Tab 可以覆盖图标位置。 */
@@ -185,11 +187,11 @@ export function coverUrlError(value: string): string {
   if (!url) return '';
   // 先判长度：超长 data URL 会在 normalizeCoverUrl 里被整条拒绝，不能只给「格式不对」。
   if (url.startsWith('data:') && url.length > MAX_COVER_DATA_URL_CHARS) {
-    return '图片太大：演示模式下请选择 600 KB 以内的图片。';
+    return t('图片太大：演示模式下请选择 600 KB 以内的图片。');
   }
   if (normalizeCoverUrl(url)) return '';
-  if (url.startsWith('data:')) return '只支持 png / jpg / webp / gif / svg 图片。';
-  return '请填写 http(s) 图片地址、以 / 开头的站内路径，或直接上传图片。';
+  if (url.startsWith('data:')) return t('只支持 png / jpg / webp / gif / svg 图片。');
+  return t('请填写 http(s) 图片地址、以 / 开头的站内路径，或直接上传图片。');
 }
 
 function normalizeCovers(value: unknown): ArticleCover[] {
@@ -288,7 +290,7 @@ function normalizeExtension(value: unknown): CustomExtension | null {
     id,
     name,
     version: text(raw.version, '1.0.0', EXTENSION_LIMITS.version).trim() || '1.0.0',
-    author: text(raw.author, '', EXTENSION_LIMITS.author).trim() || '未署名',
+    author: text(raw.author, '', EXTENSION_LIMITS.author).trim() || t('未署名'),
     description: text(raw.description, '', EXTENSION_LIMITS.description),
     ...(text(raw.icon, '', 4) ? { icon: text(raw.icon, '', 4) } : {}),
     enabled: bool(raw.enabled, true),
@@ -353,7 +355,7 @@ export const DEFAULT_CUSTOMIZATION: SiteCustomization = {
   custom_css: '',
 };
 
-export const EXTENSIONS: {
+const RAW_EXTENSIONS: {
   id: ExtensionId;
   name: string;
   description: string;
@@ -361,41 +363,44 @@ export const EXTENSIONS: {
 }[] = [
   {
     id: 'reading_progress',
-    name: '阅读进度条',
-    description: '在文章页顶部显示一条细进度线。',
-    detail: '随滚动更新，不写入任何数据。',
+    name: t('阅读进度条'),
+    description: t('在文章页顶部显示一条细进度线。'),
+    detail: t('随滚动更新，不写入任何数据。'),
   },
   {
     id: 'toc',
-    name: '文章目录',
-    description: '从文章的二、三级标题自动生成目录。',
-    detail: '至少两个标题时才出现，点击跳到对应段落。',
+    name: t('文章目录'),
+    description: t('从文章的二、三级标题自动生成目录。'),
+    detail: t('至少两个标题时才出现，点击跳到对应段落。'),
   },
   {
     id: 'code_copy',
-    name: '代码块复制',
-    description: '给正文里的每个代码块加一个复制按钮。',
-    detail: '只处理前端渲染出的代码块，不改变正文内容。',
+    name: t('代码块复制'),
+    description: t('给正文里的每个代码块加一个复制按钮。'),
+    detail: t('只处理前端渲染出的代码块，不改变正文内容。'),
   },
   {
     id: 'share',
-    name: '原生分享',
-    description: '在文章底部提供“分享”按钮。',
-    detail: '支持 Web Share API 时调用系统分享，否则复制链接。',
+    name: t('原生分享'),
+    description: t('在文章底部提供“分享”按钮。'),
+    detail: t('支持 Web Share API 时调用系统分享，否则复制链接。'),
   },
   {
     id: 'announcement',
-    name: '站点公告条',
-    description: '在页头下方显示一条可关闭的公告。',
-    detail: '公告内容在“外观 → 导航与品牌”里填写。',
+    name: t('站点公告条'),
+    description: t('在页头下方显示一条可关闭的公告。'),
+    detail: t('公告内容在“外观 → 导航与品牌”里填写。'),
   },
   {
     id: 'back_to_top',
-    name: '回到顶部',
-    description: '页面滚动较深时出现回到顶部按钮。',
-    detail: '只在站点前台出现，不影响管理后台。',
+    name: t('回到顶部'),
+    description: t('页面滚动较深时出现回到顶部按钮。'),
+    detail: t('只在站点前台出现，不影响管理后台。'),
   },
 ];
+
+/** 内置扩展的名称与说明是界面文案，读取时翻译；开关状态用 id 存，不受影响。 */
+export const EXTENSIONS = liveCatalog(RAW_EXTENSIONS);
 
 function text(value: unknown, fallback: string, max = 400): string {
   return typeof value === 'string' ? value.slice(0, max) : fallback;
@@ -749,7 +754,7 @@ function normalizePage(page: SitePage): SitePage {
         : layout;
   return {
     id: page.id,
-    title: text(page.title, '未命名页面', 160),
+    title: text(page.title, t('未命名页面'), 160),
     slug: normalizePageSlug(page.slug),
     summary: text(page.summary, '', 400),
     body: '',
@@ -810,10 +815,10 @@ export function normalizePageSlug(input: string): string {
 }
 
 export function pageSlugError(slug: string, pages: SitePage[], currentId?: string): string {
-  if (!slug) return '页面路径不能为空。';
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) return '路径只能包含小写字母、数字与连字符。';
-  if (RESERVED_SLUGS.has(slug)) return '这个路径被系统路由占用，请换一个。';
-  if (pages.some((page) => page.slug === slug && page.id !== currentId)) return '已经有页面使用这个路径。';
+  if (!slug) return t('页面路径不能为空。');
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) return t('路径只能包含小写字母、数字与连字符。');
+  if (RESERVED_SLUGS.has(slug)) return t('这个路径被系统路由占用，请换一个。');
+  if (pages.some((page) => page.slug === slug && page.id !== currentId)) return t('已经有页面使用这个路径。');
   return '';
 }
 
@@ -956,12 +961,12 @@ export function parseCustomizationFile(raw: string): SiteCustomization {
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error('文件不是有效的 JSON。');
+    throw new Error(t('文件不是有效的 JSON。'));
   }
-  if (!data || typeof data !== 'object') throw new Error('文件内容不是一个配置对象。');
+  if (!data || typeof data !== 'object') throw new Error(t('文件内容不是一个配置对象。'));
   const record = data as Record<string, unknown>;
   const source = (record.customization ?? record) as Record<string, unknown>;
-  if (!source || typeof source !== 'object') throw new Error('缺少 customization 字段。');
+  if (!source || typeof source !== 'object') throw new Error(t('缺少 customization 字段。'));
   if (
     !source.theme &&
     !source.layout &&
@@ -970,7 +975,7 @@ export function parseCustomizationFile(raw: string): SiteCustomization {
     !source.covers &&
     !source.custom_extensions
   ) {
-    throw new Error('文件里没有可识别的外观、页面、封面或扩展配置。');
+    throw new Error(t('文件里没有可识别的外观、页面、封面或扩展配置。'));
   }
   return readCustomization({ customization: source as unknown as SiteCustomization });
 }

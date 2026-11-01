@@ -13,6 +13,7 @@ import {
   canReview,
   formatDateTime,
 } from '../../lib/format';
+import { useT } from '../../lib/i18n';
 import {
   Badge,
   Button,
@@ -56,14 +57,16 @@ const EMPTY: FormState = {
 };
 
 export function EditorPage() {
+  const t = useT();
   return (
-    <RoleGate capability="write_content" need="写稿">
+    <RoleGate capability="write_content" need={t('写稿')}>
       <EditorWorkspace />
     </RoleGate>
   );
 }
 
 function EditorWorkspace() {
+  const t = useT();
   const { kind: kindParam, id } = useParams();
   const kind: ContentKind = kindParam === 'post' ? 'post' : 'article';
   const isNew = !id;
@@ -96,7 +99,7 @@ function EditorWorkspace() {
 
   const content = useAsync(async () => (isNew ? null : backend.getContent(kind, id!)), [backend, kind, id, isNew]);
   const item = content.data;
-  useTitle(isNew ? `新建${KIND_LABEL[kind]}` : item?.title ?? '编辑内容');
+  useTitle(isNew ? t('新建{kind}', { kind: KIND_LABEL[kind] }) : item?.title ?? t('编辑内容'));
 
   const mountSurface = useCallback((html: string) => {
     revisionRef.current += 1;
@@ -161,20 +164,20 @@ function EditorWorkspace() {
   const statusOptions: { value: SaveStatus; label: string; hint: string; disabled: boolean }[] = [
     {
       value: 'draft',
-      label: '草稿',
-      hint: '仅自己与编辑可见，可以继续修改。',
+      label: t('草稿'),
+      hint: t('仅自己与编辑可见，可以继续修改。'),
       disabled: false,
     },
     {
       value: 'pending_review',
-      label: '提交审核',
-      hint: '进入审核队列，等待另一位编辑处理。',
+      label: t('提交审核'),
+      hint: t('进入审核队列，等待另一位编辑处理。'),
       disabled: false,
     },
     {
       value: 'published',
-      label: '直接发布',
-      hint: canPublishDirectly ? '保存后立即公开，仍会经过服务端清洗。' : '当前发布模式不允许直接发布。',
+      label: t('直接发布'),
+      hint: canPublishDirectly ? t('保存后立即公开，仍会经过服务端清洗。') : t('当前发布模式不允许直接发布。'),
       disabled: !canPublishDirectly,
     },
   ];
@@ -215,32 +218,32 @@ function EditorWorkspace() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    toast.push('ok', '已导出 Markdown', `${base}.md`);
+    toast.push('ok', t('已导出 Markdown'), `${base}.md`);
   };
 
   const importMarkdown = async (file: File) => {
     if (file.size > 2_000_000) {
-      toast.push('error', '文件太大', 'Markdown 文件不应超过 2 MB。');
+      toast.push('error', t('文件太大'), t('Markdown 文件不应超过 2 MB。'));
       return;
     }
     try {
       const body = (await file.text()).slice(0, 200_000);
       update({ source_format: 'markdown', source_body: body });
       mountSurface(normalizeEditorSource('markdown', body).html);
-      toast.push('ok', '已导入 Markdown', '内容还没有保存，记得保存草稿。');
+      toast.push('ok', t('已导入 Markdown'), t('内容还没有保存，记得保存草稿。'));
     } catch {
-      toast.push('error', '导入失败', '无法读取这个 Markdown 文件。');
+      toast.push('error', t('导入失败'), t('无法读取这个 Markdown 文件。'));
     }
   };
 
   const validate = (): string => {
-    if (!form.title.trim()) return '标题不能为空。';
-    if (form.title.length > 200) return '标题不能超过 200 个字符。';
-    if (form.summary.length > 500) return '摘要不能超过 500 个字符。';
-    if (!form.source_body.trim()) return '正文不能为空。';
-    if (form.source_body.length > 200000) return '正文不能超过 200000 个字符。';
+    if (!form.title.trim()) return t('标题不能为空。');
+    if (form.title.length > 200) return t('标题不能超过 200 个字符。');
+    if (form.summary.length > 500) return t('摘要不能超过 500 个字符。');
+    if (!form.source_body.trim()) return t('正文不能为空。');
+    if (form.source_body.length > 200000) return t('正文不能超过 200000 个字符。');
     if (form.slug && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.slug)) {
-      return '路径只能使用小写字母、数字和连字符，例如 hello-world。';
+      return t('路径只能使用小写字母、数字和连字符，例如 hello-world。');
     }
     return '';
   };
@@ -291,9 +294,13 @@ function EditorWorkspace() {
         try {
           final = await applyTargetStatus(created);
         } catch (err) {
-          toast.push('error', '草稿已保存，但状态切换失败', err instanceof Error ? err.message : undefined);
+          toast.push('error', t('草稿已保存，但状态切换失败'), err instanceof Error ? err.message : undefined);
         }
-        toast.push('ok', '内容已保存', `当前状态：${STATUS_LABEL[final.status] ?? '草稿'}`);
+        toast.push(
+          'ok',
+          t('内容已保存'),
+          t('当前状态：{status}', { status: STATUS_LABEL[final.status] ?? t('草稿') }),
+        );
         navigate(`/admin/content/${kind}/${created.id}`, {
           replace: true,
           state: { content: { ...final, source_body: form.source_body } },
@@ -306,7 +313,7 @@ function EditorWorkspace() {
       try {
         final = await applyTargetStatus(updated);
       } catch (err) {
-        toast.push('error', '内容已保存，但状态切换失败', err instanceof Error ? err.message : undefined);
+        toast.push('error', t('内容已保存，但状态切换失败'), err instanceof Error ? err.message : undefined);
       }
       setInitial(form);
       setInitialStatus(
@@ -318,12 +325,12 @@ function EditorWorkspace() {
       );
       content.reload();
       setForm(form);
-      toast.push('ok', '已保存', `当前状态：${STATUS_LABEL[final.status]}`);
+      toast.push('ok', t('已保存'), t('当前状态：{status}', { status: STATUS_LABEL[final.status] }));
       return final;
     } catch (err) {
-      const text = err instanceof Error ? err.message : '保存失败。';
+      const text = err instanceof Error ? err.message : t('保存失败。');
       setError(text);
-      toast.push('error', '保存失败', text);
+      toast.push('error', t('保存失败'), text);
       return null;
     } finally {
       setBusy(false);
@@ -342,27 +349,35 @@ function EditorWorkspace() {
         item.title,
         `状态：${STATUS_LABEL[updated.status]}`,
       );
-      toast.push('ok', `${ACTION_LABEL[action]}成功`, `现在是「${STATUS_LABEL[updated.status]}」`);
+      toast.push(
+        'ok',
+        t('{action}成功', { action: ACTION_LABEL[action] }),
+        t('现在是「{status}」', { status: STATUS_LABEL[updated.status] }),
+      );
       content.reload();
       setRejectOpen(false);
       setArchiveOpen(false);
       setRejectReason('');
     } catch (err) {
-      toast.push('error', `${ACTION_LABEL[action]}失败`, err instanceof Error ? err.message : undefined);
+      toast.push(
+        'error',
+        t('{action}失败', { action: ACTION_LABEL[action] }),
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       setActionBusy('');
     }
   };
 
-  if (!isNew && content.loading) return <PageLoading label="正在载入稿件" />;
+  if (!isNew && content.loading) return <PageLoading label={t('正在载入稿件')} />;
 
   if (!isNew && content.error) {
     return (
-      <Callout tone="danger" icon="alert" title="无法打开这份稿件">
-        {content.error instanceof Error ? content.error.message : '请求失败。'}
+      <Callout tone="danger" icon="alert" title={t('无法打开这份稿件')}>
+        {content.error instanceof Error ? content.error.message : t('请求失败。')}
         <div className="mt-12">
           <Link to="/admin/content" className="btn btn-secondary btn-sm">
-            返回内容库
+            {t('返回内容库')}
           </Link>
         </div>
       </Callout>
@@ -375,24 +390,27 @@ function EditorWorkspace() {
         <div>
           <div className="row gap-8 mb-8">
             <Link to="/admin/content" className="back-link" style={{ margin: 0 }}>
-              <Icon name="arrow-left" size={13} /> 内容库
+              <Icon name="arrow-left" size={13} /> {t('内容库')}
             </Link>
             <Badge tone="muted">{KIND_LABEL[kind]}</Badge>
-            {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">未保存</Badge>}
+            {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">{t('未保存')}</Badge>}
           </div>
-          <h1>{isNew ? `新建${KIND_LABEL[kind]}` : editable ? '编辑稿件' : '查看稿件'}</h1>
+          <h1>{isNew ? t('新建{kind}', { kind: KIND_LABEL[kind] }) : editable ? t('编辑稿件') : t('查看稿件')}</h1>
           <p>
             {isNew
-              ? '保存后会生成一份内容，并按右侧选择的状态提交或发布。正文会交给服务端清洗。'
+              ? t('保存后会生成一份内容，并按右侧选择的状态提交或发布。正文会交给服务端清洗。')
               : item
-                ? `${item.author_name ?? '作者'} · 更新于 ${formatDateTime(item.updated_at)}`
+                ? t('{author} · 更新于 {date}', {
+                    author: item.author_name ?? t('作者'),
+                    date: formatDateTime(item.updated_at),
+                  })
                 : ''}
           </p>
         </div>
         <div className="admin-page-actions">
           {item?.status === 'published' ? (
             <Link to={`/${kind === 'article' ? 'a' : 'p'}/${item.id}`} className="btn btn-secondary btn-sm">
-              <Icon name="eye" size={14} /> 查看页面
+              <Icon name="eye" size={14} /> {t('查看页面')}
             </Link>
           ) : null}
           {editable ? (
@@ -403,7 +421,7 @@ function EditorWorkspace() {
                 icon="upload"
                 onClick={() => importRef.current?.click()}
               >
-                导入 Markdown
+                {t('导入 Markdown')}
               </Button>
               <Button
                 variant="secondary"
@@ -412,7 +430,7 @@ function EditorWorkspace() {
                 disabled={!form.source_body.trim()}
                 onClick={exportMarkdown}
               >
-                导出 Markdown
+                {t('导出 Markdown')}
               </Button>
               <input
                 ref={importRef}
@@ -427,10 +445,10 @@ function EditorWorkspace() {
               />
               <Button icon="check" loading={busy} onClick={() => void save()}>
                 {targetStatus === 'draft'
-                  ? '保存草稿'
+                  ? t('保存草稿')
                   : targetStatus === 'pending_review'
-                    ? '保存并提交'
-                    : '保存并发布'}
+                    ? t('保存并提交')
+                    : t('保存并发布')}
               </Button>
             </>
           ) : null}
@@ -438,12 +456,12 @@ function EditorWorkspace() {
       </div>
 
       {sourceMissing ? (
-        <Callout tone="warn" icon="alert" title="无法安全地编辑这份稿件">
-          v0.1.0 契约没有提供读取源文的端点，服务端只返回了清洗后的 HTML。为避免用空白覆盖原文，
-          编辑入口在这里关闭。新建草稿不受影响。
+        <Callout tone="warn" icon="alert" title={t('无法安全地编辑这份稿件')}>
+          {t('v0.1.0 契约没有提供读取源文的端点，服务端只返回了清洗后的 HTML。为避免用空白覆盖原文，')}{' '}
+          {t('编辑入口在这里关闭。新建草稿不受影响。')}
           <div className="mt-12">
             <Link to={`/${kind === 'article' ? 'a' : 'p'}/${id}`} className="btn btn-secondary btn-sm">
-              查看已渲染页面
+              {t('查看已渲染页面')}
             </Link>
           </div>
         </Callout>
@@ -454,17 +472,17 @@ function EditorWorkspace() {
               className="editor-title-input"
               value={form.title}
               onChange={(e) => update({ title: e.target.value })}
-              placeholder={`${KIND_LABEL[kind]}标题`}
+              placeholder={t('{kind}标题', { kind: KIND_LABEL[kind] })}
               maxLength={200}
               disabled={!editable}
-              aria-label="标题"
+              aria-label={t('标题')}
             />
 
             <Field
-              label="摘要"
+              label={t('摘要')}
               htmlFor="editor-summary"
               aside={`${form.summary.length}/500`}
-              hint="出现在列表、搜索结果与分享卡片里。留空也可以。"
+              hint={t('出现在列表、搜索结果与分享卡片里。留空也可以。')}
             >
               <Textarea
                 id="editor-summary"
@@ -473,16 +491,20 @@ function EditorWorkspace() {
                 maxLength={500}
                 style={{ minHeight: 70 }}
                 disabled={!editable}
-                placeholder="用一两句话说明这篇稿子。"
+                placeholder={t('用一两句话说明这篇稿子。')}
               />
             </Field>
 
             <div className="editor-controls">
               <div className="editor-mode">
-                <span>{form.source_body.length.toLocaleString()} 字符</span>
-                {form.source_body ? <span>· 约 {wordCount.toLocaleString()} 字</span> : null}
+                <span>{t('{count} 字符', { count: form.source_body.length.toLocaleString() })}</span>
+                {form.source_body ? (
+                  <span>{t('· 约 {count} 字', { count: wordCount.toLocaleString() })}</span>
+                ) : null}
               </div>
-              <span className="tiny faint">所见即所得 · 直接输入 Markdown · 保存时使用 Markdown</span>
+              <span className="tiny faint">
+                {t('所见即所得 · 直接输入 Markdown · 保存时使用 Markdown')}
+              </span>
             </div>
 
             <RichTextEditor
@@ -496,13 +518,14 @@ function EditorWorkspace() {
             />
 
             <p className="field-hint">
-              正文以所见即所得方式编辑：在段首输入 <code># </code>
+              {t('正文以所见即所得方式编辑：在段首输入')} <code># </code>
               <code>- </code>
               <code>1. </code>
               <code>&gt; </code>
-              或行内 <code>**粗体**</code>
-              、<code>[文字](https://…)</code> 会即时转成排版；空段落输入 <code>/</code>
-              可打开插入指令。保存与导出使用 Markdown，公开页面仍以服务端清洗后的 rendered_html 为准。
+              {t('或行内')} <code>**{t('粗体')}**</code>
+              {t('、')}
+              <code>[{t('文字')}](https://…)</code> {t('会即时转成排版；空段落输入')} <code>/</code>
+              {t('可打开插入指令。保存与导出使用 Markdown，公开页面仍以服务端清洗后的 rendered_html 为准。')}
             </p>
 
             {error ? (
@@ -516,49 +539,53 @@ function EditorWorkspace() {
             <div className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>稿件信息</h3>
-                  <p>状态与可用动作由服务端返回。</p>
+                  <h3>{t('稿件信息')}</h3>
+                  <p>{t('状态与可用动作由服务端返回。')}</p>
                 </div>
               </div>
               <div className="panel-body" style={{ paddingTop: 6 }}>
                 <div className="mini-list">
                   <div className="mini-row">
-                    <span className="mini-label">状态</span>
-                    <span className="mini-value">{item ? STATUS_LABEL[item.status] : '未保存'}</span>
+                    <span className="mini-label">{t('状态')}</span>
+                    <span className="mini-value">{item ? STATUS_LABEL[item.status] : t('未保存')}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">类型</span>
+                    <span className="mini-label">{t('类型')}</span>
                     <span className="mini-value">{KIND_LABEL[kind]}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">作者</span>
+                    <span className="mini-label">{t('作者')}</span>
                     <span className="mini-value">{item?.author_name ?? me?.user.display_name ?? '—'}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">创建</span>
+                    <span className="mini-label">{t('创建')}</span>
                     <span className="mini-value">{formatDateTime(item?.created_at)}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">更新</span>
+                    <span className="mini-label">{t('更新')}</span>
                     <span className="mini-value">{formatDateTime(item?.updated_at)}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">安全策略</span>
+                    <span className="mini-label">{t('安全策略')}</span>
                     <span className="mini-value mono">{item?.policy_version ?? 'policy-2026.10'}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">发布模式</span>
+                    <span className="mini-label">{t('发布模式')}</span>
                     <span className="mini-value">{site ? PUBLISH_LABEL[site.publish_mode] : '—'}</span>
                   </div>
                 </div>
 
                 <div className="mt-16">
-                  <Field label="路径（slug）" htmlFor="editor-slug" hint="创建后仍可修改，但旧链接会失效。">
+                  <Field
+                    label={t('路径（slug）')}
+                    htmlFor="editor-slug"
+                    hint={t('创建后仍可修改，但旧链接会失效。')}
+                  >
                     <Input
                       id="editor-slug"
                       value={form.slug}
                       onChange={(e) => update({ slug: e.target.value })}
-                      placeholder="留空自动生成"
+                      placeholder={t('留空自动生成')}
                       pattern="[a-z0-9-]*"
                       disabled={!editable}
                     />
@@ -572,22 +599,26 @@ function EditorWorkspace() {
             <div className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>分类与标签</h3>
-                  <p>分类用于归档，标签用于跨分类关联主题。</p>
+                  <h3>{t('分类与标签')}</h3>
+                  <p>{t('分类用于归档，标签用于跨分类关联主题。')}</p>
                 </div>
                 <Link to="/admin/taxonomy" className="link-btn">
-                  管理
+                  {t('管理')}
                 </Link>
               </div>
               <div className="panel-body form-stack">
-                <Field label="分类" htmlFor="editor-category" hint={category?.description || '每篇内容选择一个分类。'}>
+                <Field
+                  label={t('分类')}
+                  htmlFor="editor-category"
+                  hint={category?.description || t('每篇内容选择一个分类。')}
+                >
                   <Select
                     id="editor-category"
                     value={form.category_id}
                     disabled={!editable}
                     onChange={(event) => update({ category_id: event.target.value })}
                   >
-                    <option value="">未分类</option>
+                    <option value="">{t('未分类')}</option>
                     {taxonomy.categories.map((term) => (
                       <option key={term.id} value={term.id}>
                         {term.name}
@@ -598,7 +629,7 @@ function EditorWorkspace() {
 
                 <div className="field">
                   <div className="field-head">
-                    <span className="field-label">标签</span>
+                    <span className="field-label">{t('标签')}</span>
                     <span className="field-aside">{form.tags.length}/12</span>
                   </div>
                   <div className="tag-picker">
@@ -614,19 +645,21 @@ function EditorWorkspace() {
                       </button>
                     ))}
                     {!taxonomy.tags.length ? (
-                      <span className="tiny faint">还没有标签，可以在下方直接添加。</span>
+                      <span className="tiny faint">{t('还没有标签，可以在下方直接添加。')}</span>
                     ) : null}
                   </div>
                   {form.tags.length ? (
-                    <p className="field-hint">已选：{form.tags.map((tag) => `#${tag}`).join(' · ')}</p>
+                    <p className="field-hint">
+                      {t('已选：{tags}', { tags: form.tags.map((tag) => `#${tag}`).join(' · ') })}
+                    </p>
                   ) : null}
                   {editable ? (
                     <div className="tag-add-row">
                       <Input
                         value={tagInput}
                         maxLength={24}
-                        placeholder="添加新标签，回车确认"
-                        aria-label="添加标签"
+                        placeholder={t('添加新标签，回车确认')}
+                        aria-label={t('添加标签')}
                         onChange={(event) => setTagInput(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') {
@@ -636,7 +669,7 @@ function EditorWorkspace() {
                         }}
                       />
                       <Button variant="secondary" size="sm" icon="plus" onClick={addCustomTag}>
-                        添加
+                        {t('添加')}
                       </Button>
                     </div>
                   ) : null}
@@ -647,10 +680,10 @@ function EditorWorkspace() {
             <div className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>发布状态</h3>
-                  <p>保存时按这里的选择提交或发布。</p>
+                  <h3>{t('发布状态')}</h3>
+                  <p>{t('保存时按这里的选择提交或发布。')}</p>
                 </div>
-                {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">未保存</Badge>}
+                {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">{t('未保存')}</Badge>}
               </div>
               <div className="panel-body">
                 <div className="publish-state-grid">
@@ -671,7 +704,7 @@ function EditorWorkspace() {
                   ))}
                 </div>
                 <p className="field-hint mt-12">
-                  作者不能审核自己的内容；如果当前账户没有直接发布权限，请选择“提交审核”。
+                  {t('作者不能审核自己的内容；如果当前账户没有直接发布权限，请选择“提交审核”。')}
                 </p>
               </div>
             </div>
@@ -680,32 +713,32 @@ function EditorWorkspace() {
               <div className="panel">
                 <div className="panel-head">
                   <div>
-                    <h3>流程动作</h3>
-                    <p>只有当前账户此刻可以执行的动作会出现。</p>
+                    <h3>{t('流程动作')}</h3>
+                    <p>{t('只有当前账户此刻可以执行的动作会出现。')}</p>
                   </div>
                 </div>
                 <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {item.actions.length === 0 ? (
                     <p className="tiny faint">
                       {item.status === 'pending_review'
-                        ? '作者不能审核自己的内容；请等待另一位编辑处理。'
+                        ? t('作者不能审核自己的内容；请等待另一位编辑处理。')
                         : item.status === 'published'
-                          ? '已发布内容不可直接修改，归档由编辑执行。'
-                          : '当前没有可执行的流程动作。'}
+                          ? t('已发布内容不可直接修改，归档由编辑执行。')
+                          : t('当前没有可执行的流程动作。')}
                     </p>
                   ) : (
                     item.actions.map((action) => {
                       if (action === 'reject') {
                         return (
                           <Button key={action} variant="danger" icon="close" onClick={() => setRejectOpen(true)}>
-                            退回稿件
+                            {t('退回稿件')}
                           </Button>
                         );
                       }
                       if (action === 'archive') {
                         return (
                           <Button key={action} variant="danger" icon="trash" onClick={() => setArchiveOpen(true)}>
-                            归档
+                            {t('归档')}
                           </Button>
                         );
                       }
@@ -724,7 +757,7 @@ function EditorWorkspace() {
                   )}
                   {!demo ? (
                     <p className="tiny faint" style={{ marginTop: 4 }}>
-                      发布与上传会调用 Rust 安全服务；不可用时服务端返回 503，内容会保留但不会公开。
+                      {t('发布与上传会调用 Rust 安全服务；不可用时服务端返回 503，内容会保留但不会公开。')}
                     </p>
                   ) : null}
                 </div>
@@ -733,7 +766,7 @@ function EditorWorkspace() {
               <div className="panel">
                 <div className="panel-body">
                   <p className="small muted">
-                    保存草稿后，这里会出现提交审核、发布等流程动作。作者不能审核自己的稿件。
+                    {t('保存草稿后，这里会出现提交审核、发布等流程动作。作者不能审核自己的稿件。')}
                   </p>
                 </div>
               </div>
@@ -744,13 +777,13 @@ function EditorWorkspace() {
 
       <Modal
         open={rejectOpen}
-        title="退回这份稿件"
-        description="退回理由会写入状态记录，并通知作者。作者修改后可以重新提交。"
+        title={t('退回这份稿件')}
+        description={t('退回理由会写入状态记录，并通知作者。作者修改后可以重新提交。')}
         onClose={() => setRejectOpen(false)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setRejectOpen(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button
               variant="danger"
@@ -758,18 +791,18 @@ function EditorWorkspace() {
               disabled={!rejectReason.trim()}
               onClick={() => void runAction('reject', rejectReason.trim())}
             >
-              确认退回
+              {t('确认退回')}
             </Button>
           </>
         }
       >
-        <Field label="退回理由" htmlFor="reject-reason" aside={`${rejectReason.length}/500`}>
+        <Field label={t('退回理由')} htmlFor="reject-reason" aside={`${rejectReason.length}/500`}>
           <Textarea
             id="reject-reason"
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             maxLength={500}
-            placeholder="例如：第三段的引用缺少来源，补充后可以再提交。"
+            placeholder={t('例如：第三段的引用缺少来源，补充后可以再提交。')}
             autoFocus
           />
         </Field>
@@ -777,16 +810,16 @@ function EditorWorkspace() {
 
       <Modal
         open={archiveOpen}
-        title="归档这份稿件？"
-        description="归档后内容会从公开列表移出，但已有链接仍然有效。"
+        title={t('归档这份稿件？')}
+        description={t('归档后内容会从公开列表移出，但已有链接仍然有效。')}
         onClose={() => setArchiveOpen(false)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setArchiveOpen(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button variant="danger" loading={actionBusy === 'archive'} onClick={() => void runAction('archive')}>
-              确认归档
+              {t('确认归档')}
             </Button>
           </>
         }

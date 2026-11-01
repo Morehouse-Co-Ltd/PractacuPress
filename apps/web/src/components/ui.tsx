@@ -12,6 +12,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './Icon';
 import { useToast } from '../lib/toast';
+import { useT } from '../lib/i18n';
 import { copyText } from '../lib/clipboard';
 import { STATUS_LABEL, STATUS_TONE } from '../lib/format';
 import type { ContentStatus } from '../types';
@@ -168,11 +169,12 @@ export function Spinner({ label }: { label?: string }) {
   );
 }
 
-export function PageLoading({ label = '正在载入' }: { label?: string }) {
+export function PageLoading({ label }: { label?: string }) {
+  const t = useT();
   return (
     <div className="page-loading">
       <span className="spinner" aria-hidden />
-      <span>{label}</span>
+      <span>{label ?? t('正在载入')}</span>
     </div>
   );
 }
@@ -229,6 +231,7 @@ export function Modal({
   footer?: ReactNode;
   width?: number;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   // 只依赖 open：onClose 通常是内联箭头函数，放进依赖会让每次输入都重新
   // 执行 effect，把焦点抢回弹窗容器，导致输入框失焦。
@@ -254,14 +257,14 @@ export function Modal({
   // 会成为 fixed 后代的包含块，导致弹窗只覆盖内容区、被页面滚动裁切。
   return createPortal(
     <div className="modal-layer" role="dialog" aria-modal="true" aria-label={title}>
-      <button type="button" className="modal-backdrop" aria-label="关闭" onClick={onClose} />
+      <button type="button" className="modal-backdrop" aria-label={t('关闭')} onClick={onClose} />
       <div className="modal" style={{ maxWidth: width }} ref={ref} tabIndex={-1}>
         <div className="modal-head">
           <div>
             <h2>{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t('关闭')}>
             <Icon name="close" size={17} />
           </button>
         </div>
@@ -339,7 +342,8 @@ export function Toggle({
   );
 }
 
-export function CopyButton({ value, label = '复制' }: { value: string; label?: string }) {
+export function CopyButton({ value, label }: { value: string; label?: string }) {
+  const t = useT();
   const { push } = useToast();
   const [copied, setCopied] = useState(false);
   return (
@@ -351,14 +355,14 @@ export function CopyButton({ value, label = '复制' }: { value: string; label?:
         const ok = await copyText(value);
         if (ok) {
           setCopied(true);
-          push('ok', '已复制到剪贴板');
+          push('ok', t('已复制到剪贴板'));
           window.setTimeout(() => setCopied(false), 1800);
         } else {
-          push('error', '浏览器拒绝了剪贴板操作', '请手动选中并复制。');
+          push('error', t('浏览器拒绝了剪贴板操作'), t('请手动选中并复制。'));
         }
       }}
     >
-      {copied ? '已复制' : label}
+      {copied ? t('已复制') : (label ?? t('复制'))}
     </Button>
   );
 }

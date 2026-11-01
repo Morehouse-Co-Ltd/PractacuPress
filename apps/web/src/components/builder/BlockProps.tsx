@@ -1,5 +1,6 @@
 import type { BlockInstance } from '../../types';
 import { blockDef, blockProp, type PropSchema } from '../../lib/blocks';
+import { useT } from '../../lib/i18n';
 import { Field, Input, Select, Textarea, Toggle } from '../ui';
 
 /**
@@ -16,6 +17,7 @@ function PropControl({
   schema: PropSchema;
   onChange: (key: string, value: string | number | boolean) => void;
 }) {
+  const t = useT();
   const id = `blk-${block.id}-${schema.key}`;
 
   if (schema.type === 'itemlist') {
@@ -45,7 +47,7 @@ function PropControl({
     return (
       <Field
         label={schema.label}
-        hint={schema.hint ?? `最多 ${schema.maxItems ?? 30} 条。`}
+        hint={schema.hint ?? t('最多 {count} 条。', { count: schema.maxItems ?? 30 })}
         aside={`${items.length}/${schema.maxItems ?? 30}`}
       >
         <div className="itemlist">
@@ -63,7 +65,11 @@ function PropControl({
                       );
                       commit(next);
                     }}
-                    aria-label={`${schema.label} 第 ${index + 1} 条 ${field.label}`}
+                    aria-label={t('{label} 第 {index} 条 {field}', {
+                      label: schema.label,
+                      index: index + 1,
+                      field: field.label,
+                    })}
                   />
                 </label>
               ))}
@@ -72,7 +78,7 @@ function PropControl({
                 className="link-btn"
                 onClick={() => commit(items.filter((_, i) => i !== index))}
               >
-                删除
+                {t('删除')}
               </button>
             </div>
           ))}
@@ -86,7 +92,7 @@ function PropControl({
               commit([...items, blank]);
             }}
           >
-            添加{schema.itemLabel ?? '条目'}
+            {t('添加{label}', { label: schema.itemLabel ?? t('条目') })}
           </button>
         </div>
       </Field>
@@ -190,9 +196,10 @@ export function BlockProps({
   block: BlockInstance;
   onChange: (props: Record<string, string | number | boolean>) => void;
 }) {
+  const t = useT();
   const def = blockDef(block.type);
-  if (!def) return <p className="field-hint">这个组件类型已不存在，删除它再添加新的。</p>;
-  if (!def.schema.length) return <p className="field-hint">这个组件没有可配置的属性。</p>;
+  if (!def) return <p className="field-hint">{t('这个组件类型已不存在，删除它再添加新的。')}</p>;
+  if (!def.schema.length) return <p className="field-hint">{t('这个组件没有可配置的属性。')}</p>;
 
   return (
     <div className="form-stack">

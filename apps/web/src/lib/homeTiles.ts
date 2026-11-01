@@ -1,4 +1,5 @@
 import type { HomePin, TileSpan } from '../types';
+import { t } from './i18n';
 
 /**
  * 首页精选网格（置顶 / 热门）。
@@ -9,10 +10,10 @@ import type { HomePin, TileSpan } from '../types';
  */
 
 export const TILE_SPANS: { value: TileSpan; label: string; note: string }[] = [
-  { value: '1x1', label: '1 × 1', note: '小方块' },
-  { value: '2x1', label: '2 × 1', note: '横条' },
-  { value: '1x2', label: '1 × 2', note: '竖条' },
-  { value: '2x2', label: '2 × 2', note: '大方块' },
+  { value: '1x1', label: '1 × 1', note: t('小方块') },
+  { value: '2x1', label: '2 × 1', note: t('横条') },
+  { value: '1x2', label: '1 × 2', note: t('竖条') },
+  { value: '2x2', label: '2 × 2', note: t('大方块') },
 ];
 
 const SPAN_VALUES = new Set<string>(TILE_SPANS.map((item) => item.value));

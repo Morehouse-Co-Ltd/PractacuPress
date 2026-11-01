@@ -21,6 +21,7 @@ import {
   buildTlsSetupSnippet,
 } from '../../lib/serverConfig';
 import { useTitle } from '../../lib/hooks';
+import { useT } from '../../lib/i18n';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
 import {
@@ -44,7 +45,8 @@ function linesOf(value: string): string[] {
 }
 
 export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
-  useTitle(embedded ? '访问与域名' : '域名绑定');
+  const t = useT();
+  useTitle(embedded ? t('访问与域名') : t('域名绑定'));
   const { config, site, me, updateConfig, applySite } = useAuth();
   const backend = useBackend();
   const toast = useToast();
@@ -90,22 +92,22 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
     const originProblems = linesOf(originText)
       .map((item) => normalizeOrigin(item))
       .filter((item) => !item)
-      .map(() => 'CORS 来源必须是以 http(s) 开头的地址。');
+      .map(() => t('CORS 来源必须是以 http(s) 开头的地址。'));
     const problems = [...aliasProblems, ...originProblems];
     const normalizedPrimary = normalizeDomain(primaryText);
     if (primaryText.trim() && !normalizedPrimary) {
-      problems.push('主域名不是有效域名。');
+      problems.push(t('主域名不是有效域名。'));
     }
     if (normalizedPrimary && (isIpHost(normalizedPrimary) || normalizedPrimary.startsWith('*.'))) {
-      problems.push('主域名必须是具体域名，不能是 IP 或通配符。');
+      problems.push(t('主域名必须是具体域名，不能是 IP 或通配符。'));
     }
     if (draft.tls.mode === 'letsencrypt') {
-      if (!normalizedPrimary) problems.push("Let's Encrypt 需要先填写主域名。");
-      if (!draft.tls.email.trim()) problems.push("Let's Encrypt 需要一个通知邮箱。");
+      if (!normalizedPrimary) problems.push(t("Let's Encrypt 需要先填写主域名。"));
+      if (!draft.tls.email.trim()) problems.push(t("Let's Encrypt 需要一个通知邮箱。"));
     }
     if (draft.tls.mode === 'manual') {
       if (!draft.tls.cert_path.trim() || !draft.tls.key_path.trim()) {
-        problems.push('手动证书需要填写证书链与私钥的服务器路径。');
+        problems.push(t('手动证书需要填写证书链与私钥的服务器路径。'));
       }
     }
     if (problems.length) {
@@ -137,10 +139,10 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
       setProxyText(next.trusted_proxies.join('\n'));
       toast.push(
         'ok',
-        '访问与域名已保存',
+        t('访问与域名已保存'),
         normalizedPrimary
-          ? '主域名已写入站点配置；把下方片段部署后，域名与 HTTPS 才会真正生效。'
-          : '未设置主域名：生产环境将只允许公网 IP 直连（本机 localhost 例外）。',
+          ? t('主域名已写入站点配置；把下方片段部署后，域名与 HTTPS 才会真正生效。')
+          : t('未设置主域名：生产环境将只允许公网 IP 直连（本机 localhost 例外）。'),
       );
       if (me) {
         noteActivity(
@@ -152,9 +154,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
         );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : '保存失败。';
+      const message = err instanceof Error ? err.message : t('保存失败。');
       setErrors([message]);
-      toast.push('error', '无法保存主域名', message);
+      toast.push('error', t('无法保存主域名'), message);
     } finally {
       setBusy(false);
     }
@@ -168,28 +170,27 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
     setProxyText('');
     setPrimaryText(site?.domain || '');
     setErrors([]);
-    toast.push('ok', '已恢复默认域名设置', '白名单关闭，localhost 与 IP 默认允许。');
+    toast.push('ok', t('已恢复默认域名设置'), t('白名单关闭，localhost 与 IP 默认允许。'));
   };
 
   return (
-    <RoleGate capability="manage_site" need="站点管理员">
+    <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className={embedded ? 'admin-page-head embedded-section-head' : 'admin-page-head'}>
         <div>
-          {embedded ? <h2>访问与域名</h2> : <h1>访问与域名</h1>}
+          {embedded ? <h2>{t('访问与域名')}</h2> : <h1>{t('访问与域名')}</h1>}
           <p>
-            设置站点主域名、别名白名单、SSL 证书、CORS 来源与反向代理信任地址，并生成 Nginx 与
-            API 环境变量片段。没有设置主域名时，生产环境只允许公网 IP 直接访问。
+            {t('设置站点主域名、别名白名单、SSL 证书、CORS 来源与反向代理信任地址，并生成 Nginx 与 API 环境变量片段。没有设置主域名时，生产环境只允许公网 IP 直接访问。')}
           </p>
         </div>
         <div className="admin-page-actions">
           <Button size="sm" disabled={!dirty || busy} loading={busy} onClick={save} icon="check">
-            保存修改
+            {t('保存修改')}
           </Button>
         </div>
       </div>
 
       {errors.length ? (
-        <Callout tone="danger" icon="alert" title="有设置没有通过校验">
+        <Callout tone="danger" icon="alert" title={t('有设置没有通过校验')}>
           <ul className="domain-error-list">
             {errors.map((item) => (
               <li key={item}>{item}</li>
@@ -199,15 +200,15 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
       ) : null}
 
       {!primaryText.trim() ? (
-        <Callout tone="warn" icon="globe" title="未设置主域名：只允许公网 IP 直接访问">
-          填写域名并配置 DNS 后，站点会按域名与证书对外服务；不填时，生产环境只接受公网 IP 的 Host，
-          私有 IP 与普通域名都不解析。本机管理仍可通过 localhost 访问。
+        <Callout tone="warn" icon="globe" title={t('未设置主域名：只允许公网 IP 直接访问')}>
+          {t('填写域名并配置 DNS 后，站点会按域名与证书对外服务；不填时，生产环境只接受公网 IP 的 Host， 私有 IP 与普通域名都不解析。本机管理仍可通过 localhost 访问。')}
         </Callout>
       ) : null}
 
-      <Callout tone="info" icon="globe" title="别名域名需要网关把 Host 改写为主域名">
-        服务端按 Host 解析站点，别名域名直连 API 会被当成未知站点。下方 Nginx 片段里已经包含
-        <code className="mono"> proxy_set_header Host 主域名;</code>，请一并部署。
+      <Callout tone="info" icon="globe" title={t('别名域名需要网关把 Host 改写为主域名')}>
+        {t('服务端按 Host 解析站点，别名域名直连 API 会被当成未知站点。下方 Nginx 片段里已经包含')}
+        <code className="mono"> {t('proxy_set_header Host 主域名;')}</code>
+        {t('，请一并部署。')}
       </Callout>
 
       <div className="settings-grid mt-20">
@@ -215,19 +216,19 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>主域名</h3>
-                <p>保存后会直接写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。</p>
+                <h3>{t('主域名')}</h3>
+                <p>{t('保存后会直接写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。')}</p>
               </div>
               <Badge tone={primaryText.trim() ? 'accent' : 'warn'}>
-                {primaryText.trim() || '未设置（公网 IP）'}
+                {primaryText.trim() || t('未设置（公网 IP）')}
               </Badge>
             </div>
             <div className="panel-body">
               <div className="form-grid">
                 <Field
-                  label="主域名"
+                  label={t('主域名')}
                   htmlFor="domains-primary"
-                  hint="只填主机名，例如 press.example.com；不要带 https://、路径或端口。"
+                  hint={t('只填主机名，例如 press.example.com；不要带 https://、路径或端口。')}
                 >
                   <Input
                     id="domains-primary"
@@ -237,19 +238,19 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                     maxLength={253}
                   />
                 </Field>
-                <Field label="当前访问域名" hint="浏览器实际打开的 host。">
+                <Field label={t('当前访问域名')} hint={t('浏览器实际打开的 host。')}>
                   <div className="row gap-8">
                     <Input value={host} readOnly disabled />
                     <Badge tone={currentAllowed ? 'ok' : 'danger'}>
                       {currentAllowed
                         ? localExempt
-                          ? '本地豁免'
+                          ? t('本地豁免')
                           : ipExempt
-                            ? 'IP 放行'
+                            ? t('IP 放行')
                             : hostIsPublicIp
-                              ? '公网 IP'
-                              : '已绑定'
-                        : '未绑定'}
+                              ? t('公网 IP')
+                              : t('已绑定')
+                        : t('未绑定')}
                     </Badge>
                   </div>
                 </Field>
@@ -260,26 +261,26 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>白名单</h3>
-                <p>一行一个域名，支持通配符。留空表示不做浏览器端限制。</p>
+                <h3>{t('白名单')}</h3>
+                <p>{t('一行一个域名，支持通配符。留空表示不做浏览器端限制。')}</p>
               </div>
               <Toggle
                 checked={draft.enabled}
                 onChange={(enabled) => setDraft({ ...draft, enabled })}
-                label="启用域名白名单"
+                label={t('启用域名白名单')}
               />
             </div>
             <div className="panel-body">
               <div className="form-stack">
                 {draft.enabled && !primaryText.trim() && !linesOf(aliasText).length ? (
-                  <Callout tone="warn" icon="alert" title="白名单为空：只允许公网 IP 直连">
-                    先填写主域名或至少一个别名，白名单才会真正生效；否则生产环境只接受公网 IP。
+                  <Callout tone="warn" icon="alert" title={t('白名单为空：只允许公网 IP 直连')}>
+                    {t('先填写主域名或至少一个别名，白名单才会真正生效；否则生产环境只接受公网 IP。')}
                   </Callout>
                 ) : null}
                 <Field
-                  label="别名域名"
+                  label={t('别名域名')}
                   htmlFor="domains-aliases"
-                  hint="例如 www.example.com、blog.example.com 或 *.example.com。主域名不需要重复填写。"
+                  hint={t('例如 www.example.com、blog.example.com 或 *.example.com。主域名不需要重复填写。')}
                 >
                   <Textarea
                     id="domains-aliases"
@@ -293,20 +294,20 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                   <Toggle
                     checked={draft.allow_www}
                     onChange={(allow_www) => setDraft({ ...draft, allow_www })}
-                    label="把 www 视为主域名别名"
-                    description="勾选后 www.example.com 会匹配 example.com。"
+                    label={t('把 www 视为主域名别名')}
+                    description={t('勾选后 www.example.com 会匹配 example.com。')}
                   />
                   <Toggle
                     checked={draft.allow_localhost}
                     onChange={(allow_localhost) => setDraft({ ...draft, allow_localhost })}
-                    label="允许 localhost"
-                    description="本地开发与预览需要；正式站点可按需关闭。"
+                    label={t('允许 localhost')}
+                    description={t('本地开发与预览需要；正式站点可按需关闭。')}
                   />
                   <Toggle
                     checked={draft.allow_ip}
                     onChange={(allow_ip) => setDraft({ ...draft, allow_ip })}
-                    label="允许直接用 IP 访问"
-                    description="关闭后只有白名单域名能显示站点。"
+                    label={t('允许直接用 IP 访问')}
+                    description={t('关闭后只有白名单域名能显示站点。')}
                   />
                 </div>
               </div>
@@ -316,16 +317,16 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>反向代理与跨域</h3>
-                <p>这些值只进入生成的 .env；API 需要重启才能读取。</p>
+                <h3>{t('反向代理与跨域')}</h3>
+                <p>{t('这些值只进入生成的 .env；API 需要重启才能读取。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <div className="form-stack">
                 <Field
-                  label="允许的浏览器来源（CORS）"
+                  label={t('允许的浏览器来源（CORS）')}
                   htmlFor="domains-origins"
-                  hint="一行一个完整 origin，例如 https://example.com。留空则由上面的域名自动推导。"
+                  hint={t('一行一个完整 origin，例如 https://example.com。留空则由上面的域名自动推导。')}
                 >
                   <Textarea
                     id="domains-origins"
@@ -336,9 +337,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                   />
                 </Field>
                 <Field
-                  label="可信代理"
+                  label={t('可信代理')}
                   htmlFor="domains-proxies"
-                  hint="一行一个 IP 或 CIDR。只有来自这些地址的 X-Forwarded-For 才会被相信。"
+                  hint={t('一行一个 IP 或 CIDR。只有来自这些地址的 X-Forwarded-For 才会被相信。')}
                 >
                   <Textarea
                     id="domains-proxies"
@@ -349,7 +350,11 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                   />
                 </Field>
                 <div className="form-grid">
-                  <Field label="Cookie 作用域" htmlFor="domains-cookie" hint="多个子域名共享登录态时填写，例如 .example.com。">
+                  <Field
+                    label={t('Cookie 作用域')}
+                    htmlFor="domains-cookie"
+                    hint={t('多个子域名共享登录态时填写，例如 .example.com。')}
+                  >
                     <Input
                       id="domains-cookie"
                       value={draft.cookie_domain}
@@ -362,14 +367,14 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                     <Toggle
                       checked={draft.https_only}
                       onChange={(https_only) => setDraft({ ...draft, https_only })}
-                      label="强制 HTTPS（生成配置）"
-                      description="网关把 80 的请求跳到 443。"
+                      label={t('强制 HTTPS（生成配置）')}
+                      description={t('网关把 80 的请求跳到 443。')}
                     />
                     <Toggle
                       checked={draft.redirect_primary}
                       onChange={(redirect_primary) => setDraft({ ...draft, redirect_primary })}
-                      label="别名 301 到主域名（生成配置）"
-                      description="统一 SEO 与 Cookie 作用域。"
+                      label={t('别名 301 到主域名（生成配置）')}
+                      description={t('统一 SEO 与 Cookie 作用域。')}
                     />
                   </div>
                 </div>
@@ -380,31 +385,30 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>SSL 证书</h3>
+                <h3>{t('SSL 证书')}</h3>
                 <p>
-                  选择 HTTPS 的启用方式；这里只记录部署方式与服务器上的证书路径，不会保存私钥内容。
-                  保存后把下方 Nginx 片段与证书一起部署。
+                  {t('选择 HTTPS 的启用方式；这里只记录部署方式与服务器上的证书路径，不会保存私钥内容。 保存后把下方 Nginx 片段与证书一起部署。')}
                 </p>
               </div>
               <Badge tone={draft.tls.mode === 'off' ? 'muted' : 'ok'}>
                 {draft.tls.mode === 'off'
-                  ? '未启用'
+                  ? t('未启用')
                   : draft.tls.mode === 'letsencrypt'
                     ? "Let's Encrypt"
-                    : '手动证书'}
+                    : t('手动证书')}
               </Badge>
             </div>
             <div className="panel-body">
               <div className="option-grid three">
                 {(
                   [
-                    { key: 'off' as const, name: '不启用', note: '只用 HTTP；由前置代理终止 TLS。' },
+                    { key: 'off' as const, name: t('不启用'), note: t('只用 HTTP；由前置代理终止 TLS。') },
                     {
                       key: 'letsencrypt' as const,
                       name: "Let's Encrypt",
-                      note: '生成 certbot 申请命令与证书路径。',
+                      note: t('生成 certbot 申请命令与证书路径。'),
                     },
-                    { key: 'manual' as const, name: '手动证书', note: '已有证书链与私钥文件。' },
+                    { key: 'manual' as const, name: t('手动证书'), note: t('已有证书链与私钥文件。') },
                   ]
                 ).map((option) => (
                   <button
@@ -428,9 +432,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
               {draft.tls.mode === 'letsencrypt' ? (
                 <div className="form-stack mt-16">
                   <Field
-                    label="通知邮箱"
+                    label={t('通知邮箱')}
                     htmlFor="domains-tls-email"
-                    hint="到期提醒与证书注册使用；不会写进浏览器存储之外的公开位置。"
+                    hint={t('到期提醒与证书注册使用；不会写进浏览器存储之外的公开位置。')}
                   >
                     <Input
                       id="domains-tls-email"
@@ -443,8 +447,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                     />
                   </Field>
                   <Callout tone="info" icon="lock">
-                    需要主域名已解析到本机，并允许 80/443 入站。下方「部署片段」里有 certbot 申请命令；
-                    证书续期用 <code className="mono">certbot renew</code>。
+                    {t('需要主域名已解析到本机，并允许 80/443 入站。下方「部署片段」里有 certbot 申请命令； 证书续期用')}{' '}
+                    <code className="mono">certbot renew</code>
+                    {t('。')}
                   </Callout>
                 </div>
               ) : null}
@@ -452,9 +457,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
               {draft.tls.mode === 'manual' ? (
                 <div className="form-grid mt-16">
                   <Field
-                    label="证书链路径"
+                    label={t('证书链路径')}
                     htmlFor="domains-tls-cert"
-                    hint="服务器上的 fullchain 文件，例如 /etc/ssl/certs/press.example.com.pem。"
+                    hint={t('服务器上的 fullchain 文件，例如 /etc/ssl/certs/press.example.com.pem。')}
                   >
                     <Input
                       id="domains-tls-cert"
@@ -467,9 +472,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                     />
                   </Field>
                   <Field
-                    label="私钥路径"
+                    label={t('私钥路径')}
                     htmlFor="domains-tls-key"
-                    hint="只填写路径；不要把私钥粘贴到浏览器或提交到 Git。"
+                    hint={t('只填写路径；不要把私钥粘贴到浏览器或提交到 Git。')}
                   >
                     <Input
                       id="domains-tls-key"
@@ -488,8 +493,8 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                 <Toggle
                   checked={draft.tls.hsts}
                   onChange={(hsts) => setDraft({ ...draft, tls: { ...draft.tls, hsts } })}
-                  label="启用 HSTS"
-                  description="启用后浏览器会强制使用 HTTPS；确认所有子域名都已支持 HTTPS 再打开。"
+                  label={t('启用 HSTS')}
+                  description={t('启用后浏览器会强制使用 HTTPS；确认所有子域名都已支持 HTTPS 再打开。')}
                 />
               </div>
             </div>
@@ -498,23 +503,29 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>部署片段</h3>
-                <p>按已保存的设置生成，复制后请按实际证书路径与静态目录调整。</p>
+                <h3>{t('部署片段')}</h3>
+                <p>{t('按已保存的设置生成，复制后请按实际证书路径与静态目录调整。')}</p>
               </div>
               <div className="row gap-8">
-                <CopyButton value={buildGatewaySnippet(access, saved, site?.domain)} label="复制 Nginx" />
-                <CopyButton value={buildDomainEnvSnippet(saved, site?.domain)} label="复制 .env" />
-                <CopyButton value={buildTlsSetupSnippet(saved, site?.domain)} label="复制证书步骤" />
+                <CopyButton
+                  value={buildGatewaySnippet(access, saved, site?.domain)}
+                  label={t('复制 Nginx')}
+                />
+                <CopyButton value={buildDomainEnvSnippet(saved, site?.domain)} label={t('复制 .env')} />
+                <CopyButton
+                  value={buildTlsSetupSnippet(saved, site?.domain)}
+                  label={t('复制证书步骤')}
+                />
               </div>
             </div>
             <div className="panel-body">
               <pre className="auth-env-code">{buildGatewaySnippet(access, saved, site?.domain)}</pre>
               <details className="mt-12">
-                <summary className="link-btn">展开 API 环境变量</summary>
+                <summary className="link-btn">{t('展开 API 环境变量')}</summary>
                 <pre className="auth-env-code">{buildDomainEnvSnippet(saved, site?.domain)}</pre>
               </details>
               <details className="mt-12">
-                <summary className="link-btn">展开证书申请 / 部署步骤</summary>
+                <summary className="link-btn">{t('展开证书申请 / 部署步骤')}</summary>
                 <pre className="auth-env-code">{buildTlsSetupSnippet(saved, site?.domain)}</pre>
               </details>
             </div>
@@ -525,37 +536,39 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>绑定概览</h3>
-                <p>当前浏览器是否被允许。</p>
+                <h3>{t('绑定概览')}</h3>
+                <p>{t('当前浏览器是否被允许。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <div className="mini-list">
                 <div className="mini-row">
-                  <span className="mini-label">当前域名</span>
+                  <span className="mini-label">{t('当前域名')}</span>
                   <span className="mini-value mono" style={{ fontSize: 11 }}>
                     {host || '—'}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">白名单</span>
-                  <span className="mini-value">{saved.enabled ? `${allowed.length} 个` : '关闭'}</span>
+                  <span className="mini-label">{t('白名单')}</span>
+                  <span className="mini-value">
+                    {saved.enabled ? t('{count} 个', { count: allowed.length }) : t('关闭')}
+                  </span>
                 </div>
                 <div className="mini-row">
                   <span className="mini-label">local / IP</span>
                   <span className="mini-value">
-                    {saved.allow_localhost ? 'localhost' : '不豁免'} ·{' '}
-                    {saved.allow_ip ? '允许 IP' : '禁止 IP'}
+                    {saved.allow_localhost ? 'localhost' : t('不豁免')} ·{' '}
+                    {saved.allow_ip ? t('允许 IP') : t('禁止 IP')}
                   </span>
                 </div>
                 <div className="mini-row">
                   <span className="mini-label">TLS</span>
                   <span className="mini-value">
                     {saved.tls.mode === 'off'
-                      ? '未启用'
+                      ? t('未启用')
                       : saved.tls.mode === 'letsencrypt'
                         ? "Let's Encrypt"
-                        : '手动证书'}
+                        : t('手动证书')}
                     {saved.tls.hsts ? ' · HSTS' : ''}
                   </span>
                 </div>
@@ -569,7 +582,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                     </div>
                   ))
                 ) : (
-                  <p className="tiny faint">还没有别名；主域名为空时不会限制访问。</p>
+                  <p className="tiny faint">{t('还没有别名；主域名为空时不会限制访问。')}</p>
                 )}
               </div>
             </div>
@@ -578,17 +591,21 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>DNS 检查清单</h3>
-                <p>绑定域名还需要这些步骤。</p>
+                <h3>{t('DNS 检查清单')}</h3>
+                <p>{t('绑定域名还需要这些步骤。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <ul className="domain-checklist">
-                <li>给主域名添加 A / AAAA 记录，指向服务器地址。</li>
-                <li>别名用 CNAME 指向主域名，或单独添加 A 记录。</li>
-                <li>为每个域名签发 TLS 证书，或使用通配证书。</li>
-                <li>把上方 Nginx 的 <code className="mono">server_name</code> 填全。</li>
-                <li>把 API 的 <code className="mono">PUBLIC_BASE_URL</code> 设为主域名。</li>
+                <li>{t('给主域名添加 A / AAAA 记录，指向服务器地址。')}</li>
+                <li>{t('别名用 CNAME 指向主域名，或单独添加 A 记录。')}</li>
+                <li>{t('为每个域名签发 TLS 证书，或使用通配证书。')}</li>
+                <li>
+                  {t('把上方 Nginx 的')} <code className="mono">server_name</code> {t('填全。')}
+                </li>
+                <li>
+                  {t('把 API 的')} <code className="mono">PUBLIC_BASE_URL</code> {t('设为主域名。')}
+                </li>
               </ul>
               <Button
                 variant="secondary"
@@ -600,16 +617,16 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                 }
                 disabled={!primary}
               >
-                打开 DNS 查询
+                {t('打开 DNS 查询')}
               </Button>
             </div>
           </section>
 
           <div className="danger-zone">
-            <h3>恢复默认域名设置</h3>
-            <p>关闭白名单并清空别名、CORS 与代理地址；主域名本身不会被修改。</p>
+            <h3>{t('恢复默认域名设置')}</h3>
+            <p>{t('关闭白名单并清空别名、CORS 与代理地址；主域名本身不会被修改。')}</p>
             <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={reset}>
-              恢复默认
+              {t('恢复默认')}
             </Button>
           </div>
         </aside>
@@ -617,7 +634,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
 
       <div className="row gap-8 mt-20">
         <Button disabled={!dirty} onClick={save} icon="check">
-          保存修改
+          {t('保存修改')}
         </Button>
         {dirty ? (
           <Button
@@ -630,10 +647,10 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
               setErrors([]);
             }}
           >
-            放弃未保存的修改
+            {t('放弃未保存的修改')}
           </Button>
         ) : (
-          <span className="tiny faint">没有未保存的修改</span>
+          <span className="tiny faint">{t('没有未保存的修改')}</span>
         )}
       </div>
     </RoleGate>

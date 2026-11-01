@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { copyText } from '../lib/clipboard';
+import { useT } from '../lib/i18n';
 
 export interface TocItem {
   id: string;
@@ -46,10 +47,11 @@ export function useArticleToc(html: string | undefined): TocItem[] {
 }
 
 export function ArticleToc({ items }: { items: TocItem[] }) {
+  const t = useT();
   if (items.length < 2) return null;
   return (
-    <nav className="article-toc" aria-label="本文目录">
-      <p className="article-toc-label">本文目录</p>
+    <nav className="article-toc" aria-label={t('本文目录')}>
+      <p className="article-toc-label">{t('本文目录')}</p>
       <ol>
         {items.map((item) => (
           <li key={item.id}>
@@ -64,6 +66,7 @@ export function ArticleToc({ items }: { items: TocItem[] }) {
 }
 
 export function BackToTop() {
+  const t = useT();
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -78,7 +81,7 @@ export function BackToTop() {
     <button
       type="button"
       className="back-top"
-      aria-label="回到顶部"
+      aria-label={t('回到顶部')}
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
     >
       <Icon name="arrow-up" size={16} />
@@ -88,6 +91,7 @@ export function BackToTop() {
 
 /** 给正文里的每个代码块加复制按钮；关闭扩展时把按钮清掉。 */
 export function useCodeCopy(enabled: boolean, html: string | undefined) {
+  const t = useT();
   useEffect(() => {
     if (!enabled) return;
     const root = document.querySelector('.article-body');
@@ -99,14 +103,14 @@ export function useCodeCopy(enabled: boolean, html: string | undefined) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'code-copy';
-      button.textContent = '复制';
+      button.textContent = t('复制');
       let timer = 0;
       const onClick = async () => {
         const code = pre.querySelector('code')?.textContent ?? pre.textContent ?? '';
-        button.textContent = (await copyText(code)) ? '已复制' : '复制失败';
+        button.textContent = (await copyText(code)) ? t('已复制') : t('复制失败');
         window.clearTimeout(timer);
         timer = window.setTimeout(() => {
-          button.textContent = '复制';
+          button.textContent = t('复制');
         }, 1600);
       };
       button.addEventListener('click', onClick);
@@ -119,5 +123,5 @@ export function useCodeCopy(enabled: boolean, html: string | undefined) {
     }
 
     return () => cleanups.forEach((fn) => fn());
-  }, [enabled, html]);
+  }, [enabled, html, t]);
 }

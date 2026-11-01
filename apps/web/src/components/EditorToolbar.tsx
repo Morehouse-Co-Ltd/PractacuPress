@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Asset } from '../types';
 import { useBackend } from '../lib/backend';
 import { useAsync } from '../lib/hooks';
+import { useT } from '../lib/i18n';
 import {
   RICH_ICONS,
   columnsBlock,
@@ -38,6 +39,7 @@ export function EditorToolbar({
   /** 把「打开插入弹窗」的能力交给父组件，供斜杠面板复用现有弹窗。 */
   onReady?: (open: (kind: EditorDialogKind) => void) => void;
 }) {
+  const t = useT();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkMode, setLinkMode] = useState<'text' | 'card'>('text');
@@ -99,14 +101,14 @@ export function EditorToolbar({
   };
 
   return (
-    <div className="rich-toolbar" role="toolbar" aria-label="写作工具">
+    <div className="rich-toolbar" role="toolbar" aria-label={t('写作工具')}>
       <div className="rich-toolbar-row">
-        <div className="tool-group" aria-label="标题">
+        <div className="tool-group" aria-label={t('标题')}>
           <button
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="二级标题"
+            title={t('二级标题')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.heading(2)}
           >
@@ -116,7 +118,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="三级标题"
+            title={t('三级标题')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.heading(3)}
           >
@@ -126,7 +128,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="四级标题"
+            title={t('四级标题')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.heading(4)}
           >
@@ -136,7 +138,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="正文段落"
+            title={t('正文段落')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.paragraph()}
           >
@@ -146,12 +148,12 @@ export function EditorToolbar({
 
         <span className="tool-sep" />
 
-        <div className="tool-group" aria-label="文字样式">
+        <div className="tool-group" aria-label={t('文字样式')}>
           <button
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="粗体（⌘/Ctrl+B）"
+            title={t('粗体（⌘/Ctrl+B）')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.bold()}
           >
@@ -161,7 +163,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="斜体（⌘/Ctrl+I）"
+            title={t('斜体（⌘/Ctrl+I）')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.italic()}
           >
@@ -171,7 +173,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="删除线"
+            title={t('删除线')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.strike()}
           >
@@ -181,7 +183,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="行内代码"
+            title={t('行内代码')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.inlineCode()}
           >
@@ -191,7 +193,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="链接（⌘/Ctrl+K）"
+            title={t('链接（⌘/Ctrl+K）')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={openLink}
           >
@@ -201,7 +203,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="清除格式"
+            title={t('清除格式')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.clear()}
           >
@@ -211,12 +213,12 @@ export function EditorToolbar({
 
         <span className="tool-sep" />
 
-        <div className="tool-group" aria-label="列表与引用">
+        <div className="tool-group" aria-label={t('列表与引用')}>
           <button
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="无序列表"
+            title={t('无序列表')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.list('ul')}
           >
@@ -226,7 +228,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="有序列表"
+            title={t('有序列表')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.list('ol')}
           >
@@ -236,7 +238,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="引用"
+            title={t('引用')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.quote()}
           >
@@ -246,7 +248,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="分割线"
+            title={t('分割线')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.divider()}
           >
@@ -256,7 +258,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="代码块"
+            title={t('代码块')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.codeBlock()}
           >
@@ -266,12 +268,12 @@ export function EditorToolbar({
 
         <span className="tool-sep" />
 
-        <div className="tool-group" aria-label="插入区块">
+        <div className="tool-group" aria-label={t('插入区块')}>
           <button
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="图片"
+            title={t('图片')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('image')}
           >
@@ -281,7 +283,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="视频"
+            title={t('视频')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('video')}
           >
@@ -291,7 +293,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="嵌入网址"
+            title={t('嵌入网址')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('embed')}
           >
@@ -301,7 +303,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="表格"
+            title={t('表格')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('table')}
           >
@@ -311,7 +313,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="分栏"
+            title={t('分栏')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('columns')}
           >
@@ -321,7 +323,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="图标"
+            title={t('图标')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('icon')}
           >
@@ -331,7 +333,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="图集"
+            title={t('图集')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => open('gallery')}
           >
@@ -341,7 +343,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="提示框"
+            title={t('提示框')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => commands.insert(noteBlock('info'))}
           >
@@ -351,7 +353,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="数学公式"
+            title={t('数学公式')}
             onMouseDown={(e) => e.preventDefault()}
             onClick={openFormula}
           >
@@ -361,12 +363,12 @@ export function EditorToolbar({
 
         <span className="tool-sep" />
 
-        <div className="tool-group" aria-label="撤销">
+        <div className="tool-group" aria-label={t('撤销')}>
           <button
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="撤销（⌘/Ctrl+Z）"
+            title={t('撤销（⌘/Ctrl+Z）')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.undo()}
           >
@@ -376,7 +378,7 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title="重做"
+            title={t('重做')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => commands.redo()}
           >
@@ -386,8 +388,9 @@ export function EditorToolbar({
       </div>
 
       <p className="rich-toolbar-hint">
-        选中文字后再点格式按钮；也可以直接输入 Markdown（`# ` 标题、`- ` 列表、`&gt; ` 引用、`**粗体**`），
-        或在新段落输入 / 打开指令面板。
+        {t(
+          '选中文字后再点格式按钮；也可以直接输入 Markdown（`# ` 标题、`- ` 列表、`> ` 引用、`**粗体**`）， 或在新段落输入 / 打开指令面板。',
+        )}
       </p>
 
       <LinkDialog
@@ -517,6 +520,7 @@ function LinkDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const t = useT();
   const card = mode === 'card';
   const valid = /^https?:\/\/.+/.test(href.trim());
   const submit = () => {
@@ -526,20 +530,20 @@ function LinkDialog({
   return (
     <Modal
       open={open}
-      title={card ? '插入链接卡片' : '插入链接'}
+      title={card ? t('插入链接卡片') : t('插入链接')}
       description={
         card
-          ? '卡片链接会显示封面、标题与说明，适合推荐站外文章。'
-          : '有选中文字时直接包住它们；没有选中就用下面的文字。'
+          ? t('卡片链接会显示封面、标题与说明，适合推荐站外文章。')
+          : t('有选中文字时直接包住它们；没有选中就用下面的文字。')
       }
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button onClick={submit} disabled={!valid}>
-            {card ? '插入卡片' : '插入链接'}
+            {card ? t('插入卡片') : t('插入链接')}
           </Button>
         </>
       }
@@ -554,14 +558,14 @@ function LinkDialog({
           submit();
         }}
       >
-        <div className="link-mode-switch" role="group" aria-label="链接形态">
+        <div className="link-mode-switch" role="group" aria-label={t('链接形态')}>
           <button
             type="button"
             className={`link-mode-btn${card ? '' : ' is-on'}`}
             aria-pressed={!card}
             onClick={() => onMode('text')}
           >
-            文字链接
+            {t('文字链接')}
           </button>
           <button
             type="button"
@@ -569,11 +573,11 @@ function LinkDialog({
             aria-pressed={card}
             onClick={() => onMode('card')}
           >
-            卡片链接
+            {t('卡片链接')}
           </button>
         </div>
 
-        <Field label="网址" htmlFor="rich-link-href" hint="只接受 http / https。">
+        <Field label={t('网址')} htmlFor="rich-link-href" hint={t('只接受 http / https。')}>
           <Input
             id="rich-link-href"
             value={href}
@@ -585,23 +589,27 @@ function LinkDialog({
 
         {card ? (
           <>
-            <Field label="标题" htmlFor="rich-link-title" hint="留空时显示网址域名。">
+            <Field label={t('标题')} htmlFor="rich-link-title" hint={t('留空时显示网址域名。')}>
               <Input
                 id="rich-link-title"
                 value={title}
                 onChange={(event) => onTitle(event.target.value)}
-                placeholder="文章标题"
+                placeholder={t('文章标题')}
               />
             </Field>
-            <Field label="说明" htmlFor="rich-link-desc" hint="可选，显示在域名后面。">
+            <Field label={t('说明')} htmlFor="rich-link-desc" hint={t('可选，显示在域名后面。')}>
               <Input
                 id="rich-link-desc"
                 value={description}
                 onChange={(event) => onDescription(event.target.value)}
-                placeholder="一句话说明"
+                placeholder={t('一句话说明')}
               />
             </Field>
-            <Field label="封面地址（可选）" htmlFor="rich-link-cover" hint="留空时用域名占位图。">
+            <Field
+              label={t('封面地址（可选）')}
+              htmlFor="rich-link-cover"
+              hint={t('留空时用域名占位图。')}
+            >
               <Input
                 id="rich-link-cover"
                 value={cover}
@@ -624,20 +632,20 @@ function LinkDialog({
                 }}
               />
             ) : (
-              <p className="field-hint">填写网址后会在这里显示卡片预览。</p>
+              <p className="field-hint">{t('填写网址后会在这里显示卡片预览。')}</p>
             )}
           </>
         ) : (
           <Field
-            label="显示文字"
+            label={t('显示文字')}
             htmlFor="rich-link-text"
-            hint="没有选中文字时使用；留空则显示网址。"
+            hint={t('没有选中文字时使用；留空则显示网址。')}
           >
             <Input
               id="rich-link-text"
               value={text}
               onChange={(event) => onText(event.target.value)}
-              placeholder="链接文字"
+              placeholder={t('链接文字')}
             />
           </Field>
         )}
@@ -663,39 +671,40 @@ function FormulaDialog({
   onClose: () => void;
   onInsert: () => void;
 }) {
+  const t = useT();
   const value = source.trim();
   return (
     <Modal
       open={open}
-      title="插入数学公式"
-      description="使用纯文本输入公式；保存时会保留为 $...$ 或 $$...$$ Markdown 语法。"
+      title={t('插入数学公式')}
+      description={t('使用纯文本输入公式；保存时会保留为 $...$ 或 $$...$$ Markdown 语法。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button disabled={!value} onClick={onInsert}>
-            插入公式
+            {t('插入公式')}
           </Button>
         </>
       }
     >
       <div className="form-stack">
-        <Field label="公式类型" htmlFor="rich-formula-mode">
+        <Field label={t('公式类型')} htmlFor="rich-formula-mode">
           <Select
             id="rich-formula-mode"
             value={mode}
             onChange={(event) => onMode(event.target.value === 'block' ? 'block' : 'inline')}
           >
-            <option value="inline">行内公式（$...$）</option>
-            <option value="block">块级公式（$$...$$）</option>
+            <option value="inline">{t('行内公式（$...$）')}</option>
+            <option value="block">{t('块级公式（$$...$$）')}</option>
           </Select>
         </Field>
         <Field
-          label="公式内容"
+          label={t('公式内容')}
           htmlFor="rich-formula-source"
-          hint="当前版本保留公式原文，不加载额外公式渲染库。"
+          hint={t('当前版本保留公式原文，不加载额外公式渲染库。')}
         >
           {mode === 'block' ? (
             <Textarea
@@ -718,17 +727,18 @@ function FormulaDialog({
           )}
         </Field>
         <div>
-          <Badge tone="muted">预览</Badge>
+          <Badge tone="muted">{t('预览')}</Badge>
           {value ? (
             mode === 'block' ? (
               <p className="pp-math-block mt-8">{value}</p>
             ) : (
               <p className="mt-8">
-                公式：<span className="pp-math-inline">{value}</span>
+                {t('公式：')}
+                <span className="pp-math-inline">{value}</span>
               </p>
             )
           ) : (
-            <p className="field-hint mt-8">输入公式后会在这里显示安全文本预览。</p>
+            <p className="field-hint mt-8">{t('输入公式后会在这里显示安全文本预览。')}</p>
           )}
         </div>
       </div>
@@ -737,6 +747,7 @@ function FormulaDialog({
 }
 
 function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
+  const t = useT();
   const backend = useBackend();
   const assets = useAsync(async () => backend.listAssets(), [backend]);
   const [progress, setProgress] = useState<number | null>(null);
@@ -751,7 +762,7 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
       assets.reload();
       if (asset.url) onPick(asset.url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败。');
+      setError(err instanceof Error ? err.message : t('上传失败。'));
     } finally {
       setProgress(null);
     }
@@ -760,8 +771,8 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
   return (
     <div className="media-picker">
       {assets.error ? (
-        <Callout tone="warn" icon="alert" title="素材列表没能载入">
-          仍然可以直接填写图片地址。
+        <Callout tone="warn" icon="alert" title={t('素材列表没能载入')}>
+          {t('仍然可以直接填写图片地址。')}
         </Callout>
       ) : null}
       <div className="media-grid">
@@ -778,7 +789,7 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
           </button>
         ))}
         {(assets.data ?? []).length === 0 && !assets.loading ? (
-          <p className="tiny faint">还没有上传过素材。</p>
+          <p className="tiny faint">{t('还没有上传过素材。')}</p>
         ) : null}
       </div>
       <div className="row gap-8 mt-12" style={{ flexWrap: 'wrap' }}>
@@ -789,9 +800,9 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
           loading={progress !== null}
           onClick={() => fileRef?.click()}
         >
-          {progress === null ? '上传图片' : `上传中 ${progress}%`}
+          {progress === null ? t('上传图片') : t('上传中 {percent}%', { percent: progress })}
         </Button>
-        <span className="tiny faint">支持 PNG / JPEG / WebP / GIF，单张不超过 10 MB。</span>
+        <span className="tiny faint">{t('支持 PNG / JPEG / WebP / GIF，单张不超过 10 MB。')}</span>
       </div>
       <input
         ref={setFileRef}
@@ -822,6 +833,7 @@ function ImageDialog({
   onClose: () => void;
   onInsert: (snippet: string) => void;
 }) {
+  const t = useT();
   const [src, setSrc] = useState('');
   const [alt, setAlt] = useState('');
   const [caption, setCaption] = useState('');
@@ -839,26 +851,26 @@ function ImageDialog({
   return (
     <Modal
       open={open}
-      title="插入图片"
-      description="从素材库选一张，或者直接填写图片地址。"
+      title={t('插入图片')}
+      description={t('从素材库选一张，或者直接填写图片地址。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button
             disabled={!/^https?:\/\/|^data:image\//.test(src)}
             onClick={() => onInsert(imageBlock({ src, alt, caption, href }))}
           >
-            插入图片
+            {t('插入图片')}
           </Button>
         </>
       }
     >
       <div className="form-stack">
         <MediaPicker onPick={setSrc} />
-        <Field label="图片地址" htmlFor="rich-image-src" hint="也可以粘贴外链。">
+        <Field label={t('图片地址')} htmlFor="rich-image-src" hint={t('也可以粘贴外链。')}>
           <Input
             id="rich-image-src"
             value={src}
@@ -868,19 +880,23 @@ function ImageDialog({
         </Field>
         {src ? <img className="media-preview" src={src} alt="" /> : null}
         <div className="form-grid">
-          <Field label="替代文字" htmlFor="rich-image-alt" hint="读屏软件与图片加载失败时显示。">
+          <Field
+            label={t('替代文字')}
+            htmlFor="rich-image-alt"
+            hint={t('读屏软件与图片加载失败时显示。')}
+          >
             <Input id="rich-image-alt" value={alt} onChange={(event) => setAlt(event.target.value)} />
           </Field>
-          <Field label="图注" htmlFor="rich-image-caption">
+          <Field label={t('图注')} htmlFor="rich-image-caption">
             <Input
               id="rich-image-caption"
               value={caption}
               onChange={(event) => setCaption(event.target.value)}
-              placeholder="可选"
+              placeholder={t('可选')}
             />
           </Field>
         </div>
-        <Field label="点击跳转（可选）" htmlFor="rich-image-href">
+        <Field label={t('点击跳转（可选）')} htmlFor="rich-image-href">
           <Input
             id="rich-image-href"
             value={href}
@@ -902,6 +918,7 @@ function MediaPickDialog({
   onClose: () => void;
   onInsert: (urls: string[]) => void;
 }) {
+  const t = useT();
   const [picked, setPicked] = useState<string[]>([]);
   useEffect(() => {
     if (open) setPicked([]);
@@ -910,16 +927,16 @@ function MediaPickDialog({
   return (
     <Modal
       open={open}
-      title="插入图集"
-      description="按顺序选择三张图片，插成一行三列。"
+      title={t('插入图集')}
+      description={t('按顺序选择三张图片，插成一行三列。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button disabled={picked.length === 0} onClick={() => onInsert(picked)}>
-            插入 {picked.length || ''} 张
+            {t('插入 {count} 张', { count: picked.length || '' })}
           </Button>
         </>
       }
@@ -949,6 +966,7 @@ function VideoDialog({
   onClose: () => void;
   onInsert: (snippet: string) => void;
 }) {
+  const t = useT();
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [poster, setPoster] = useState('');
@@ -966,25 +984,31 @@ function VideoDialog({
   return (
     <Modal
       open={open}
-      title="插入视频"
-      description="视频以封面卡片呈现，点击到原站播放。正文不允许 iframe，这是有意的安全取舍。"
+      title={t('插入视频')}
+      description={t(
+        '视频以封面卡片呈现，点击到原站播放。正文不允许 iframe，这是有意的安全取舍。',
+      )}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button
             disabled={!/^https?:\/\/.+/.test(url.trim())}
             onClick={() => onInsert(videoBlock({ url: url.trim(), title, poster, provider }))}
           >
-            插入视频
+            {t('插入视频')}
           </Button>
         </>
       }
     >
       <div className="form-stack">
-        <Field label="视频地址" htmlFor="rich-video-url" hint="YouTube / Bilibili / Vimeo 或任意页面。">
+        <Field
+          label={t('视频地址')}
+          htmlFor="rich-video-url"
+          hint={t('YouTube / Bilibili / Vimeo 或任意页面。')}
+        >
           <Input
             id="rich-video-url"
             value={url}
@@ -993,14 +1017,18 @@ function VideoDialog({
             autoFocus
           />
         </Field>
-        <Field label="标题" htmlFor="rich-video-title">
+        <Field label={t('标题')} htmlFor="rich-video-title">
           <Input id="rich-video-title" value={title} onChange={(event) => setTitle(event.target.value)} />
         </Field>
         <div className="form-grid">
-          <Field label="封面地址（可选）" htmlFor="rich-video-poster" hint="YouTube 会自动推导。">
+          <Field
+            label={t('封面地址（可选）')}
+            htmlFor="rich-video-poster"
+            hint={t('YouTube 会自动推导。')}
+          >
             <Input id="rich-video-poster" value={poster} onChange={(event) => setPoster(event.target.value)} />
           </Field>
-          <Field label="平台名称（可选）" htmlFor="rich-video-provider">
+          <Field label={t('平台名称（可选）')} htmlFor="rich-video-provider">
             <Input
               id="rich-video-provider"
               value={provider}
@@ -1023,6 +1051,7 @@ function EmbedDialog({
   onClose: () => void;
   onInsert: (snippet: string) => void;
 }) {
+  const t = useT();
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -1038,25 +1067,25 @@ function EmbedDialog({
   return (
     <Modal
       open={open}
-      title="嵌入网址"
-      description="生成一张链接卡片：标题 + 来源域名，点击跳转。"
+      title={t('嵌入网址')}
+      description={t('生成一张链接卡片：标题 + 来源域名，点击跳转。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button
             disabled={!/^https?:\/\/.+/.test(url.trim())}
             onClick={() => onInsert(embedBlock({ url: url.trim(), title, description }))}
           >
-            插入卡片
+            {t('插入卡片')}
           </Button>
         </>
       }
     >
       <div className="form-stack">
-        <Field label="网址" htmlFor="rich-embed-url">
+        <Field label={t('网址')} htmlFor="rich-embed-url">
           <Input
             id="rich-embed-url"
             value={url}
@@ -1065,10 +1094,10 @@ function EmbedDialog({
             autoFocus
           />
         </Field>
-        <Field label="标题" htmlFor="rich-embed-title">
+        <Field label={t('标题')} htmlFor="rich-embed-title">
           <Input id="rich-embed-title" value={title} onChange={(event) => setTitle(event.target.value)} />
         </Field>
-        <Field label="说明" htmlFor="rich-embed-desc" hint="留空时显示域名。">
+        <Field label={t('说明')} htmlFor="rich-embed-desc" hint={t('留空时显示域名。')}>
           <Input id="rich-embed-desc" value={description} onChange={(event) => setDescription(event.target.value)} />
         </Field>
       </div>
@@ -1085,6 +1114,7 @@ function TableDialog({
   onClose: () => void;
   onInsert: (snippet: string) => void;
 }) {
+  const t = useT();
   const [rows, setRows] = useState(3);
   const [cols, setCols] = useState(3);
   const [header, setHeader] = useState(true);
@@ -1092,20 +1122,20 @@ function TableDialog({
   return (
     <Modal
       open={open}
-      title="插入表格"
-      description="插入后可以直接点单元格改文字，Tab 跳到下一格。"
+      title={t('插入表格')}
+      description={t('插入后可以直接点单元格改文字，Tab 跳到下一格。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
-          <Button onClick={() => onInsert(tableBlock({ rows, cols, header }))}>插入表格</Button>
+          <Button onClick={() => onInsert(tableBlock({ rows, cols, header }))}>{t('插入表格')}</Button>
         </>
       }
     >
       <div className="form-grid">
-        <Field label="列数" htmlFor="rich-table-cols">
+        <Field label={t('列数')} htmlFor="rich-table-cols">
           <Input
             id="rich-table-cols"
             type="number"
@@ -1115,7 +1145,7 @@ function TableDialog({
             onChange={(event) => setCols(Number(event.target.value))}
           />
         </Field>
-        <Field label="行数" htmlFor="rich-table-rows">
+        <Field label={t('行数')} htmlFor="rich-table-rows">
           <Input
             id="rich-table-rows"
             type="number"
@@ -1128,7 +1158,7 @@ function TableDialog({
       </div>
       <label className="check-row mt-12">
         <input type="checkbox" checked={header} onChange={(event) => setHeader(event.target.checked)} />
-        <span>第一行作为表头</span>
+        <span>{t('第一行作为表头')}</span>
       </label>
     </Modal>
   );
@@ -1143,37 +1173,44 @@ function ColumnsDialog({
   onClose: () => void;
   onInsert: (snippet: string) => void;
 }) {
+  const t = useT();
   const [count, setCount] = useState<2 | 3>(2);
   const [texts, setTexts] = useState<string[]>(['', '', '']);
 
   return (
     <Modal
       open={open}
-      title="插入分栏"
-      description="两栏或三栏并排，每栏可以继续写标题、图片与列表。"
+      title={t('插入分栏')}
+      description={t('两栏或三栏并排，每栏可以继续写标题、图片与列表。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
-          <Button onClick={() => onInsert(columnsBlock(count, texts.filter(Boolean)))}>插入分栏</Button>
+          <Button onClick={() => onInsert(columnsBlock(count, texts.filter(Boolean)))}>
+            {t('插入分栏')}
+          </Button>
         </>
       }
     >
       <div className="form-stack">
-        <Field label="栏数" htmlFor="rich-columns-count">
+        <Field label={t('栏数')} htmlFor="rich-columns-count">
           <Select
             id="rich-columns-count"
             value={String(count)}
             onChange={(event) => setCount(Number(event.target.value) === 3 ? 3 : 2)}
           >
-            <option value="2">两栏</option>
-            <option value="3">三栏</option>
+            <option value="2">{t('两栏')}</option>
+            <option value="3">{t('三栏')}</option>
           </Select>
         </Field>
         {Array.from({ length: count }, (_, index) => (
-          <Field key={index} label={`第 ${index + 1} 栏`} htmlFor={`rich-column-${index}`}>
+          <Field
+            key={index}
+            label={t('第 {index} 栏', { index: index + 1 })}
+            htmlFor={`rich-column-${index}`}
+          >
             <Textarea
               id={`rich-column-${index}`}
               value={texts[index] ?? ''}
@@ -1185,7 +1222,7 @@ function ColumnsDialog({
                 })
               }
               style={{ minHeight: 56 }}
-              placeholder={`第 ${index + 1} 栏的内容`}
+              placeholder={t('第 {index} 栏的内容', { index: index + 1 })}
             />
           </Field>
         ))}
@@ -1203,21 +1240,22 @@ function IconDialog({
   onClose: () => void;
   onInsert: (snippet: string) => void;
 }) {
+  const t = useT();
   const [id, setId] = useState(RICH_ICONS[0].id);
   const [label, setLabel] = useState('');
 
   return (
     <Modal
       open={open}
-      title="插入图标"
-      description="图标用字符 + CSS 呈现，不额外加载图标字体。"
+      title={t('插入图标')}
+      description={t('图标用字符 + CSS 呈现，不额外加载图标字体。')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
-          <Button onClick={() => onInsert(iconBlock(id, label))}>插入图标</Button>
+          <Button onClick={() => onInsert(iconBlock(id, label))}>{t('插入图标')}</Button>
         </>
       }
     >
@@ -1235,16 +1273,16 @@ function IconDialog({
           </button>
         ))}
       </div>
-      <Field label="图标后的文字（可选）" htmlFor="rich-icon-label">
+      <Field label={t('图标后的文字（可选）')} htmlFor="rich-icon-label">
         <Input
           id="rich-icon-label"
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          placeholder="例如：每周更新"
+          placeholder={t('例如：每周更新')}
         />
       </Field>
       <div className="mt-12">
-        <Badge tone="muted">预览</Badge>
+        <Badge tone="muted">{t('预览')}</Badge>
         <p className="pp-icon-line mt-8">
           <i className={`pp-icon pp-icon-${id}`} /> {label || RICH_ICONS.find((item) => item.id === id)?.label}
         </p>

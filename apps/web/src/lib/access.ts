@@ -5,6 +5,7 @@ import type {
   RateRule,
   WebConfig,
 } from '../types';
+import { t } from './i18n';
 import { settingBool, settingInt, settingText } from './settings';
 
 /**
@@ -34,6 +35,7 @@ export const DEFAULT_ACCESS: AccessSettings = {
     block_seconds: 30,
   },
   tabs: { enabled: true, limit: 8 },
+  /** 持久化的默认配置值（「恢复默认」会整份写进 config），保持中文；显示时见 `message()`。 */
   message: '访问过于频繁，请稍后再试。',
 };
 
@@ -332,8 +334,17 @@ export class AccessController {
     this.emit();
   }
 
+  /**
+   * 拦住访客时显示的那句话。
+   *
+   * 站长自己写的提示原样显示（那是他的内容）；空着、或者还是读取配置时补上的
+   * 出厂默认值，就按当前语言给默认提示——默认值本身存在 config 里保持中文，
+   * 只在这一处临时翻译。
+   */
   private message(): string {
-    return this.settings.message.trim() || DEFAULT_ACCESS.message;
+    const custom = this.settings.message.trim();
+    if (!custom || custom === DEFAULT_ACCESS.message) return t(DEFAULT_ACCESS.message);
+    return custom;
   }
 
   private emit(): void {

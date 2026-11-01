@@ -5,7 +5,7 @@ import { BackendProvider, createBackend, clearConfig, isDemo, loadConfig, saveCo
 import { accessController, isPreviewFrame, readAccess } from './lib/access';
 import { configurePerformance, readPerformance } from './lib/performance';
 import { readCustomization } from './lib/customize';
-import { setLocale } from './lib/i18n';
+import { setLocale, useT } from './lib/i18n';
 import { AuthProvider } from './lib/session';
 import { ToastProvider } from './lib/toast';
 import { siteKindOf } from './lib/site';
@@ -70,6 +70,7 @@ const ThemeBuilderPage = lazy(() =>
 );
 
 export default function App() {
+  const t = useT();
   const [config, setConfig] = useState<WebConfig | null>(() => loadConfig());
 
   // 页面编排器在父窗口写配置，预览 iframe 通过 storage 事件即时更新，
@@ -321,7 +322,7 @@ export default function App() {
                 <Route
                   path="theme"
                   element={
-                    <Suspense fallback={<PageLoading label="正在打开页面编排" />}>
+                    <Suspense fallback={<PageLoading label={t('正在打开页面编排')} />}>
                       <ThemeBuilderPage />
                     </Suspense>
                   }

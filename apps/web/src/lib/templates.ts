@@ -1,5 +1,7 @@
 import type { BlockInstance, ScreenLayout } from '../types';
 import { createBlock } from './blocks';
+import { t } from './i18n';
+import { liveCatalog } from './i18n/live';
 
 /**
  * 页面模板：把「关于页 / 友链墙 / 大事记 / 空白页」做成可一键套用的区块编排。
@@ -23,11 +25,11 @@ function textBlock(markdown: string, title = ''): BlockInstance {
   return block;
 }
 
-export const PAGE_TEMPLATES: PageTemplate[] = [
+const RAW_PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: 'about',
-    name: '关于页',
-    note: '一句发刊词 + 作者卡 + 时间线，适合「关于本站」。',
+    name: t('关于页'),
+    note: t('一句发刊词 + 作者卡 + 时间线，适合「关于本站」。'),
     build: () => ({
       summary: '这间房子是谁的，为什么在这里写作。',
       template: 'about',
@@ -51,8 +53,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   },
   {
     id: 'links',
-    name: '友链墙',
-    note: '用标签云放邻居们的链接，字号可以区分分量。',
+    name: t('友链墙'),
+    note: t('用标签云放邻居们的链接，字号可以区分分量。'),
     build: () => ({
       summary: '一些互相读稿子的站点。',
       template: 'links',
@@ -75,8 +77,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   },
   {
     id: 'timeline',
-    name: '大事记',
-    note: '站点统计 + 时间线，把“我们走到哪儿了”讲清楚。',
+    name: t('大事记'),
+    note: t('站点统计 + 时间线，把“我们走到哪儿了”讲清楚。'),
     build: () => ({
       summary: '这个站点发生过的事。',
       template: 'timeline',
@@ -91,8 +93,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   },
   {
     id: 'guestbook',
-    name: '留言箱',
-    note: '一句邀请 + 留言表单 + 最新留言，适合留言板、树洞或读者来信。',
+    name: t('留言箱'),
+    note: t('一句邀请 + 留言表单 + 最新留言，适合留言板、树洞或读者来信。'),
     build: () => ({
       summary: '留下一句话，或者只是打个招呼。',
       template: 'guestbook',
@@ -114,8 +116,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   },
   {
     id: 'blank',
-    name: '空白页',
-    note: '从一张白纸开始，在页面编排里添加组件。',
+    name: t('空白页'),
+    note: t('从一张白纸开始，在页面编排里添加组件。'),
     build: () => ({
       summary: '',
       template: 'blank',
@@ -123,6 +125,12 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
     }),
   },
 ];
+
+/**
+ * 模板名称与说明是界面文案，读取时翻译；模板里的区块内容会复制进页面，
+ * 属于持久化数据，用 skip 排除。
+ */
+export const PAGE_TEMPLATES = liveCatalog(RAW_PAGE_TEMPLATES, { skip: ['blocks'] });
 
 export function templateById(id: string): PageTemplate | undefined {
   return PAGE_TEMPLATES.find((item) => item.id === id);

@@ -5,6 +5,7 @@ import { useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { useCustomization } from '../../lib/customize';
 import { useToast } from '../../lib/toast';
+import { useT } from '../../lib/i18n';
 import {
   buildSitemap,
   composeTitle,
@@ -28,15 +29,17 @@ function downloadFile(name: string, content: string, type: string) {
 }
 
 export function SeoPage() {
+  const t = useT();
   useTitle('SEO');
   return (
-    <RoleGate capability="manage_site" need="配置 SEO">
+    <RoleGate capability="manage_site" need={t('配置 SEO')}>
       <SeoWorkspace />
     </RoleGate>
   );
 }
 
 function SeoWorkspace() {
+  const t = useT();
   const { site } = useAuth();
   const backend = useBackend();
   const { customization, update } = useCustomization();
@@ -74,11 +77,13 @@ function SeoWorkspace() {
 
   const previewTitle = composeTitle(
     seo.title_template,
-    published[0]?.title ?? '一篇文章的标题',
+    published[0]?.title ?? t('一篇文章的标题'),
     siteName,
   );
   const previewDescription =
-    seo.default_description || site?.description || '站点默认描述会出现在这里，约 120–160 字最合适。';
+    seo.default_description ||
+    site?.description ||
+    t('站点默认描述会出现在这里，约 120–160 字最合适。');
 
   const patch = (next: Partial<typeof seo>) => update({ seo: { ...seo, ...next } });
 
@@ -87,8 +92,8 @@ function SeoWorkspace() {
       <div className="admin-page-head">
         <div>
           <p className="eyebrow">SEO</p>
-          <h1>搜索引擎与分享卡片</h1>
-          <p>标题模板、描述、canonical、结构化数据，以及可直接下载的 sitemap / robots。</p>
+          <h1>{t('搜索引擎与分享卡片')}</h1>
+          <p>{t('标题模板、描述、canonical、结构化数据，以及可直接下载的 sitemap / robots。')}</p>
         </div>
         <div className="admin-page-actions">
           <div className="row gap-6">
@@ -97,24 +102,27 @@ function SeoWorkspace() {
               className={`pill${tab === 'meta' ? ' is-on' : ''}`}
               onClick={() => setTab('meta')}
             >
-              站点信息
+              {t('站点信息')}
             </button>
             <button
               type="button"
               className={`pill${tab === 'files' ? ' is-on' : ''}`}
               onClick={() => setTab('files')}
             >
-              站点地图
+              {t('站点地图')}
             </button>
           </div>
         </div>
       </div>
 
-      <Callout tone="info" icon="info" title="单页应用的边界">
-        这些标签由前端写入 <code className="mono">&lt;head&gt;</code>：Google、Bing、百度会执行
-        JavaScript，能读到它们；大多数社交平台的抓取器不执行 JavaScript，分享卡片可能只拿到
-        <code className="mono"> index.html</code> 里的默认值。需要完整预渲染时，请在托管层开启 SSR
-        或构建期快照。
+      <Callout tone="info" icon="info" title={t('单页应用的边界')}>
+        {t('这些标签由前端写入')}{' '}
+        <code className="mono">&lt;head&gt;</code>
+        {t(
+          '：Google、Bing、百度会执行 JavaScript，能读到它们；大多数社交平台的抓取器不执行 JavaScript，分享卡片可能只拿到',
+        )}
+        <code className="mono"> index.html</code>{' '}
+        {t('里的默认值。需要完整预渲染时，请在托管层开启 SSR 或构建期快照。')}
       </Callout>
 
       {tab === 'meta' ? (
@@ -123,16 +131,16 @@ function SeoWorkspace() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>搜索结果样式</h3>
-                  <p>标题模板支持 {'{title}'} 与 {'{site}'} 两个占位符。</p>
+                  <h3>{t('搜索结果样式')}</h3>
+                  <p>{t('标题模板支持 {title} 与 {site} 两个占位符。')}</p>
                 </div>
               </div>
               <div className="panel-body">
                 <div className="form-stack">
                   <Field
-                    label="标题模板"
+                    label={t('标题模板')}
                     htmlFor="seo-title-template"
-                    hint="推荐「{title} · {site}」，过长会被截断。"
+                    hint={t('推荐「{title} · {site}」，过长会被截断。')}
                   >
                     <Input
                       id="seo-title-template"
@@ -142,10 +150,10 @@ function SeoWorkspace() {
                     />
                   </Field>
                   <Field
-                    label="默认描述"
+                    label={t('默认描述')}
                     htmlFor="seo-description"
                     aside={`${seo.default_description.length}/300`}
-                    hint="文章没有摘要时使用；建议 120–160 字。"
+                    hint={t('文章没有摘要时使用；建议 120–160 字。')}
                   >
                     <Textarea
                       id="seo-description"
@@ -156,16 +164,24 @@ function SeoWorkspace() {
                     />
                   </Field>
                   <div className="form-grid">
-                    <Field label="关键词" htmlFor="seo-keywords" hint="逗号分隔。现代搜索引擎基本忽略，但无害。">
+                    <Field
+                      label={t('关键词')}
+                      htmlFor="seo-keywords"
+                      hint={t('逗号分隔。现代搜索引擎基本忽略，但无害。')}
+                    >
                       <Input
                         id="seo-keywords"
                         value={seo.keywords}
                         onChange={(event) => patch({ keywords: event.target.value })}
                         maxLength={300}
-                        placeholder="独立出版, 写作, 社区"
+                        placeholder={t('独立出版, 写作, 社区')}
                       />
                     </Field>
-                    <Field label="发布者名称" htmlFor="seo-publisher" hint="写入结构化数据的 Organization。">
+                    <Field
+                      label={t('发布者名称')}
+                      htmlFor="seo-publisher"
+                      hint={t('写入结构化数据的 Organization。')}
+                    >
                       <Input
                         id="seo-publisher"
                         value={seo.publisher}
@@ -188,8 +204,12 @@ function SeoWorkspace() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>索引与地址</h3>
-                  <p>关闭索引后，全站输出 <code className="mono">noindex, nofollow</code>。</p>
+                  <h3>{t('索引与地址')}</h3>
+                  <p>
+                    {t('关闭索引后，全站输出')}{' '}
+                    <code className="mono">noindex, nofollow</code>
+                    {t('。')}
+                  </p>
                 </div>
               </div>
               <div className="panel-body">
@@ -197,13 +217,13 @@ function SeoWorkspace() {
                   <Toggle
                     checked={seo.indexable}
                     onChange={(value) => patch({ indexable: value })}
-                    label="允许搜索引擎收录"
-                    description="成员限定站点会自动关闭；后台、登录页与搜索结果页始终不收录。"
+                    label={t('允许搜索引擎收录')}
+                    description={t('成员限定站点会自动关闭；后台、登录页与搜索结果页始终不收录。')}
                   />
                   <Field
-                    label="站点地址"
+                    label={t('站点地址')}
                     htmlFor="seo-canonical"
-                    hint="用于 canonical 与 sitemap；留空取当前访问地址。"
+                    hint={t('用于 canonical 与 sitemap；留空取当前访问地址。')}
                   >
                     <Input
                       id="seo-canonical"
@@ -213,20 +233,24 @@ function SeoWorkspace() {
                       maxLength={300}
                     />
                   </Field>
-                  <Field label="分享图" htmlFor="seo-image" hint="建议 1200×630，留空则使用文章第一张图。">
+                  <Field
+                    label={t('分享图')}
+                    htmlFor="seo-image"
+                    hint={t('建议 1200×630，留空则使用文章第一张图。')}
+                  >
                     <Input
                       id="seo-image"
                       value={seo.share_image}
                       onChange={(event) => patch({ share_image: event.target.value })}
-                      placeholder="/assets/share.png 或 https://..."
+                      placeholder={t('/assets/share.png 或 https://...')}
                       maxLength={500}
                     />
                   </Field>
                   {seo.share_image ? (
-                    <img className="seo-share-preview" src={seo.share_image} alt="分享图预览" />
+                    <img className="seo-share-preview" src={seo.share_image} alt={t('分享图预览')} />
                   ) : null}
                   <div className="form-grid">
-                    <Field label="Twitter / X" htmlFor="seo-twitter" hint="带不带 @ 都可以。">
+                    <Field label="Twitter / X" htmlFor="seo-twitter" hint={t('带不带 @ 都可以。')}>
                       <Input
                         id="seo-twitter"
                         value={seo.twitter}
@@ -243,8 +267,8 @@ function SeoWorkspace() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>站长验证</h3>
-                  <p>把搜索平台给的验证值填进来，会输出对应的 meta 标签。</p>
+                  <h3>{t('站长验证')}</h3>
+                  <p>{t('把搜索平台给的验证值填进来，会输出对应的 meta 标签。')}</p>
                 </div>
               </div>
               <div className="panel-body">
@@ -259,7 +283,7 @@ function SeoWorkspace() {
                       maxLength={120}
                     />
                   </Field>
-                  <Field label="百度" htmlFor="seo-verify-baidu" hint="baidu-site-verification">
+                  <Field label={t('百度')} htmlFor="seo-verify-baidu" hint="baidu-site-verification">
                     <Input
                       id="seo-verify-baidu"
                       value={seo.verification.baidu}
@@ -288,39 +312,46 @@ function SeoWorkspace() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <h3>当前生效值</h3>
-                  <p>页面渲染时实际写入 head 的内容。</p>
+                  <h3>{t('当前生效值')}</h3>
+                  <p>{t('页面渲染时实际写入 head 的内容。')}</p>
                 </div>
               </div>
               <div className="panel-body" style={{ paddingTop: 4 }}>
                 <div className="mini-list">
                   <div className="mini-row">
-                    <span className="mini-label">站点地址</span>
+                    <span className="mini-label">{t('站点地址')}</span>
                     <span className="mini-value mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
                       {origin || '—'}
                     </span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">索引</span>
-                    <span className="mini-value">{seo.indexable ? '允许收录' : '禁止收录'}</span>
-                  </div>
-                  <div className="mini-row">
-                    <span className="mini-label">已发布内容</span>
-                    <span className="mini-value">{published.length} 条</span>
-                  </div>
-                  <div className="mini-row">
-                    <span className="mini-label">自定义页面</span>
+                    <span className="mini-label">{t('索引')}</span>
                     <span className="mini-value">
-                      {customization.pages.filter((page) => page.status === 'published').length} 个
+                      {seo.indexable ? t('允许收录') : t('禁止收录')}
                     </span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">sitemap 条目</span>
-                    <span className="mini-value">{entries.length} 条</span>
+                    <span className="mini-label">{t('已发布内容')}</span>
+                    <span className="mini-value">{t('{count} 条', { count: published.length })}</span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('自定义页面')}</span>
+                    <span className="mini-value">
+                      {t('{count} 个', {
+                        count: customization.pages.filter((page) => page.status === 'published')
+                          .length,
+                      })}
+                    </span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('sitemap 条目')}</span>
+                    <span className="mini-value">{t('{count} 条', { count: entries.length })}</span>
                   </div>
                 </div>
                 <p className="tiny faint mt-12" style={{ lineHeight: 1.7 }}>
-                  结构化数据包含 WebSite、SearchAction，文章页额外输出 Article 与 BreadcrumbList。
+                  {t(
+                    '结构化数据包含 WebSite、SearchAction，文章页额外输出 Article 与 BreadcrumbList。',
+                  )}
                 </p>
               </div>
             </section>
@@ -332,19 +363,19 @@ function SeoWorkspace() {
             <div className="panel-head">
               <div>
                 <h3>sitemap.xml</h3>
-                <p>由已发布内容与自定义页面生成，可直接放到站点根目录。</p>
+                <p>{t('由已发布内容与自定义页面生成，可直接放到站点根目录。')}</p>
               </div>
               <div className="row gap-8">
-                <CopyButton value={sitemap} label="复制" />
+                <CopyButton value={sitemap} label={t('复制')} />
                 <Button
                   size="sm"
                   icon="download"
                   onClick={() => {
                     downloadFile('sitemap.xml', sitemap, 'application/xml');
-                    toast.push('ok', '已下载 sitemap.xml');
+                    toast.push('ok', t('已下载 sitemap.xml'));
                   }}
                 >
-                  下载
+                  {t('下载')}
                 </Button>
               </div>
             </div>
@@ -357,19 +388,19 @@ function SeoWorkspace() {
             <div className="panel-head">
               <div>
                 <h3>robots.txt</h3>
-                <p>关闭索引时输出全站 Disallow；否则屏蔽后台与认证页并指向 sitemap。</p>
+                <p>{t('关闭索引时输出全站 Disallow；否则屏蔽后台与认证页并指向 sitemap。')}</p>
               </div>
               <div className="row gap-8">
-                <CopyButton value={robots} label="复制" />
+                <CopyButton value={robots} label={t('复制')} />
                 <Button
                   size="sm"
                   icon="download"
                   onClick={() => {
                     downloadFile('robots.txt', robots, 'text/plain');
-                    toast.push('ok', '已下载 robots.txt');
+                    toast.push('ok', t('已下载 robots.txt'));
                   }}
                 >
-                  下载
+                  {t('下载')}
                 </Button>
               </div>
             </div>
@@ -378,10 +409,12 @@ function SeoWorkspace() {
             </div>
           </section>
 
-          <Callout tone="warn" icon="alert" title="静态托管需要手动放置">
-            单页应用不能自己对外提供根目录文件。把这两个文件放到托管根目录（或反向代理里）
-            才会生效；内容更新后重新下载一次即可。构建产物里已经附带一份默认的
-            <code className="mono"> robots.txt</code>。
+          <Callout tone="warn" icon="alert" title={t('静态托管需要手动放置')}>
+            {t(
+              '单页应用不能自己对外提供根目录文件。把这两个文件放到托管根目录（或反向代理里）才会生效；内容更新后重新下载一次即可。构建产物里已经附带一份默认的',
+            )}
+            <code className="mono"> robots.txt</code>
+            {t('。')}
           </Callout>
         </div>
       )}

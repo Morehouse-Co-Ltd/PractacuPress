@@ -8,6 +8,7 @@ import { blockProp } from '../../lib/blocks';
 import { readingTime, timeAgo } from '../../lib/format';
 import { EmptyState, Skeleton } from '../ui';
 import { Icon } from '../Icon';
+import { useT } from '../../lib/i18n';
 
 /**
  * 可放入首页 / 自定义页面的内容组件：
@@ -28,13 +29,13 @@ function ContentModule({
   block: BlockInstance;
   mode: 'popular' | 'recent';
 }) {
+  const t = useT();
   const { all, loading } = useFeed();
   const { taxonomy } = useTaxonomy();
   const { stats } = useRangeAnalytics('30d', false);
   const counts = new Map(stats.topContent.map((entry) => [entry.id, entry.count]));
-  const heading =
-    blockProp(block, 'heading', mode === 'popular' ? '热门文章' : '最近文章').trim() ||
-    (mode === 'popular' ? '热门文章' : '最近文章');
+  const fallbackHeading = mode === 'popular' ? t('热门文章') : t('最近文章');
+  const heading = blockProp(block, 'heading', fallbackHeading).trim() || fallbackHeading;
   const limit = Math.min(12, Math.max(1, blockProp(block, 'limit', 5)));
   const showSummary = blockProp(block, 'show_summary', true);
   const showMeta = blockProp(block, 'show_meta', true);
@@ -69,7 +70,12 @@ function ContentModule({
         <div className="pp-content-head">
           <h2>{heading}</h2>
         </div>
-        <EmptyState compact icon="file" title="还没有内容" body="发布文章或帖子后，这里会自动更新。" />
+        <EmptyState
+          compact
+          icon="file"
+          title={t('还没有内容')}
+          body={t('发布文章或帖子后，这里会自动更新。')}
+        />
       </section>
     );
   }
@@ -79,7 +85,7 @@ function ContentModule({
       <div className="pp-content-head">
         <h2>{heading}</h2>
         <Link to="/articles" className="pp-content-more">
-          全部 <Icon name="arrow-right" size={13} />
+          {t('全部')} <Icon name="arrow-right" size={13} />
         </Link>
       </div>
       <div className="pp-content-list">
@@ -92,7 +98,7 @@ function ContentModule({
               </span>
               <div className="pp-content-body">
                 <div className="pp-content-kicker">
-                  <span>{item.kind === 'article' ? '文章' : '帖子'}</span>
+                  <span>{item.kind === 'article' ? t('文章') : t('帖子')}</span>
                   {category ? (
                     <span className="pp-content-cat" style={{ '--pp-cat-color': category.color } as CSSProperties}>
                       {category.name}
@@ -101,7 +107,8 @@ function ContentModule({
                   {showMeta ? <span>{timeAgo(item.published_at ?? item.created_at)}</span> : null}
                   {showViews ? (
                     <span className="pp-content-views">
-                      <Icon name="chart" size={11} /> {counts.get(item.id) ?? 0} 次阅读
+                      <Icon name="chart" size={11} />{' '}
+                      {t('{count} 次阅读', { count: counts.get(item.id) ?? 0 })}
                     </span>
                   ) : null}
                 </div>
@@ -118,7 +125,7 @@ function ContentModule({
                 ) : null}
               </div>
               <span className="pp-content-time" aria-hidden>
-                {readingTime(item.rendered_html)} 分钟
+                {t('{count} 分钟', { count: readingTime(item.rendered_html) })}
               </span>
             </article>
           );

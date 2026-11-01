@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import { useCustomization } from '../../lib/customize';
 import { useTitle } from '../../lib/hooks';
+import { useT } from '../../lib/i18n';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
 import {
@@ -22,7 +23,8 @@ import { LoadingMark, LoadingScene } from '../../components/LoadingScene';
 import { RoleGate } from '../../components/Guards';
 
 export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
-  useTitle(embedded ? '主题设置' : '加载动画');
+  const t = useT();
+  useTitle(embedded ? t('主题设置') : t('加载动画'));
   const { config, site, me, updateConfig } = useAuth();
   const backend = useBackend();
   const { customization } = useCustomization();
@@ -51,8 +53,8 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
     setDraft(next);
     toast.push(
       'ok',
-      '加载动画已保存',
-      next.enabled ? '前台刷新或切换页面时会按设置显示。' : '加载动画当前关闭。',
+      t('加载动画已保存'),
+      next.enabled ? t('前台刷新或切换页面时会按设置显示。') : t('加载动画当前关闭。'),
     );
     if (me) {
       noteActivity(
@@ -68,7 +70,7 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
   const reset = () => {
     updateConfig({ loading: DEFAULT_LOADING });
     setDraft(DEFAULT_LOADING);
-    toast.push('ok', '已恢复默认加载动画', '加载画面关闭，图形回到圆环。');
+    toast.push('ok', t('已恢复默认加载动画'), t('加载画面关闭，图形回到圆环。'));
   };
 
   const body = (
@@ -82,20 +84,20 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
             onClick={() => setPreviewOpen(true)}
             disabled={!draft.enabled}
           >
-            全屏预览
+            {t('全屏预览')}
           </Button>
           <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-            保存修改
+            {t('保存修改')}
           </Button>
-          <span className="tiny faint">加载动画只在站点前台出现</span>
+          <span className="tiny faint">{t('加载动画只在站点前台出现')}</span>
         </div>
       ) : (
         <div className="admin-page-head">
           <div>
-            <h1>加载动画</h1>
+            <h1>{t('加载动画')}</h1>
             <p>
-              制作站点首次加载或切换页面时的等待画面。图形、颜色、背景、尺寸与最短展示时长都可以
-              调整；管理后台和页面编排预览不会显示，避免影响日常编辑。
+              {t('制作站点首次加载或切换页面时的等待画面。图形、颜色、背景、尺寸与最短展示时长都可以')}{' '}
+              {t('调整；管理后台和页面编排预览不会显示，避免影响日常编辑。')}
             </p>
           </div>
           <div className="admin-page-actions">
@@ -106,18 +108,18 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
               onClick={() => setPreviewOpen(true)}
               disabled={!draft.enabled}
             >
-              全屏预览
+              {t('全屏预览')}
             </Button>
             <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-              保存修改
+              {t('保存修改')}
             </Button>
           </div>
         </div>
       )}
 
-      <Callout tone="info" icon="sparkle" title="这是站点前台的第一印象">
-        加载画面只在真正等待时出现。最短展示时长最多 3 秒；如果站长把「切换页面」也打开，
-        每次站内导航都会停留这么久，请先用预览确认体感。
+      <Callout tone="info" icon="sparkle" title={t('这是站点前台的第一印象')}>
+        {t('加载画面只在真正等待时出现。最短展示时长最多 3 秒；如果站长把「切换页面」也打开，')}{' '}
+        {t('每次站内导航都会停留这么久，请先用预览确认体感。')}
       </Callout>
 
       <div className="settings-grid mt-20">
@@ -125,19 +127,19 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>图形</h3>
-                <p>选择一个预设；预览和真实前台使用同一套 CSS。</p>
+                <h3>{t('图形')}</h3>
+                <p>{t('选择一个预设；预览和真实前台使用同一套 CSS。')}</p>
               </div>
               <Badge tone={draft.enabled ? 'ok' : 'muted'} dot={draft.enabled}>
-                {draft.enabled ? '已启用' : '未启用'}
+                {draft.enabled ? t('已启用') : t('未启用')}
               </Badge>
             </div>
             <div className="panel-body">
               <Toggle
                 checked={draft.enabled}
                 onChange={(enabled) => patch({ enabled })}
-                label="启用站点加载动画"
-                description="只在前台出现；后台、安装向导与编排预览始终不显示。"
+                label={t('启用站点加载动画')}
+                description={t('只在前台出现；后台、安装向导与编排预览始终不显示。')}
               />
               <div className="loading-preset-grid mt-16">
                 {LOADING_PRESETS.map((item) => (
@@ -171,78 +173,78 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>文案与配色</h3>
-                <p>强调色和背景可以跟随主题，也可以单独指定。</p>
+                <h3>{t('文案与配色')}</h3>
+                <p>{t('强调色和背景可以跟随主题，也可以单独指定。')}</p>
               </div>
               <button
                 type="button"
                 className="link-btn"
                 onClick={() => setReplayKey((value) => value + 1)}
               >
-                重播预览
+                {t('重播预览')}
               </button>
             </div>
             <div className="panel-body">
               <div className="form-stack">
                 <Field
-                  label="加载文案"
+                  label={t('加载文案')}
                   htmlFor="loading-text"
                   aside={`${draft.text.length}/80`}
-                  hint="留空只显示图形。"
+                  hint={t('留空只显示图形。')}
                 >
                   <Input
                     id="loading-text"
                     value={draft.text}
                     maxLength={80}
-                    placeholder="正在载入"
+                    placeholder={t('正在载入')}
                     onChange={(event) => patch({ text: event.target.value })}
                   />
                 </Field>
                 <div className="form-grid">
-                  <Field label="强调色">
+                  <Field label={t('强调色')}>
                     <div className="loading-color-row">
                       <button
                         type="button"
                         className={`chip${draft.accent_mode === 'theme' ? ' is-active' : ''}`}
                         onClick={() => patch({ accent_mode: 'theme' })}
                       >
-                        跟随主题
+                        {t('跟随主题')}
                       </button>
                       <button
                         type="button"
                         className={`chip${draft.accent_mode === 'custom' ? ' is-active' : ''}`}
                         onClick={() => patch({ accent_mode: 'custom' })}
                       >
-                        自定义
+                        {t('自定义')}
                       </button>
                       <input
                         type="color"
-                        aria-label="加载动画强调色"
+                        aria-label={t('加载动画强调色')}
                         value={draft.accent}
                         disabled={draft.accent_mode !== 'custom'}
                         onChange={(event) => patch({ accent: event.target.value })}
                       />
                     </div>
                   </Field>
-                  <Field label="背景">
+                  <Field label={t('背景')}>
                     <div className="loading-color-row">
                       <button
                         type="button"
                         className={`chip${draft.background_mode === 'theme' ? ' is-active' : ''}`}
                         onClick={() => patch({ background_mode: 'theme' })}
                       >
-                        跟随主题
+                        {t('跟随主题')}
                       </button>
                       <button
                         type="button"
                         className={`chip${draft.background_mode === 'custom' ? ' is-active' : ''}`}
                         onClick={() => patch({ background_mode: 'custom' })}
                       >
-                        自定义
+                        {t('自定义')}
                       </button>
                       <input
                         type="color"
-                        aria-label="加载动画背景色"
+                        aria-label={t('加载动画背景色')}
                         value={draft.background}
                         disabled={draft.background_mode !== 'custom'}
                         onChange={(event) => patch({ background: event.target.value })}
@@ -251,7 +253,7 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                   </Field>
                   <NumberField
                     id="loading-size"
-                    label="图形尺寸"
+                    label={t('图形尺寸')}
                     value={draft.size}
                     min={16}
                     max={160}
@@ -260,8 +262,8 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                   />
                   <NumberField
                     id="loading-duration"
-                    label="最短展示"
-                    hint="避免加载一闪而过；最多 3000 ms。"
+                    label={t('最短展示')}
+                    hint={t('避免加载一闪而过；最多 3000 ms。')}
                     value={draft.min_duration_ms}
                     min={0}
                     max={3000}
@@ -273,18 +275,18 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                   <Toggle
                     checked={draft.show_on_first_load}
                     onChange={(show_on_first_load) => patch({ show_on_first_load })}
-                    label="首次打开站点时显示"
+                    label={t('首次打开站点时显示')}
                   />
                   <Toggle
                     checked={draft.show_on_navigation}
                     onChange={(show_on_navigation) => patch({ show_on_navigation })}
-                    label="站内切换页面时显示"
-                    description="每次导航都会停留最短展示时长，开启前请确认体感。"
+                    label={t('站内切换页面时显示')}
+                    description={t('每次导航都会停留最短展示时长，开启前请确认体感。')}
                   />
                 </div>
                 {draft.enabled && !loadingEnabled(draft) ? (
                   <Callout tone="warn" icon="alert">
-                    两个显示场景都关闭了，加载动画实际上不会出现。
+                    {t('两个显示场景都关闭了，加载动画实际上不会出现。')}
                   </Callout>
                 ) : null}
               </div>
@@ -294,8 +296,8 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>实时预览</h3>
-                <p>使用当前站点的真实主题色模拟前台。</p>
+                <h3>{t('实时预览')}</h3>
+                <p>{t('使用当前站点的真实主题色模拟前台。')}</p>
               </div>
               <Badge tone="muted">{draft.preset}</Badge>
             </div>
@@ -310,7 +312,7 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                 </div>
               </div>
               <p className="field-hint mt-8">
-                预览会像真实加载层一样循环播放；点击「全屏预览」可以看到铺满屏幕的效果。
+                {t('预览会像真实加载层一样循环播放；点击「全屏预览」可以看到铺满屏幕的效果。')}
               </p>
             </div>
           </section>
@@ -318,11 +320,13 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>附加 CSS</h3>
-                <p>只作用于加载画面，不会进入后台。</p>
+                <h3>{t('附加 CSS')}</h3>
+                <p>{t('只作用于加载画面，不会进入后台。')}</p>
               </div>
               <Badge tone={draft.custom_css ? 'accent' : 'muted'}>
-                {draft.custom_css ? `${draft.custom_css.length} 字符` : '未使用'}
+                {draft.custom_css
+                  ? t('{count} 字符', { count: draft.custom_css.length })
+                  : t('未使用')}
               </Badge>
             </div>
             <div className="panel-body">
@@ -332,12 +336,16 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                 maxLength={4000}
                 style={{ minHeight: 120, fontFamily: 'var(--mono)', fontSize: 12.5 }}
                 placeholder={'.pp-loading-text { letter-spacing: .3em; text-transform: uppercase; }'}
-                aria-label="加载动画 CSS"
+                aria-label={t('加载动画 CSS')}
               />
               <p className="field-hint mt-8">
-                可用类名：<code className="mono">.pp-loading-overlay</code>、
-                <code className="mono">.pp-loading-scene</code>、
-                <code className="mono">.pp-loading-text</code>。只粘贴自己信任的 CSS。
+                {t('可用类名：')}
+                <code className="mono">.pp-loading-overlay</code>
+                {t('、')}
+                <code className="mono">.pp-loading-scene</code>
+                {t('、')}
+                <code className="mono">.pp-loading-text</code>
+                {t('。只粘贴自己信任的 CSS。')}
               </p>
             </div>
           </section>
@@ -347,40 +355,44 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>当前设置</h3>
-                <p>保存后才在前台生效。</p>
+                <h3>{t('当前设置')}</h3>
+                <p>{t('保存后才在前台生效。')}</p>
               </div>
             </div>
             <div className="panel-body">
               <div className="mini-list">
                 <div className="mini-row">
-                  <span className="mini-label">图形</span>
+                  <span className="mini-label">{t('图形')}</span>
                   <span className="mini-value">{draft.preset}</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">最短展示</span>
+                  <span className="mini-label">{t('最短展示')}</span>
                   <span className="mini-value">{draft.min_duration_ms} ms</span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">首次加载</span>
-                  <span className="mini-value">{draft.show_on_first_load ? '显示' : '不显示'}</span>
+                  <span className="mini-label">{t('首次加载')}</span>
+                  <span className="mini-value">
+                    {draft.show_on_first_load ? t('显示') : t('不显示')}
+                  </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">切换页面</span>
-                  <span className="mini-value">{draft.show_on_navigation ? '显示' : '不显示'}</span>
+                  <span className="mini-label">{t('切换页面')}</span>
+                  <span className="mini-value">
+                    {draft.show_on_navigation ? t('显示') : t('不显示')}
+                  </span>
                 </div>
               </div>
               <p className="tiny faint mt-12">
-                管理后台与编排预览不会出现加载画面；如果站点被访问限制拦住，拦截页的层级更高。
+                {t('管理后台与编排预览不会出现加载画面；如果站点被访问限制拦住，拦截页的层级更高。')}
               </p>
             </div>
           </section>
 
           <div className="danger-zone">
-            <h3>恢复默认加载动画</h3>
-            <p>关闭加载画面并回到圆环、跟随主题、450 ms。不会影响主题与页面。</p>
+            <h3>{t('恢复默认加载动画')}</h3>
+            <p>{t('关闭加载画面并回到圆环、跟随主题、450 ms。不会影响主题与页面。')}</p>
             <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={reset}>
-              恢复默认
+              {t('恢复默认')}
             </Button>
           </div>
         </aside>
@@ -388,17 +400,17 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
 
       <div className="row gap-8 mt-20">
         <Button disabled={!dirty} onClick={save} icon="check">
-          保存修改
+          {t('保存修改')}
         </Button>
         {dirty ? (
           <Button variant="ghost" onClick={() => setDraft(saved)}>
-            放弃未保存的修改
+            {t('放弃未保存的修改')}
           </Button>
         ) : (
-          <span className="tiny faint">没有未保存的修改</span>
+          <span className="tiny faint">{t('没有未保存的修改')}</span>
         )}
         <span className="tiny faint">
-          <Icon name="sparkle" size={12} /> 只影响站点前台
+          <Icon name="sparkle" size={12} /> {t('只影响站点前台')}
         </span>
       </div>
 
@@ -419,7 +431,7 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                 className="loading-preview-close"
                 onClick={() => setPreviewOpen(false)}
               >
-                关闭预览
+                {t('关闭预览')}
               </button>
               <LoadingScene settings={draft} palette={palette} />
               {draft.custom_css ? <style>{draft.custom_css}</style> : null}
@@ -433,6 +445,6 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
   return embedded ? (
     body
   ) : (
-    <RoleGate capability="manage_site" need="站点管理员">{body}</RoleGate>
+    <RoleGate capability="manage_site" need={t('站点管理员')}>{body}</RoleGate>
   );
 }

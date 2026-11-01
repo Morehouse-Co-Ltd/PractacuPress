@@ -6,11 +6,16 @@ import {
   type DependencyList,
   type RefObject,
 } from 'react';
+import { errorText as translateError } from './i18n';
 
+/**
+ * 把异常变成可展示的提示。
+ *
+ * 真实后端错误带 `problem.code`，英文界面下由 `lib/i18n` 按代码翻译；
+ * 中文界面下仍然原样显示服务端 message。
+ */
 export function errorText(err: unknown): string {
-  if (!err) return '';
-  if (err instanceof Error) return err.message;
-  return String(err);
+  return translateError(err);
 }
 
 export function useAsync<T>(loader: () => Promise<T>, deps: DependencyList) {
