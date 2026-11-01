@@ -1,8 +1,8 @@
 # Practacu Press 项目介绍
 
-> **一个双击就能跑起来的社区型多站点 CMS。**
+> **一套自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
 > Go API + Rust 安全服务 + React 前台与后台，三端用同一份 OpenAPI 3.1 契约对齐；
-> 你可以只把它当一个干净的写作站，也可以开多个互相隔离的站点做社区。
+> Windows 与 Linux 都是一等公民，源码、启动器、容器三种装法共用一套配置。
 
 **中文** · [English](#english)
 
@@ -16,11 +16,12 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 - **社区**——评论、点赞、收藏、关注、私信、通知、举报，配套一套审核状态机；
 - **站点运营**——主题、页面编排、导航页脚、SEO、访问限制、域名与证书、存储策略、性能参数，都在后台可视化配置。
 
-同一套代码支持两种形态：
+同一套代码支持三种形态：
 
 | 形态 | 怎么用 | 适合 |
 | --- | --- | --- |
-| **桌面形态** | 双击 `PractacuPress.exe`，本机 80 端口起站点，数据留在 exe 同目录的 `data/` | 个人写作、内网小社区、演示交付 |
+| **桌面形态** | 运行 `PractacuPress.exe`（或双击），本机 80 端口起站点，数据留在 exe 同目录的 `data/` | 个人写作、内网小社区、演示交付 |
+| **容器形态** | `docker compose up -d` 起三个容器：API、安全服务、Nginx 静态站 | Linux 服务器、单机自托管的公网站点 |
 | **服务器形态** | Go API + 前端静态资源 + Rust 安全服务，接 SQLite / MySQL / PostgreSQL | 公网多站点、SaaS 多租户 |
 
 以及两种运行模式：
@@ -32,11 +33,20 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 现成的方案通常要你在三件事里选两件：要么是纯博客引擎（写作舒服，但没有社区关系）；要么是论坛/社区程序（互动齐全，但写作与排版体验粗糙）；要么是重型 CMS（功能齐全，但部署要 Docker、要调数据库、要装一堆依赖）。
 
-Practacu Press 想同时拿到三样：
+**四个能实际感知到的优势**
+
+| 优势 | 具体是什么 |
+| --- | --- |
+| **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。容器部署只有三个镜像：API、安全服务、静态站。 |
+| **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
+| **使用便捷** | 七步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
+| **自定义好** | 2 套大主题 + 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（50 条路径 / 63 个操作）之后，换前端按契约写即可。 |
+
+然后再回到产品本身——Practacu Press 想同时拿到三样：
 
 1. **写作体验不打折**——分栏、图集、提示框、视频卡片这些排版块都是服务端白名单保留的真实 HTML，不是字面量。
 2. **社区是一等公民**——成员、角色、审核、通知、私信、举报在同一条权限链上，不是外挂插件。
-3. **落地成本接近零**——SQLite 用纯 Go 驱动（`modernc.org/sqlite`），桌面形态**不需要安装数据库、Node 或 Docker**；一个 exe 就是一套完整站点。
+3. **落地成本接近零**——SQLite 用纯 Go 驱动（`modernc.org/sqlite`），桌面形态**不需要安装数据库、Node 或 Docker**；要上服务器时，`docker compose up -d` 就是完整的一套。
 
 它大概适合三类人：
 
@@ -134,11 +144,23 @@ Practacu Press 想同时拿到三样：
 
 ## 7. 快速开始
 
+### Docker（Linux / 服务器）
+
+仓库自带 `docker-compose.yml` 与三个镜像定义：
+
+```bash
+docker compose up -d --build
+```
+
+打开 `http://localhost:8080` 走完七步安装引导，**第一个账户即平台管理员**。默认只绑 `127.0.0.1`；数据在命名卷 `practacu-data`（`practacu.db` 与 `media/`）。完整说明见 [README 的 Docker 章节](../README.md)。
+
+> 开发机上没有 Docker，这套镜像与 compose **没有实跑验证**，只做了 YAML / 文件引用 / 健康检查链路的静态校验。
+
+### Windows 启动器
+
 **前提**：Go 1.26+、Node.js 22+；Rust（MSVC 工具链）可选——没有安全服务时 API 会降级启动，但发布文章与完成上传会按设计返回 503。
 
-### 一键启动（推荐）
-
-双击仓库根目录的 **`启动.bat`**。它会按需 `npm install`，在独立窗口起 Go API 与 Rust 安全服务，再起 Vite 前端，最后打开 `http://127.0.0.1:5173/?mode=live`。
+在仓库根目录运行 **`启动.bat`**（或双击）。它会按需 `npm install`，在独立窗口起 Go API 与 Rust 安全服务，再起 Vite 前端，最后打开 `http://127.0.0.1:5173/?mode=live`。
 
 ```bat
 启动.bat --check    :: 只检查环境、不启动服务
@@ -194,7 +216,8 @@ cd services/security; cargo test                            # Rust（需 MSVC �
 
 | 项 | 说明 |
 | --- | --- |
-| Docker 镜像、Windows 安装包 | 未实现；目前走的是 exe 启动器 + zip 分发 |
+| Docker | 已提供 `docker-compose.yml` 与三个镜像定义；**开发机无 Docker，镜像构建未实跑验证** |
+| Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | 多副本部署 | WebSocket 票据与 hub 在进程内存，限流是进程内固定窗口；多副本需要共享存储与边缘限流 |
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx / Cloudflare 执行，后台只生成片段 |
 | 域名别名 | 服务端按 Host 解析单一站点，别名域名需要反向代理改写 Host（生成的片段已包含） |
@@ -245,16 +268,16 @@ scripts/            dev / test / gen / package
 
 ### About 简介
 
-**中文**（约 75 字，可直接粘贴）：
+**中文**（约 80 字，可直接粘贴）：
 
 ```text
-开箱即用的社区型多站点 CMS：Go API + Rust 安全服务 + React 前后台，OpenAPI 3.1 契约对齐。Windows 双击即跑，数据留在本地。
+自托管的社区型 CMS：占地少、跑得快、开箱即用、高度可定制。Go API + Rust 安全服务 + React 前后台，Windows / Linux 均可部署，OpenAPI 3.1 契约对齐。
 ```
 
-**English**（不到 200 字符，GitHub 上限 350）：
+**English**（约 210 字符，GitHub 上限 350）：
 
 ```text
-A self-hosted community CMS with multi-site support: Go API, Rust security service, and a React frontend/admin aligned by an OpenAPI 3.1 contract. Double-click on Windows to run; data stays local.
+A self-hosted community CMS: small footprint, fast, quick to set up and deeply customisable. Go API + Rust security service + React frontend/admin on Windows or Linux, aligned by an OpenAPI 3.1 contract.
 ```
 
 ### Topics
@@ -276,17 +299,19 @@ openapi  websocket  self-hosted-blog
 
 # English
 
-> **A community CMS that runs from a double-click.**
+> **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
 > A Go API, a Rust security service, and a React frontend + admin, all aligned by one
-> OpenAPI 3.1 contract. Use it as a quiet writing site, or run several isolated sites as a community.
+> OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, launcher and
+> container installs share the same configuration.
 
 **Practacu Press** is a self-hosted, community-oriented content management system that puts three things in one product: **writing**, **community**, and **site operations**.
 
-Same codebase, two shapes:
+Same codebase, three shapes:
 
 | Shape | How it runs | Good for |
 | --- | --- | --- |
-| **Desktop** | Double-click `PractacuPress.exe`. The site serves on port 80, data stays in `data/` next to the exe. | Personal writing, internal communities, demos |
+| **Desktop** | Run `PractacuPress.exe` (or double-click it). The site serves on port 80 and data stays in `data/` next to the exe. | Personal writing, internal communities, demos |
+| **Container** | `docker compose up -d` starts three containers: API, security service and an Nginx static site. | Linux servers, single-host self-hosting |
 | **Server** | Go API + static frontend + Rust security service, on SQLite / MySQL / PostgreSQL. | Public multi-site deployments, multi-tenant SaaS |
 
 And two modes: **single-site** (one site, no "tenant" concepts to learn) or **multi-site SaaS** (each site has its own content, members, theme, review rules and permission boundary).
@@ -295,11 +320,20 @@ And two modes: **single-site** (one site, no "tenant" concepts to learn) or **mu
 
 Most options force a trade-off: blog engines write well but have no community; forum software has community but clumsy authoring; heavyweight CMSs have both but demand Docker, database tuning and a pile of dependencies.
 
+**Four advantages you can actually feel**
+
+| Advantage | What it means here |
+| --- | --- |
+| **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is three images. |
+| **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
+| **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
+| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (50 paths / 63 operations). |
+
 Practacu Press aims for all three at low deployment cost:
 
 1. **Authoring is not compromised.** Columns, galleries, callouts and video cards survive sanitization as real HTML, not escaped literals.
 2. **Community is first-class.** Members, roles, review, notifications, DMs and reports sit on one permission chain — not bolted on as plugins.
-3. **Deployment is nearly free.** SQLite runs on a pure-Go driver, so the desktop build needs **no database, no Node, no Docker**: one exe is a whole site.
+3. **Deployment is cheap.** SQLite runs on a pure-Go driver, so the desktop build needs **no database, no Node, no Docker**; on a server, `docker compose up -d` is the whole stack.
 
 ## Feature highlights
 
@@ -358,16 +392,28 @@ The project separates "actually exercised" from "written but unverified":
 
 - **Verified locally:** auth and session rotation, site resolution and permissions, the content state machine, two-phase media upload and download, search, notifications, DMs, WebSocket tickets, event catch-up, and the packaging self-test against a real process.
 - **Implemented but unverified:** MySQL / PostgreSQL (no local instances; needs a CI matrix) and S3-compatible storage (S3 tests are skipped without a real endpoint such as MinIO or AWS).
-- **Not done / known edges:** Docker images and an MSI installer, multi-replica deployment (WebSocket tickets and the hub are in-process; rate limiting is per process), granular IP/concurrency limits (the admin generates Nginx snippets, it does not enforce them), email beyond password reset, SEO tags written client-side (crawlers without JS see `index.html` defaults), and no frontend SDK generation, OAuth adapters, SMS codes or search pagination.
+- **Not done / known edges:** the Docker images and compose file are present but **have never been built or run** here (no Docker on the development machine); no MSI installer; multi-replica deployment (WebSocket tickets and the hub are in-process; rate limiting is per process), granular IP/concurrency limits (the admin generates Nginx snippets, it does not enforce them), email beyond password reset, SEO tags written client-side (crawlers without JS see `index.html` defaults), and no frontend SDK generation, OAuth adapters, SMS codes or search pagination.
 
 Details in the [delivery status report](superpowers/reports/2026-10-20-delivery-status.md).
 
 ## Getting started
 
+### Docker (Linux / servers)
+
+```bash
+docker compose up -d --build     # API + security service + Nginx static site
+```
+
+Open `http://localhost:8080` and finish the seven-step wizard — the first account becomes the platform administrator. The port is bound to loopback by default, and data lives in the named volume `practacu-data`. Full details in the [README](../README.md).
+
+> There is no Docker on the development machine, so these images and the compose file have **never been built or run** — only YAML, file references and the health-check chain were statically validated.
+
+### Windows launcher
+
 Prerequisites: Go 1.26+, Node.js 22+. Rust is optional — the API still starts without the security service, but publishing and upload completion then return 503 by design.
 
 ```bat
-启动.bat            :: double-click on Windows: installs deps, starts everything, opens the browser
+启动.bat            :: starts everything, opens the browser
 启动.bat --check    :: environment check only
 ```
 

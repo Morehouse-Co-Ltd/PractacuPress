@@ -6,18 +6,29 @@
 | :---: | :---: |
 | ![站点前台](docs/assets/readme/frontend.png) | ![管理后台](docs/assets/readme/admin.png) |
 
-> **一个双击就能跑起来的社区型多站点 CMS。**
-> 写作、社区、站点运营装进同一个系统：Go API + Rust 安全服务 + React 前台与后台，
-> 三端由同一份 OpenAPI 3.1 契约对齐。
+> **自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
+> Go API + Rust 安全服务 + React 前台与后台，由同一份 OpenAPI 3.1 契约对齐；
+> Windows 与 Linux 都是一等公民，源码、启动器、容器三种装法共用一套配置。
 
-你可以**只把它当一个干净的写作站**——富文本 / Markdown 双模式，Markdown 在服务端渲染成 HTML 再过白名单清洗，分栏、图集、视频卡片都是真实标签；也可以**开多个互相隔离的站点做社区**——成员、4 级角色、审核状态机、私信、通知、举报在同一条权限链上；而且**落地成本接近零**——SQLite 用纯 Go 驱动，桌面形态不需要安装数据库、Node 或 Docker，一个 exe 就是一套完整站点。
+## 为什么是它
+
+| | |
+| --- | --- |
+| **占地少** | Windows 启动器 8.3 MB，**内嵌整套前端**；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。容器部署也只有三个镜像：API、安全服务、静态站。 |
+| **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，**运行时不依赖 Node**，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
+| **使用便捷** | 七步安装引导自带健康检查，装完即用：`docker compose up -d` 或 `启动.bat` 一条命令起全栈（API + 安全服务 + 前端）。备份就是把 `data/` 目录整体复制走。 |
+| **自定义好** | 2 套大主题 + 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（50 条路径 / 63 个操作）后面，想换前端按契约写就行。 |
+
+**功能面**
 
 - **写作**：工具栏编辑器 + Markdown、实时预览、按渲染后的纯文本计字数
 - **社区**：评论、点赞、收藏、关注、私信、通知、举报，配 5 状态审核流
-- **运营**：主题、页面编排（桌面 / 平板 / 手机独立）、SEO、访问限制、域名与 SSL、存储策略
+- **运营**：主题、页面编排、SEO、访问限制、域名与 SSL、存储策略、访问统计
 - **安全**：Argon2id、HTML 白名单清洗、上传检查都在 Rust 服务里；连不上就 fail-closed 返回 503
-- **分发**：`打包.bat` 产出自带前端的 exe，并在临时端口真启动产物做自检
-- **许可**：AGPL-3.0——可商用；修改版或作为网络服务提供时必须同样开源，并保留署名
+- **多站点**：单站点开箱即用；需要时按站点隔离内容、成员、主题、审核规则与权限边界
+
+**平台与许可**：Windows / Linux 皆可（源码、Windows 启动器、Docker Compose）；数据库支持 SQLite、MySQL、PostgreSQL。
+**AGPL-3.0**——可商用，但修改版与网络服务必须同样开源并保留署名。
 
 完整介绍（架构、技术栈、工程取舍、现状与限制）见 **[docs/introduction.md](docs/introduction.md)**　·　English: **[Introduction](docs/introduction.md#english)**
 
@@ -71,14 +82,66 @@
 
 ---
 
-## 快速开始（Windows）
+## 中英双语
 
-前提：Go 1.26+、Node.js 22+（前端依赖与 Vite）；Rust（`rustup`，MSVC 工具链）可选，
-没有安全服务时 API 会降级启动。
+站点可以在**简体中文 ↔ English** 之间切换，切换入口只有两处，都在站长手里：
 
-### 一键启动（推荐）
+- **安装引导第一步（欢迎页）**右上角的语言胶囊；
+- **后台「站点设置 → 站点语言」**。
 
-双击项目根目录的 **`启动.bat`**：
+语言是**站点级**设置：一个站点一种语言，前台、后台、安装引导与全部提示文案一起切换，
+访客不需要（也不能）单独选择。选择存在站点设计里并随它同步到服务端，所以换浏览器、
+换设备看到的语言一致。默认简体中文，老站点升级后观感完全不变。
+
+实现上中文原文就是翻译键：`t('站点设置')` 在中文下原样返回，在英文下查字典。
+好处是中文输出逐字不变，改文案不需要同步维护两套键名。英文文案按**源文件**拆成
+`apps/web/src/lib/i18n/dict/fragments/*.ts` 片段，新增页面只需要加自己的片段。
+
+后端错误提示（Go 返回的中文 message）在英文界面下按 `problem.code` 翻译，
+未收录的错误码回退服务端原文，不会出现空白提示。
+
+自查与验收：
+
+```powershell
+cd apps/web
+npm run i18n:audit                 # 未迁移文案与覆盖率
+npx vitest run src/lib/i18n        # 缺译 / 英文含中文 / 占位符一致性
+npm run build
+node scripts/serve.mjs --port 8099 # 另开一个窗口
+node scripts/e2e-i18n.mjs          # 中英切换、刷新保持、零残留中文（截图在 .tmp/shots-i18n）
+```
+
+**不翻译**：文章正文、评论、自定义页面内容等用户内容；站点导航与页脚里站长自己填的文案
+（它们属于站点内容，不是界面文案）。
+
+---
+
+## 安装
+
+三种装法任选：**Docker**（Linux / 服务器推荐）、**Windows 启动器**（本机最省事）、**源码**（任意平台，需要 Go 1.26+，前端需要 Node.js 22+；Rust 可选——没有安全服务时 API 会降级启动）。
+
+### Docker 部署（Linux / 服务器）
+
+仓库自带 `docker-compose.yml` 与三个镜像定义，一条命令起全栈：
+
+```bash
+docker compose up -d --build
+```
+
+打开 **http://localhost:8080** 走完七步安装引导；**引导里创建的第一个账户就是平台管理员**。
+
+- **组成**：`web`（Nginx 静态站 + 同源反向代理）、`api`（Go，纯静态二进制）、`security`（Rust gRPC）。只有 `web` 映射到宿主机。
+- **默认只绑回环**：端口写成 `127.0.0.1:8080:80`，避免还没装完的实例被公网抢先注册成管理员。装完后把它改成 `8080:80`，并在前面加一层 TLS 反代。
+- **数据**：命名卷 `practacu-data` 里是 `practacu.db` 与 `media/`。`docker compose down` 不删数据，`down -v` 才删。想直接用宿主机目录，把 compose 里的卷换成 `./data:/data` 并先 `mkdir -p data && sudo chown 10001:10001 data`。
+- **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 启动器一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
+- **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`。
+- **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`，另外两个同理（`security.Dockerfile`、`web.Dockerfile`）。
+
+> 开发机上没有 Docker 环境，这套 compose 与镜像定义**没有实跑验证过**：YAML、Dockerfile 引用与健康检查链路只做了静态校验。首次构建若遇问题，欢迎开 issue。
+
+### Windows 启动器
+
+在仓库根目录运行 **`启动.bat`**（或双击）：
 
 - 首次运行会在缺少 `apps/web/node_modules` 时自动执行 `npm install`；
 - 在独立窗口启动 Go API、SQLite、可用时启动 Rust 安全服务；
@@ -321,7 +384,8 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | 项 | 说明 |
 | --- | --- |
 | MySQL / PostgreSQL | 代码层无方言依赖，但**本机没有这两个数据库，未实跑验证**，需在 CI 上跑矩阵 |
-| Docker / Windows 安装包 | 未实现 |
+| Docker | 已提供 `docker-compose.yml` 与三个镜像定义（API / 安全服务 / 静态站）；**开发机无 Docker，镜像构建未实跑验证** |
+| Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | WebSocket 多副本 | 票据与 hub 在进程内存，多副本部署需要共享存储 |
 | 限流 | 进程内固定窗口，多副本下是每副本独立计数；真正的 DDoS/CC 防护需要反向代理或边缘 WAF |
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx/Cloudflare 配置执行，后台只生成片段 |

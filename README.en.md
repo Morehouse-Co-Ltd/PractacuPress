@@ -6,20 +6,32 @@
 | :---: | :---: |
 | ![Site frontend](docs/assets/readme/frontend.png) | ![Admin dashboard](docs/assets/readme/admin.png) |
 
-> **A community CMS that runs from a double-click.**
-> Writing, community and site operations in one system: a Go API, a Rust security
-> service, and a React frontend plus admin — all aligned by one OpenAPI 3.1 contract.
+> **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
+> A Go API, a Rust security service, and a React frontend plus admin — all aligned by one
+> OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, launcher and
+> container installs share the same configuration.
 
-You can **use it as a clean writing site** — rich text and Markdown side by side, Markdown rendered to HTML on the server and then sanitized against an allow-list, with columns, galleries and video cards surviving as real markup. You can also **run several isolated sites as a community** — members, four roles, a review state machine, direct messages, notifications and reports all on one permission chain. And **deployment costs almost nothing** — SQLite runs on a pure-Go driver, so the desktop build needs no database, no Node and no Docker: one exe is a complete site.
+## Why Practacu Press
 
-- **Writing**: a toolbar editor plus Markdown, live preview, and a word count measured on the rendered text
-- **Community**: comments, likes, bookmarks, follows, direct messages, notifications and reports, with a 5-state review flow
-- **Operations**: themes, page composition (independently per desktop / tablet / phone), SEO, access limits, domains and SSL, storage policies
-- **Security**: Argon2id, HTML allow-list sanitization and upload inspection all live in the Rust service; if it is unreachable the API fails closed with 503
-- **Distribution**: `打包.bat` produces an exe with the frontend embedded, and boots that artifact on a temporary port to smoke-test it
-- **License**: AGPL-3.0 — commercial use is fine; modified versions and network services must stay open source and keep the attribution
+| | |
+| --- | --- |
+| **Small footprint** | The Windows launcher is 8.3 MB and **embeds the entire frontend**; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The container deployment is three images: API, security service, static site. |
+| **Fast** | Requests pass through exactly one layer (Gin); Ent-generated code talks straight to `database/sql`; the pool and SQLite's WAL / busy_timeout are configured by the server itself. The frontend is a static single-page app with **no Node at runtime** and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets, while first-screen request coalescing and media lazy-loading are configurable in the admin. |
+| **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API + security service + frontend) in one command. Backup means copying the `data/` directory. |
+| **Easy to make your own** | 2 built-in themes + 7 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (50 paths / 63 operations), so you can build your own frontend against it. |
 
-A longer introduction (architecture, stack, engineering trade-offs, current status and limitations) is in **[docs/introduction.md](docs/introduction.md)**.
+**What it does**
+
+- **Writing**: toolbar editor plus Markdown, live preview, word count on the rendered text
+- **Community**: comments, likes, bookmarks, follows, DMs, notifications and reports, with a 5-state review flow
+- **Operations**: themes, page composition, SEO, access limits, domains and SSL, storage policies, analytics
+- **Security**: Argon2id, HTML allow-list sanitization and upload inspection live in the Rust service; if it is unreachable the API fails closed with 503
+- **Multi-site**: single-site out of the box; isolate content, members, themes, review rules and permissions per site when you need to
+
+**Platform and license**: Windows / Linux, via source, the Windows launcher or Docker Compose; SQLite, MySQL and PostgreSQL are supported.
+**AGPL-3.0** — commercial use is fine, but modified versions and network services must stay open source with the attribution preserved.
+
+A longer introduction (architecture, stack, engineering trade-offs, current status and limitations) is in **[docs/introduction.md](docs/introduction.md#english)**.
 
 ---
 
@@ -42,13 +54,32 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 
 ---
 
-## Quick start (Windows)
+## Installation
 
-Prerequisites: Go 1.26+, Node.js 22+ (frontend dependencies and Vite). Rust (`rustup`, MSVC toolchain) is optional — without the security service the API starts in a degraded mode.
+Three ways in: **Docker** (recommended for Linux and servers), the **Windows launcher** (least work on a desktop), and **from source** (any platform; Go 1.26+ and Node.js 22+ for the frontend, Rust optional — without the security service the API starts in a degraded mode).
 
-### One-click start (recommended)
+### Docker (Linux / servers)
 
-Double-click **`启动.bat`** in the repository root:
+The repository ships a `docker-compose.yml` and three image definitions; one command starts the stack:
+
+```bash
+docker compose up -d --build
+```
+
+Open **http://localhost:8080** and complete the seven-step wizard; **the first account it creates is the platform administrator**.
+
+- **What runs**: `web` (Nginx static site + same-origin reverse proxy), `api` (Go, a static binary), `security` (Rust gRPC). Only `web` is published to the host.
+- **Loopback by default**: the mapping is `127.0.0.1:8080:80`, so an unfinished install cannot be claimed by the public internet. After setup, change it to `8080:80` and put TLS in front.
+- **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
+- **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows launcher (create tables, create the default site, promote the first account). Set it to `false` for multi-site / SaaS and prepare the database and an administrator yourself.
+- **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`.
+- **Build one image**: `docker build -f deploy/docker/api.Dockerfile .` (likewise `security.Dockerfile` and `web.Dockerfile`).
+
+> There is no Docker on the development machine, so **this compose file and these images have never been run for real** — only the YAML, the file references and the health-check chain were statically validated. Open an issue if your first build fails.
+
+### Windows launcher
+
+Run **`启动.bat`** in the repository root (or double-click it):
 
 - on first run it executes `npm install` automatically when `apps/web/node_modules` is missing;
 - it starts the Go API and SQLite in a dedicated window, plus the Rust security service when available;
@@ -280,7 +311,8 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | Item | Notes |
 | --- | --- |
 | MySQL / PostgreSQL | No dialect dependency in the code, but **neither database is available on this machine, so it is unverified in practice** — needs a CI matrix |
-| Docker / Windows installer | Not implemented |
+| Docker | Ships a `docker-compose.yml` and three image definitions (API / security service / static site); **no Docker on the development machine, so the images have never been built or run** |
+| Windows installer (MSI) | Not implemented; Windows ships as a launcher plus a zip |
 | Multi-replica WebSocket | Tickets and the hub live in process memory; multiple replicas need shared storage |
 | Rate limiting | In-process fixed window, counted per replica; real DDoS/CC protection needs a reverse proxy or edge WAF |
 | Browser-side access limits | Only constrain visitors using this site's scripts; IP-level request/concurrency limits are enforced by Nginx/Cloudflare, the admin only generates snippets |
