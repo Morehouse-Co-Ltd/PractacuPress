@@ -52,6 +52,10 @@ $env:SECURITY_GRPC_ADDR = "127.0.0.1:$SecurityPort"
 $env:STORAGE_DRIVER = 'local'
 $env:STORAGE_DIR = Join-Path $DataDir 'media'
 $env:SECURITY_GRPC_BIND = "127.0.0.1:$SecurityPort"
+# One-click local installs have no operator console: the first account must be a
+# platform administrator, and a database created before this flag existed is repaired
+# at startup. Server deployments start the API without this flag.
+$env:PP_DESKTOP = 'true'
 
 $children = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 
