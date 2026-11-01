@@ -2,6 +2,10 @@
 
 [简体中文](README.md)　·　**English**
 
+| Site frontend (default theme: Original · paper light) | Admin dashboard |
+| :---: | :---: |
+| ![Site frontend](docs/assets/readme/frontend.png) | ![Admin dashboard](docs/assets/readme/admin.png) |
+
 > **A community CMS that runs from a double-click.**
 > Writing, community and site operations in one system: a Go API, a Rust security
 > service, and a React frontend plus admin — all aligned by one OpenAPI 3.1 contract.

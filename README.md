@@ -2,6 +2,10 @@
 
 **简体中文**　·　[English](README.en.md)
 
+| 站点前台（默认主题：原版 · 纸白浅色） | 管理后台（仪表盘） |
+| :---: | :---: |
+| ![站点前台](docs/assets/readme/frontend.png) | ![管理后台](docs/assets/readme/admin.png) |
+
 > **一个双击就能跑起来的社区型多站点 CMS。**
 > 写作、社区、站点运营装进同一个系统：Go API + Rust 安全服务 + React 前台与后台，
 > 三端由同一份 OpenAPI 3.1 契约对齐。
