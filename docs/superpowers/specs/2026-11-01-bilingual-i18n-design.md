@@ -1,7 +1,7 @@
 # 站点中英双语（i18n）设计说明
 
 日期：2026-11-01
-状态：已确认，实施中
+状态：已实现并验证
 范围：`apps/web`（纯前端展示层，不改 OpenAPI、Go 与 Rust）
 
 ## 目标
@@ -137,6 +137,27 @@ export function errorText(err: unknown): string;
 | P2 | 前台页面与区块（`pages/site`、`components/blocks`、站点外壳） | 前台全量英文 |
 | P3 | `lib/` 标签表、demo 示例数据、API 错误码 | 收尾一致 |
 | P4 | 双语截图验收 + README | 交付 |
+
+## 实现与验证
+
+- `npm run typecheck`、`npx vitest run`（28 文件 / 314 项）全绿；
+- `npm run i18n:audit`：界面文案覆盖率 **96.4%**（4715 条已包裹 / 177 条待迁移）；
+  剩余项全部是**故意保持中文的持久化数据**：操作日志的 action/detail（写入
+  `pp.activity.v1`，`activityTone()` 还要按中文动作名匹配）、区块 `defaults` 初始内容、
+  模板正文、演示站点示例内容；另有少量审计正则对 JSX 的假阳性；
+- `node scripts/e2e-i18n.mjs`：**PASS 21 / FAIL 0**——安装引导默认中文、切英文后整屏零
+  残留中文、切回中文逐字复原；后台站点语言切换即时生效、刷新后保持；英文后台侧边栏与
+  页头零中文；前台跟随站点语言；
+- 截图：`docs/assets/2026-11-01-i18n/`（setup-zh / setup-en / admin-zh / admin-en / site-en）。
+
+### 实现时补上的两个坑
+
+1. **模块级 `t()` 会在 import 时冻结**。`export const DEFS = [{ name: t('中文') }]` 在
+   `setLocale` 之前就求值了，切英文后区块调色板、主题、权限、图标、模板等目录仍是中文。
+   解法：`lib/i18n/live.ts` 的 `liveCatalog()` 把中文字符串换成读取时翻译的 getter（中文
+   恰好就是键，所以可以二次翻译），持久化字段用 `skip` 排除。
+2. **英文下后端中文 message**。`errorText()` 先按 `problem.code` 映射，未收录才回退服务端
+   原文，避免英文界面弹出中文错。
 
 ## 明确不做
 

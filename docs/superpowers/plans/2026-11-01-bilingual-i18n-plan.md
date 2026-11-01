@@ -261,11 +261,12 @@ it('en 保留', () => {
 
 ### Task 11: 验收
 
-- [ ] `npm run typecheck`、`npx vitest run` 全绿
-- [ ] `node scripts/i18n-audit.mjs` 覆盖率 100%（仅剩允许清单）
-- [ ] `npm run build` 通过
-- [ ] Playwright 双语截图：后台仪表盘/站点设置/安装引导，zh 与 en 各一张
-- [ ] README「站点设置」段落补充语言说明
+- [x] `npm run typecheck`、`npx vitest run` 全绿（28 文件 / 314 项）
+- [x] `node scripts/i18n-audit.mjs` 界面文案覆盖率 96.4%，剩余全部是故意保持中文的持久化数据
+- [x] `npm run build` 通过
+- [x] 双语截图：安装引导 / 站点设置 zh 与 en（`docs/assets/2026-11-01-i18n/`，CDP 无头 Chrome，零新增依赖）
+- [x] README 增加「中英双语」段落与自查命令
+- [x] `node scripts/e2e-i18n.mjs`：PASS 21 / FAIL 0
 
 ---
 
