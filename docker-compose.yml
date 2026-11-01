@@ -1,0 +1,90 @@
+# Practacu Press —— Docker 自托管部署（单站点）
+#
+#   docker compose up -d --build      构建并启动
+#   docker compose exec api migrate   仅建表（可选，默认启动时会自动建表）
+#   docker compose logs -f            看日志
+#   docker compose down               停止
+#
+# 启动后打开 http://localhost:8080 完成七步安装引导：
+# 引导里创建的第一个账户就是平台管理员。
+#
+# 默认只绑定回环地址（127.0.0.1），装完之后再把 「127.0.0.1:」前缀去掉
+# 或换成 "8080:80" 并加一层 TLS 反代，不要把未完成安装的实例暴露到公网。
+
+name: practacu-press
+
+services:
+  # Rust 安全服务：Argon2id 密码哈希、HTML 白名单清洗、上传检查。
+  # 只在内部网络可达，不映射到宿主机。
+  security:
+    build:
+      context: .
+      dockerfile: deploy/docker/security.Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+
+  # Go API：容器内监听 0.0.0.0:8080，对外只经由 web 反代。
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      security:
+        condition: service_healthy
+    networks: [internal]
+    environment:
+      # 单站点自托管：与 Windows 启动器相同的零配置引导——
+      # 自动建表、创建默认站点，并把第一个注册账户提升为平台管理员。
+      # 多站点 / SaaS 部署请改成 false，并自行准备数据库与管理员账户。
+      PP_DESKTOP: "true"
+      APP_ENV: development
+      HTTP_ADDR: 0.0.0.0:8080
+      PP_ALLOW_REMOTE_API: "1"
+      DATABASE_DRIVER: sqlite
+      DATABASE_DSN: file:/data/practacu.db
+      STORAGE_DRIVER: local
+      STORAGE_DIR: /data/media
+      SECURITY_GRPC_ADDR: security:9001
+      # 让 API 信任 Nginx 传来的 X-Forwarded-*，限流与日志才能拿到真实客户端 IP。
+      TRUSTED_PROXIES: 172.28.0.0/16
+      RATE_LIMIT_PER_MINUTE: "240"
+      # 生产环境（APP_ENV=production）必须提供 Ed25519 私钥（base64 PKCS#8）：
+      # AUTH_JWT_ED25519_PRIVATE_KEY: "…"
+      # 未设置时开发环境会生成临时密钥并告警，重启后会话失效。
+    volumes:
+      - practacu-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 25s
+
+  # 前端静态站 + 同源反向代理。
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [internal]
+    ports:
+      # 完成安装后想对外开放，把这一行换成 "8080:80"，并在前面加 TLS 反代。
+      - "127.0.0.1:8080:80"
+
+networks:
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  # 命名卷由容器自己初始化属主，避免 bind mount 的 root 属主导致 SQLite 写不进去。
+  # 想直接备份或用宿主机目录，就把下面的卷换成：
+  #   - ./data:/data
+  # 并先执行 mkdir -p data && sudo chown 10001:10001 data
+  practacu-data:
