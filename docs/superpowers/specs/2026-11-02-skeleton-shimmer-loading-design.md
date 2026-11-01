@@ -120,12 +120,15 @@ export function skeletonMotion(settings: LoadingSettings): 'pulse' | 'sweep' | '
 | 形状 | 区块类型 | 说明 |
 | --- | --- | --- |
 | `feed` | `feed` | 左侧 3 行文章 + 右侧栏小卡 |
-| `list` | `post-list`、`popular-content`、`recent-content`、`timeline` | 标题行 + 若干行 |
+| `list` | `post-list`、`popular-content`、`recent-content` | 标题行 + 若干行 |
 | `grid` | `post-grid`、`articles` | 按 `columns`/`limit` 画卡片网格 |
 | `feature` | `feature-post` | 大卡：封面块 + 标题/摘要行 |
 | `mosaic` | `spotlight`、`spotlight-hot` | 一大两小卡片 |
-| `aside` | `author-card`、`tag-cloud`、`stat-list`、`archive`、`search-launcher`、`command-hints`、`category-pills` | 小面板：标题行 + 短行 |
-| `chart` | `chart` | 图表区域占位（带坐标轴示意） |
+| `aside` | `stat-list`、`archive` | 小面板：标题行 + 短行 |
+
+（`chart` / `stats` 用独立的分析请求，不由 `FeedContext` 驱动，交由渲染器自身处理；
+`author-card`、`tag-cloud`、`search-launcher`、`command-hints`、`category-pills`、`timeline`
+等静态区块不骨架化。）
 
 映射表按区块类型字符串维护；未登记的类型不骨架化（渲染器自己决定），避免误伤静态区块。
 各模板的行数/列数从区块属性读取并做上下限保护，缺省值给出的骨架高度接近真实内容。
