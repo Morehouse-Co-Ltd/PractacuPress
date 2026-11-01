@@ -1,5 +1,7 @@
 # Practacu Press
 
+**简体中文**　·　[English](README.en.md)
+
 > **一个双击就能跑起来的社区型多站点 CMS。**
 > 写作、社区、站点运营装进同一个系统：Go API + Rust 安全服务 + React 前台与后台，
 > 三端由同一份 OpenAPI 3.1 契约对齐。
