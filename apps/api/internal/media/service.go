@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 )
 
 // ScanInput is what the security service inspects.
@@ -35,6 +37,16 @@ type Repository interface {
 	// FindAsset loads an inspected asset inside a site scope.
 	FindAsset(ctx context.Context, siteID, assetID string) (Asset, error)
 	InsertAsset(ctx context.Context, asset Asset) (Asset, error)
+	// ListAssets returns one page of a site's assets, newest first, plus the cursor for
+	// the next page. The cursor is empty when the page is the last one, so the caller
+	// never has to guess and never hands out a cursor that yields an empty page.
+	ListAssets(
+		ctx context.Context,
+		siteID string,
+		filter AssetFilter,
+		limit int,
+		after page.Cursor,
+	) ([]Asset, string, error)
 	// DeleteAsset removes an asset record. Deleting a missing record is reported as
 	// ErrNotFound so the caller does not believe a stale object was cleaned up.
 	DeleteAsset(ctx context.Context, siteID, assetID string) error
@@ -295,6 +307,40 @@ func (s *Service) OpenAssetInSite(
 		return Asset{}, nil, err
 	}
 	return asset, reader, nil
+}
+
+// ListAssets returns one page of the site's assets plus the cursor for the next page.
+//
+// The scope is the actor's site, never a caller supplied one: the token is the only
+// tenant boundary, so listing cannot be widened by adding a parameter.
+//
+// limit is normalised here rather than in the transport so every caller - the HTTP
+// handler today, an export tool tomorrow - obeys the same page size rules. A filter
+// value outside the known set is rejected instead of silently matching nothing: an
+// unknown purpose would otherwise look exactly like an empty library.
+func (s *Service) ListAssets(
+	ctx context.Context,
+	actor Actor,
+	filter AssetFilter,
+	limit int,
+	after page.Cursor,
+) ([]Asset, string, error) {
+	if err := filter.Validate(); err != nil {
+		return nil, "", err
+	}
+	if limit <= 0 || limit > MaxListLimit {
+		limit = DefaultListLimit
+	}
+	// A cursor whose sort key is not a timestamp cannot be honoured. Reporting it is
+	// what stops an infinite scroll loop: falling back to the first page would hand the
+	// client the same rows again, forever.
+	if !after.IsZero() {
+		if _, err := time.Parse(time.RFC3339Nano, after.Key); err != nil {
+			return nil, "", page.ErrInvalidCursor
+		}
+	}
+
+	return s.repo.ListAssets(ctx, actor.SiteID, filter, limit, after)
 }
 
 // DeleteAsset removes a stored object and its record.

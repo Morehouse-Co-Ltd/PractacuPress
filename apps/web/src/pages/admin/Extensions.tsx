@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type {
-  CustomExtension,
-  ExtensionId,
-  ExtensionPageScope,
-  ExtensionSlot,
-} from '../../types';
+import type { CustomExtension, ExtensionId, ExtensionPageScope } from '../../types';
 import {
   EXTENSIONS,
   EXTENSION_LIMITS,
@@ -51,12 +46,6 @@ const EXT_ICON: Record<ExtensionId, IconName> = {
 };
 
 type ExtensionTab = 'builtin' | 'mine' | 'studio';
-
-/** PP API 示例的纯代码行；带中文的行在组件里按当前语言取文案。 */
-const PP_API_SAMPLE_CODE = [
-  'const ctx = PP.getContext(); // { theme, page, title, extensionId }',
-  'PP.setHeight(document.documentElement.scrollHeight);',
-];
 
 /** 把草稿收敛成合法清单：名称必填，其余字段走 createExtension 的上限与去重。 */
 function buildDraft(draft: CustomExtension): CustomExtension {
@@ -398,27 +387,6 @@ export function ExtensionsPage() {
 
   /* ---------------- 渲染 ---------------- */
 
-  const apiSample = [
-    ...PP_API_SAMPLE_CODE,
-    t("PP.notify('完成啦');            // 需要 notify 权限"),
-    t("PP.open('https://example.com'); // 需要 open_link 权限"),
-    t("PP.navigate('/about');          // 需要 navigate 权限"),
-    t("PP.copy('要复制的文字');         // 需要 clipboard 权限"),
-    t("PP.storage.get('count');        // 需要 storage 权限（同步返回）"),
-    t("PP.storage.set('count', '1');   // 需要 storage 权限"),
-  ].join('\n');
-
-  const slotDocs: { slot: ExtensionSlot; where: string }[] = [
-    { slot: 'site_header', where: t('站点页头之后，每页都尝试挂载。') },
-    { slot: 'site_footer', where: t('站点页脚之前；没有页脚时退回 main 之后。') },
-    { slot: 'home_top', where: t('主页 main#main 的第一个子元素之前。') },
-    { slot: 'home_bottom', where: t('主页 main#main 的最后一个子元素之后。') },
-    { slot: 'article_top', where: t('文章封面之后；没有封面时在正文之前。') },
-    { slot: 'article_bottom', where: t('文章互动区之后；没有互动区时在评论区之前。') },
-    { slot: 'article_side', where: t('文章容器内、正文之后。') },
-    { slot: 'floating', where: t('不占文档流，固定在右下角（宽 min(360px, 92vw)）。') },
-  ];
-
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
@@ -503,40 +471,6 @@ export function ExtensionsPage() {
                 </section>
               );
             })}
-          </div>
-
-          <div className="panel mt-24">
-            <div className="panel-head">
-              <div>
-                <h3>{t('这些开关改变什么')}</h3>
-                <p>{t('内置扩展只作用于前台，不会修改已有内容，也不会请求新的接口。')}</p>
-              </div>
-            </div>
-            <div className="panel-body">
-              <div className="mini-list">
-                <div className="mini-row">
-                  <span className="mini-label">{t('阅读进度与目录')}</span>
-                  <span className="mini-value" style={{ color: 'var(--muted)', fontWeight: 400 }}>
-                    {t('文章页顶部进度线；二、三级标题自动生成锚点与目录。')}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('代码与分享')}</span>
-                  <span className="mini-value" style={{ color: 'var(--muted)', fontWeight: 400 }}>
-                    {t('代码块复制按钮；支持系统分享时调用 Web Share，否则复制链接。')}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('公告与回到顶部')}</span>
-                  <span className="mini-value" style={{ color: 'var(--muted)', fontWeight: 400 }}>
-                    {t('页头下方可关闭公告；滚动超过一屏后出现回到顶部按钮。')}
-                  </span>
-                </div>
-              </div>
-              <p className="tiny faint mt-16">
-                {t('内置扩展状态保存在本地安装配置，可以随「外观 → 导出配置」一起迁移。')}
-              </p>
-            </div>
           </div>
         </div>
       ) : null}
@@ -959,81 +893,6 @@ export function ExtensionsPage() {
           </div>
         </div>
       ) : null}
-
-      {/* 扩展开发说明：槽位、权限、PP API 与安全边界。 */}
-      <section className="panel mt-24 ppe-docs">
-        <div className="panel-head">
-          <div>
-            <h3>{t('扩展开发说明')}</h3>
-            <p>{t('写扩展前先看这一节：能挂在哪里、能申请哪些能力、沙箱里不能做什么。')}</p>
-          </div>
-        </div>
-        <div className="panel-body">
-          <div className="ppe-docs-grid">
-            <div className="ppe-doc-block">
-              <h4>{t('槽位')}</h4>
-              <div className="mini-list">
-                {slotDocs.map((item) => (
-                  <div className="mini-row" key={item.slot}>
-                    <span className="mini-label">{slotLabel(item.slot)}</span>
-                    <span className="mini-value ppe-doc-value">{item.where}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="ppe-doc-block">
-              <h4>{t('权限')}</h4>
-              <p className="tiny muted">
-                {t('清单里声明后，沙箱桥才会把对应请求转给宿主；未声明的调用会被忽略。')}
-              </p>
-              <div className="mini-list">
-                {EXTENSION_PERMISSIONS.map((permission) => (
-                  <div className="mini-row" key={permission}>
-                    <span className="mini-label mono">{permission}</span>
-                    <span className="mini-value ppe-doc-value">{PERMISSION_HINTS[permission]}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="ppe-doc-block">
-              <h4>PP API</h4>
-              <p className="tiny muted">
-                {t('只暴露最小能力；`PP.getContext()` 读取主题、页面类型与标题。')}
-              </p>
-              <pre className="ppe-doc-code">{apiSample}</pre>
-              <p className="tiny faint">
-                {t('高度由扩展调用 `PP.setHeight(px)` 上报；不调用时桥会根据内容自动测量，上限 2000px。')}
-              </p>
-            </div>
-
-            <div className="ppe-doc-block">
-              <h4>{t('安全边界')}</h4>
-              <ul className="ppe-doc-list">
-                <li>
-                  {t('iframe 只有 `allow-scripts`，没有 `allow-same-origin`：拿不到主站 DOM、Cookie 与 localStorage。')}
-                </li>
-                <li>
-                  {t(
-                    "CSP 为 `default-src 'none'`：不能加载远程脚本，只允许内联样式 / 脚本、https 图片与 data 字体。",
-                  )}
-                </li>
-                <li>
-                  {t('打开链接只接受 http(s)；站内跳转只接受以 `/` 开头的路径；剪贴板、通知、存储都要声明权限。')}
-                </li>
-                <li>{t('扩展存储按 id 隔离在 `pp.ext.<id>.*`，key 最长 64、单值最长 2000 字符。')}</li>
-                <li>{t('扩展只在站点前台运行，不会出现在管理后台（本页的工坊预览除外）。')}</li>
-              </ul>
-            </div>
-          </div>
-          <p className="tiny faint mt-16">
-            {t(
-              '扩展清单与外观配置保存在同一个本地安装文件里，可以随「外观 → 导出配置」迁移；导出单个扩展使用「我的扩展 → 导出」，文件名是 `<名称>.ppext.json`。',
-            )}
-          </p>
-        </div>
-      </section>
 
       <Modal
         open={!!deleteTarget}

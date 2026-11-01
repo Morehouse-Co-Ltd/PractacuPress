@@ -127,6 +127,7 @@ function endpointGroups(t: (text: string) => string): EndpointGroup[] {
     {
       group: t('媒体'),
       items: [
+        { method: 'GET', path: '/media', note: t('本站媒体列表，游标分页'), used: true },
         { method: 'POST', path: '/media/uploads', note: t('打开上传会话'), used: true },
         {
           method: 'POST',
@@ -400,10 +401,10 @@ export function DocsPage() {
             </div>
             <div className="mini-row" style={{ alignItems: 'flex-start' }}>
               <span className="mini-label" style={{ minWidth: 150 }}>
-                {t('媒体列表与审计')}
+                {t('操作审计')}
               </span>
               <span className="mini-value" style={{ textAlign: 'left', fontWeight: 400, color: 'var(--muted)' }}>
-                {t('没有列表 / 查询端点。媒体页只显示本次会话上传；操作记录按浏览器本地记录呈现，并注明不是合规审计。')}
+                {t('没有审计端点。媒体列表由 GET /media 提供，操作记录仍只按浏览器本地记录呈现，并注明不是合规审计。')}
               </span>
             </div>
             <div className="mini-row" style={{ alignItems: 'flex-start' }}>

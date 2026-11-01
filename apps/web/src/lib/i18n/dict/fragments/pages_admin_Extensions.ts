@@ -25,20 +25,6 @@ const fragment: Dictionary = {
   '已全部开启': 'All turned on',
   '已全部关闭': 'All turned off',
   '去外观页填写公告内容 →': 'Fill in the announcement on the Appearance page →',
-  '这些开关改变什么': 'What these switches change',
-  '内置扩展只作用于前台，不会修改已有内容，也不会请求新的接口。':
-    'Built-in extensions only affect the public site; they never change existing content or call new endpoints.',
-  '阅读进度与目录': 'Reading progress and table of contents',
-  '文章页顶部进度线；二、三级标题自动生成锚点与目录。':
-    'A progress line at the top of article pages; level-two and level-three headings get anchors and a table of contents automatically.',
-  '代码与分享': 'Code and sharing',
-  '代码块复制按钮；支持系统分享时调用 Web Share，否则复制链接。':
-    'A copy button on code blocks; uses Web Share when the system supports it, otherwise copies the link.',
-  '公告与回到顶部': 'Announcement and back to top',
-  '页头下方可关闭公告；滚动超过一屏后出现回到顶部按钮。':
-    'A dismissible announcement below the header; a back-to-top button appears after scrolling more than one screen.',
-  '内置扩展状态保存在本地安装配置，可以随「外观 → 导出配置」一起迁移。':
-    'Built-in extension state is stored in the local installation config and moves along with Appearance → Export config.',
 
   // ---- 我的扩展 ----
   '启用后会出现在站点前台对应的槽位；清单保存在本地安装配置里，可随站点一起迁移。':
@@ -168,56 +154,6 @@ const fragment: Dictionary = {
   '一篇文章的标题': 'An article title',
   '、': ', ',
   '（未选择）': '(none selected)',
-
-  // ---- 扩展开发说明 ----
-  '扩展开发说明': 'Extension development notes',
-  "PP.notify('完成啦');            // 需要 notify 权限":
-    "PP.notify('Done');            // requires the notify permission",
-  "PP.open('https://example.com'); // 需要 open_link 权限":
-    "PP.open('https://example.com'); // requires the open_link permission",
-  "PP.navigate('/about');          // 需要 navigate 权限":
-    "PP.navigate('/about');          // requires the navigate permission",
-  "PP.copy('要复制的文字');         // 需要 clipboard 权限":
-    "PP.copy('Text to be copied');         // requires the clipboard permission",
-  "PP.storage.get('count');        // 需要 storage 权限（同步返回）":
-    "PP.storage.get('count');        // requires the storage permission (synchronous)",
-  "PP.storage.set('count', '1');   // 需要 storage 权限":
-    "PP.storage.set('count', '1');   // requires the storage permission",
-  '写扩展前先看这一节：能挂在哪里、能申请哪些能力、沙箱里不能做什么。':
-    'Read this before writing an extension: where it can mount, which abilities it can request, and what the sandbox forbids.',
-  '站点页头之后，每页都尝试挂载。': 'After the site header; every page tries to mount it.',
-  '站点页脚之前；没有页脚时退回 main 之后。':
-    'Before the site footer; falls back to after main when there is no footer.',
-  '主页 main#main 的第一个子元素之前。':
-    'Before the first child of main#main on the home page.',
-  '主页 main#main 的最后一个子元素之后。':
-    'After the last child of main#main on the home page.',
-  '文章封面之后；没有封面时在正文之前。':
-    'After the article cover; before the body when there is no cover.',
-  '文章互动区之后；没有互动区时在评论区之前。':
-    'After the article reactions; before the comments when there are no reactions.',
-  '文章容器内、正文之后。': 'Inside the article container, after the body.',
-  '不占文档流，固定在右下角（宽 min(360px, 92vw)）。':
-    'Out of the document flow, pinned to the bottom right (width min(360px, 92vw)).',
-  '清单里声明后，沙箱桥才会把对应请求转给宿主；未声明的调用会被忽略。':
-    'The sandbox bridge only forwards a request to the host when the manifest declares it; calls without a declaration are ignored.',
-  '只暴露最小能力；`PP.getContext()` 读取主题、页面类型与标题。':
-    'Only a minimal surface is exposed; `PP.getContext()` reads the theme, page type, and title.',
-  '高度由扩展调用 `PP.setHeight(px)` 上报；不调用时桥会根据内容自动测量，上限 2000px。':
-    'The extension reports its height with `PP.setHeight(px)`; without it the bridge measures the content, up to 2000px.',
-  '安全边界': 'Security boundaries',
-  'iframe 只有 `allow-scripts`，没有 `allow-same-origin`：拿不到主站 DOM、Cookie 与 localStorage。':
-    'The iframe has `allow-scripts` only, never `allow-same-origin`: it cannot reach the main DOM, cookies, or localStorage.',
-  "CSP 为 `default-src 'none'`：不能加载远程脚本，只允许内联样式 / 脚本、https 图片与 data 字体。":
-    "CSP is `default-src 'none'`: remote scripts cannot load; only inline styles / scripts, https images, and data fonts are allowed.",
-  '打开链接只接受 http(s)；站内跳转只接受以 `/` 开头的路径；剪贴板、通知、存储都要声明权限。':
-    'Opening links accepts http(s) only; in-site navigation accepts paths that start with `/`; the clipboard, notifications, and storage all need a declared permission.',
-  '扩展存储按 id 隔离在 `pp.ext.<id>.*`，key 最长 64、单值最长 2000 字符。':
-    'Extension storage is isolated per id under `pp.ext.<id>.*`; keys are at most 64 characters and values at most 2000.',
-  '扩展只在站点前台运行，不会出现在管理后台（本页的工坊预览除外）。':
-    'Extensions run on the public site only and never appear in the dashboard (except the studio preview on this page).',
-  '扩展清单与外观配置保存在同一个本地安装文件里，可以随「外观 → 导出配置」迁移；导出单个扩展使用「我的扩展 → 导出」，文件名是 `<名称>.ppext.json`。':
-    'Extension manifests live in the same local installation file as the appearance config and move along with Appearance → Export config; to export a single extension use My extensions → Export, which names the file `<name>.ppext.json`.',
 
   // ---- 删除确认 ----
   '删除扩展': 'Delete extension',

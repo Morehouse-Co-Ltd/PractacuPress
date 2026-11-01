@@ -489,75 +489,6 @@
   overflow: hidden;
 }
 
-/* ---------------- 开发说明 ---------------- */
-
-.ppe-docs .panel-body {
-  padding: 20px 22px;
-}
-
-.ppe-docs-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px 28px;
-}
-
-.ppe-doc-block {
-  min-width: 0;
-}
-
-.ppe-doc-block h4 {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ppe-doc-block > p {
-  margin-bottom: 10px;
-}
-
-.ppe-doc-block .mini-row {
-  align-items: flex-start;
-  padding: 8px 0;
-}
-
-.ppe-doc-block .mini-label {
-  flex: none;
-  min-width: 72px;
-}
-
-.ppe-doc-value {
-  flex: 1;
-  text-align: left !important;
-  font-weight: 400;
-  color: var(--muted) !important;
-  line-height: 1.6;
-}
-
-.ppe-doc-code {
-  margin: 10px 0;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-sunken);
-  color: var(--ink-soft);
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.75;
-  overflow-x: auto;
-  white-space: pre;
-}
-
-.ppe-doc-list {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--muted);
-}
-
 /* ---------------- 响应式 ---------------- */
 
 @media (max-width: 1180px) {
@@ -581,10 +512,6 @@
       "form"
       "code"
       "preview";
-  }
-
-  .ppe-docs-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .ppe-card {

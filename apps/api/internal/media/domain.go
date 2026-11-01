@@ -27,6 +27,11 @@ const (
 	ScanNeedsManualReview ScanStatus = "needs_manual_review"
 )
 
+// Valid reports whether the scan status is defined.
+func (s ScanStatus) Valid() bool {
+	return s == ScanPending || s == ScanClean || s == ScanRejected || s == ScanNeedsManualReview
+}
+
 // UploadStatus is the state of an upload session.
 type UploadStatus string
 
@@ -89,6 +94,14 @@ const (
 	UploadTTL = 30 * time.Minute
 	// MaxFileNameLength bounds the declared name.
 	MaxFileNameLength = 200
+)
+
+// Pagination bounds for the asset library.
+const (
+	// DefaultListLimit is the page size used when the caller does not ask for one.
+	DefaultListLimit = 20
+	// MaxListLimit bounds one page so a caller cannot ask for the whole library.
+	MaxListLimit = 100
 )
 
 // allowedImageTypes is the closed set of image MIME types.
@@ -216,6 +229,27 @@ type Asset struct {
 
 // Referenceable reports whether content may link this asset.
 func (a Asset) Referenceable() bool { return a.ScanStatus == ScanClean }
+
+// AssetFilter narrows a library listing.
+//
+// An empty field means "do not narrow on this dimension". The values are closed sets:
+// an unknown purpose or scan state is rejected rather than matching nothing, because a
+// typo in a filter would otherwise be indistinguishable from an empty library.
+type AssetFilter struct {
+	Purpose    Purpose
+	ScanStatus ScanStatus
+}
+
+// Validate reports whether every declared filter value is one this build knows.
+func (f AssetFilter) Validate() error {
+	if f.Purpose != "" && !f.Purpose.Valid() {
+		return fmt.Errorf("%w: unknown purpose filter", ErrInvalidInput)
+	}
+	if f.ScanStatus != "" && !f.ScanStatus.Valid() {
+		return fmt.Errorf("%w: unknown scan status filter", ErrInvalidInput)
+	}
+	return nil
+}
 
 // ScanResult is the security service verdict.
 type ScanResult struct {

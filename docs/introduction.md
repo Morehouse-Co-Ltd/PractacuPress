@@ -40,7 +40,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。容器部署只有三个镜像：API、安全服务、静态站。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 七步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
-| **自定义好** | 2 套大主题 + 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（50 条路径 / 63 个操作）之后，换前端按契约写即可。 |
+| **自定义好** | 2 套大主题 + 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（51 条路径 / 64 个操作）之后，换前端按契约写即可。 |
 
 然后再回到产品本身——Practacu Press 想同时拿到三样：
 
@@ -126,7 +126,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | 数据库 | SQLite（纯 Go 驱动）/ MySQL / PostgreSQL |
 | 安全服务 | Rust · tonic（gRPC）· argon2 · ammonia（白名单清洗）· zeroize |
 | 前端 | React 19 · Vite 7 · TypeScript 5.9 · React Router 7（零 UI 框架依赖） |
-| 契约 | OpenAPI 3.1（**50 条路径 / 63 个操作**）+ protobuf（`security.proto`） |
+| 契约 | OpenAPI 3.1（**51 条路径 / 64 个操作**）+ protobuf（`security.proto`） |
 | 实时 | WebSocket（`coder/websocket`）+ outbox 事件补偿 |
 | 桌面分发 | Go 启动器（`go:embed` 内嵌前端 + 同源反向代理 + 子进程管理） |
 
@@ -327,7 +327,7 @@ Most options force a trade-off: blog engines write well but have no community; f
 | **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is three images. |
 | **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
 | **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
-| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (50 paths / 63 operations). |
+| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (51 paths / 64 operations). |
 
 Practacu Press aims for all three at low deployment cost:
 
@@ -373,7 +373,7 @@ Three decisions worth calling out:
 | Database | SQLite (pure Go) / MySQL / PostgreSQL |
 | Security service | Rust · tonic (gRPC) · argon2 · ammonia · zeroize |
 | Frontend | React 19 · Vite 7 · TypeScript 5.9 · React Router 7 (no UI framework) |
-| Contract | OpenAPI 3.1 (**50 paths / 63 operations**) + protobuf |
+| Contract | OpenAPI 3.1 (**51 paths / 64 operations**) + protobuf |
 | Realtime | WebSocket (`coder/websocket`) + outbox catch-up |
 | Desktop | Go launcher (`go:embed` + same-origin reverse proxy) |
 

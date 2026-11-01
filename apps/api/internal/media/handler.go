@@ -4,10 +4,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -51,6 +55,9 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFun
 	r.GET("/media/:assetID", optionalAuth, h.DownloadAsset)
 
 	group := r.Group("/media", requireAuth)
+	// The library listing is a session only view: an anonymous reader has no site to
+	// enumerate, and an asset that failed inspection must stay invisible to the public.
+	group.GET("", h.ListAssets)
 	group.POST("/uploads", h.CreateUpload)
 	group.POST("/uploads/:uploadID/content", h.UploadContent)
 	group.POST("/uploads/:uploadID/complete", h.CompleteUpload)
@@ -78,6 +85,45 @@ type assetResponse struct {
 	Size       int64  `json:"size"`
 	ScanStatus string `json:"scan_status"`
 	ReasonCode string `json:"scan_reason,omitempty"`
+	// Purpose is absent on rows that predate per purpose storage, so it stays optional
+	// on the wire too instead of being reported as an empty string.
+	Purpose   string `json:"purpose,omitempty"`
+	CreatedAt string `json:"created_at"`
+	// URL is the download route of this asset, derived rather than stored: a client that
+	// keeps the value must end up on the path the server actually serves.
+	URL string `json:"url"`
+}
+
+// assetView renders an asset for the wire.
+func assetView(asset Asset) assetResponse {
+	return assetResponse{
+		ID:         asset.ID,
+		StorageKey: asset.StorageKey,
+		MIME:       asset.MIME,
+		Size:       asset.Size,
+		ScanStatus: string(asset.ScanStatus),
+		ReasonCode: asset.ReasonCode,
+		Purpose:    string(asset.Purpose),
+		CreatedAt:  asset.CreatedAt.UTC().Format(time.RFC3339Nano),
+		URL:        "/api/v1/media/" + asset.ID,
+	}
+}
+
+// parseLimit reads the page size of a listing.
+//
+// An absent value is passed on as zero, which the service turns into the default. Any
+// other value must be an integer inside the documented bounds: clamping silently would
+// tell the client its page size was honoured when it was not.
+func parseLimit(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 || limit > MaxListLimit {
+		return 0, ErrInvalidInput
+	}
+	return limit, nil
 }
 
 // CreateUpload opens an upload session.
@@ -216,14 +262,74 @@ func (h *Handler) CompleteUpload(c *gin.Context) {
 		status = http.StatusUnprocessableEntity
 	}
 
-	c.JSON(status, assetResponse{
-		ID:         asset.ID,
-		StorageKey: asset.StorageKey,
-		MIME:       asset.MIME,
-		Size:       asset.Size,
-		ScanStatus: string(asset.ScanStatus),
-		ReasonCode: asset.ReasonCode,
+	c.JSON(status, assetView(asset))
+}
+
+// ListAssets returns one page of the site's media library.
+//
+// The library shows every scan verdict, including rejected files, because an editor
+// has to see what happened to an upload; only clean assets are downloadable or
+// referenceable, and that is enforced on the read path rather than by hiding rows.
+func (h *Handler) ListAssets(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
+		return
+	}
+
+	limit, err := parseLimit(c.Query("limit"))
+	if err != nil {
+		_ = c.Error(apperr.Validation("limit must be an integer between 1 and 100"))
+		return
+	}
+
+	cursor, err := page.Decode(c.Query("cursor"))
+	if err != nil {
+		_ = c.Error(apperr.New(apperr.CodeInvalidCursor).WithRequestID(c.GetHeader("X-Request-ID")))
+		return
+	}
+
+	assets, next, err := h.service.ListAssets(
+		c.Request.Context(),
+		actor,
+		AssetFilter{
+			Purpose:    Purpose(strings.TrimSpace(c.Query("purpose"))),
+			ScanStatus: ScanStatus(strings.TrimSpace(c.Query("scan_status"))),
+		},
+		limit,
+		cursor,
+	)
+	if err != nil {
+		failList(c, err)
+		return
+	}
+
+	items := make([]assetResponse, 0, len(assets))
+	for _, asset := range assets {
+		items = append(items, assetView(asset))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"items":       items,
+		"next_cursor": next,
+		"has_more":    next != "",
 	})
+}
+
+// failList translates a listing failure into the API error model.
+//
+// mapError speaks about uploads, which is the wrong answer for a refused filter value,
+// and a broken cursor has its own code so a client can tell an unusable token from an
+// unknown parameter.
+func failList(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, page.ErrInvalidCursor):
+		_ = c.Error(apperr.New(apperr.CodeInvalidCursor).WithRequestID(c.GetHeader("X-Request-ID")))
+	case errors.Is(err, ErrInvalidInput):
+		_ = c.Error(apperr.Validation("unknown media filter"))
+	default:
+		_ = c.Error(mapError(err))
+	}
 }
 
 // mapError translates media failures into the API error model.

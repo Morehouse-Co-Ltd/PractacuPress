@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/media"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
@@ -145,6 +146,68 @@ func (s *Store) FindAsset(ctx context.Context, siteID, assetID string) (media.As
 	return toAsset(row), nil
 }
 
+// ListAssets returns one page of a site's assets, newest first.
+//
+// The filters are applied in SQL, before the page size, so a filtered page is still a
+// full page and has_more describes the filtered result rather than the whole library.
+// Whether another page exists is decided by asking for one row more than the caller
+// wants: only when that extra row arrives is a cursor issued, so a client is never sent
+// after a page that does not exist.
+func (s *Store) ListAssets(
+	ctx context.Context,
+	siteID string,
+	filter media.AssetFilter,
+	limit int,
+	after page.Cursor,
+) ([]media.Asset, string, error) {
+	query := s.client.MediaAsset.Query().Where(mediaasset.SiteIDEQ(siteID))
+
+	if filter.Purpose != "" {
+		query = query.Where(mediaasset.PurposeEQ(string(filter.Purpose)))
+	}
+	if filter.ScanStatus != "" {
+		query = query.Where(mediaasset.ScanStatusEQ(string(filter.ScanStatus)))
+	}
+
+	// The tie breaker on id is what makes the boundary stable when several rows share a
+	// timestamp, which is the normal case for a burst of uploads in the same second.
+	if !after.IsZero() {
+		boundary, parseErr := time.Parse(time.RFC3339Nano, after.Key)
+		if parseErr != nil {
+			return nil, "", media.ErrInvalidInput
+		}
+		query = query.Where(mediaasset.Or(
+			mediaasset.CreatedAtLT(boundary),
+			mediaasset.And(mediaasset.CreatedAtEQ(boundary), mediaasset.IDLT(after.ID)),
+		))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(mediaasset.FieldCreatedAt), entgen.Desc(mediaasset.FieldID)).
+		Limit(limit + 1).
+		All(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+
+	assets := make([]media.Asset, 0, len(rows))
+	for _, row := range rows {
+		assets = append(assets, toAsset(row))
+	}
+
+	next := ""
+	if hasMore && len(assets) > 0 {
+		last := assets[len(assets)-1]
+		next = page.Cursor{Key: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID}.Encode()
+	}
+	return assets, next, nil
+}
+
 // DeleteAsset removes an asset record inside a site scope.
 func (s *Store) DeleteAsset(ctx context.Context, siteID, assetID string) error {
 	deleted, err := s.client.MediaAsset.Delete().
@@ -196,6 +259,3 @@ func toAsset(row *entgen.MediaAsset) media.Asset {
 	}
 	return asset
 }
-
-// keep the predicate import meaningful for future filters.
-var _ = mediaasset.ID

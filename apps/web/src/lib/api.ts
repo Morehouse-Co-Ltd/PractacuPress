@@ -698,8 +698,12 @@ export class HttpBackend {
   }
 
   async listAssets(): Promise<Asset[]> {
-    // 契约没有媒体列表端点；只展示当前会话上传结果。
-    return [];
+    // 媒体列表按上传时间倒序、游标分页；管理页一次取 100 条，不做无限滚动。
+    // `url` 是契约给的相对地址，页面直接当作展示地址，不在这里拼绝对地址。
+    const page = await this.request<{ items: Asset[]; next_cursor: string; has_more: boolean }>(
+      '/media?limit=100',
+    );
+    return page.items;
   }
 
   async conversations(): Promise<Conversation[]> {

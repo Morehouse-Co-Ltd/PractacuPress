@@ -178,6 +178,10 @@ export interface Asset {
   /** 展示地址：`/api/v1/media/{id}`。 */
   url?: string;
   file_name?: string;
+  /** `GET /media` 返回：上传用途；早期数据可能没有这个字段。 */
+  purpose?: StorageScope;
+  /** `GET /media` 返回：上传时间。 */
+  created_at?: string;
 }
 
 export interface Conversation {

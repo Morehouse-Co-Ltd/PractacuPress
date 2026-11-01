@@ -1161,6 +1161,34 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /media:
+    get:
+      tags: [media]
+      summary: List the site's media assets
+      description: |
+        Newest first, scoped to the caller's site: the token's site is the only tenant
+        boundary, so no parameter widens the listing to another site.
+        `purpose` and `scan_status` are applied before the page size, so `has_more` and
+        `next_cursor` describe the filtered result rather than the whole library.
+        Every scan verdict is listed, including `rejected`, because the library has to
+        show what happened to an upload; only `clean` assets are downloadable or
+        referenceable, which the download route enforces.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Purpose'
+        - $ref: '#/components/parameters/ScanStatus'
+      responses:
+        '200':
+          description: One page of assets
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAssetPage' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /media/uploads:
     post:
       tags: [media]
@@ -1799,6 +1827,23 @@ components:
         /u/{userID} uses. The id is not validated against membership: an unknown or
         malformed id simply matches nothing and yields an empty page.
       schema: { type: string }
+    Purpose:
+      name: purpose
+      in: query
+      required: false
+      description: |
+        Restrict the page to one purpose. A value outside the enum is rejected with 400
+        instead of being ignored, so a typo cannot silently widen the listing.
+      schema: { type: string, enum: [content, site, avatar, attachment] }
+    ScanStatus:
+      name: scan_status
+      in: query
+      required: false
+      description: |
+        Restrict the page to one inspection verdict. Rejected assets are listed like any
+        other because the library has to show what happened to an upload; only `clean`
+        assets are downloadable.
+      schema: { type: string, enum: [pending, clean, rejected, needs_manual_review] }
 
   responses:
     ValidationFailed:
@@ -2094,7 +2139,7 @@ components:
 
     Asset:
       type: object
-      required: [id, storage_key, mime_type, size, scan_status]
+      required: [id, storage_key, mime_type, size, scan_status, created_at, url]
       properties:
         id: { type: string }
         storage_key: { type: string }
@@ -2102,6 +2147,24 @@ components:
         size: { type: integer, format: int64 }
         scan_status: { type: string, enum: [pending, clean, rejected, needs_manual_review] }
         scan_reason: { type: string }
+        purpose:
+          type: string
+          enum: [content, site, avatar, attachment]
+          description: Absent on rows that predate per purpose storage.
+        created_at: { type: string, format: date-time }
+        url:
+          type: string
+          description: Download path of this asset, for example /api/v1/media/{id}.
+
+    MediaAssetPage:
+      type: object
+      required: [items, next_cursor, has_more]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Asset' }
+        next_cursor: { type: string }
+        has_more: { type: boolean }
 
     Conversation:
       type: object

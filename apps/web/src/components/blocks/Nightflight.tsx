@@ -793,6 +793,13 @@ function QuoteCard({ block }: { block: BlockInstance }) {
   );
 }
 
+/**
+ * 时间线：一条从上贯到下的竖轴 + 轴上的节点，年份在轴左侧、事件在轴右侧。
+ *
+ * 结构是「轴」而不是普通列表：年份列、轴列、内容列各占一格，轴由每一条的左边框
+ * 接起来（最后一条不画，轴就正好收在最后一个节点上）。年份重复时照样逐条显示，
+ * 因为节点之间没有分组语义——节点顺序就是作者写下的顺序。
+ */
 function Timeline({ block }: { block: BlockInstance }) {
   const t = useT();
   const items = blockItems(block, 'items');
@@ -802,9 +809,12 @@ function Timeline({ block }: { block: BlockInstance }) {
   return (
     <ol className="nf-widget nf-timeline">
       {items.map((item, index) => (
-        <li key={index}>
+        <li className="nf-timeline-item" key={index}>
           <span className="nf-timeline-year">{item.year || '·'}</span>
-          <span className="nf-timeline-text">{item.text || ''}</span>
+          <div className="nf-timeline-entry">
+            <span className="nf-timeline-dot" aria-hidden="true" />
+            <p className="nf-timeline-text">{item.text || ''}</p>
+          </div>
         </li>
       ))}
     </ol>

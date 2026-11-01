@@ -69,6 +69,7 @@ const fragment: Dictionary = {
   '收藏切换': 'Bookmark toggle',
   '关注切换': 'Follow toggle',
   '媒体': 'Media',
+  '本站媒体列表，游标分页': 'Media list for this site, cursor-paginated',
   '打开上传会话': 'Open an upload session',
   'multipart 上传字节': 'Upload bytes as multipart',
   '触发安全检查': 'Trigger the security check',
@@ -117,9 +118,9 @@ const fragment: Dictionary = {
     'import and export, extensions have their own `.ppext.json` manifest format, and none of it pretends to sync to other devices.',
   '文章封面按内容 id 覆盖，列表与详情页只影响展示，不写入正文。':
     'Article covers are overridden per content id; the list and detail views only change presentation, never the body text.',
-  '媒体列表与审计': 'Media list and activity log',
-  '没有列表 / 查询端点。媒体页只显示本次会话上传；操作记录按浏览器本地记录呈现，并注明不是合规审计。':
-    'There is no list or lookup endpoint. The media page shows only uploads from this session; the activity log is rendered from the browser-local record and is marked as not a compliance audit.',
+  '操作审计': 'Activity audit',
+  '没有审计端点。媒体列表由 GET /media 提供，操作记录仍只按浏览器本地记录呈现，并注明不是合规审计。':
+    'There is no audit endpoint. The media list comes from GET /media, while the activity log is still rendered from the browser-local record and is marked as not a compliance audit.',
   '注册开关': 'Registration switch',
   'Site 没有站点形态或注册开关字段。个人博客的注册关闭由前端实现（隐藏入口、关闭注册页、':
     'Site has no field for the site shape or a registration switch. Closing registration on a personal blog is done by the front end (hiding the entry, closing the sign-up page,',

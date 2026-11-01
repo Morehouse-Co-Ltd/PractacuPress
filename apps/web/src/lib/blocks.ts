@@ -484,8 +484,9 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     variants: ['classic', 'bento'],
     defaults: {
       items: JSON.stringify([
-        { year: '2026', text: '站点上线，写下第一篇文章。' },
-        { year: '2026', text: '主题工坊开放，排版可以不写代码。' },
+        { year: '2024', text: '写下第一篇文章，站点有了第一条记录。' },
+        { year: '2025', text: '主题工坊开放，排版可以不写代码。' },
+        { year: '2026', text: '搬进自己的域名，读者开始留下留言。' },
       ]),
     },
     schema: [

@@ -6,17 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 )
 
 type fakeRepo struct {
-	uploads map[string]Upload
-	assets  []Asset
-	seq     int
+	uploads   map[string]Upload
+	assets    []Asset
+	seq       int
+	listCalls []listCall
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{uploads: map[string]Upload{}} }
@@ -78,6 +82,61 @@ func (f *fakeRepo) DeleteAsset(_ context.Context, siteID, assetID string) error 
 		}
 	}
 	return ErrNotFound
+}
+
+// listCall records how the service asked for a page, so a test can prove the page size,
+// the site scope and the filters reached the repository unchanged.
+type listCall struct {
+	siteID string
+	filter AssetFilter
+	limit  int
+	after  page.Cursor
+}
+
+func (f *fakeRepo) ListAssets(
+	_ context.Context,
+	siteID string,
+	filter AssetFilter,
+	limit int,
+	after page.Cursor,
+) ([]Asset, string, error) {
+	f.listCalls = append(f.listCalls, listCall{siteID: siteID, filter: filter, limit: limit, after: after})
+
+	out := make([]Asset, 0, len(f.assets))
+	for _, asset := range f.assets {
+		if asset.SiteID != siteID {
+			continue
+		}
+		if filter.Purpose != "" && asset.Purpose != filter.Purpose {
+			continue
+		}
+		if filter.ScanStatus != "" && asset.ScanStatus != filter.ScanStatus {
+			continue
+		}
+		out = append(out, asset)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+
+	next := ""
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+		last := out[len(out)-1]
+		next = page.Cursor{Key: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID}.Encode()
+	}
+	return out, next, nil
+}
+
+// lastList returns the most recent listing call, or a zero value when none was made.
+func (f *fakeRepo) lastList() listCall {
+	if len(f.listCalls) == 0 {
+		return listCall{}
+	}
+	return f.listCalls[len(f.listCalls)-1]
 }
 
 type fakeScanner struct {
@@ -602,4 +661,157 @@ func TestStorageRoutingFallsBackWhenPurposeMissing(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, reader.Close())
 	require.Equal(t, 1, global.opens)
+}
+
+// seedAsset stores an asset the way a completed upload would leave it behind.
+func seedAsset(
+	t *testing.T,
+	repo *fakeRepo,
+	siteID string,
+	purpose Purpose,
+	status ScanStatus,
+	createdAt time.Time,
+) Asset {
+	t.Helper()
+
+	asset, err := repo.InsertAsset(context.Background(), Asset{
+		SiteID:     siteID,
+		OwnerID:    "u1",
+		StorageKey: fmt.Sprintf("ab/%d.png", len(repo.assets)),
+		MIME:       "image/png",
+		Size:       10,
+		ScanStatus: status,
+		Purpose:    purpose,
+		CreatedAt:  createdAt,
+	})
+	require.NoError(t, err)
+	return asset
+}
+
+// TestListAssetsNormalisesLimit pins the page size rules: an absent or out of range
+// limit falls back to the default, and a value inside the bounds is honoured.
+func TestListAssetsNormalisesLimit(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	ctx := context.Background()
+
+	for _, limit := range []int{0, -5, 500} {
+		_, _, err := service.ListAssets(ctx, owner(), AssetFilter{}, limit, page.Cursor{})
+		require.NoError(t, err, "limit %d", limit)
+		require.Equal(t, DefaultListLimit, repo.lastList().limit, "limit %d must fall back", limit)
+	}
+
+	_, _, err := service.ListAssets(ctx, owner(), AssetFilter{}, MaxListLimit, page.Cursor{})
+	require.NoError(t, err)
+	require.Equal(t, MaxListLimit, repo.lastList().limit, "the ceiling itself is a valid page size")
+}
+
+// TestListAssetsRejectsUnknownFilters is the property that matters: a filter value the
+// server does not know must be refused, never quietly ignored, because an ignored
+// filter returns the whole library under the label of a narrow one.
+func TestListAssetsRejectsUnknownFilters(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	ctx := context.Background()
+
+	_, _, err := service.ListAssets(ctx, owner(), AssetFilter{Purpose: Purpose("video")}, 0, page.Cursor{})
+	require.ErrorIs(t, err, ErrInvalidInput)
+
+	_, _, err = service.ListAssets(ctx, owner(), AssetFilter{ScanStatus: ScanStatus("infected")}, 0, page.Cursor{})
+	require.ErrorIs(t, err, ErrInvalidInput)
+
+	require.Empty(t, repo.listCalls, "a refused filter must not reach the repository")
+}
+
+func TestListAssetsScopesToActorSite(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	ctx := context.Background()
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	mine := seedAsset(t, repo, "s1", PurposeContent, ScanClean, now)
+	seedAsset(t, repo, "s2", PurposeContent, ScanClean, now)
+
+	assets, _, err := service.ListAssets(ctx, owner(), AssetFilter{}, 0, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, assets, 1, "another site's assets must never appear")
+	require.Equal(t, mine.ID, assets[0].ID)
+	require.Equal(t, "s1", repo.lastList().siteID, "the scope comes from the token, not the caller")
+}
+
+func TestListAssetsAppliesFilters(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	ctx := context.Background()
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	content := seedAsset(t, repo, "s1", PurposeContent, ScanClean, now)
+	avatar := seedAsset(t, repo, "s1", PurposeAvatar, ScanRejected, now.Add(-time.Hour))
+
+	byPurpose, _, err := service.ListAssets(ctx, owner(), AssetFilter{Purpose: PurposeAvatar}, 0, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, byPurpose, 1)
+	require.Equal(t, avatar.ID, byPurpose[0].ID)
+	require.Equal(t, AssetFilter{Purpose: PurposeAvatar}, repo.lastList().filter)
+
+	byStatus, _, err := service.ListAssets(ctx, owner(), AssetFilter{ScanStatus: ScanClean}, 0, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, byStatus, 1)
+	require.Equal(t, content.ID, byStatus[0].ID)
+
+	both, _, err := service.ListAssets(ctx, owner(),
+		AssetFilter{Purpose: PurposeContent, ScanStatus: ScanRejected}, 0, page.Cursor{})
+	require.NoError(t, err)
+	require.Empty(t, both, "the dimensions combine with AND")
+}
+
+// TestListAssetsIssuesCursorOnlyOnFullPage keeps a client from asking for an empty
+// page: the cursor names the last row of a full page and is withheld otherwise.
+func TestListAssetsIssuesCursorOnlyOnFullPage(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	ctx := context.Background()
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	first := seedAsset(t, repo, "s1", PurposeContent, ScanClean, now)
+	seedAsset(t, repo, "s1", PurposeContent, ScanClean, now.Add(-time.Minute))
+	seedAsset(t, repo, "s1", PurposeContent, ScanClean, now.Add(-2*time.Minute))
+
+	page1, next, err := service.ListAssets(ctx, owner(), AssetFilter{}, 2, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, page1, 2)
+	require.NotEmpty(t, next)
+
+	decoded, err := page.Decode(next)
+	require.NoError(t, err)
+	require.Equal(t, page1[len(page1)-1].ID, decoded.ID)
+	require.Equal(t, page1[len(page1)-1].CreatedAt.UTC().Format(time.RFC3339Nano), decoded.Key)
+
+	all, last, err := service.ListAssets(ctx, owner(), AssetFilter{}, 5, page.Cursor{})
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	require.Equal(t, first.ID, all[0].ID, "the newest asset comes first")
+	require.Empty(t, last, "a short page is the end of the listing")
+}
+
+// TestListAssetsRejectsUnusableCursor is what keeps an infinite scroll terminating:
+// a cursor whose sort key is not a timestamp is a client error, not a fresh start.
+func TestListAssetsRejectsUnusableCursor(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+
+	_, _, err := service.ListAssets(context.Background(), owner(), AssetFilter{}, 0,
+		page.Cursor{Key: "not-a-timestamp", ID: "a1"})
+	require.ErrorIs(t, err, page.ErrInvalidCursor)
+	require.Empty(t, repo.listCalls)
+}
+
+func TestListAssetsPassesCursorThrough(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	cursor := page.Cursor{Key: time.Date(2026, 10, 18, 11, 0, 0, 0, time.UTC).Format(time.RFC3339Nano), ID: "a1"}
+
+	_, _, err := service.ListAssets(context.Background(), owner(), AssetFilter{}, 0, cursor)
+	require.NoError(t, err)
+	require.Equal(t, cursor, repo.lastList().after)
 }
