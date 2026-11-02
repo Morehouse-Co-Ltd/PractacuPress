@@ -11,8 +11,8 @@ const fragment: Dictionary = {
   未命名页面: 'Untitled page',
 
   // ---- 封面地址校验 ----
-  '图片太大：演示模式下请选择 600 KB 以内的图片。':
-    'The image is too large: in demo mode, pick an image under 600 KB.',
+  '图片太大：内联封面图上限 64 KB，请换一张更小的图片。':
+    'The image is too large: inline cover images are capped at 64 KB, so pick a smaller image.',
   '只支持 png / jpg / webp / gif / svg 图片。':
     'Only png / jpg / webp / gif / svg images are supported.',
   '请填写 http(s) 图片地址、以 / 开头的站内路径，或直接上传图片。':

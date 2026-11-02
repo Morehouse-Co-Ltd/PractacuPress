@@ -52,6 +52,9 @@ const fragment: Dictionary = {
   '只重置编排，不动内容': 'Only the layout is reset; the content is kept',
   '文章、页面正文、评论、账户与媒体都不会被删除。恢复后可以按 Ctrl/Cmd + Z 撤销。':
     'Articles, page bodies, comments, accounts and media are never deleted. You can undo the restore with Ctrl/Cmd + Z.',
+  // ---- 保存护栏（规格 §4.5 体积预算） ----
+  '这份编排有 {count} 个区块，超过上限 {limit} 个。请先删掉一些再保存。':
+    'This layout has {count} blocks, over the limit of {limit}. Delete some before saving.',
 };
 
 export default fragment;

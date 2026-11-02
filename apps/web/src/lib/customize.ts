@@ -167,8 +167,6 @@ export const DEFAULT_EXTENSIONS: Record<ExtensionId, boolean> = {
  * ------------------------------------------------------------------ */
 
 export const MAX_COVERS = 200;
-/** 演示模式上传的图片以 data URL 存进 localStorage，超过这个长度就拒绝，避免撑爆配额。 */
-export const MAX_COVER_DATA_URL_CHARS = 1_200_000;
 
 const COVER_POSITIONS: NonNullable<ArticleCover['position']>[] = ['center', 'top', 'bottom'];
 
@@ -176,19 +174,18 @@ const COVER_POSITIONS: NonNullable<ArticleCover['position']>[] = ['center', 'top
  * 校验封面地址。
  *
  * 只接受 http(s)、站内绝对路径与 base64 图片：`javascript:` / `data:text/html` 一律丢弃。
- * 这里不做截断——data URL 截断会变成坏图，宁可整条拒绝。
+ * 这里不做截断——data URL 截断会变成坏图，宁可整条拒绝。内联图的长度上限是
+ * `COVER_DATA_URL_MAX`：封面跟着设计文档一起下发，每张 64 KB 已经是首屏负担。
  */
 export function normalizeCoverUrl(value: unknown): string {
   const url = typeof value === 'string' ? value.trim() : '';
-  if (!url || url.length > MAX_COVER_DATA_URL_CHARS + 200) return '';
+  // 整条长度先过一遍：超长的 http(s) 地址本来也没有意义，data URL 更不能进设计文档。
+  if (!url || url.length > COVER_DATA_URL_MAX) return '';
   if (/^https?:\/\/\S+$/i.test(url)) return url.slice(0, 2000);
-  if (/^data:image\/(png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=\s]+$/i.test(url)) {
-    return url.length <= MAX_COVER_DATA_URL_CHARS ? url : '';
-  }
+  // 长度已在上限内，base64 图片原样保留（截断会变成坏图）。
+  if (/^data:image\/(png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=\s]+$/i.test(url)) return url;
   // SVG 只作为 <img> 渲染，不进入 DOM，允许 base64 与 percent-encode 两种写法。
-  if (/^data:image\/svg\+xml(;[a-z0-9=.+-]+)*(;base64)?,[^"'<>]*$/i.test(url)) {
-    return url.length <= MAX_COVER_DATA_URL_CHARS ? url : '';
-  }
+  if (/^data:image\/svg\+xml(;[a-z0-9=.+-]+)*(;base64)?,[^"'<>]*$/i.test(url)) return url;
   if (/^\/(?!\/)\S*$/.test(url)) return url.slice(0, 2000);
   return '';
 }
@@ -197,8 +194,8 @@ export function coverUrlError(value: string): string {
   const url = value.trim();
   if (!url) return '';
   // 先判长度：超长 data URL 会在 normalizeCoverUrl 里被整条拒绝，不能只给「格式不对」。
-  if (url.startsWith('data:') && url.length > MAX_COVER_DATA_URL_CHARS) {
-    return t('图片太大：演示模式下请选择 600 KB 以内的图片。');
+  if (url.startsWith('data:') && url.length > COVER_DATA_URL_MAX) {
+    return t('图片太大：内联封面图上限 64 KB，请换一张更小的图片。');
   }
   if (normalizeCoverUrl(url)) return '';
   if (url.startsWith('data:')) return t('只支持 png / jpg / webp / gif / svg 图片。');
@@ -793,6 +790,45 @@ export function normalizeMediaUrl(value: unknown): string | undefined {
   return undefined;
 }
 
+/* ---------- 体积预算（规格 §4.5） ---------- */
+
+/** 单个区块 props 的序列化上限。 */
+export const PROPS_MAX_BYTES = 8192;
+/** 整份设计的软警告线（硬上限是服务端的 1 MiB）。 */
+export const DESIGN_SOFT_LIMIT_BYTES = 524288;
+/** 封面内联图上限；再大就是首屏负担。 */
+export const COVER_DATA_URL_MAX = 65536;
+
+function byteLength(value: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value) ?? '').length;
+  } catch {
+    return 0;
+  }
+}
+
+/** 估算一份设计的体积，并判断是否越过软警告线。 */
+export function designVolumeReport(customization: unknown): { bytes: number; soft: boolean } {
+  const bytes = byteLength(customization);
+  return { bytes, soft: bytes > DESIGN_SOFT_LIMIT_BYTES };
+}
+
+/**
+ * 单个区块 props 的体积裁剪：超过 `PROPS_MAX_BYTES` 的键整条丢弃。
+ *
+ * 服务端的硬上限是整份文档 1 MiB，单块撑爆预算会让后面所有区块都存不进去；这里的
+ * 归一点是编辑器，归一化丢一个超大的键比丢掉整份设计可接受。不做值截断：半个 JSON、
+ * 半张图都是坏数据，宁可让用户重填。
+ */
+function capPropBytes(out: BlockProps): BlockProps {
+  const capped: BlockProps = {};
+  for (const [key, item] of Object.entries(out)) {
+    if (byteLength({ [key]: item }) > PROPS_MAX_BYTES) continue;
+    capped[key] = item;
+  }
+  return capped;
+}
+
 /**
  * 按注册表 schema 递归白名单清洗属性。
  *
@@ -812,7 +848,7 @@ export function normalizeBlockProps(type: string, value: unknown): BlockProps {
       const scalar = scalarValue(item);
       if (scalar !== undefined) out[key] = scalar;
     }
-    return out;
+    return capPropBytes(out);
   }
   const fields = new Map(def.schema.map((field) => [field.key, field]));
   const out: BlockProps = {};
@@ -841,7 +877,7 @@ export function normalizeBlockProps(type: string, value: unknown): BlockProps {
     const scalar = scalarValue(item);
     if (scalar !== undefined) out[key] = scalar;
   }
-  return out;
+  return capPropBytes(out);
 }
 
 /** 读 repeater 值；坏数据一律返回空数组，渲染器不需要防御。 */

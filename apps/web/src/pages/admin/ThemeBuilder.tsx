@@ -11,7 +11,15 @@ import {
   defaultHomeLayout,
   screenBlocksForDevice,
 } from '../../lib/blocks';
-import { findBlock, insertBlock, moveBlock, removeBlock, updateBlock } from '../../lib/blockTree';
+import {
+  MAX_BLOCKS,
+  countBlocks,
+  findBlock,
+  insertBlock,
+  moveBlock,
+  removeBlock,
+  updateBlock,
+} from '../../lib/blockTree';
 import { templateById } from '../../lib/templates';
 import { useBuilderHistory } from '../../lib/useBuilderHistory';
 import { useToast } from '../../lib/toast';
@@ -94,8 +102,29 @@ export function ThemeBuilderPage() {
     });
   };
 
+  /**
+   * 保存前的区块总量护栏。
+   *
+   * 读入时的归一化会静默丢掉超限的区块，用户只会看到「加着加着少了几块」。所以在
+   * 落盘这一步就用同一套常量（`blockTree.ts` 的 `countBlocks` / `MAX_BLOCKS`）挡住，
+   * 并在提示里写清当前数量与上限。
+   */
+  const guardBudget = (next: BlockInstance[]): boolean => {
+    const total = countBlocks(next);
+    if (total <= MAX_BLOCKS) return true;
+    toast.push(
+      'error',
+      t('这份编排有 {count} 个区块，超过上限 {limit} 个。请先删掉一些再保存。', {
+        count: total,
+        limit: MAX_BLOCKS,
+      }),
+    );
+    return false;
+  };
+
   /** 把当前撤销栈里的编排写到「当前设备」或共用编排。 */
   const persistBlocks = (next: BlockInstance[]) => {
+    if (!guardBudget(next)) return;
     if (screenLayout.device_split) {
       setScreenLayout({
         ...screenLayout,

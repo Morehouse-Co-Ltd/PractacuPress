@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ArticleCover } from '../types';
 import {
-  MAX_COVER_DATA_URL_CHARS,
+  COVER_DATA_URL_MAX,
   coverUrlError,
   normalizeCoverUrl,
 } from './customize';
@@ -106,8 +106,8 @@ describe('normalizeCoverUrl', () => {
   });
 
   it('拒绝超过上限的 data URL，而不是截断', () => {
-    const tooLong = `data:image/png;base64,${'A'.repeat(MAX_COVER_DATA_URL_CHARS)}`;
-    expect(tooLong.length).toBeGreaterThan(MAX_COVER_DATA_URL_CHARS);
+    const tooLong = `data:image/png;base64,${'A'.repeat(COVER_DATA_URL_MAX)}`;
+    expect(tooLong.length).toBeGreaterThan(COVER_DATA_URL_MAX);
     expect(normalizeCoverUrl(tooLong)).toBe('');
   });
 
@@ -136,9 +136,9 @@ describe('coverUrlError', () => {
     expect(coverUrlError('data:text/html;base64,PHNjcmlwdD4=')).toContain('svg');
   });
 
-  it('超长图片提示 600 KB 以内', () => {
-    const tooLong = `data:image/png;base64,${'A'.repeat(MAX_COVER_DATA_URL_CHARS)}`;
-    expect(coverUrlError(tooLong)).toContain('600 KB');
+  it('超长图片提示 64 KB 以内', () => {
+    const tooLong = `data:image/png;base64,${'A'.repeat(COVER_DATA_URL_MAX)}`;
+    expect(coverUrlError(tooLong)).toContain('64 KB');
   });
 });
 
