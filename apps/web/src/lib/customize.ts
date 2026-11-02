@@ -2,7 +2,11 @@ import { useCallback, useMemo } from 'react';
 import type {
   ArticleCover,
   BlockAnimation,
+  BlockDisplayOverride,
   BlockInstance,
+  BlockSpan,
+  BlockVisibility,
+  BuilderDevice,
   CommentSettings,
   CustomExtension,
   ExtensionId,
@@ -54,6 +58,7 @@ import { DEFAULT_PERMISSIONS, normalizePermissions } from './permissions';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 import { normalizeLocale } from './i18n/locales';
+import { migrateCustomization } from './migrate';
 
 /**
  * 站点外观、页面与扩展。
@@ -553,6 +558,119 @@ function scalarValue(item: unknown): string | number | boolean | undefined {
   return undefined;
 }
 
+/* ---------- v2 展示层字段（at / visible / anchor / span / offset） ---------- */
+
+/** 12 列栅格的取值范围。 */
+const SPAN_MIN = 1;
+const SPAN_MAX = 12;
+
+function plainRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function clampSpan(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.min(SPAN_MAX, Math.max(SPAN_MIN, Math.round(value)));
+}
+
+function normalizeBlockSpan(value: unknown): BlockSpan | undefined {
+  const record = plainRecord(value);
+  if (!record) return undefined;
+  const base = clampSpan(record.base);
+  if (base === undefined) return undefined;
+  const span: BlockSpan = { base };
+  for (const key of ['md', 'sm'] as const) {
+    const item = clampSpan(record[key]);
+    if (item !== undefined) span[key] = item;
+  }
+  return span;
+}
+
+function normalizeDisplayOverride(value: unknown): BlockDisplayOverride | undefined {
+  const record = plainRecord(value);
+  if (!record) return undefined;
+  const patch: BlockDisplayOverride = {};
+  const span = normalizeBlockSpan(record.span);
+  if (span) patch.span = span;
+  const appearance = normalizeBlockAppearance(record.appearance);
+  if (appearance) patch.appearance = appearance;
+  if (typeof record.animation === 'string' && (ANIMATIONS as string[]).includes(record.animation)) {
+    patch.animation = record.animation as BlockAnimation;
+  }
+  if (typeof record.hidden === 'boolean') patch.hidden = record.hidden;
+  if (typeof record.custom_css === 'string' && record.custom_css) {
+    patch.custom_css = record.custom_css.slice(0, 4000);
+  }
+  if (typeof record.width === 'number' && record.width > 0) patch.width = Math.min(1600, Math.round(record.width));
+  if (typeof record.height === 'number' && record.height > 0) {
+    patch.height = Math.min(2400, Math.round(record.height));
+  }
+  if (record.align === 'left' || record.align === 'center' || record.align === 'right') {
+    patch.align = record.align;
+  }
+  for (const key of ['gap_scale', 'mt', 'mb'] as const) {
+    const item = record[key];
+    if (typeof item === 'number' && Number.isFinite(item)) patch[key] = item;
+  }
+  return Object.keys(patch).length ? patch : undefined;
+}
+
+function normalizeBlockAt(value: unknown): BlockInstance['at'] {
+  const record = plainRecord(value);
+  if (!record) return undefined;
+  const at: NonNullable<BlockInstance['at']> = {};
+  for (const device of ['tablet', 'mobile'] as const) {
+    const patch = normalizeDisplayOverride(record[device]);
+    if (patch) at[device] = patch;
+  }
+  return Object.keys(at).length ? at : undefined;
+}
+
+function normalizeBlockVisibility(value: unknown): BlockVisibility | undefined {
+  const record = plainRecord(value);
+  if (!record) return undefined;
+  const visibility: BlockVisibility = {};
+  if (Array.isArray(record.devices)) {
+    const devices = record.devices.filter(
+      (item): item is BuilderDevice => item === 'desktop' || item === 'tablet' || item === 'mobile',
+    );
+    if (devices.length) visibility.devices = devices;
+  }
+  if (Array.isArray(record.roles)) {
+    const roles = record.roles.filter(
+      (item): item is 'guest' | 'member' | 'admin' =>
+        item === 'guest' || item === 'member' || item === 'admin',
+    );
+    if (roles.length) visibility.roles = roles;
+  }
+  if (typeof record.from === 'string' && record.from) visibility.from = record.from.slice(0, 40);
+  if (typeof record.to === 'string' && record.to) visibility.to = record.to.slice(0, 40);
+  return Object.keys(visibility).length ? visibility : undefined;
+}
+
+/**
+ * v2 展示层字段的读入清洗。
+ *
+ * 迁移把各设备不同的展示设置折算进 `at`；归一化如果把它们丢掉，用户读一次再
+ * 保存就永久失去了手机 / 平板上的外观差异。渲染在 P0 还不用这些字段，但必须留住。
+ */
+function blockDisplayFields(raw: Partial<BlockInstance>): Partial<BlockInstance> {
+  const at = normalizeBlockAt(raw.at);
+  const visible = normalizeBlockVisibility(raw.visible);
+  const span = normalizeBlockSpan(raw.span);
+  const offset = normalizeBlockSpan(raw.offset);
+  const anchor = typeof raw.anchor === 'string' && raw.anchor ? raw.anchor.slice(0, 120) : undefined;
+  return {
+    ...(at ? { at } : {}),
+    ...(visible ? { visible } : {}),
+    ...(anchor ? { anchor } : {}),
+    ...(span ? { span } : {}),
+    ...(offset ? { offset } : {}),
+  };
+}
+
 function normalizeBlock(
   value: unknown,
   depth = 0,
@@ -614,6 +732,8 @@ function normalizeBlock(
         ? { custom_css: raw.custom_css.slice(0, 4000) }
         : {}),
       ...(appearance ? { appearance } : {}),
+      // 不认识类型的区块同样保留 v2 展示层字段：新版本存下来的覆盖不能被旧版本吃掉。
+      ...blockDisplayFields(raw),
     };
   }
   return {
@@ -636,6 +756,7 @@ function normalizeBlock(
       ? { custom_css: raw.custom_css.slice(0, 4000) }
       : {}),
     ...(appearance ? { appearance } : {}),
+    ...blockDisplayFields(raw),
   };
 }
 
@@ -774,8 +895,10 @@ function normalizeVerificationProvider(value: unknown): HumanVerificationProvide
 
 /** 把任意（可能是旧版本或导入的）配置收敛成可用的结构。 */
 export function readCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
-  const raw = config.customization;
-  if (!raw) return DEFAULT_CUSTOMIZATION;
+  if (!config.customization) return DEFAULT_CUSTOMIZATION;
+  // 只改读取路径：v1 的三棵树在这里折算成 v2 的展示层覆盖，保存路径仍然写原始对象，
+  // 迁移结果在下一次保存（或 customizationSync 的本地缓存写回）时自然落盘。
+  const raw = migrateCustomization(config.customization).value as Partial<SiteCustomization>;
   const theme = normalizeThemeSettings(raw.theme);
   const layout = raw.layout ?? DEFAULT_LAYOUT;
   const variant = layout.variant === 'bento' ? 'bento' : 'classic';

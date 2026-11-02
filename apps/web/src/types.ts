@@ -497,6 +497,34 @@ export interface ArticleCover {
   hidden?: boolean;
 }
 
+export interface BlockSpan {
+  base: number; // 1–12
+  md?: number;  // ≥768
+  sm?: number;  // ≥480
+}
+
+/**
+ * 只覆盖展示层的补丁：与基准区块逐字段比较后的差异，未出现的键表示沿用基础值。
+ * 因此这里必须整体 `Partial`——`hidden` / `animation` 在 `BlockInstance` 上是必填的，
+ * `Pick` 之后仍然必填，会让「只改了宽度」这类补丁无法表达。
+ */
+export type BlockDisplayOverride = Partial<
+  Pick<BlockInstance, 'span' | 'appearance' | 'animation' | 'hidden' | 'custom_css' | 'width' | 'height'>
+> & {
+  align?: 'left' | 'center' | 'right';
+  gap_scale?: number;
+  mt?: number;
+  mb?: number;
+};
+
+export interface BlockVisibility {
+  devices?: BuilderDevice[];
+  roles?: ('guest' | 'member' | 'admin')[];
+  /** ISO 日期，含首尾。 */
+  from?: string;
+  to?: string;
+}
+
 /** 站点自定义页面。契约 v0.1.0 没有页面端点，页面存在本地安装配置里。 */
 export interface SitePage {
   id: string;
@@ -826,6 +854,16 @@ export interface BlockInstance {
    * 这样从更新版本导出的设计不会因为本版本不认识而在下一次保存时永久消失。
    */
   unsupported?: boolean;
+  /** 只覆盖展示层，不覆盖 props；缺省表示沿用基础值。 */
+  at?: { tablet?: BlockDisplayOverride; mobile?: BlockDisplayOverride };
+  /** 内置条件显示；渲染期求值，刷新后仍然生效。 */
+  visible?: BlockVisibility;
+  /** 目录 / 跳转锚点。 */
+  anchor?: string;
+  /** 栅格占位；与 width 同时存在时 span 优先。 */
+  span?: BlockSpan;
+  /** 栅格起始列偏移。 */
+  offset?: BlockSpan;
 }
 
 /** 夜航双栏布局的落位。 */
@@ -968,6 +1006,8 @@ export interface SiteCustomization {
    * 看到的语言是一致的。
    */
   language?: Locale;
+  /** 设计文档的结构版本；缺省按 1 处理，读入时由 migrate.ts 升级到 2。 */
+  schema_version?: number;
   theme: ThemeSettings;
   layout: LayoutSettings;
   /** 当前选中的大主题 id：default、night 或自定义主题 id。 */

@@ -1,0 +1,138 @@
+import type { BlockInstance, ScreenLayout } from '../types';
+
+/**
+ * 设计文档的结构版本。
+ *
+ * 1 → 2：三端「整棵树复制三份」改为「一份基础编排 + 展示层覆盖」。
+ * 迁移只在结构完全一致时折算；结构不同的设备编排保留，写进报告交给用户决定。
+ */
+export const CURRENT_SCHEMA_VERSION = 2;
+
+export interface MigrationResult {
+  value: Record<string, unknown>;
+  /** 给用户看的中文提示；空数组表示这次读取不需要打扰用户。 */
+  report: string[];
+}
+
+/** 允许被 at 覆盖的展示层字段。 */
+const DISPLAY_KEYS = [
+  'span',
+  'appearance',
+  'animation',
+  'hidden',
+  'custom_css',
+  'width',
+  'height',
+] as const;
+
+const DEVICE_LABEL: Record<string, string> = { tablet: '平板', mobile: '手机' };
+
+/** 只有这两端会折算成 at；桌面版本就是 blocks 本身。 */
+const OVERRIDE_DEVICES = ['tablet', 'mobile'] as const;
+
+function childrenOf(block: unknown): BlockInstance[] {
+  if (!block || typeof block !== 'object') return [];
+  const children = (block as BlockInstance).children;
+  return Array.isArray(children) ? children : [];
+}
+
+/** 两棵树是否「同一批区块、同一种嵌套」；只有此时折算才不改变任何人的布局。 */
+function sameShape(a: unknown[], b: unknown[]): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+    if ((left as BlockInstance).id !== (right as BlockInstance).id) return false;
+    if (!sameShape(childrenOf(left), childrenOf(right))) return false;
+  }
+  return true;
+}
+
+function diffDisplay(base: BlockInstance, other: BlockInstance): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const key of DISPLAY_KEYS) {
+    if (JSON.stringify(base[key]) !== JSON.stringify(other[key])) patch[key] = other[key];
+  }
+  return patch;
+}
+
+/** 把 `other` 相对 `base` 的展示层差异写成 base 上的 at。返回是否真的写了。 */
+function foldDisplay(base: BlockInstance[], other: BlockInstance[], device: string): boolean {
+  if (!sameShape(base, other)) return false;
+  let changed = false;
+  const walk = (a: BlockInstance[], b: BlockInstance[]) => {
+    for (let i = 0; i < a.length; i += 1) {
+      const patch = diffDisplay(a[i], b[i]);
+      if (Object.keys(patch).length) {
+        const at = { ...(a[i].at ?? {}) } as Record<string, Record<string, unknown>>;
+        at[device] = { ...(at[device] ?? {}), ...patch };
+        a[i] = { ...a[i], at: at as BlockInstance['at'] };
+        changed = true;
+      }
+      walk(childrenOf(a[i]), childrenOf(b[i]));
+    }
+  };
+  walk(base, other);
+  return changed;
+}
+
+function foldLayout(raw: unknown, label: string, report: string[]): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const layout = raw as ScreenLayout & Record<string, unknown>;
+  if (layout.device_split !== true || !layout.devices) return raw;
+
+  const devices = { ...layout.devices } as Record<string, { blocks: BlockInstance[] } | undefined>;
+  const base = Array.isArray(layout.blocks) ? structuredClone(layout.blocks) : [];
+  const folded: string[] = [];
+  const kept: string[] = [];
+
+  for (const device of OVERRIDE_DEVICES) {
+    const entry = devices[device];
+    if (!entry || !Array.isArray(entry.blocks)) continue;
+    // 结构不同 = 用户真的另画了一份布局；折算会悄悄改掉它，所以原样保留并报告。
+    if (!sameShape(base, entry.blocks)) {
+      kept.push(DEVICE_LABEL[device]);
+      continue;
+    }
+    if (foldDisplay(base, structuredClone(entry.blocks), device)) folded.push(DEVICE_LABEL[device]);
+    delete devices[device];
+  }
+
+  // 桌面版本就是 base，结构相同时它是冗余的，直接丢掉。
+  if (devices.desktop && Array.isArray(devices.desktop.blocks) && sameShape(base, devices.desktop.blocks)) {
+    delete devices.desktop;
+  }
+
+  if (folded.length) report.push(`${label}：已把${folded.join('、')}端与桌面不同的展示设置折算成覆盖。`);
+  if (kept.length) report.push(`${label}：${kept.join('、')}布局与桌面结构不同，保留为独立编排。`);
+
+  if (Object.keys(devices).length === 0) {
+    return { blocks: base };
+  }
+  return { blocks: base, device_split: true, devices };
+}
+
+export function migrateCustomization(raw: unknown): MigrationResult {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { value: {}, report: [] };
+  const doc: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  const version = typeof doc.schema_version === 'number' ? doc.schema_version : 1;
+  if (version >= CURRENT_SCHEMA_VERSION) return { value: doc, report: [] };
+
+  const report: string[] = [];
+  if (doc.home) doc.home = foldLayout(doc.home, '首页', report);
+  if (doc.article) doc.article = foldLayout(doc.article, '文章页', report);
+  if (Array.isArray(doc.pages)) {
+    doc.pages = doc.pages.map((page, index) => {
+      if (!page || typeof page !== 'object') return page;
+      const entry = page as Record<string, unknown>;
+      if (!entry.layout) return page;
+      return {
+        ...entry,
+        layout: foldLayout(entry.layout, `页面「${String(entry.title ?? index)}」`, report),
+      };
+    });
+  }
+  doc.schema_version = CURRENT_SCHEMA_VERSION;
+  return { value: doc, report };
+}

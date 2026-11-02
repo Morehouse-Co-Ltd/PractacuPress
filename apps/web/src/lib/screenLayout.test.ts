@@ -68,7 +68,10 @@ describe('按设备选择页面编排', () => {
       },
     } as never);
     expect(customization.home.device_split).toBe(true);
-    expect(customization.home.devices?.desktop?.blocks[0].title).toBe('桌面文案');
+    // 桌面副本与 blocks 结构一致，v1→v2 迁移判定它冗余并折算掉；桌面视图回退到 blocks。
+    expect(customization.home.devices?.desktop).toBeUndefined();
+    expect(customization.home.blocks[0].title).toBe('桌面文案');
+    // 手机编排是另一棵树（结构不同），迁移按约定原样保留。
     expect(customization.home.devices?.mobile?.blocks[0].title).toBe('手机文案');
 
     const shared = readCustomization({
@@ -78,5 +81,23 @@ describe('按设备选择页面编排', () => {
     } as never);
     expect(shared.home.device_split).toBeUndefined();
     expect(shared.home.devices).toBeUndefined();
+  });
+
+  it('迁移折算出来的 at 经过归一化仍然保留', () => {
+    const desktop = [createBlock('text', { title: '共用文案' })];
+    const mobile = [{ ...desktop[0], hidden: true }];
+    const customization = readCustomization({
+      customization: {
+        home: {
+          blocks: desktop,
+          device_split: true,
+          devices: { desktop: { blocks: desktop }, mobile: { blocks: mobile } },
+        },
+      },
+    } as never);
+    // 折算进 at 的差异必须活过归一化，否则读一次再保存就永久丢掉手机端的外观设置。
+    expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
+    expect(customization.home.device_split).toBeUndefined();
+    expect(customization.home.devices).toBeUndefined();
   });
 });
