@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type {
   BlockArea,
   BlockInstance,
@@ -7,11 +7,18 @@ import type {
   ScreenLayout,
 } from '../../types';
 import { builderDeviceForWidth, resolveArea, screenBlocksForDevice } from '../../lib/blocks';
+import { hasBoundProps, resolveBoundProps } from '../../lib/blocksData';
+import { blockAppearanceCss } from '../../lib/blockAppearance';
 import { useInView } from '../../lib/hooks';
 import { playBlockAnimation } from '../../lib/blockAnimations';
 import { styleDeclarations } from '../../lib/blockStyles';
 import { motionReduced } from '../../lib/performance';
+import { BLOCK_SKELETON_SHAPES } from '../../lib/loading';
 import { useT } from '../../lib/i18n';
+import { usePageSkeleton } from '../SkeletonMode';
+import { useFeed } from './FeedContext';
+import { useBlockDataContext } from './ArticleContext';
+import { BlockSkeleton } from './BlockSkeleton';
 import { CLASSIC_RENDERERS } from './Classic';
 import { NIGHT_RENDERERS } from './Nightflight';
 import { CONTENT_RENDERERS } from './ContentBlocks';
@@ -19,6 +26,8 @@ import { ColumnsBlock, ContainerBlock } from './LayoutBlocks';
 import { MEDIA_RENDERERS } from './MediaBlocks';
 import { DATA_RENDERERS } from './DataBlocks';
 import { ENGAGE_RENDERERS } from './EngageBlocks';
+import { ACTION_RENDERERS } from './ActionBlocks';
+import { ARTICLE_RENDERERS } from './ArticleBlocks';
 import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
 
 /**
@@ -40,17 +49,40 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...MEDIA_RENDERERS,
   ...DATA_RENDERERS,
   ...ENGAGE_RENDERERS,
+  ...ACTION_RENDERERS,
+  ...ARTICLE_RENDERERS,
 };
 
 function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) {
+  // 未知类型的区块（新版本导出的设计）仍保留在持久化数据里，避免被静默销毁，
+  // 但绝不能画出来——包括外层 <section> 的边距和间距，否则访客会看到一块空档。
+  // 这里在 hooks 之前提前 return：同一次挂载期间 unsupported 不会变（由规范化只写一次），
+  // 提前返回不会造成 hooks 调用顺序在多次渲染间变化，因此是安全的。
+  if (block.unsupported === true) return null;
   const ref = useRef<HTMLElement>(null);
   const seen = useInView(ref);
-  const Renderer = RENDERERS[block.type];
-  const isColumns = block.type === 'columns';
-  const isContainer = block.type === 'container';
-  const anim = block.animation && block.animation !== 'none' ? block.animation : '';
-  const visibleChildren = (block.children ?? []).filter((child) => !child.hidden);
+  const motion = usePageSkeleton();
+  const feed = useFeed();
+  const dataContext = useBlockDataContext();
+  // 组件文字可以绑定「显示什么数据」：在这里统一解析一次，所有渲染器都拿到
+  // 已经换成真实数据的 props，不用逐个改渲染器。没有绑定时沿用原对象，避免
+  // 每次渲染都产生新 props 触发子树重算。
+  const displayBlock = useMemo(
+    () =>
+      hasBoundProps(block.props)
+        ? { ...block, props: resolveBoundProps(block, dataContext) }
+        : block,
+    [block, dataContext],
+  );
+  const Renderer = RENDERERS[displayBlock.type];
+  const isColumns = displayBlock.type === 'columns';
+  const isContainer = displayBlock.type === 'container';
+  const anim = displayBlock.animation && displayBlock.animation !== 'none' ? displayBlock.animation : '';
+  const visibleChildren = (displayBlock.children ?? []).filter((child) => !child.hidden);
   const hasNestedLayer = !isColumns && !isContainer && visibleChildren.length > 0;
+  // 骨架模式 + 内容还在加载 + 该区块依赖 FeedContext：外壳保留，内部只画骨架。
+  // 未登记的类型（标题/文本/按钮/hero 等）照常渲染，不会把能立刻显示的内容藏起来。
+  const skeletonShape = motion && feed.loading ? BLOCK_SKELETON_SHAPES[displayBlock.type] : undefined;
 
   useEffect(() => {
     if (!seen || !anim || !ref.current || motionReduced()) return;
@@ -63,19 +95,23 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
       className={`pp-block${hasNestedLayer ? ' has-nested-layer' : ''}${
         seen && anim ? ` pp-anim pp-anim-${anim} is-in` : ''
       }${anim ? ' pp-anim-ready' : ''}`}
-      data-pp-block={block.id}
-      data-block-type={block.type}
+      data-pp-block={displayBlock.id}
+      data-block-type={displayBlock.type}
       data-block-area={area}
-      aria-label={block.title || undefined}
+      aria-label={displayBlock.title || undefined}
       style={{
-        width: block.width ? `${block.width}px` : undefined,
-        minHeight: block.height ? `${block.height}px` : undefined,
+        width: displayBlock.width ? `${displayBlock.width}px` : undefined,
+        minHeight: displayBlock.height ? `${displayBlock.height}px` : undefined,
         maxWidth: '100%',
-        ...styleDeclarations(block.custom_css),
+        // 预设外观先落，手写 CSS 后落：高级用户永远可以覆盖面板里的选择。
+        ...blockAppearanceCss(displayBlock.appearance),
+        ...styleDeclarations(displayBlock.custom_css),
       }}
     >
-      {isColumns ? (
-        <ColumnsBlock block={block} renderChild={(child) => <BlockView key={child.id} block={child} />} />
+      {skeletonShape ? (
+        <BlockSkeleton block={displayBlock} shape={skeletonShape} />
+      ) : isColumns ? (
+        <ColumnsBlock block={displayBlock} renderChild={(child) => <BlockView key={child.id} block={child} />} />
       ) : isContainer ? (
         <ContainerBlock>
           {visibleChildren.map((child) => (
@@ -83,9 +119,9 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
           ))}
         </ContainerBlock>
       ) : Renderer ? (
-        <Renderer block={block} />
+        <Renderer block={displayBlock} />
       ) : null}
-      {hasNestedLayer ? (
+      {!skeletonShape && hasNestedLayer ? (
         <div className="pp-nested-layer">
           {visibleChildren.map((child) => (
             <BlockView key={child.id} block={child} />
