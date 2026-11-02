@@ -1,8 +1,11 @@
 package site
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -430,6 +433,33 @@ type customizationRequest struct {
 	Revision *int `json:"revision,omitempty"`
 }
 
+// customizationETag derives a strong ETag from the revision and the document bytes.
+//
+// The document is the whole design: theme, pages, blocks, custom CSS. Visitors fetch it
+// on every page load, so a 304 is worth far more than caching a few hundred kilobytes.
+func customizationETag(revision int, document []byte) string {
+	sum := sha256.Sum256(document)
+	fingerprint := hex.EncodeToString(sum[:16])
+	return fmt.Sprintf("\"%d-%s\"", revision, fingerprint)
+}
+
+// ifNoneMatchHit reports whether the request already holds that ETag.
+func ifNoneMatchHit(header, etag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	if header == "*" {
+		return true
+	}
+	for _, candidate := range strings.Split(header, ",") {
+		if strings.TrimSpace(candidate) == etag {
+			return true
+		}
+	}
+	return false
+}
+
 // GetCustomization returns the saved design document of the site.
 //
 // Visibility is decided here rather than by requiring a session. On a members-only site
@@ -456,6 +486,18 @@ func (h *Handler) GetCustomization(c *gin.Context) {
 	customization, err := h.service.Customization(c.Request.Context(), siteID)
 	if err != nil {
 		_ = c.Error(mapError(err))
+		return
+	}
+
+	// The ETag comes after the visibility checks above, never before: a 304 is still a
+	// hint that the resource exists, so it must not answer a caller the 404 hides it from.
+	etag := customizationETag(customization.Revision, customization.Document)
+	c.Header("Cache-Control", "no-cache")
+	c.Header("ETag", etag)
+	if ifNoneMatchHit(c.GetHeader("If-None-Match"), etag) {
+		// A 304 carries no body: the design document can be hundreds of KB, and a
+		// returning visitor should not download it again.
+		c.Status(http.StatusNotModified)
 		return
 	}
 
