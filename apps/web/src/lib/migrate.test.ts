@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import type { WebConfig } from '../types';
+import { readCustomization } from './customize';
 import { CURRENT_SCHEMA_VERSION, migrateCustomization } from './migrate';
 
 function block(id: string, extra: Record<string, unknown> = {}) {
   return { id, type: 'text', title: id, props: {}, animation: 'none', hidden: false, ...extra };
+}
+
+/** 深度 `depth` 的单链嵌套：最外层一个区块，children 里再接一个，直到 depth 层。 */
+function chain(depth: number): Record<string, unknown> {
+  let node = block(`deep-${depth}`);
+  for (let level = depth - 1; level >= 0; level -= 1) {
+    node = block(`deep-${level}`, { children: [node] });
+  }
+  return node;
 }
 
 describe('migrateCustomization', () => {
@@ -96,5 +107,45 @@ describe('migrateCustomization', () => {
     expect(home.devices).toBeUndefined();
     expect(home.device_split).toBeUndefined();
     expect(report).toEqual([]);
+  });
+
+  it('嵌套远超深度上限时不爆栈，并保留设备编排', () => {
+    // 40 层深的两棵树：形状比较一旦递归到底就会撑破调用栈，所以必须在深度上限处
+    // 停下并回答「证明不了相同」，于是手机端编排原样保住。
+    const deep = [chain(40)];
+    const run = () =>
+      migrateCustomization({
+        home: {
+          blocks: structuredClone(deep),
+          device_split: true,
+          devices: { mobile: { blocks: structuredClone(deep) } },
+        },
+      });
+    expect(run).not.toThrow();
+    const home = run().value.home as Record<string, unknown>;
+    expect((home.devices as Record<string, unknown>).mobile).toBeDefined();
+  });
+});
+
+describe('迁移结果落盘', () => {
+  it('读入时带上版本号，再读一次不再重跑迁移', () => {
+    const config = {
+      version: 1,
+      setup_complete: true,
+      mode: 'demo',
+      api_base: '',
+      site_id: 's1',
+      database: 'sqlite',
+      created_at: '',
+      docs_url: '',
+      customization: { home: { blocks: [] } },
+    } as unknown as WebConfig;
+
+    const once = readCustomization(config);
+    // 印记就是「已经迁过」的证据：少了它，每次读取都会把整份迁移再跑一遍。
+    expect(once.schema_version).toBe(2);
+
+    const twice = readCustomization({ customization: once });
+    expect(twice).toEqual(once);
   });
 });

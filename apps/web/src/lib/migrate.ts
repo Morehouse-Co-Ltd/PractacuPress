@@ -1,4 +1,5 @@
 import type { BlockInstance, ScreenLayout } from '../types';
+import { MAX_BLOCK_DEPTH } from './blockTree';
 
 /**
  * 设计文档的结构版本。
@@ -36,15 +37,21 @@ function childrenOf(block: unknown): BlockInstance[] {
   return Array.isArray(children) ? children : [];
 }
 
-/** 两棵树是否「同一批区块、同一种嵌套」；只有此时折算才不改变任何人的布局。 */
-function sameShape(a: unknown[], b: unknown[]): boolean {
+/**
+ * 两棵树是否「同一批区块、同一种嵌套」；只有此时折算才不改变任何人的布局。
+ *
+ * 这里走的是原始文档，早于归一化的深度裁剪；超过 MAX_BLOCK_DEPTH 一律回答
+ * 「证明不了形状相同」，于是设备编排按原样保留——宁可多留一份，也不能错折。
+ */
+function sameShape(a: unknown[], b: unknown[], depth = 0): boolean {
+  if (depth >= MAX_BLOCK_DEPTH) return false;
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
     const left = a[i];
     const right = b[i];
     if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
     if ((left as BlockInstance).id !== (right as BlockInstance).id) return false;
-    if (!sameShape(childrenOf(left), childrenOf(right))) return false;
+    if (!sameShape(childrenOf(left), childrenOf(right), depth + 1)) return false;
   }
   return true;
 }
@@ -58,10 +65,17 @@ function diffDisplay(base: BlockInstance, other: BlockInstance): Record<string, 
 }
 
 /** 把 `other` 相对 `base` 的展示层差异写成 base 上的 at。返回是否真的写了。 */
-function foldDisplay(base: BlockInstance[], other: BlockInstance[], device: string): boolean {
+function foldDisplay(
+  base: BlockInstance[],
+  other: BlockInstance[],
+  device: string,
+  depth = 0,
+): boolean {
+  if (depth >= MAX_BLOCK_DEPTH) return false;
   if (!sameShape(base, other)) return false;
   let changed = false;
-  const walk = (a: BlockInstance[], b: BlockInstance[]) => {
+  const walk = (a: BlockInstance[], b: BlockInstance[], level: number) => {
+    if (level >= MAX_BLOCK_DEPTH) return;
     for (let i = 0; i < a.length; i += 1) {
       const patch = diffDisplay(a[i], b[i]);
       if (Object.keys(patch).length) {
@@ -70,10 +84,10 @@ function foldDisplay(base: BlockInstance[], other: BlockInstance[], device: stri
         a[i] = { ...a[i], at: at as BlockInstance['at'] };
         changed = true;
       }
-      walk(childrenOf(a[i]), childrenOf(b[i]));
+      walk(childrenOf(a[i]), childrenOf(b[i]), level + 1);
     }
   };
-  walk(base, other);
+  walk(base, other, depth);
   return changed;
 }
 

@@ -58,7 +58,7 @@ import { DEFAULT_PERMISSIONS, normalizePermissions } from './permissions';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 import { normalizeLocale } from './i18n/locales';
-import { migrateCustomization } from './migrate';
+import { CURRENT_SCHEMA_VERSION, migrateCustomization } from './migrate';
 
 /**
  * 站点外观、页面与扩展。
@@ -140,11 +140,13 @@ export const DEFAULT_TAXONOMY: TaxonomySettings = {
     { id: 'cat_product', name: '产品', slug: 'product', color: '#7a5b8c', description: '更新日志与产品说明。' },
   ],
   tags: [
-    { id: 'tag_independent', name: '独立出版', slug: 'independent' },
-    { id: 'tag_typesetting', name: '排版', slug: 'typesetting' },
-    { id: 'tag_community', name: '社区', slug: 'community-life' },
-    { id: 'tag_workflow', name: '工作流', slug: 'workflow' },
-    { id: 'tag_reading', name: '阅读', slug: 'reading' },
+    // 默认词条与 normalizeTerm 的输出保持同一形状（空说明也显式写出来），
+    // 否则第一次读入补上 description、第二次读入才稳定，读取路径就不可幂等。
+    { id: 'tag_independent', name: '独立出版', slug: 'independent', description: '' },
+    { id: 'tag_typesetting', name: '排版', slug: 'typesetting', description: '' },
+    { id: 'tag_community', name: '社区', slug: 'community-life', description: '' },
+    { id: 'tag_workflow', name: '工作流', slug: 'workflow', description: '' },
+    { id: 'tag_reading', name: '阅读', slug: 'reading', description: '' },
   ],
 };
 
@@ -928,6 +930,8 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
       ? requestedTheme
       : inferActiveTheme(theme, variant, themes);
   return {
+    // 结构版本随读入结果一起返回：它就是让迁移器下次读取直接返回、不再重跑的印记。
+    schema_version: CURRENT_SCHEMA_VERSION,
     // 站点语言：未知值（旧配置、手改 JSON、导入的主题包）一律回退简体中文。
     language: normalizeLocale(raw.language),
     theme,
