@@ -705,7 +705,9 @@ function normalizePropRecord(value: unknown, schema: PropSchema[]): BlockPropRec
  * 读一个 repeater 值。
  *
  * 兼容两种来源：新配置（真正的数组）与旧 itemlist 配置（JSON 字符串）。
- * 空数组 / 全是坏条目时返回 undefined，让「没配过」和「配成空」在存储里长得一样。
+ * 数组（含空数组）原样返回：新配置里 `[]` 是「新建区块的默认内容」，
+ * 归一化把它删掉会让同一份 props 读一次就少一个键，读写不再幂等。
+ * 只有「根本不是列表」的坏数据（非数组、JSON 解析失败）才返回 undefined。
  */
 function normalizeRepeaterValue(
   value: unknown,
@@ -726,11 +728,10 @@ function normalizeRepeaterValue(
     }
   }
   if (!list) return undefined;
-  const out = list
+  return list
     .slice(0, max)
     .map((item) => normalizePropRecord(item, fields))
     .filter((item): item is BlockPropRecord => !!item);
-  return out.length ? out : undefined;
 }
 
 /**
@@ -744,16 +745,17 @@ const BIND_KEY_PREFIX = 'bind:';
 /** 写进 props 的绑定键不能污染原型；与 blocksData.ts 的 UNSAFE_KEYS 同一份名单。 */
 const UNSAFE_BIND_TARGETS = new Set(['__proto__', 'constructor', 'prototype']);
 
-function boundScalars(source: Record<string, unknown>): BlockProps {
-  const out: BlockProps = {};
-  for (const [key, item] of Object.entries(source)) {
-    if (!key.startsWith(BIND_KEY_PREFIX) || key.length > 120) continue;
-    const target = key.slice(BIND_KEY_PREFIX.length);
-    if (!target || UNSAFE_BIND_TARGETS.has(target)) continue;
-    const scalar = scalarValue(item);
-    if (typeof scalar === 'string' && scalar) out[key] = scalar.slice(0, 80);
-  }
-  return out;
+/**
+ * 一个 `bind:` 键的保留值；null 表示这个键不是可保留的绑定。
+ *
+ * 值仍然过同一套标量清洗与长度限制，避免绑定键成为绕过清洗的入口。
+ */
+function boundScalar(key: string, value: unknown): string | null {
+  if (!key.startsWith(BIND_KEY_PREFIX) || key.length > 120) return null;
+  const target = key.slice(BIND_KEY_PREFIX.length);
+  if (!target || UNSAFE_BIND_TARGETS.has(target)) return null;
+  const scalar = scalarValue(value);
+  return typeof scalar === 'string' && scalar ? scalar.slice(0, 80) : null;
 }
 
 /**
@@ -761,6 +763,10 @@ function boundScalars(source: Record<string, unknown>): BlockProps {
  *
  * 未在 schema 里声明的键一律丢弃——服务端只存不解释，白名单只能在前端这一层做。
  * 不认识的区块类型退化成「只保留标量」，保证从更新版本导入的配置不会丢内容。
+ *
+ * 输出按「写入时的键顺序」排列，而不是 schema 顺序：blocks.ts 里 defaults 的字面量
+ * 顺序与 schema 顺序并不总是一致（bento-hero、spotlight、stats 都是如此），按 schema
+ * 重排会让新建区块在读完一次后形状变化。归一化只该删键、清洗值，不该搬动键位。
  */
 export function normalizeBlockProps(type: string, value: unknown): BlockProps {
   const def = blockDef(type);
@@ -773,15 +779,22 @@ export function normalizeBlockProps(type: string, value: unknown): BlockProps {
     }
     return out;
   }
-  const out: BlockProps = boundScalars(source);
-  for (const field of def.schema) {
-    if (field.type === 'repeater') {
-      const list = normalizeRepeaterValue(source[field.key], field);
-      if (list) out[field.key] = list;
+  const fields = new Map(def.schema.map((field) => [field.key, field]));
+  const out: BlockProps = {};
+  for (const [key, item] of Object.entries(source)) {
+    const field = fields.get(key);
+    if (!field) {
+      const bound = boundScalar(key, item);
+      if (bound !== null) out[key] = bound;
       continue;
     }
-    const scalar = scalarValue(source[field.key]);
-    if (scalar !== undefined) out[field.key] = scalar;
+    if (field.type === 'repeater') {
+      const list = normalizeRepeaterValue(item, field);
+      if (list) out[key] = list;
+      continue;
+    }
+    const scalar = scalarValue(item);
+    if (scalar !== undefined) out[key] = scalar;
   }
   return out;
 }

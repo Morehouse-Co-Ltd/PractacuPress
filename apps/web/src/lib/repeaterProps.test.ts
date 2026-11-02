@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBlock } from './blocks';
+import { BLOCK_DEFS, createBlock } from './blocks';
 import { normalizeBlockProps } from './customize';
 
 describe('normalizeBlockProps', () => {
@@ -18,7 +18,7 @@ describe('normalizeBlockProps', () => {
     expect((props.buttons as unknown[]).length).toBe(4);
   });
 
-  it('非数组的 repeater 值回退成空数组', () => {
+  it('非数组的 repeater 值被丢弃', () => {
     const props = normalizeBlockProps('button', { buttons: 'not-an-array' });
     expect(props.buttons).toBeUndefined();
   });
@@ -52,5 +52,30 @@ describe('normalizeBlockProps', () => {
 describe('createBlock', () => {
   it('button 的默认 props 是空 repeater 而不是 JSON 字符串', () => {
     expect(createBlock('button').props.buttons).toEqual([]);
+  });
+});
+
+describe('schema 与 defaults 一致', () => {
+  it('每个区块的 defaults 键都声明在 schema 里（否则保存一次就会丢内容）', () => {
+    const missing: string[] = [];
+    for (const def of BLOCK_DEFS) {
+      const declared = new Set(def.schema.map((field) => field.key));
+      for (const key of Object.keys(def.defaults)) {
+        if (!declared.has(key)) missing.push(`${def.type}.${key}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('每个区块的默认 props 经过归一化后原样保留（读→写幂等）', () => {
+    const drifted: string[] = [];
+    for (const def of BLOCK_DEFS) {
+      const created = createBlock(def.type);
+      const normalized = normalizeBlockProps(def.type, created.props);
+      const before = JSON.stringify(created.props);
+      const after = JSON.stringify(normalized);
+      if (before !== after) drifted.push(`${def.type}: ${before} -> ${after}`);
+    }
+    expect(drifted).toEqual([]);
   });
 });
