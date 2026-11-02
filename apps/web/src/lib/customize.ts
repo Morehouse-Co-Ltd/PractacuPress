@@ -758,18 +758,38 @@ function boundScalar(key: string, value: unknown): string | null {
   return typeof scalar === 'string' && scalar ? scalar.slice(0, 80) : null;
 }
 
+/** 站内路径与 http(s) 地址的长度上限。 */
+const MAX_MEDIA_URL_CHARS = 2048;
+/**
+ * 内联图片（base64 data URL）的长度上限。
+ *
+ * 演示后端的上传把文件读成 data URL（`lib/demo.ts`），所以这类值必须放行，否则
+ * 演示模式的媒体库选择器挑完图就等于没挑。但整份设计只有 1 MiB 预算，所以只收
+ * base64 的 `data:image/*`，且单张限制在 64 K 字符（约 48 KB 图片），超出一律拒绝。
+ */
+export const MAX_INLINE_MEDIA_CHARS = 65_536;
+
 /**
  * 媒体地址白名单。
  *
- * 只接受站内媒体端点、http(s) 绝对地址与 / 开头的站内路径；
- * `data:` 与 `javascript:` 一律拒绝——区块里的内联图片会把 1 MiB 的设计预算瞬间撑爆。
+ * 只接受站内媒体端点、http(s) 绝对地址、/ 开头的站内路径，以及限长的内联图片：
+ * - `//host/x.png` 是协议相对地址，`/` 开头的判断会漏掉它，但它指向别的站点，
+ *   必须挡掉（与 `lib/safeUrl.ts` 同一条规则，两层的判定要收敛）。
+ * - `data:` 只放行 `data:image/…;base64,…` 且总长受限；`data:text/…`、非 base64
+ *   的 SVG、超大图片与 `javascript:` 一律拒绝。
  */
 export function normalizeMediaUrl(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const url = value.trim();
-  if (!url || url.length > 2048) return undefined;
-  if (url.startsWith('/api/v1/media/') || url.startsWith('/')) return url.slice(0, 2048);
-  if (/^https?:\/\//i.test(url)) return url.slice(0, 2048);
+  if (!url) return undefined;
+  if (url.startsWith('data:')) {
+    if (!url.startsWith('data:image/') || !url.includes(';base64,')) return undefined;
+    return url.length <= MAX_INLINE_MEDIA_CHARS ? url : undefined;
+  }
+  if (url.length > MAX_MEDIA_URL_CHARS) return undefined;
+  if (/^https?:\/\//i.test(url)) return url.slice(0, MAX_MEDIA_URL_CHARS);
+  // 站内绝对路径：`//` 开头的是协议相对地址，会跳出当前站点。
+  if (url.startsWith('/') && !url.startsWith('//')) return url.slice(0, MAX_MEDIA_URL_CHARS);
   return undefined;
 }
 

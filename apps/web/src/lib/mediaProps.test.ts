@@ -8,8 +8,8 @@ describe('normalizeMediaUrl', () => {
     expect(normalizeMediaUrl('/img/a.png')).toBe('/img/a.png');
   });
 
-  it('拒绝 data URL、javascript 与相对路径', () => {
-    expect(normalizeMediaUrl('data:image/png;base64,AAAA')).toBeUndefined();
+  it('拒绝非图片 data URL、javascript 与相对路径', () => {
+    expect(normalizeMediaUrl('data:text/html;base64,AAAA')).toBeUndefined();
     expect(normalizeMediaUrl('javascript:alert(1)')).toBeUndefined();
     expect(normalizeMediaUrl('img/a.png')).toBeUndefined();
     expect(normalizeMediaUrl('')).toBeUndefined();
@@ -18,7 +18,7 @@ describe('normalizeMediaUrl', () => {
 
 describe('image 区块的 src', () => {
   it('走 media 白名单', () => {
-    const props = normalizeBlockProps('image', { src: 'data:image/png;base64,AAAA', alt: '图' });
+    const props = normalizeBlockProps('image', { src: 'data:text/html;base64,AAAA', alt: '图' });
     expect(props.src).toBeUndefined();
     expect(props.alt).toBe('图');
   });
@@ -28,5 +28,23 @@ describe('image 区块的 src', () => {
   it('空 src 读入后仍然保留', () => {
     const props = normalizeBlockProps('image', { src: '   ', alt: '' });
     expect(props.src).toBe('');
+  });
+});
+
+describe('normalizeMediaUrl 安全边界', () => {
+  it('拒绝协议相对地址', () => {
+    expect(normalizeMediaUrl('//evil.com/x.png')).toBeUndefined();
+  });
+  it('放行不超过 64 KB 的内联图片（演示模式）', () => {
+    const ok = `data:image/png;base64,${'A'.repeat(1024)}`;
+    expect(normalizeMediaUrl(ok)).toBe(ok);
+  });
+  it('拒绝超大的内联图片', () => {
+    expect(normalizeMediaUrl(`data:image/png;base64,${'A'.repeat(70000)}`)).toBeUndefined();
+  });
+  it('拒绝非图片的 data URL 与非字符串', () => {
+    expect(normalizeMediaUrl('data:text/html;base64,AAAA')).toBeUndefined();
+    expect(normalizeMediaUrl(42)).toBeUndefined();
+    expect(normalizeMediaUrl(`/api/v1/media/${'x'.repeat(3000)}`)).toBeUndefined();
   });
 });
