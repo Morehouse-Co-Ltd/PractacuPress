@@ -545,6 +545,14 @@ function animation(value: unknown, fallback: BlockAnimation = 'fade-up'): BlockA
     : fallback;
 }
 
+/** 区块 props 的逐值清洗：字符串截断、数字夹到 ±1e6，其余标量原样保留。 */
+function scalarValue(item: unknown): string | number | boolean | undefined {
+  if (typeof item === 'number') return Math.min(1e6, Math.max(-1e6, item));
+  if (typeof item === 'boolean') return item;
+  if (typeof item === 'string') return item.slice(0, 4000);
+  return undefined;
+}
+
 function normalizeBlock(
   value: unknown,
   depth = 0,
@@ -560,14 +568,8 @@ function normalizeBlock(
 
   const props: Record<string, string | number | boolean> = {};
   for (const [key, item] of Object.entries(raw.props ?? {})) {
-    if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-      props[key] =
-        typeof item === 'number'
-          ? Math.min(1e6, Math.max(-1e6, item))
-          : typeof item === 'boolean'
-            ? item
-            : String(item).slice(0, 4000);
-    }
+    const value = scalarValue(item);
+    if (value !== undefined) props[key] = value;
   }
 
   let id = typeof raw.id === 'string' && raw.id ? raw.id.slice(0, 80) : nextBlockId();
@@ -582,13 +584,14 @@ function normalizeBlock(
     : [];
 
   const area = raw.area === 'full' || raw.area === 'main' || raw.area === 'side' ? raw.area : undefined;
+  const appearance = normalizeBlockAppearance(raw.appearance);
   if (!known) {
-    // 不认识的类型：保留形状，不解释 props，渲染器会跳过它。
+    // 不认识的类型：保留形状，不解释 props，渲染器会跳过它。props 走和已知类型
+    // 同一套清洗，位置与样式也一并保留，这样新版本的设计存回去不会丢东西。
     const unsupportedProps: Record<string, string | number | boolean> = {};
     for (const [key, item] of Object.entries(raw.props ?? {})) {
-      if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-        unsupportedProps[key] = item;
-      }
+      const value = scalarValue(item);
+      if (value !== undefined) unsupportedProps[key] = value;
     }
     return {
       id,
@@ -598,10 +601,21 @@ function normalizeBlock(
       animation: animation(raw.animation),
       hidden: bool(raw.hidden, false),
       unsupported: true,
+      ...(area ? { area } : {}),
       ...(children.length ? { children } : {}),
+      ...(typeof raw.column === 'number' ? { column: clampColumn(raw.column) } : {}),
+      ...(typeof raw.width === 'number' && raw.width > 0
+        ? { width: Math.min(1600, Math.round(raw.width)) }
+        : {}),
+      ...(typeof raw.height === 'number' && raw.height > 0
+        ? { height: Math.min(2400, Math.round(raw.height)) }
+        : {}),
+      ...(typeof raw.custom_css === 'string' && raw.custom_css
+        ? { custom_css: raw.custom_css.slice(0, 4000) }
+        : {}),
+      ...(appearance ? { appearance } : {}),
     };
   }
-  const appearance = normalizeBlockAppearance(raw.appearance);
   return {
     id,
     type: raw.type,

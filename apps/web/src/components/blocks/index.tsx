@@ -54,11 +54,6 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
 };
 
 function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) {
-  // 未知类型的区块（新版本导出的设计）仍保留在持久化数据里，避免被静默销毁，
-  // 但绝不能画出来——包括外层 <section> 的边距和间距，否则访客会看到一块空档。
-  // 这里在 hooks 之前提前 return：同一次挂载期间 unsupported 不会变（由规范化只写一次），
-  // 提前返回不会造成 hooks 调用顺序在多次渲染间变化，因此是安全的。
-  if (block.unsupported === true) return null;
   const ref = useRef<HTMLElement>(null);
   const seen = useInView(ref);
   const motion = usePageSkeleton();
@@ -88,6 +83,12 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
     if (!seen || !anim || !ref.current || motionReduced()) return;
     playBlockAnimation(ref.current, anim);
   }, [seen, anim]);
+
+  // 未知类型的区块（新版本导出的设计）仍保留在持久化数据里，避免被静默销毁，
+  // 但绝不能画出来——包括外层 <section> 的边距和间距，否则访客会看到一块空档。
+  // 守卫放在所有 hooks 之后：即使之后有人在原地改掉 unsupported，多次渲染的
+  // hooks 调用顺序也不会变化，不会触发「Rendered fewer hooks than expected」崩溃。
+  if (block.unsupported === true) return null;
 
   return (
     <section

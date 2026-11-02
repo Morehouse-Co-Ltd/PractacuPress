@@ -49,4 +49,22 @@ describe('blockBudgetStatus', () => {
   it('正常编排不超限', () => {
     expect(blockBudgetStatus({ blocks: [textBlock('a')] }).over).toBe(false);
   });
+
+  it('计入分设备布局：设备树里的区块也算进总量', () => {
+    const blocks = [textBlock('a')];
+    const status = blockBudgetStatus({
+      blocks,
+      device_split: true,
+      devices: { mobile: { blocks: [textBlock('m1'), textBlock('m2')] } },
+    });
+    expect(status.total).toBe(2);
+    expect(status.over).toBe(false);
+  });
+
+  it('报告总量与上限的具体数字', () => {
+    const blocks = Array.from({ length: 3 }, (_, i) => textBlock(`b${i}`));
+    const status = blockBudgetStatus({ blocks });
+    expect(status.total).toBe(3);
+    expect(status.limit).toBe(200);
+  });
 });
