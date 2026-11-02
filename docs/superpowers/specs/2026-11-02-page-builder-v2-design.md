@@ -141,23 +141,34 @@ export interface BlockVisibility {
 
 ### 4.2 PropSchema v2
 
-`PropType` 从 7 种扩到 14 种（`blocks.ts:22`）：
+`PropType` 的目标形态是 14 种（`blocks.ts:22`）。**P0 只落地了 `repeater` 与 `media` 两种**
+——其余五种没有 P0 消费者，造出来就是没人用的表单分支；它们随 P2 的具体组件一起进场：
 
-| 新类型 | 用途 | 存储形态 |
-| --- | --- | --- |
-| `media` | 媒体库选择器 | `"/api/v1/media/{id}"` 或白名单 URL 字符串 |
-| `repeater` | 结构化列表（取代 itemlist） | `Array<Record<string, Scalar>>`，子字段由嵌套 schema 声明 |
-| `richtext` | 段落级富文本 | Markdown 字符串（沿用 `text` 区块的渲染路径） |
-| `page` | 页面引用 | `SitePage.id` |
-| `taxonomy` | 分类 / 标签引用 | `term.id` + `kind` |
-| `icon` | 内置图标名 | 见 `navigation.ts` 的 `NAV_ICON_CHOICES` |
-| `token-color` | 主题令牌色 | 令牌名，渲染时解析成 `var(--…)` |
+| 新类型 | 用途 | 存储形态 | 落地 |
+| --- | --- | --- | --- |
+| `media` | 媒体库选择器 | `"/api/v1/media/{id}"`、白名单 URL，或 ≤64 KB 的 `data:image/…;base64,`（演示模式） | **P0 ✅** |
+| `repeater` | 结构化列表（取代 itemlist） | `Array<Record<string, Scalar>>`，子字段由 `itemSchema` 声明 | **P0 ✅** |
+| `richtext` | 段落级富文本 | Markdown 字符串（沿用 `text` 区块的渲染路径） | P2 |
+| `page` | 页面引用 | `SitePage.id` | P2 |
+| `taxonomy` | 分类 / 标签引用 | `term.id` + `kind` | P2 |
+| `icon` | 内置图标名 | 见 `navigation.ts` 的 `NAV_ICON_CHOICES` | P2 |
+| `token-color` | 主题令牌色 | 令牌名，渲染时解析成 `var(--…)` | P2 |
 
 `props` 允许对象与数组，但**归一化按 schema 递归白名单清洗**：schema 没声明的键一律丢弃，
-不再是整包透传。`itemlist` 保留读取兼容，编辑器不再提供它作为新选项。
+不再是整包透传。`itemlist` 保留读取兼容（旧 JSON 字符串会被解析成 `repeater` 的条目数组），
+编辑器不再提供它作为新选项。
 
-`repeater` 的子 schema 复用 `PropSchema`（递归），并带 `minItems` / `maxItems` / `itemLabel`。
-单个 repeater 上限 30 条、嵌套深度 3，与既有"scalar only"时代的上限保持同一量级。
+**白名单会误伤 `bind:` 键**：`props['bind:title']` 这类数据绑定键不在任何 schema 里，
+纯白名单会在第一次保存时把它们清掉。归一化因此显式保留 `bind:` 前缀键（挡
+`__proto__`/`constructor`/`prototype`，键 ≤120、值 ≤80），并有回归测试钉住。
+
+`repeater` 的子 schema 复用 `PropSchema`，并带 `minItems` / `maxItems` / `itemLabel`；
+缺省字段按类型补齐（文本/选择补 `''`、开关补 `false`），以保证"读一次再写一次"字节不变。
+
+**一个永久的护栏**：`repeaterProps.test.ts` 里有一条结构性断言——
+**每个区块的 `defaults` 键都必须声明在它的 `schema` 里**，且默认 props 经归一化后原样保留。
+这条断言在落地时当场抓到 5 个区块的漂移（4 个键序、1 个空数组被吞成 `undefined`），
+以后再加组件，忘了写 schema 就会红。
 
 ### 4.3 三个必须一起修的坑
 
@@ -170,32 +181,45 @@ export interface BlockVisibility {
    （`customize.ts:611`）、子级砍 80（`customize.ts:578`）、深度 8（`blockTree.ts:10`）。
    **已定**：常量收敛到 `blockTree.ts` 一处（`MAX_BLOCKS = 200`、`MAX_BLOCK_DEPTH = 8`、
    `MAX_CHILDREN_PER_CONTAINER = 80`），**删除根级 24 条上限**——它当初只是归一化的实现细节，
-   却让用户"加到第 25 块就凭空消失"，纯属可用性事故。超限一律**拒绝保存并给出明确提示**
-   （提示里写清是哪一条、当前多少、上限多少），不再静默丢弃。
+   却让用户"加到第 25 块就凭空消失"，纯属可用性事故。
+   **实现后的口径**：读路径的裁剪阈值改为 `MAX_READ_BLOCKS = 2000`，它只是防恶意文档把
+   浏览器撑爆的上限，**不再是产品上限**；产品上限 200 由编辑器在保存前拦截并提示
+   （当前多少、上限多少）。这样"超限"永远是一条明确的提示，而不是一次静默截断。
+   子容器 80 与深度 8 仍只在读路径收敛，属于结构性安全阀，暂未做提示——P1 补。
 3. **向下拖拽差一格**（审计 W-4，`docs/audit/2026-10-31-audit-report.md:209`）：
    `moveBlock` 在同一父级且原下标小于目标下标时没有补偿（`blockTree.ts:132-144`）。
    修法：同父级 `found.index < target.index` 时 `index -= 1`；补单测覆盖
    `[A,B,C]` → A 拖到 B 之后 = `[B,A,C]`。
+   连带修：树面板的「↓ 下移」按钮原本按旧约定传下标，改完会变成空操作，因此新增纯函数
+   `stepTarget(location, direction)` 作为"上下移动一格"的唯一翻译层。
 
 ### 4.4 迁移
 
 `schema_version = 2` 写在 `SiteCustomization` 顶层（首次出现版本号字段；导出封皮的 `version: 1`
 仍只描述文件格式，两者不混用）。
 
-- 读到无版本号 → 走 `migrateV1ToV2` 纯函数：补默认值、`device_split` 的三棵树合并成
-  一份 base + `at` 覆盖（取 desktop 作 base，把 tablet/mobile 的差异折算成覆盖）、
-  未知字段丢弃**并记录告警**；
-- 迁移是幂等的，迁移失败（如结构损坏）时回退到"原样读取 + 不强写"，不白屏；
-- 旧配置不迁移也能渲染：`readCustomization` 的归一化对 v1 结构保持现有行为。
+**P0 的迁移只做一件半的事**：盖版本号，并把 `home` / `article` / `pages[].layout` 原样保留。
+
+原计划是"读到无版本号就把三端三棵树折算成一份 base + `at` 覆盖"，这条在实现后被推翻——
+`at` 的求值要到 P1 才接进渲染层，先折算会**删掉设备树却没人读 `at`**，等于把所有
+分设备布局悄悄退回桌面版。折算逻辑因此保留为导出函数 `foldDeviceLayouts(layout, label, report)`，
+由 P1 在渲染层真正求值 `at` 之后调用；它自带结构相同判定、深度上限、结构不同则保留并写报告。
+
+- 迁移是幂等的纯函数，坏数据不抛异常、回退到"原样读取 + 不强写"；
+- 旧配置不迁移也能渲染：`readCustomization` 的归一化对 v1 结构保持现有行为；
+- 迁移报告 `report` 目前被 `readCustomization` 丢弃——P1 配合迁移确认弹窗再呈现。
 
 ### 4.5 体积预算
 
-| 项 | 上限 | 落点 |
-| --- | --- | --- |
-| 单块 `props` | 8 KB | 归一化丢弃超额部分并告警 |
-| 整份设计 | 512 KB 软警告 / 1 MiB 硬上限 | 编辑器顶部条提醒，超硬上限拒绝保存 |
-| 区块内 data URL | 禁止 | `media` / `url` 类型直接拒绝 `data:` |
-| `covers[].url` 的 data URL | 64 KB（现状 1.2 MB） | `customize.ts` 归一化 |
+| 项 | 上限 | 落点 | P0 状态 |
+| --- | --- | --- | --- |
+| 单键 `props` | 8 KB | 归一化时超限键丢弃 | ✅ 已落地，但**逐键判断**：一个多键区块的整块体积仍可能超 8 KB |
+| 整份设计 | 512 KB 软警告 / 1 MiB 硬上限 | `designVolumeReport` 已算，**尚未接到界面** | ⚠️ 只算不报 |
+| 区块内 data URL | 仅允许 ≤64 KB 的 `data:image/…;base64,`（演示模式） | `normalizeMediaUrl` | ✅ |
+| `covers[].url` 的 data URL | 64 KB（原 1.2 MB） | `customize.ts` 归一化 | ✅ |
+
+1 MiB 目前只有服务端 422 兜底，而 `customizationSync` 一旦收到 403/400/422 会**永久停掉
+自动保存**——所以 P1 必须在客户端做保存前预检，否则用户会撞到一个"保存突然不再工作"的状态。
 
 ### 4.6 传输层：让首屏真的变快
 
@@ -368,3 +392,40 @@ export interface BlockVisibility {
   bundle 增量在预算内。
 - **P3**：`content-query` + 锚点目录 + 后端查询参数。验收：标签/分类筛选结果与
   服务端一致，不是前端过滤。
+
+## 12. P0 实现记录（2026-11-03）
+
+分支 `feat/page-builder-v2-p0`，9 个任务逐个走「实现 → 独立评审 → 修 Critical/Important → 复审」。
+
+| 检查 | 结果 |
+| --- | --- |
+| `npx vitest run`（apps/web） | 52 文件 / 571 测试通过（基线 497） |
+| `npm run typecheck` | 0 错误 |
+| `npm run build` | 成功，dist +16.6 KB（预算 40 KB） |
+| `go build ./apps/api/...` | 0 错误 |
+| `go test ./apps/api/...` | 全部包通过，含五个契约测试（`TestEveryRegisteredRouteIsDocumented` 等） |
+| `node scripts/e2e-builder-blocks.mjs` | PASS 37 / FAIL 0，截图在 `apps/web/.tmp/shots-builder/` |
+| i18n 覆盖率闸门 | 96.2%，绿 |
+
+**评审真正拦下的问题**（都已修，并留了回归测试）：
+
+1. 拖拽补偿修复会让树面板「↓ 下移」变成空操作 → 新增 `stepTarget` 纯函数 + 3 个用例。
+2. schema 白名单会清掉 `bind:` 数据绑定键 → 显式保留 + 回归测试。
+3. 空 `repeater` 数组被归一化吞成 `undefined` → 由"defaults 必须存活"的永久护栏抓到。
+4. `readCustomization` 丢掉 `schema_version` → 每次读都重跑迁移 → 已落盘。
+5. 媒体白名单放行协议相对地址 `//evil.com`；演示模式的内联图被一律拒绝 → 收紧 + 放行 ≤64 KB。
+6. gzip 计划的示例代码有两处真 bug（`WriteString` 未接管、缓冲导致 `Written()` 为假会写出第二个响应）→ 实现时修掉。
+7. **终审发现问题**：迁移会把三端树折算后删除，而 `at` 要到 P1 才求值 → 折算推迟到 P1；
+   读路径的 200 条静默截断改为 2000 条 DoS 阀 + 保存前拦截。
+
+**已知遗留（P1 承接）**：
+- `at` / `visible` / `anchor` / `span` / `offset` 只建模并保留，**渲染层一处都还没求值**；
+- 迁移报告与导入告警没有 UI；`designVolumeReport` 没有接到界面；
+- 1 MiB 硬上限没有客户端预检（撞上会永久停自动保存）；
+- `richtext` / `page` / `taxonomy` / `icon` / `token-color` 五种 schema 类型随 P2 组件进场；
+- 渲染层仍把 `src` 过 `safeUrl`，而它拒绝 `data:` —— 演示模式选了内联图会存得下、画不出；
+- 演示模式的封面提示写"600 KB"，实际受 64 KB 内联上限约束，文案需要改。
+
+**一个作业环境上的事实（与代码无关）**：本分支的多个提交里混入了同一工作树上其他会话
+未提交的改动（markdown 编辑器、slash 菜单、注册开关、域名验证等），因此单个提交不能独立
+构建或回滚；整棵工作树是自洽的。后续分支建议改用独立 worktree。
