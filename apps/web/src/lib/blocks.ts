@@ -30,7 +30,9 @@ export type PropType =
   /** 旧的结构化列表：JSON 字符串。只为读取既有配置保留。 */
   | 'itemlist'
   /** 结构化列表：值是条目数组，子字段由 itemSchema 递归声明。 */
-  | 'repeater';
+  | 'repeater'
+  /** 媒体库选择器：值只接受站内媒体地址、http(s) 或 / 开头的站内路径。 */
+  | 'media';
 
 export interface PropSchema {
   key: string;
@@ -667,7 +669,12 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
           { value: 'color', label: t('纯色块') },
         ],
       },
-      { key: 'src', label: t('图片地址'), type: 'text' },
+      {
+        key: 'src',
+        label: t('图片地址'),
+        type: 'media',
+        hint: t('可以从媒体库选，也可以填外部图片地址。'),
+      },
       { key: 'color', label: t('纯色'), type: 'color', hint: t('纯色模式下作为界面背景或占位块。') },
       { key: 'alt', label: t('替代文字'), type: 'text' },
       { key: 'caption', label: t('说明'), type: 'text' },

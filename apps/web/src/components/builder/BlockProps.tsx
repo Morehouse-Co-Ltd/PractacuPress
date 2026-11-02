@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import type { BlockInstance, BlockProps as BlockPropsValue, BlockPropValue } from '../../types';
 import { blockDef, blockProp, type PropSchema } from '../../lib/blocks';
 import { BLOCK_DATA_SOURCES, bindKeyOf, boundToken } from '../../lib/blocksData';
 import { blockPropRecord } from '../../lib/customize';
 import { useT } from '../../lib/i18n';
-import { Field, Input, Select, Textarea, Toggle } from '../ui';
+import { Button, Field, Input, Select, Textarea, Toggle } from '../ui';
+import { MediaPicker } from './MediaPicker';
 
 /**
  * 区块属性编辑器：完全由 BLOCK_DEFS 里的 schema 驱动。
@@ -56,6 +58,7 @@ function PropControl({
 }) {
   const t = useT();
   const id = `blk-${block.id}-${schema.key}`;
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   if (schema.type === 'repeater') {
     const items = blockPropRecord(block, schema.key);
@@ -141,6 +144,28 @@ function PropControl({
             {t('添加{label}', { label: schema.itemLabel ?? t('条目') })}
           </button>
         </div>
+      </Field>
+    );
+  }
+
+  if (schema.type === 'media') {
+    return (
+      <Field label={schema.label} hint={schema.hint} htmlFor={id}>
+        <div className="media-field">
+          <Input
+            id={id}
+            value={String(block.props[schema.key] ?? '')}
+            onChange={(event) => onChange(schema.key, event.target.value)}
+          />
+          <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
+            {t('从媒体库选择')}
+          </Button>
+        </div>
+        <MediaPicker
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onPick={(url) => onChange(schema.key, url)}
+        />
       </Field>
     );
   }

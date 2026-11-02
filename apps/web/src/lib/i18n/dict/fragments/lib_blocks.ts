@@ -91,6 +91,8 @@ const fragment: Dictionary = {
   居中: 'Center',
   '可选，填图片地址（http(s) 或 /media/...）。留空就是上面的纯色底。':
     'Optional. Enter an image URL (http(s) or /media/...). Leave empty to keep the solid color above.',
+  '可以从媒体库选，也可以填外部图片地址。':
+    'Pick one from the media library, or paste an external image URL.',
   快捷键提示: 'Shortcut hints',
   宽松: 'Wide',
   栏数: 'Column count',

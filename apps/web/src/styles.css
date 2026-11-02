@@ -5234,6 +5234,37 @@ kbd {
 }
 .itemlist-field input[type="color"] { width: 46px; height: 30px; padding: 2px; cursor: pointer; }
 
+/* 媒体选择：输入框 + 「从媒体库选择」按钮，弹窗里是干净的资产缩略图网格。 */
+.media-field { display: flex; gap: 8px; align-items: center; }
+.media-field input { flex: 1; }
+.media-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+  margin: 12px 0;
+}
+.media-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  text-align: left;
+}
+.media-picker-item img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px; }
+.media-picker-item span {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 令牌 */
 .token-list { display: flex; flex-direction: column; gap: 8px; }
 .token-row {

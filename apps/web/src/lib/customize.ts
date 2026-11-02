@@ -759,6 +759,21 @@ function boundScalar(key: string, value: unknown): string | null {
 }
 
 /**
+ * 媒体地址白名单。
+ *
+ * 只接受站内媒体端点、http(s) 绝对地址与 / 开头的站内路径；
+ * `data:` 与 `javascript:` 一律拒绝——区块里的内联图片会把 1 MiB 的设计预算瞬间撑爆。
+ */
+export function normalizeMediaUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const url = value.trim();
+  if (!url || url.length > 2048) return undefined;
+  if (url.startsWith('/api/v1/media/') || url.startsWith('/')) return url.slice(0, 2048);
+  if (/^https?:\/\//i.test(url)) return url.slice(0, 2048);
+  return undefined;
+}
+
+/**
  * 按注册表 schema 递归白名单清洗属性。
  *
  * 未在 schema 里声明的键一律丢弃——服务端只存不解释，白名单只能在前端这一层做。
@@ -791,6 +806,16 @@ export function normalizeBlockProps(type: string, value: unknown): BlockProps {
     if (field.type === 'repeater') {
       const list = normalizeRepeaterValue(item, field);
       if (list) out[key] = list;
+      continue;
+    }
+    if (field.type === 'media') {
+      // 空值是新建区块的默认状态：保留成空串，否则读一次就少一个键。
+      if (typeof item === 'string' && !item.trim()) {
+        out[key] = '';
+        continue;
+      }
+      const media = normalizeMediaUrl(item);
+      if (media) out[key] = media;
       continue;
     }
     const scalar = scalarValue(item);
