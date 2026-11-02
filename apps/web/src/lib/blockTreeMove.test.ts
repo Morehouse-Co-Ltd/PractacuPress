@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BlockInstance } from '../types';
-import { moveBlock, stepTarget } from './blockTree';
+import { findBlock, moveBlock, stepTarget } from './blockTree';
 
 function mk(id: string, children: BlockInstance[] = []): BlockInstance {
   return {
@@ -60,5 +60,20 @@ describe('stepTarget 与上下移动按钮', () => {
     const parent = blocks[0];
     const next = moveBlock(blocks, 'a', stepTarget({ parent, index: 0 }, 1));
     expect((next[0].children ?? []).map((b) => b.id)).toEqual(['b', 'a']);
+  });
+
+  it('跨父级移动不补偿：根级区块移进容器时按原始下标插入', () => {
+    const blocks = [mk('a'), mk('box', [mk('x')])];
+    const next = moveBlock(blocks, 'a', { parentId: 'box', index: 1 });
+    const box = next.find((block) => block.id === 'box');
+    expect((box?.children ?? []).map((b) => b.id)).toEqual(['x', 'a']);
+  });
+
+  it('经 findBlock 得到的 location 才能驱动 stepTarget（钉住纯函数缝）', () => {
+    const blocks = [mk('a'), mk('b'), mk('c')];
+    const location = findBlock(blocks, 'a');
+    expect(location).not.toBeNull();
+    const next = moveBlock(blocks, 'a', stepTarget(location!, 1));
+    expect(next.map((b) => b.id)).toEqual(['b', 'a', 'c']);
   });
 });
