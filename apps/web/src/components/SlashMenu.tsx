@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../lib/i18n';
+import { placeMenu } from '../lib/caretRect';
+import type { CaretAnchor } from '../lib/caretRect';
 import type { EditorDialogKind } from './RichTextEditor';
 
 /**
  * 斜杠指令面板。
  *
- * 在空段落里输入 `/` 后弹出，固定定位在光标下方。简单指令直接操作当前块
+ * 在空段落里输入 `/` 后弹出，贴在光标处。简单指令直接操作当前块
  * （标题 / 列表 / 引用 / 代码 / 分割线 / 提示框），需要参数的指令转交工具栏
- * 现有弹窗（图片 / 视频 / 表格 / 分栏 / 公式 / 链接），不重写这些弹窗。
+ * 现有弹窗（图片 / 视频 / 表格 / 分栏 / 公式 / 链接 / 图表），不重写这些弹窗。
+ *
+ * 落点由面板自己算：父组件只给光标锚点，面板按自身尺寸决定放光标下方还是翻到上方，
+ * 这样"面板多高"只有这里知道，不用在编辑器和面板之间来回传尺寸。
  *
  * 键盘事件挂在 document 捕获阶段：这样 ↑↓ / Enter / Esc 在编辑器自己处理之前
  * 就被面板接管，不会把回车变成换行。
@@ -164,6 +170,14 @@ export function slashItems(t: Translate): SlashItem[] {
       action: { type: 'dialog', dialog: 'formula' },
     },
     {
+      id: 'diagram',
+      label: t('图表'),
+      hint: t('思维导图、逻辑图、统计图、鱼骨图'),
+      glyph: '▤',
+      keywords: ['diagram', 'chart', 'mindmap', 'tupu', 'siwei', 'yugu', 'tongji'],
+      action: { type: 'dialog', dialog: 'diagram' },
+    },
+    {
       id: 'link',
       label: t('链接'),
       hint: t('文字链接或链接卡片'),
@@ -193,25 +207,34 @@ export interface SlashMenuProps {
   open: boolean;
   /** `/` 之后已经输入的文字，用来过滤。 */
   query: string;
-  /** 相对视口的固定定位坐标（来自光标 getBoundingClientRect）。 */
-  position: { left: number; top: number } | null;
+  /** 光标锚点（视口坐标）；null 时退到视口左上角，属于兜底。 */
+  anchor: CaretAnchor | null;
   onSelect: (item: SlashItem) => void;
   onClose: () => void;
   /** 把当前高亮项 id 回传编辑器，用于 aria-activedescendant。 */
   onActiveItemChange?: (id: string | null) => void;
 }
 
+/** 挂载后一帧内会被真实尺寸纠正，先用估计值兜底免得首帧跳到屏幕上沿。 */
+const ESTIMATED_SIZE = { width: 276, height: 330 };
+
 export function SlashMenu({
   open,
   query,
-  position,
+  anchor,
   onSelect,
   onClose,
   onActiveItemChange,
 }: SlashMenuProps) {
   const t = useT();
+  const menuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
+  const [size, setSize] = useState(ESTIMATED_SIZE);
+  const [viewport, setViewport] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
   // 指令表按当前语言生成：语言切换时 `t` 会让本组件重渲染，文案随之更新。
   const items = filterSlashItems(query, t);
   const activeIndex = Math.min(active, Math.max(0, items.length - 1));
@@ -235,6 +258,41 @@ export function SlashMenu({
   useEffect(() => {
     onActiveItemChange?.(activeItemId ? `pp-slash-${activeItemId}` : null);
   }, [activeItemId, onActiveItemChange]);
+
+  // 面板高度随过滤结果与语言变化，落点却依赖它：挂载后量一次真实尺寸再定位。
+  // 用 layout effect 是为了在绘制前纠正，避免首帧按估计高度放错位置。
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+    if (!width && !height) return;
+    setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+  }, [open, items.length]);
+
+  // 视口变化后要重新夹边 / 翻屏；父组件同时会把新锚点传下来。
+  // 打开时先量一次：组件一直挂着，窗口在上次打开之后变过的话初值已经过期。
+  useEffect(() => {
+    if (!open) return;
+    const syncViewport = () =>
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
+    return () => window.removeEventListener('resize', syncViewport);
+  }, [open]);
+
+  // ↑↓ / hover 换高亮时把该项滚进列表可视区。
+  // 不用 scrollIntoView：它会把整个页面一起滚走，面板反而从光标处跑掉。
+  useEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const item = list?.children[activeIndex] as HTMLElement | undefined;
+    if (!list || !item) return;
+    const itemRect = item.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+    if (itemRect.top < listRect.top) list.scrollTop -= listRect.top - itemRect.top;
+    else if (itemRect.bottom > listRect.bottom) list.scrollTop += itemRect.bottom - listRect.bottom;
+  }, [open, activeIndex, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -272,7 +330,7 @@ export function SlashMenu({
     };
 
     const onPointerDown = (event: MouseEvent) => {
-      if (listRef.current?.contains(event.target as Node)) return;
+      if (menuRef.current?.contains(event.target as Node)) return;
       closeRef.current();
     };
 
@@ -286,21 +344,26 @@ export function SlashMenu({
 
   if (!open) return null;
 
-  return (
+  const placed = anchor
+    ? placeMenu(anchor, size, viewport)
+    : { left: 12, top: 12, placement: 'below' as const };
+
+  const menu = (
     <div
-      ref={listRef}
+      ref={menuRef}
       id="pp-slash-menu"
       className="slash-menu"
       role="listbox"
       aria-label={t('插入指令')}
       aria-activedescendant={activeItem ? `pp-slash-${activeItem.id}` : undefined}
-      style={{ left: position?.left ?? 12, top: position?.top ?? 12 }}
+      data-placement={placed.placement}
+      style={{ left: placed.left, top: placed.top }}
     >
       <p className="slash-menu-head">{t('插入')}</p>
       {items.length === 0 ? (
         <p className="slash-menu-empty">{t('没有匹配的指令')}</p>
       ) : (
-        <div className="slash-menu-list">
+        <div className="slash-menu-list" ref={listRef}>
           {items.map((item, index) => (
             <button
               key={item.id}
@@ -330,4 +393,10 @@ export function SlashMenu({
       <p className="slash-menu-foot">{t('↑↓ 选择 · Enter 插入 · Esc 关闭')}</p>
     </div>
   );
+
+  // 面板必须按视口定位：编辑器所在的内容区带 transform 过渡动画，那会让
+  // position: fixed 改用它当包含块——面板会整体偏移一个侧栏宽度，页面滚动时
+  // 还会跟着漂。挂到 body 下面才拿回真正的视口坐标系。
+  if (typeof document === 'undefined') return null;
+  return createPortal(menu, document.body);
 }

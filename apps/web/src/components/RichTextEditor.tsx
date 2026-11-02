@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   ClipboardEvent as ReactClipboardEvent,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
 } from 'react';
 import { escapeHtml, renderMarkdown } from '../lib/markdown';
 import { htmlToMarkdown } from '../lib/htmlToMarkdown';
+import { decorateEditorDiagrams, findDiagramBlock } from '../lib/diagramHydrate';
+import type { DiagramSpec } from '../lib/diagramSpec';
 import {
   detectBlockPrefix,
   detectInlineClosure,
   looksLikeMarkdown,
 } from '../lib/markdownInput';
 import type { BlockKind, InlineClosureMatch } from '../lib/markdownInput';
+import { blockMarkerFor } from '../lib/editorBlockMarker';
+import { caretAnchor, firstLineAnchor } from '../lib/caretRect';
+import type { CaretAnchor } from '../lib/caretRect';
 import { noteBlock } from '../lib/richBlocks';
 import { useT } from '../lib/i18n';
 import { EditorToolbar } from './EditorToolbar';
@@ -33,7 +40,14 @@ import type { SlashItem } from './SlashMenu';
  */
 
 /** 斜杠面板里「需要参数」的指令转交工具栏弹窗。 */
-export type EditorDialogKind = 'image' | 'table' | 'columns' | 'formula' | 'link' | 'video';
+export type EditorDialogKind =
+  | 'image'
+  | 'table'
+  | 'columns'
+  | 'formula'
+  | 'link'
+  | 'video'
+  | 'diagram';
 
 // 浏览器回车可能产生 div（而不是 p），所以 div 也当作块处理。
 const BLOCK_TAGS = 'p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th';
@@ -53,6 +67,37 @@ function closestBlock(root: HTMLElement, node: Node | null): HTMLElement | null 
 }
 
 /**
+ * 光标所在的「有行首语法」的块：从光标节点往上找第一个有 Markdown 行首的祖先。
+ *
+ * 不能只看最近块：`blockquote` 里常常包着一个 `p`、`pre` 里包着 `code`，
+ * 而这些内层元素本身没有行首语法，只认最近块的话引用和代码块就永远不显示标记。
+ */
+function markerBlockFor(root: HTMLElement, node: Node | null): HTMLElement | null {
+  if (!node || !root.contains(node)) return null;
+  let element: HTMLElement | null =
+    node.nodeType === Node.TEXT_NODE
+      ? (node.parentElement as HTMLElement | null)
+      : (node as HTMLElement);
+  while (element && element !== root) {
+    if (blockMarkerFor(element)) return element;
+    element = element.parentElement;
+  }
+  return null;
+}
+
+/** 滚动 / 缩放时锚点常常只差零点几像素：没变就不重排面板。 */
+function sameAnchor(a: CaretAnchor | null, b: CaretAnchor | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.left - b.left) < 0.5 &&
+    Math.abs(a.top - b.top) < 0.5 &&
+    Math.abs(a.bottom - b.bottom) < 0.5 &&
+    Math.abs(a.height - b.height) < 0.5
+  );
+}
+
+/**
  * 保证裸文本有可操作的块：浏览器的 contenteditable 在空文档里输入时可能把
  * 文字直接挂在根节点下，块级转换需要一个段落才能执行。
  */
@@ -63,9 +108,37 @@ function ensureBlock(root: HTMLElement, node: Node | null): HTMLElement | null {
   let child: Node = node;
   while (child.parentNode && child.parentNode !== root) child = child.parentNode;
   if (child.parentNode !== root) return null;
+
+  // 搬动文本节点会让浏览器把光标丢到编辑区根节点上（悬空选区：anchorNode 变成根 DIV），
+  // 紧接着的 `/` 面板与行首标记就读不到"当前块"了——空文档里敲第一个字符就属于这种情况。
+  // 节点对象本身没换、只是换了父级，所以先记下 (container, offset)，包好段落再原样放回去。
+  const selection = window.getSelection();
+  const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const caret = range ? { container: range.startContainer, offset: range.startOffset } : null;
+  const caretInRoot = !!caret && root.contains(caret.container);
+
   const paragraph = document.createElement('p');
   root.insertBefore(paragraph, child);
   paragraph.appendChild(child);
+
+  if (selection && caret && caretInRoot) {
+    const limit =
+      caret.container.nodeType === Node.TEXT_NODE
+        ? (caret.container as Text).data.length
+        : (caret.container as Element).childNodes.length;
+    const restored = document.createRange();
+    if (caret.container !== root && caret.offset <= limit) {
+      restored.setStart(caret.container, caret.offset);
+      restored.collapse(true);
+    } else {
+      // 坐标本来就落在根节点上（浏览器已经丢过一次光标）：放到刚搬进去那段文字的末尾，
+      // 那正是作者刚敲下的位置。
+      restored.selectNodeContents(paragraph);
+      restored.collapse(false);
+    }
+    selection.removeAllRanges();
+    selection.addRange(restored);
+  }
   return paragraph;
 }
 
@@ -73,8 +146,13 @@ function ensureBlock(root: HTMLElement, node: Node | null): HTMLElement | null {
 function blockTextBeforeCaret(block: HTMLElement, node: Node, offset: number): string | null {
   if (!block.contains(node)) return null;
   const range = document.createRange();
-  range.setStart(block, 0);
-  range.setEnd(node, offset);
+  try {
+    range.setStart(block, 0);
+    range.setEnd(node, offset);
+  } catch {
+    // 悬空选区的 offset 可能越界（DOM 刚被搬动过），这种位置算不出前缀，别让输入中断。
+    return null;
+  }
   return range.toString();
 }
 
@@ -142,6 +220,11 @@ export interface EditorCommands {
   redo: () => void;
   clear: () => void;
   formula: (source: string, block: boolean) => void;
+  /**
+   * 光标/选区在图表块内时返回它的规格与整块替换函数；否则 null。
+   * 工具栏用它实现「编辑图表」而不是再插入一块。
+   */
+  diagramTarget: () => { spec: DiagramSpec; replace: (html: string) => void } | null;
   /** 打开弹窗之前先记住选区，插入时再恢复。 */
   saveSelection: () => void;
 }
@@ -172,6 +255,8 @@ export function RichTextEditor({
   const placeholderText =
     placeholder ?? t('从这里开始写。选中文字可以加粗、加链接，工具栏能插入图片、表格与分栏。');
   const surfaceRef = useRef<HTMLDivElement>(null);
+  // 浮层的定位上下文：标记与编辑区是兄弟节点，这样标记永远不会进 contenteditable 子树。
+  const shellRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
   const emitted = useRef('');
   // IME 组字期间不做 Markdown 转换：中文输入法会临时产生不符合语法的中间文本。
@@ -180,11 +265,24 @@ export function RichTextEditor({
   const toolbarOpen = useRef<((kind: EditorDialogKind) => void) | null>(null);
   const hintTimer = useRef<number | null>(null);
   const [hint, setHint] = useState('');
+  const [marker, setMarker] = useState<{
+    text: string;
+    /** 相对 shell 的坐标，不是视口坐标。 */
+    top: number;
+    height: number;
+    left: number;
+  } | null>(null);
   const [slash, setSlash] = useState<{
     query: string;
-    position: { left: number; top: number };
+    /** 光标锚点（视口坐标）；落点由面板自己算。 */
+    anchor: CaretAnchor | null;
   } | null>(null);
+  const markerRef = useRef<HTMLSpanElement>(null);
+  // 标记画在正文左侧留白里：留白放不下（窄屏的 `####`）就不显示，绝不允许压到正文
+  // 或溢出卡片。这里用"量出来再隐藏"而不是猜字号，因为留白宽度随视口连续变化。
+  const [markerClipped, setMarkerClipped] = useState(false);
   const [slashActiveId, setSlashActiveId] = useState<string | null>(null);
+  const slashOpen = slash !== null;
 
   const emit = useCallback(() => {
     const root = surfaceRef.current;
@@ -196,6 +294,8 @@ export function RichTextEditor({
     const isEmpty = text.length === 0 && !root.querySelector('img,table,a.pp-video,a.pp-embed,a.pp-linkcard,hr,[data-pp-math]');
     root.dataset.empty = isEmpty ? 'true' : 'false';
     const markdown = htmlToMarkdown(root.innerHTML);
+    // 图表代码块在正文里显示成可见预览；隐藏的 code 仍参与上面的序列化。
+    decorateEditorDiagrams(root);
     emitted.current = markdown;
     onChange(markdown, { text: text.length });
   }, [onChange]);
@@ -206,10 +306,14 @@ export function RichTextEditor({
     if (!root) return;
     root.innerHTML = initialHtml;
     emitted.current = '';
+    // 重新灌入后恢复图表的可见预览（围栏代码块在正文里不能只显示 JSON）。
+    decorateEditorDiagrams(root);
     // 让浏览器按内容重新计算空状态。
     const text = (root.innerText ?? '').replace(/\s+/g, '');
     const isEmpty = text.length === 0 && !root.querySelector('img,table,a.pp-video,a.pp-embed,a.pp-linkcard,hr,[data-pp-math]');
     root.dataset.empty = isEmpty ? 'true' : 'false';
+    // 整块内容被换掉，旧的光标位置已经没有意义。
+    setMarker(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision]);
 
@@ -254,6 +358,84 @@ export function RichTextEditor({
     selection?.removeAllRanges();
     selection?.addRange(range);
   }, []);
+
+  /**
+   * 行首淡色标记的同步：只读几何，不碰 DOM 内容。
+   *
+   * 标记必须留在 contenteditable 外面——进了编辑区子树，`htmlToMarkdown` 存盘、
+   * `innerText` 字数、复制粘贴都会带上它。所以这里也刻意不插探针节点去量零尺寸光标。
+   */
+  const syncMarker = useCallback(() => {
+    const root = surfaceRef.current;
+    const shell = shellRef.current;
+    if (!root || !shell || disabled) {
+      setMarker(null);
+      return;
+    }
+    const selection = window.getSelection();
+    const anchorNode = selection?.anchorNode ?? null;
+    if (!selection || selection.rangeCount === 0 || !anchorNode || !root.contains(anchorNode)) {
+      setMarker(null);
+      return;
+    }
+    const block = markerBlockFor(root, anchorNode);
+    const text = block ? blockMarkerFor(block) : null;
+    if (!block || !text) {
+      setMarker(null);
+      return;
+    }
+    const line = firstLineAnchor(block);
+    if (!line) {
+      setMarker(null);
+      return;
+    }
+    const surfaceRect = root.getBoundingClientRect();
+    // 行盒滚出编辑区就干脆不画，而不是贴在上下边框上排队。
+    if (line.bottom < surfaceRect.top || line.top > surfaceRect.bottom) {
+      setMarker(null);
+      return;
+    }
+    const shellRect = shell.getBoundingClientRect();
+    // 标记右边缘贴在正文栏左边缘再退 8px；CSS 的 translateX(-100%) 负责把整块让到留白里。
+    const left = (parseFloat(getComputedStyle(root).paddingLeft) || 0) - 6;
+    const top = line.top - shellRect.top;
+    // 量不到行盒时会降级到整块矩形，那种高度会把标记吊在块中间，按行高压回来。
+    const lineHeight = parseFloat(getComputedStyle(block).lineHeight);
+    const height =
+      Number.isFinite(lineHeight) && lineHeight > 0
+        ? Math.min(line.height || lineHeight, lineHeight)
+        : line.height;
+    setMarker((prev) => {
+      // 同一行里打字时行盒会微动，阈值以下的抖动不值得重渲染。
+      if (
+        prev &&
+        prev.text === text &&
+        Math.abs(prev.top - top) < 0.5 &&
+        Math.abs(prev.left - left) < 0.5 &&
+        Math.abs(prev.height - height) < 0.5
+      ) {
+        return prev;
+      }
+      return { text, top, height, left };
+    });
+  }, [disabled]);
+
+  /**
+   * 量一次标记宽度：留白（padding-left）放不下就隐藏。
+   *
+   * 元素始终保留在 DOM 里（只切 visibility），否则 ref 变空就再也量不到，
+   * 会在"隐藏 → 重新显示 → 又溢出"之间来回跳。
+   */
+  useLayoutEffect(() => {
+    const element = markerRef.current;
+    if (!element) {
+      setMarkerClipped(false);
+      return;
+    }
+    setMarkerClipped(element.offsetWidth - marker!.left > 2);
+    // marker 每次移动/换字都会是新对象，量测跟着它走即可。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marker?.text, marker?.left]);
 
   const run = useCallback(
     (command: string, value?: string) => {
@@ -341,6 +523,24 @@ export function RichTextEditor({
         emit();
       },
       insert: insertHtml,
+      diagramTarget: () => {
+        const root = surfaceRef.current;
+        if (!root) return null;
+        const block = findDiagramBlock(window.getSelection()?.anchorNode ?? null);
+        if (!block || !root.contains(block.pre)) return null;
+        return {
+          spec: block.spec,
+          replace: (html: string) => {
+            const template = document.createElement('template');
+            template.innerHTML = html;
+            const node = template.content.firstElementChild;
+            if (!node) return;
+            block.pre.replaceWith(node);
+            decorateEditorDiagrams(root);
+            emit();
+          },
+        };
+      },
       undo: () => run('undo'),
       redo: () => run('redo'),
       clear: () => run('removeFormat'),
@@ -534,7 +734,7 @@ export function RichTextEditor({
   };
 
   /** 空段落里输入 `/` 时更新斜杠面板；不符合条件就关掉。 */
-  const updateSlashMenu = () => {
+  const updateSlashMenu = useCallback(() => {
     const root = surfaceRef.current;
     if (!root || disabled) {
       setSlash(null);
@@ -546,10 +746,12 @@ export function RichTextEditor({
       return;
     }
     const node = selection.anchorNode;
-    if (!node || !root.contains(node) || node.nodeType !== Node.TEXT_NODE) {
+    if (!node || !root.contains(node)) {
       setSlash(null);
       return;
     }
+    // 不强求 anchorNode 是文本节点：空段落里光标常常停在元素边界上（`<p><br>` 之间），
+    // 硬性要求文本节点会让这种位置的 `/` 永远打不开面板。块首到该边界的文字照样能算前缀。
     const block = closestBlock(root, node);
     const before = block ? blockTextBeforeCaret(block, node, selection.anchorOffset) : null;
     const query = before?.match(/^\/([^\s]*)$/);
@@ -558,13 +760,45 @@ export function RichTextEditor({
       return;
     }
 
-    const range = selection.getRangeAt(0).cloneRange();
-    let rect = range.getBoundingClientRect();
-    if (!rect.left && !rect.top && !rect.bottom) rect = root.getBoundingClientRect();
-    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - 292));
-    const top = Math.min(Math.max(8, rect.bottom + 6), Math.max(8, window.innerHeight - 360));
-    setSlash({ query: query[1], position: { left, top } });
-  };
+    // 这里只给光标锚点，落点交给面板自己算：零尺寸光标会沿降级链退到块矩形，
+    // 不会再跳回编辑区左上角；翻屏与夹边也归面板，避免两边各夹一次。
+    const anchor = caretAnchor(selection.getRangeAt(0).cloneRange(), block);
+    setSlash((prev) =>
+      prev && prev.query === query[1] && sameAnchor(prev.anchor, anchor)
+        ? prev
+        : { query: query[1], anchor },
+    );
+  }, [disabled]);
+
+  // 光标移动、编辑区内部滚动、窗口缩放都要重算标记与面板位置。
+  // 一次输入常常连带触发好几个事件，用 rAF 合并成一帧。
+  useEffect(() => {
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      syncMarker();
+      if (slashOpen) updateSlashMenu();
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(flush);
+    };
+    document.addEventListener('selectionchange', schedule);
+    // scroll 不冒泡：只有捕获阶段才收得到编辑区自身的滚动。
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      document.removeEventListener('selectionchange', schedule);
+      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [slashOpen, syncMarker, updateSlashMenu]);
+
+  // 切成只读后不再有"当前行"，标记留着只会误导。
+  useEffect(() => {
+    if (disabled) setMarker(null);
+  }, [disabled]);
 
   /** 斜杠面板选中一项：先删掉 `/query`，再执行指令或转交弹窗。 */
   const applySlashItem = (item: SlashItem) => {
@@ -576,7 +810,8 @@ export function RichTextEditor({
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
       const node = selection.anchorNode;
-      if (node && root.contains(node) && node.nodeType === Node.TEXT_NODE) {
+      // 和上面一样按块算：光标停在元素边界上时也要能把 `/query` 删掉。
+      if (node && root.contains(node)) {
         const block = closestBlock(root, node);
         const before = block ? blockTextBeforeCaret(block, node, selection.anchorOffset) : null;
         if (block && before !== null && /^\/\S*$/.test(before)) {
@@ -641,6 +876,7 @@ export function RichTextEditor({
       else updateSlashMenu();
     }
     emit();
+    syncMarker();
   };
 
   const handleCompositionEnd = () => {
@@ -652,6 +888,7 @@ export function RichTextEditor({
       if (converted) setSlash(null);
       else updateSlashMenu();
       emit();
+      syncMarker();
     });
   };
 
@@ -663,9 +900,11 @@ export function RichTextEditor({
       // 像 Markdown 的整段粘贴直接转成富文本，和手敲的转换结果一致。
       document.execCommand('insertHTML', false, renderMarkdown(text));
     } else {
+      // 只在空行处分段：作者从别处粘来的硬折行只是排版换行，逐行塞 <br /> 会把
+      // 一段存成 N 段，公开页于是多出一堆段间距。
       const blocks = text
         .split(/\n{2,}/)
-        .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)
+        .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\s*\n+\s*/g, ' ')}</p>`)
         .join('');
       document.execCommand('insertHTML', false, blocks);
     }
@@ -710,50 +949,99 @@ export function RichTextEditor({
     }
   };
 
+  /** 点击正文里的图表预览：把光标放进该图表块，再复用工具栏的「编辑图表」弹窗。 */
+  const handleSurfaceClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    // 点击也会移动光标（块级元素上点击不一定触发 selectionchange），顺手同步一次。
+    syncMarker();
+    // 编辑时点击链接不应该跳走。
+    if (target.closest('a')) event.preventDefault();
+    const edit = target.closest<HTMLElement>('[data-pp-diagram-edit]');
+    if (!edit) return;
+    event.preventDefault();
+    const pre = edit.closest('pre');
+    if (!pre) return;
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    saveSelection();
+    toolbarOpen.current?.('diagram');
+  };
+
   return (
     <div className={`rich-editor${disabled ? ' is-readonly' : ''}`}>
       <EditorToolbar commands={commands} disabled={disabled} onReady={handleToolbarReady} />
 
-      <div
-        ref={surfaceRef}
-        className="article-body rich-surface"
-        contentEditable={!disabled}
-        suppressContentEditableWarning
-        role="textbox"
-        aria-multiline="true"
-        aria-label={t('正文')}
-        aria-activedescendant={slash ? (slashActiveId ?? undefined) : undefined}
-        aria-controls={slash ? 'pp-slash-menu' : undefined}
-        data-placeholder={placeholderText}
-        data-empty="true"
-        spellCheck={false}
-        onInput={handleInput}
-        onBlur={emit}
-        onKeyDown={handleKeyDown}
-        onCompositionStart={() => {
-          composing.current = true;
-        }}
-        onCompositionEnd={handleCompositionEnd}
-        onClick={(event) => {
-          // 编辑时点击链接不应该跳走。
-          if ((event.target as HTMLElement).closest('a')) event.preventDefault();
-        }}
-        onPaste={handlePaste}
-        onDrop={(event) => event.preventDefault()}
-      />
+      <div className="rich-surface-shell" ref={shellRef}>
+        <div
+          ref={surfaceRef}
+          className="article-body rich-surface"
+          contentEditable={!disabled}
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          aria-label={t('正文')}
+          aria-activedescendant={slash ? (slashActiveId ?? undefined) : undefined}
+          aria-controls={slash ? 'pp-slash-menu' : undefined}
+          data-placeholder={placeholderText}
+          data-empty="true"
+          spellCheck={false}
+          onInput={handleInput}
+          onBlur={() => {
+            emit();
+            // 光标离开正文就没有"当前行"了，标记跟着收起。
+            setMarker(null);
+          }}
+          onKeyDown={handleKeyDown}
+          onKeyUp={syncMarker}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={handleCompositionEnd}
+          onClick={handleSurfaceClick}
+          onPaste={handlePaste}
+          onDrop={(event) => event.preventDefault()}
+        />
+        {marker ? (
+          // 与编辑区同级而不是放在里面：标记一旦进了 contenteditable 子树，
+          // 存盘的 Markdown、字数统计、复制粘贴都会带上它。
+          <span
+            ref={markerRef}
+            className="pp-line-marker"
+            data-pp-marker="1"
+            aria-hidden="true"
+            style={{
+              top: marker.top,
+              height: marker.height,
+              left: marker.left,
+              visibility: markerClipped ? 'hidden' : 'visible',
+            }}
+          >
+            {marker.text}
+          </span>
+        ) : null}
+      </div>
       <SlashMenu
-        open={!!slash}
+        open={slashOpen}
         query={slash?.query ?? ''}
-        position={slash?.position ?? null}
+        anchor={slash?.anchor ?? null}
         onSelect={applySlashItem}
         onClose={() => setSlash(null)}
         onActiveItemChange={setSlashActiveId}
       />
-      {hint ? (
-        <p className="mdhint" role="status" aria-live="polite">
-          {hint}
-        </p>
-      ) : null}
+      {hint
+        ? // 提示条同样是 position: fixed，而内容区的 transform 动画会让它改以内容区为
+          // 包含块（于是偏到右边去）。挂到 body 下才是真正的屏幕底部居中。
+          createPortal(
+            <p className="mdhint" role="status" aria-live="polite">
+              {hint}
+            </p>,
+            document.body,
+          )
+        : null}
       {disabled ? (
         <p className="rich-editor-note">{t('只读：当前状态不允许修改正文。')}</p>
       ) : (

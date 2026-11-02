@@ -142,6 +142,14 @@
 
 /* ---------------- 行首 Markdown 标记 ---------------- */
 
+/* 标记浮层的定位上下文。用 block 而不是 flex：编辑区是这里的普通块级子元素，
+   换成 flex 会连带改掉它在 .rich-editor 列布局里的高度计算（min-height 与拉伸）。 */
+.rich-surface-shell {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
 /* 浮在正文栏左侧留白里：绝对定位 + translateX(-100%) 让它整块落在行首左边，
    既不挤动正文也不影响折行。节点挂在编辑区外面，所以只是个"影子"，进不了存盘内容。 */
 .pp-line-marker {
