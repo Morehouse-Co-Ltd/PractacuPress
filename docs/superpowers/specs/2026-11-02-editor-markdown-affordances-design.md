@@ -177,3 +177,26 @@ export function toExportMarkdown(source: string): string;
 - 标记浮层依赖 `padding-left` 的可用宽度：窄屏（≤760px）隐藏；`clamp(18px, 3vw, 42px)`
   在 900–1100px 区间大约 27–33px，够放 `####`（≤ 26px），但要在 e2e 里核对一次不被裁切。
 - 面板翻转依赖自身高度，首次挂载前用估计高度（276×330）兜底，挂载后一帧内纠正。
+
+## 8. 实现记录（2026-11-03，真实浏览器核对后补）
+
+实现过程中在真实 Chrome 里发现两件设计阶段没料到的事，已按下面的方式收口：
+
+1. **`position: fixed` 被内容区的 transform 吃掉。** 页面容器 `.admin-content` 带 `fade-up`
+   过渡（transform 不是 `none`），它因此成了固定定位元素的包含块：面板会整体右移一个侧栏
+   宽度（实测 +272px），页面滚动时还会按 `scrollY` 漂移——这正是"选择框不在输入位置"的真身。
+   修法：`SlashMenu` 与 `.mdhint` 改用 `createPortal` 挂到 `document.body`，恢复视口坐标系。
+   核对后 `fixedAncestors: []`，面板 `left` 与光标 `left` 完全一致（320 = 320）。
+2. **窄屏留白放不下 `####`。** 留白是 `clamp(18px, 3vw, 42px)`：1440px 下 42px 够用，
+   1000px 下只有 30px，而 `####` 加 6px 间距要 37.8px，会溢出卡片 7.8px。修法：标记渲染后
+   量一次宽度（`useLayoutEffect` + `offsetWidth`），放不下就把 `visibility` 切成 `hidden`；
+   元素保留在 DOM 里，避免"隐藏→重量→复用"的抖动。核对：1440px 显示且不溢出，1000px 隐藏。
+
+另外修掉一个既有 bug（用户报告的面板"有时不出现"）：空文档里第一个字符敲 `/` 时，
+`ensureBlock()` 把裸文本节点包进新段落会丢选区（selection 落成"根 DIV、offset 1"），
+于是算不出 `/query`。现在包装前记下光标、`appendChild` 后立刻恢复，并对"锚点是元素"
+的情况用 `closestBlock` 兜底。
+
+浏览器核对脚本：`apps/web/.tmp/e2e-editor-markdown.mjs`（gitignore 内，CDP 驱动无头 Chrome，
+25 条断言全过），截图在 `apps/web/.tmp/shots-editor-markdown/`。单测 `528 passed`、
+`tsc --noEmit` 通过、`i18n:audit` 通过。

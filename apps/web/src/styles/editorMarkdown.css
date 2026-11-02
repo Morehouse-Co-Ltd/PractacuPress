@@ -1,7 +1,8 @@
 /* =========================================================
-   Markdown 输入增强（.mdhint / .slash-*）
+   Markdown 输入增强（.mdhint / .slash-* / .pp-line-marker）
    - 编辑器里输入 Markdown 语法时的即时提示与 / 快捷指令面板。
    - 面板固定浮在光标下方，使用主题令牌，深浅色都可用。
+   - 行首标记浮在正文左侧留白，只做提示，不参与排版。
    ========================================================= */
 
 /* 转换成功后的轻提示：浮在视口底部，不打断输入。 */
@@ -137,4 +138,32 @@
   border-top: 1px solid var(--line, #e7e7e1);
   font-size: 10px;
   color: var(--faint, #a8a89f);
+}
+
+/* ---------------- 行首 Markdown 标记 ---------------- */
+
+/* 浮在正文栏左侧留白里：绝对定位 + translateX(-100%) 让它整块落在行首左边，
+   既不挤动正文也不影响折行。节点挂在编辑区外面，所以只是个"影子"，进不了存盘内容。 */
+.pp-line-marker {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  transform: translateX(-100%);
+  padding-right: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--faint, #a8a89f);
+  opacity: 0.75;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* 窄屏左留白不够放 ####，宁可没有标记也不能压到正文。 */
+@media (max-width: 760px) {
+  .pp-line-marker {
+    display: none;
+  }
 }

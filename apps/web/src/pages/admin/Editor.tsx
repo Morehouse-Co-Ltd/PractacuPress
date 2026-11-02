@@ -31,6 +31,7 @@ import { RoleGate } from '../../components/Guards';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import { ArticleCoverPanel } from '../../components/ArticleCoverPanel';
 import { normalizeEditorSource } from '../../lib/editorSource';
+import { toExportMarkdown } from '../../lib/markdownExport';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { useToast } from '../../lib/toast';
 
@@ -209,7 +210,10 @@ function EditorWorkspace() {
   const exportMarkdown = () => {
     const base =
       (form.slug || form.title || 'untitled').trim().replace(/[\/:*?"<>|\s]+/g, '-') || 'untitled';
-    const blob = new Blob([form.source_body], { type: 'text/markdown;charset=utf-8' });
+    // 存盘用的正文是"一段一行"，导出时才把段内软换行补成硬换行，方便拿到别的编辑器里用。
+    const blob = new Blob([toExportMarkdown(form.source_body)], {
+      type: 'text/markdown;charset=utf-8',
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

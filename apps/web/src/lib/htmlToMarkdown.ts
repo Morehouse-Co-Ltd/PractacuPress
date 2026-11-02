@@ -55,6 +55,9 @@ function inlineNode(node: Node): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
 
   const element = node as HTMLElement;
+  // 编辑器浮层（行首标记）不该进入存盘内容；正常情况下它挂在编辑区外面，
+  // 这里兜一层，避免以后有人把它挪进来导致 `##` 之类的符号混进正文。
+  if (element.hasAttribute('data-pp-marker')) return '';
   if (element.matches('.pp-math-inline')) {
     const source = formulaSource(element);
     return source ? `$${source}$` : '';
@@ -83,8 +86,9 @@ function inlineNode(node: Node): string {
       return text ? `\`${text}\`` : '';
     }
     case 'br':
-      // 段内换行按段落处理：Markdown 没有可靠的软换行，宁可分成两段也不丢内容。
-      return '\n\n';
+      // 段内换行只写一个换行符：它仍然是同一个 Markdown 段落（渲染时按行连排）。
+      // 写成空行会把作者看到的一段拆成两段，段落数（"行数"）就对不上了。
+      return '\n';
     case 'a': {
       const href = element.getAttribute('href') ?? '';
       const text = inlineChildren(element).trim();
@@ -186,6 +190,7 @@ function blockNode(node: Node): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
 
   const element = node as HTMLElement;
+  if (element.hasAttribute('data-pp-marker')) return '';
   if (element.matches('.pp-math-block')) {
     return blockFormulaMarkdown(formulaSource(element));
   }
@@ -201,14 +206,13 @@ function blockNode(node: Node): string {
 
   switch (tag) {
     case 'p': {
-      const text = inlineChildren(element).trim();
-      if (!text) return '';
-      // 段内换行被序列化成 \n\n，这里还原成多个段落，避免出现四个换行。
-      return text
-        .split(/\n{2,}/)
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .join('\n\n');
+      // 段内软换行保留为单个 \n：一个段落序列化后仍是一个段落，
+      // 块与块之间才用空行（见 serializeChildren）。多余的空行在这里收掉。
+      const text = inlineChildren(element)
+        .replace(/[ \t]*\n[ \t]*/g, '\n')
+        .replace(/\n{2,}/g, '\n')
+        .trim();
+      return text;
     }
     case 'ul':
     case 'ol':

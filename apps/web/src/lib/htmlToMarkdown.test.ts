@@ -42,6 +42,19 @@ describe('htmlToMarkdown', () => {
       '<a class="pp-embed" href="https://example.com"><strong>网站</strong></a>',
     );
   });
+
+  it('keeps a soft line break inside one paragraph', () => {
+    // 段内换行只是一行文字里的断行，存成空行会把一段拆成两段（段落数错位）。
+    expect(htmlToMarkdown('<p>第一行<br>第二行</p>')).toBe('第一行\n第二行\n');
+  });
+
+  it('keeps two paragraphs apart', () => {
+    expect(htmlToMarkdown('<p>一</p><p>二</p>')).toBe('一\n\n二\n');
+  });
+
+  it('ignores editor overlays that leaked into the content', () => {
+    expect(htmlToMarkdown('<p><span data-pp-marker="1">##</span>标题</p>')).toBe('标题\n');
+  });
 });
 
 describe('link cards', () => {
