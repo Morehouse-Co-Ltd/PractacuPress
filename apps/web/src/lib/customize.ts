@@ -42,7 +42,8 @@ import {
   normalizeCustomTheme,
 } from './themes';
 import { BLOCK_TYPES, blockDef, createBlock, defaultHomeLayout, nextBlockId } from './blocks';
-import { MAX_BLOCKS, MAX_BLOCK_DEPTH, clampColumn, countBlocks } from './blockTree';
+import { normalizeBlockAppearance } from './blockAppearance';
+import { MAX_BLOCKS, MAX_BLOCK_DEPTH, MAX_CHILDREN_PER_CONTAINER, clampColumn, countBlocks } from './blockTree';
 import {
   defaultFooterColumns,
   normalizeFooterColumns,
@@ -218,6 +219,132 @@ function normalizeCovers(value: unknown): ArticleCover[] {
     });
   }
   return covers;
+}
+
+/* ------------------------------------------------------------------ *
+ * 自定义 CSS 的内容校验
+ * ------------------------------------------------------------------ */
+
+/** 自定义 CSS 长度上限（服务端同名字段按「高危串 + 长度」再做一次校验）。 */
+export const MAX_CUSTOM_CSS_CHARS = 20_000;
+
+/**
+ * 自定义 CSS 里不能出现的高危构造。
+ *
+ * H-1 之后这份样式会被服务端分发给每个访客（`SiteChrome` 原样放进 `<style>`），
+ * 所以它必须只是样式：`@import` 与 `url()` 里的脚本/HTML 协议会把样式变成外联或
+ * 执行面。匹配前按 CSS 解析器的顺序规范化（去注释 → 解转义 → 去空白 → 小写），
+ * 否则在 `@im` 与 `port` 中间夹一段注释、或用 `\40 import` 这类转义写法，
+ * 都能绕过按字面量匹配的检查。
+ *
+ * 只拦高危串：`url(https://…)`、`position: fixed`、`@media` 等合法样式必须保留，
+ * 所以这里不做整体白名单。
+ */
+const HIGH_RISK_CSS_PATTERNS: [string, RegExp][] = [
+  ['@import', /@import/],
+  ['expression(', /expression\(/],
+  ['behavior:', /behavior:/],
+  ['-moz-binding', /-moz-binding/],
+  ['url(javascript:', /url\(["']?javascript:/],
+  ['url(data:text/', /url\(["']?data:text\//],
+];
+
+const CSS_COMMENT = /\/\*[\s\S]*?\*\//g;
+const CSS_ESCAPE = /\\([0-9a-fA-F]{1,6}\s?|.)/g;
+
+/** 解析 CSS 转义：`\2f` 这样的十六进制转义与 `\x` 单字符转义。 */
+function decodeCssEscapes(value: string): string {
+  return value.replace(CSS_ESCAPE, (_match: string, body: string) => {
+    const trimmed = body.trim();
+    if (!trimmed) return body;
+    const code = Number.parseInt(trimmed, 16);
+    if (!Number.isFinite(code)) return body;
+    if (code < 0 || code > 0x10ffff) return '\ufffd';
+    return String.fromCodePoint(code);
+  });
+}
+
+function normalizeCssForScan(value: string): string {
+  return decodeCssEscapes(value.replace(CSS_COMMENT, ''))
+    .toLowerCase()
+    .replace(/[\s\u0000-\u001f\u007f]/g, '');
+}
+
+/** 命中的高危构造文案；没有命中返回空串（测试与导入提示共用）。 */
+export function highRiskCustomCssMarker(value: unknown): string {
+  if (typeof value !== 'string' || !value) return '';
+  const normalized = normalizeCssForScan(value);
+  for (const [marker, pattern] of HIGH_RISK_CSS_PATTERNS) {
+    if (pattern.test(normalized)) return marker;
+  }
+  return '';
+}
+
+/**
+ * 把样式表切成顶层规则：到顶层的 `;`（@import 这类语句）或配平的 `{...}`（普通规则
+ * 与 @media 等块）为止。引号、注释里的符号不参与配平。
+ */
+function splitTopLevelCssRules(source: string): string[] {
+  const rules: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote = '';
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (quote) {
+      if (char === '\\') {
+        index += 2;
+        continue;
+      }
+      if (char === quote) quote = '';
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && source[index + 1] === '*') {
+      const end = source.indexOf('*/', index + 2);
+      index = end === -1 ? source.length : end + 2;
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) {
+        rules.push(source.slice(start, index + 1));
+        start = index + 1;
+      }
+    } else if (char === ';' && depth === 0) {
+      rules.push(source.slice(start, index + 1));
+      start = index + 1;
+    }
+    index += 1;
+  }
+  if (start < source.length) rules.push(source.slice(start));
+  return rules.map((rule) => rule.trim()).filter(Boolean);
+}
+
+/**
+ * 读入 / 导出时使用的自定义 CSS 规范化：含高危构造的顶层规则整条丢弃，其余原样保留。
+ *
+ * 服务端还有一层同样的检查；两层是有意的：前端保证渲染与导出不会带毒，服务端保证
+ * 绕过前端直接 PUT（或旧客户端）也不会把毒文档分发给访客。
+ */
+export function sanitizeCustomCss(value: unknown, max = MAX_CUSTOM_CSS_CHARS): string {
+  if (typeof value !== 'string' || !value) return '';
+  const source = value.slice(0, max);
+  if (!source.trim()) return '';
+  // 干净样式原样返回，避免无意义地重排操作者手写的格式。
+  if (!highRiskCustomCssMarker(source)) return source;
+  const kept = splitTopLevelCssRules(source).filter((rule) => !highRiskCustomCssMarker(rule));
+  const result = kept.join('\n').trim();
+  if (!result || highRiskCustomCssMarker(result)) return '';
+  return result.slice(0, max);
 }
 
 /* ------------------------------------------------------------------ *
@@ -427,8 +554,9 @@ function normalizeBlock(
   if (!value || typeof value !== 'object' || depth > MAX_BLOCK_DEPTH) return null;
   if (budget.count >= MAX_BLOCKS) return null;
   const raw = value as Partial<BlockInstance>;
-  if (typeof raw.type !== 'string' || !BLOCK_TYPES.has(raw.type)) return null;
+  if (typeof raw.type !== 'string' || !raw.type) return null;
   budget.count += 1;
+  const known = BLOCK_TYPES.has(raw.type);
 
   const props: Record<string, string | number | boolean> = {};
   for (const [key, item] of Object.entries(raw.props ?? {})) {
@@ -448,12 +576,32 @@ function normalizeBlock(
 
   const children = Array.isArray(raw.children)
     ? raw.children
-        .slice(0, 80)
+        .slice(0, MAX_CHILDREN_PER_CONTAINER)
         .map((child) => normalizeBlock(child, depth + 1, seen, budget))
         .filter((child): child is BlockInstance => !!child)
     : [];
 
   const area = raw.area === 'full' || raw.area === 'main' || raw.area === 'side' ? raw.area : undefined;
+  if (!known) {
+    // 不认识的类型：保留形状，不解释 props，渲染器会跳过它。
+    const unsupportedProps: Record<string, string | number | boolean> = {};
+    for (const [key, item] of Object.entries(raw.props ?? {})) {
+      if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+        unsupportedProps[key] = item;
+      }
+    }
+    return {
+      id,
+      type: raw.type.slice(0, 64),
+      title: text(raw.title, '', 80) || raw.type.slice(0, 64),
+      props: unsupportedProps,
+      animation: animation(raw.animation),
+      hidden: bool(raw.hidden, false),
+      unsupported: true,
+      ...(children.length ? { children } : {}),
+    };
+  }
+  const appearance = normalizeBlockAppearance(raw.appearance);
   return {
     id,
     type: raw.type,
@@ -473,13 +621,13 @@ function normalizeBlock(
     ...(typeof raw.custom_css === 'string' && raw.custom_css
       ? { custom_css: raw.custom_css.slice(0, 4000) }
       : {}),
+    ...(appearance ? { appearance } : {}),
   };
 }
 
 function normalizeBlockList(value: unknown): BlockInstance[] {
   const raw = Array.isArray(value) ? value : [];
   const blocks = raw
-    .slice(0, 24)
     .map((block) => normalizeBlock(block))
     .filter((block): block is BlockInstance => !!block);
   if (countBlocks(blocks) <= MAX_BLOCKS) return blocks;
@@ -496,7 +644,7 @@ function normalizeBlockList(value: unknown): BlockInstance[] {
   return trimmed;
 }
 
-function normalizeLayout(value: unknown): ScreenLayout {
+export function normalizeScreenLayout(value: unknown): ScreenLayout {
   const raw = value as ScreenLayout | undefined;
   const blocks = normalizeBlockList(raw?.blocks);
   if (!raw?.device_split || !raw.devices || typeof raw.devices !== 'object') {
@@ -509,6 +657,19 @@ function normalizeLayout(value: unknown): ScreenLayout {
     devices[device] = { blocks: normalizeBlockList(entry.blocks) };
   }
   return { blocks, device_split: true, devices };
+}
+
+/** 编排的区块总量；编辑器保存前用它挡住超限，而不是让归一化静默截断。 */
+export function blockBudgetStatus(layout: ScreenLayout): {
+  total: number;
+  limit: number;
+  over: boolean;
+} {
+  const perDevice = Object.values(layout.devices ?? {}).map((entry) =>
+    countBlocks((entry as { blocks: BlockInstance[] }).blocks),
+  );
+  const total = Math.max(countBlocks(layout.blocks), 0, ...perDevice);
+  return { total, limit: MAX_BLOCKS, over: total > MAX_BLOCKS };
 }
 
 const STEP_KINDS = new Set(['trigger', 'condition', 'action']);
@@ -605,8 +766,8 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
   const layout = raw.layout ?? DEFAULT_LAYOUT;
   const variant = layout.variant === 'bento' ? 'bento' : 'classic';
   const extensions = raw.extensions ?? DEFAULT_EXTENSIONS;
-  const home = normalizeLayout(raw.home);
-  const article = normalizeLayout(raw.article);
+  const home = normalizeScreenLayout(raw.home);
+  const article = normalizeScreenLayout(raw.article);
   // 旧配置没有备案开关时按“已填写就显示”处理，避免已有备案信息突然消失。
   const icp = text(layout.icp, '', 80);
   const police = text(layout.police, '', 80);
@@ -723,7 +884,9 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
         bing: text(raw.seo?.verification?.bing, '', 120),
       },
     },
-    custom_css: text(raw.custom_css, '', 20000),
+    // 自定义 CSS 是唯一会原样进入全站 <style> 的字段：读入时就把高危规则剔掉，
+    // 保证随后写回服务端的副本、导出文件与渲染都走同一份干净内容。
+    custom_css: sanitizeCustomCss(raw.custom_css),
   };
 }
 
@@ -742,7 +905,7 @@ function pageTextBlock(markdown: string, title = '') {
 }
 
 function normalizePage(page: SitePage): SitePage {
-  const layout = page.layout ? normalizeLayout(page.layout) : undefined;
+  const layout = page.layout ? normalizeScreenLayout(page.layout) : undefined;
   const legacyBody = text(page.body, '', 50000).trim();
   // 页面内容现在统一由「页面编排」的区块承载。旧版页面只有 Markdown 正文，
   // 首次读取时把它搬进一个「文本」区块，之后前台不再单独渲染 body。
@@ -944,7 +1107,8 @@ export function downloadCustomization(customization: SiteCustomization, siteName
     version: 1,
     exported_at: new Date().toISOString(),
     site: siteName,
-    customization,
+    // 导出也走一遍规范化：手改过的本地配置可能带着还没被读入清洗的样式。
+    customization: { ...customization, custom_css: sanitizeCustomCss(customization.custom_css) },
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

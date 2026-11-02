@@ -71,6 +71,30 @@ export interface Site {
   disabled: boolean;
   /** 设置接口接受 description，但 Site 响应未声明；连接真实后端时可能缺失。 */
   description?: string;
+  /**
+   * 站点是否开放自助注册（O-3）。
+   *
+   * 缺失时按开放处理：旧后端与升级前保存的配置都不带这个字段，误关注册比多显示
+   * 一个注册入口代价大得多。
+   */
+  registration_open?: boolean;
+}
+
+/** 主域名的 TXT 归属验证信息（V-12）。 */
+export interface SiteDomainVerification {
+  domain: string;
+  verified: boolean;
+  verification_token: string;
+  /** TXT 记录名，例如 _practacu-verify.press.example.com。 */
+  record_name: string;
+  /** 记录类型，后端固定返回 TXT。 */
+  record_type: string;
+}
+
+/** 立即验证主域名归属的结果。 */
+export interface SiteDomainVerificationResult {
+  verified: boolean;
+  domain: string;
 }
 
 export interface Member {
@@ -737,6 +761,37 @@ export interface PermissionGroup {
 
 export type PermissionSettings = Record<PermissionGroupId, PermissionGroup>;
 
+/** 组件通用外观：圆角档位。 */
+export type BlockRadius = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+
+/** 组件通用外观：阴影档位。 */
+export type BlockShadow = 'none' | 'sm' | 'md' | 'lg' | 'glow';
+
+/**
+ * 组件通用外观：裁剪方式。
+ * `clip` 只裁掉溢出内容；比例值额外设置 aspect-ratio，相当于一个相框。
+ */
+export type BlockCrop = 'none' | 'clip' | '16:9' | '4:3' | '3:2' | '1:1' | '2:1';
+
+/**
+ * 组件通用外观。
+ *
+ * 全部字段都是受限枚举或标量，随区块一起 JSON 序列化；渲染时只变成最外层
+ * `<section class="pp-block">` 上的内联样式，不生成全局样式表，因此不会影响
+ * 其他区块，也仍然允许 `custom_css` 覆盖。
+ */
+export interface BlockAppearance {
+  radius?: BlockRadius;
+  shadow?: BlockShadow;
+  crop?: BlockCrop;
+  /** `#rgb` / `#rrggbb` / `#rrggbbaa`；空表示透明。 */
+  background?: string;
+  /** 0–64 px；0 表示不额外留白。 */
+  padding?: number;
+  /** 用主题细分割线描一圈边框。 */
+  border?: boolean;
+}
+
 /**
  * 无代码区块实例：一个默认组件 + 自己的命名、属性覆盖与入场动画。
  * 属性值只允许标量，保证配置可 JSON 序列化、可导入导出。
@@ -764,6 +819,13 @@ export interface BlockInstance {
   height?: number;
   /** 组件级 CSS 声明，只作用于这个区块本身。 */
   custom_css?: string;
+  /** 通用外观（圆角、阴影、裁剪、背景、内边距、描边）；缺省表示出厂观感。 */
+  appearance?: BlockAppearance;
+  /**
+   * 归一化时无法识别的区块类型：保留原样、不渲染、保存时写回。
+   * 这样从更新版本导出的设计不会因为本版本不认识而在下一次保存时永久消失。
+   */
+  unsupported?: boolean;
 }
 
 /** 夜航双栏布局的落位。 */
@@ -1115,62 +1177,73 @@ export interface PerformanceSettings {
 
 export type StorageDriver = 'local' | 's3';
 
-/**
- * 媒体存储策略。
- *
- * 浏览器只能记录部署意图：真正用到哪种存储由 API 进程启动时的 `STORAGE_*`
- * 环境变量决定。后台把选择翻译成可直接粘贴的 `.env` 片段，切换后需要重启
- * API，已有文件不会自动搬家。云对象存储兼容任何 S3 实现（AWS S3、MinIO、
- * 阿里云 OSS、腾讯云 COS 等）；公开读权限与防盗链由桶策略或 CDN 决定。
- */
 /** 存储用途：文章媒体、站点图片、用户头像、用户数据/附件。 */
 export type StorageScope = 'content' | 'site' | 'avatar' | 'attachment';
 
-/** 单个用途的存储目标；`inherit` 表示沿用上面的全局存储。 */
-export interface StorageScopeSettings {
-  driver: 'inherit' | StorageDriver;
-  /** driver=local 时的本地目录；inherit 时忽略。 */
-  local_dir: string;
-  /** driver=s3 时的桶名；inherit 时忽略。 */
-  s3_bucket: string;
-  /** driver=s3 时的对象键前缀；inherit 时忽略。 */
-  s3_prefix: string;
-}
-
-export interface StorageSettings {
-  /** 本地磁盘或 S3 兼容对象存储。 */
+/**
+ * 一套命名的储存策略。
+ *
+ * 浏览器只能记录部署意图：真正用到哪种存储由 API 进程启动时的 `STORAGE_*`
+ * 环境变量决定。后台把「策略 + 用途分配」翻译成可直接粘贴的 `.env` 片段，
+ * 切换后需要重启 API，已有文件不会自动搬家。云对象存储兼容任何 S3 实现
+ * （AWS S3、MinIO、阿里云 OSS、腾讯云 COS 等）；公开读权限与防盗链由桶策略
+ * 或 CDN 决定。
+ */
+export interface StorageStrategy {
+  /** 稳定 id，只允许小写字母、数字、下划线与连字符；用途用它引用策略。 */
+  id: string;
+  /** 展示名，必填且唯一，最多 40 个字符。 */
+  name: string;
+  /** 本地存储或 S3 兼容云对象存储。 */
   driver: StorageDriver;
-  /** 本地存储根目录；相对路径基于 API 进程的工作目录。 */
+  /** driver=local 时的本地目录；相对路径基于 API 进程的工作目录。 */
   local_dir: string;
+  /** driver=s3 时的桶名；云策略必填。 */
+  s3_bucket: string;
+  /** driver=s3 时的对象键前缀，同一桶多站点时用来隔离。 */
+  s3_prefix: string;
   /** S3 兼容端点；AWS 留空，MinIO / OSS / COS 填各自地址。 */
   s3_endpoint: string;
   /** 区域；SDK 对 MinIO 也要求一个值，留空时按 us-east-1 处理。 */
   s3_region: string;
-  /** 桶名；s3 模式下必填。 */
-  s3_bucket: string;
-  /** 对象键前缀，同一桶多站点时用来隔离。 */
-  s3_prefix: string;
+  /**
+   * 访问密钥 ID。可以保存在本地安装配置里；密钥（secret）不保存，
+   * 只存在于页面的组件状态，用于生成 `.env` 片段。
+   */
+  s3_access_key: string;
   /**
    * 期望的公开访问前缀（例如 CDN 域名）。
    *
    * 仅用于前端记录与排查，API 不读取这个值；公开读权限由桶策略或 CDN 决定。
    */
   s3_public_base_url: string;
-  /**
-   * 访问密钥 ID。可以保存在本地安装配置里；密钥（secret）不保存，
-   * 只存在于页面的组件状态，用于生成 `.env` 片段。
-   */
-  s3_access_key: string;
-  /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 与安全服务决定。 */
-  max_upload_mb: number;
-  /**
-   * 分用途覆盖：文章媒体、站点图片、用户头像、用户数据/附件。
-   * 旧配置没有这个字段时全部沿用全局存储。
-   */
-  scopes: Record<StorageScope, StorageScopeSettings>;
 }
 
-export type LoadingPreset = 'spinner' | 'dots' | 'pulse' | 'bar' | 'orbit';
+/**
+ * 媒体储存设置。
+ *
+ * `strategies` 是用户自己增删改的命名策略；`scopes` 把四个用途各自指向一套
+ * 策略的 id。旧版配置（全局 driver + 分用途覆盖）由 `normalizeStorage()`
+ * 迁移成这个形状，因此页面永远只需要处理这里的一种模型。
+ */
+export interface StorageSettings {
+  /** 至少一套，最多 8 套。 */
+  strategies: StorageStrategy[];
+  /** 值 = strategies 里某个策略的 id；四个键必须齐全且都是合法 id。 */
+  scopes: Record<StorageScope, string>;
+  /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 与安全服务决定。 */
+  max_upload_mb: number;
+}
+
+export type LoadingPreset =
+  | 'spinner'
+  | 'dots'
+  | 'pulse'
+  | 'bar'
+  | 'orbit'
+  | 'skeleton'
+  | 'shimmer'
+  | 'skeleton-shimmer';
 
 /** 站点前台加载动画。 */
 export interface LoadingSettings {
@@ -1210,6 +1283,21 @@ export interface WebConfig {
   owner_email?: string;
   /** 后台入口地址别名，例如 /manage；缺省为 /admin。 */
   admin_path?: string;
+  /**
+   * 匿名访客的只读配置：由启动探测（`lib/visitorBootstrap.ts`）构造，只存在内存里。
+   *
+   * 带这个标记的配置不写回 localStorage，也不参与「安装校验 / 设计水合 / 设计回写」，
+   * 避免把访客浏览器误当成一次真实安装。
+   */
+  visitor?: boolean;
+  /** 匿名访客的站点名：真实 Site 对象要登录后才能拿到，访客用 setup/status 的结果。 */
+  visitor_site_name?: string;
+  /**
+   * 匿名访客看到的注册开关（来自 setup/status 的 registration_open）。
+   *
+   * 缺省表示旧后端：按开放处理；false 时前台隐藏注册入口、注册页显示关闭提示。
+   */
+  visitor_registration_open?: boolean;
   /** 主题、页面与扩展。旧配置缺省时按默认外观处理。 */
   customization?: SiteCustomization;
   /** 邮箱之外的登录方式。旧配置缺省时全部关闭。 */
