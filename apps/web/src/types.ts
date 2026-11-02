@@ -820,16 +820,24 @@ export interface BlockAppearance {
   border?: boolean;
 }
 
+/** 一个 repeater 条目：只允许标量与字符串。 */
+export type BlockPropRecord = Record<string, string | number | boolean>;
+
+/** 区块属性值：标量或 repeater 的条目数组。 */
+export type BlockPropValue = string | number | boolean | BlockPropRecord[];
+
+export type BlockProps = Record<string, BlockPropValue>;
+
 /**
  * 无代码区块实例：一个默认组件 + 自己的命名、属性覆盖与入场动画。
- * 属性值只允许标量，保证配置可 JSON 序列化、可导入导出。
+ * 属性值只允许标量或 repeater 的条目数组，保证配置可 JSON 序列化、可导入导出。
  */
 export interface BlockInstance {
   id: string;
   type: string;
   /** 后台里的显示名，方便在长编排里认出它。 */
   title: string;
-  props: Record<string, string | number | boolean>;
+  props: BlockProps;
   animation: BlockAnimation;
   hidden: boolean;
   /**

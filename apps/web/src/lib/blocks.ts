@@ -2,6 +2,7 @@ import type {
   BlockAnimation,
   BlockArea,
   BlockInstance,
+  BlockProps,
   BuilderDevice,
   LayoutVariant,
   ScreenLayout,
@@ -15,11 +16,21 @@ import { IMAGE_RADIUS_OPTIONS } from './imageRadius';
  *
  * 每个区块 = 一个默认组件 + 属性模式（schema）+ 默认值。渲染器在
  * `components/blocks/`，后台编辑器的表单由 schema 驱动，因此新增组件
- * 不需要改编辑器代码。属性值只允许标量（itemlist 存 JSON 字符串），
+ * 不需要改编辑器代码。属性值只允许标量或 repeater（条目数组），
  * 保证整份配置可以导入导出。
  */
 
-export type PropType = 'text' | 'textarea' | 'number' | 'select' | 'toggle' | 'color' | 'itemlist';
+export type PropType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'select'
+  | 'toggle'
+  | 'color'
+  /** 旧的结构化列表：JSON 字符串。只为读取既有配置保留。 */
+  | 'itemlist'
+  /** 结构化列表：值是条目数组，子字段由 itemSchema 递归声明。 */
+  | 'repeater';
 
 export interface PropSchema {
   key: string;
@@ -31,9 +42,24 @@ export interface PropSchema {
   max?: number;
   step?: number;
   /** itemlist：条目字段，例如 [{ key: 'label', label: '名称' }] */
-  itemFields?: { key: string; label: string; type?: 'text' | 'color' }[];
+  itemFields?: {
+    key: string;
+    label: string;
+    /** select 用于「每个条目的样式/类型」这类有限选项。 */
+    type?: 'text' | 'color' | 'select';
+    /** type === 'select' 时的选项。 */
+    options?: { value: string; label: string }[];
+  }[];
   itemLabel?: string;
   maxItems?: number;
+  /** repeater：每个条目的字段，复用同一套 PropSchema（不允许再嵌 repeater）。 */
+  itemSchema?: PropSchema[];
+  minItems?: number;
+  /**
+   * 这个字段能不能绑定成「显示什么数据」（只对 text / textarea 生效）。
+   * 代码类字段（CSS、HTML、JS）默认关掉：把文章标题塞进样式表没有意义。
+   */
+  bindable?: boolean;
 }
 
 export interface BlockDefinition {
@@ -43,7 +69,7 @@ export interface BlockDefinition {
   group: 'classic' | 'nightflight' | 'shared';
   /** 出现在哪些布局变体的“添加组件”菜单里。 */
   variants: LayoutVariant[];
-  defaults: Record<string, string | number | boolean>;
+  defaults: BlockProps;
   schema: PropSchema[];
 }
 
@@ -433,6 +459,23 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
   },
   /* ---------------- 共用 ---------------- */
   {
+    type: 'article-content',
+    name: t('文章内容'),
+    description: t('文章正文的占位符：在文章页渲染真实正文，其它页面只显示占位提示。'),
+    group: 'shared',
+    variants: ['classic', 'bento'],
+    // 只有开关，没有正文：正文由当前文章提供，编排可以复用到每一篇文章。
+    defaults: { show_toc: false },
+    schema: [
+      {
+        key: 'show_toc',
+        label: t('显示目录'),
+        type: 'toggle',
+        hint: t('目录来自正文里的二级 / 三级标题；「外观 → 目录」已经打开时不会再重复一遍。'),
+      },
+    ],
+  },
+  {
     type: 'popular-content',
     name: t('热门文章'),
     description: t('按站内阅读次数排序，适合放在首页或页面侧栏。'),
@@ -592,6 +635,7 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
         key: 'style_css',
         label: t('作用域 CSS'),
         type: 'textarea',
+        bindable: false,
         hint: t('只写声明，例如 font-size: 18px; letter-spacing: .02em; 不会影响其他区块。'),
       },
     ],
@@ -890,10 +934,67 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     variants: ['classic', 'bento'],
     defaults: { html: '<div class="box">Hello</div>', css: '.box { font-family: sans-serif; padding: 24px; }', js: '', height: 320 },
     schema: [
-      { key: 'html', label: 'HTML', type: 'textarea', hint: t('只能访问这个 iframe 内部，不能读取后台。') },
-      { key: 'css', label: 'CSS', type: 'textarea' },
-      { key: 'js', label: 'JavaScript', type: 'textarea', hint: t('在 sandbox 中执行，不加载外部脚本。') },
+      { key: 'html', label: 'HTML', type: 'textarea', bindable: false, hint: t('只能访问这个 iframe 内部，不能读取后台。') },
+      { key: 'css', label: 'CSS', type: 'textarea', bindable: false },
+      { key: 'js', label: 'JavaScript', type: 'textarea', bindable: false, hint: t('在 sandbox 中执行，不加载外部脚本。') },
       { key: 'height', label: t('高度'), type: 'number', min: 120, max: 900, step: 20 },
+    ],
+  },
+  {
+    type: 'button',
+    name: t('按钮'),
+    description: t('一组带样式的行动按钮：站内跳转、外部链接、对齐与尺寸都能改。'),
+    group: 'shared',
+    variants: ['classic', 'bento'],
+    defaults: { buttons: [], align: 'left', size: 'md', new_tab: false },
+    schema: [
+      {
+        key: 'buttons',
+        label: t('按钮'),
+        type: 'repeater',
+        itemLabel: t('按钮'),
+        minItems: 1,
+        maxItems: 4,
+        hint: t(
+          '最多 4 个。链接可填 http(s) 地址或以 / 开头的站内路径；留空则只显示样式、不可点击。',
+        ),
+        itemSchema: [
+          { key: 'label', label: t('文字'), type: 'text' },
+          { key: 'link', label: t('链接'), type: 'text' },
+          {
+            key: 'style',
+            label: t('样式'),
+            type: 'select',
+            options: [
+              { value: 'solid', label: t('实心') },
+              { value: 'outline', label: t('描边') },
+              { value: 'ghost', label: t('幽灵') },
+              { value: 'link', label: t('文字链接') },
+            ],
+          },
+        ],
+      },
+      {
+        key: 'align',
+        label: t('对齐'),
+        type: 'select',
+        options: [
+          { value: 'left', label: t('左对齐') },
+          { value: 'center', label: t('居中') },
+          { value: 'right', label: t('右对齐') },
+        ],
+      },
+      {
+        key: 'size',
+        label: t('尺寸'),
+        type: 'select',
+        options: [
+          { value: 'sm', label: t('小') },
+          { value: 'md', label: t('中') },
+          { value: 'lg', label: t('大') },
+        ],
+      },
+      { key: 'new_tab', label: t('外部链接在新窗口打开'), type: 'toggle' },
     ],
   },
 ];
@@ -962,6 +1063,32 @@ export function screenHasBlocks(layout: ScreenLayout): boolean {
   if (layout.blocks.length) return true;
   return Object.values(layout.devices ?? {}).some(
     (entry) => (entry?.blocks.length ?? 0) > 0,
+  );
+}
+
+/** 「文章内容」占位符的类型名。 */
+export const ARTICLE_CONTENT_TYPE = 'article-content';
+
+/** 一棵区块树里有没有「文章内容」占位符（含分栏 / 容器里的嵌套区块）。 */
+function treeHasArticleContent(blocks: BlockInstance[]): boolean {
+  return blocks.some(
+    (block) =>
+      !block.hidden &&
+      (block.type === ARTICLE_CONTENT_TYPE || treeHasArticleContent(block.children ?? [])),
+  );
+}
+
+/**
+ * 这份编排里有没有「文章内容」占位符。
+ *
+ * 文章页据此决定正文画在哪：有占位符就把整份编排放在正文的位置，由占位符
+ * 渲染正文；没有就保持旧行为（正文照旧，编排区块排在评论区之后）。
+ * 分设备编排也要查一遍——手机版里可能只有它。
+ */
+export function hasArticleContent(layout: ScreenLayout): boolean {
+  if (treeHasArticleContent(layout.blocks)) return true;
+  return Object.values(layout.devices ?? {}).some((entry) =>
+    treeHasArticleContent(entry?.blocks ?? []),
   );
 }
 

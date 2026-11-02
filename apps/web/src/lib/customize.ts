@@ -4,6 +4,8 @@ import type {
   BlockAnimation,
   BlockDisplayOverride,
   BlockInstance,
+  BlockPropRecord,
+  BlockProps,
   BlockSpan,
   BlockVisibility,
   BuilderDevice,
@@ -46,6 +48,7 @@ import {
   normalizeCustomTheme,
 } from './themes';
 import { BLOCK_TYPES, blockDef, createBlock, defaultHomeLayout, nextBlockId } from './blocks';
+import type { PropSchema } from './blocks';
 import { normalizeBlockAppearance } from './blockAppearance';
 import { MAX_BLOCKS, MAX_BLOCK_DEPTH, MAX_CHILDREN_PER_CONTAINER, clampColumn, countBlocks } from './blockTree';
 import {
@@ -673,6 +676,122 @@ function blockDisplayFields(raw: Partial<BlockInstance>): Partial<BlockInstance>
   };
 }
 
+/**
+ * 一个 repeater 条目：按 itemSchema 逐字段白名单清洗，返回 null 表示这一条是坏数据。
+ *
+ * 条目里缺的字段补成该类型的空值（文本 / 选项 → `''`，开关 → `false`）：旧 itemlist
+ * 的 JSON 往往只写了填过的那几个字段，不补齐的话同一个条目在两次读入后形状不同，
+ * 表单与导出都会抖动。数字缺省时保持缺省——0 是个有意义的数值，不该替用户编出来。
+ */
+function normalizePropRecord(value: unknown, schema: PropSchema[]): BlockPropRecord | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const out: BlockPropRecord = {};
+  for (const field of schema) {
+    if (field.type === 'repeater') continue; // 只允许一层
+    const scalar = scalarValue(source[field.key]);
+    if (scalar !== undefined) {
+      out[field.key] = scalar;
+    } else if (field.type === 'toggle') {
+      out[field.key] = false;
+    } else if (field.type !== 'number') {
+      out[field.key] = '';
+    }
+  }
+  return out;
+}
+
+/**
+ * 读一个 repeater 值。
+ *
+ * 兼容两种来源：新配置（真正的数组）与旧 itemlist 配置（JSON 字符串）。
+ * 空数组 / 全是坏条目时返回 undefined，让「没配过」和「配成空」在存储里长得一样。
+ */
+function normalizeRepeaterValue(
+  value: unknown,
+  schema: PropSchema,
+): BlockPropRecord[] | undefined {
+  const fields = schema.itemSchema ?? [];
+  const max = schema.maxItems ?? 30;
+  let list: unknown[] | null = null;
+  if (Array.isArray(value)) {
+    list = value;
+  } else if (typeof value === 'string' && value) {
+    // 旧配置：itemlist 存的就是 JSON 字符串。
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      list = null;
+    }
+  }
+  if (!list) return undefined;
+  const out = list
+    .slice(0, max)
+    .map((item) => normalizePropRecord(item, fields))
+    .filter((item): item is BlockPropRecord => !!item);
+  return out.length ? out : undefined;
+}
+
+/**
+ * 文字绑定键（`bind:title`）的保留。
+ *
+ * 「显示什么数据」把绑定关系直接存在 `props['bind:' + key]` 里（见 lib/blocksData.ts），
+ * 而这些键不是任何 schema 字段。纯按 schema 清洗会把它们整批丢掉——用户选一次数据源、
+ * 保存、再读一次，绑定就没了。所以这里按前缀单独收一遍，值仍然过同一套标量清洗。
+ */
+const BIND_KEY_PREFIX = 'bind:';
+/** 写进 props 的绑定键不能污染原型；与 blocksData.ts 的 UNSAFE_KEYS 同一份名单。 */
+const UNSAFE_BIND_TARGETS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function boundScalars(source: Record<string, unknown>): BlockProps {
+  const out: BlockProps = {};
+  for (const [key, item] of Object.entries(source)) {
+    if (!key.startsWith(BIND_KEY_PREFIX) || key.length > 120) continue;
+    const target = key.slice(BIND_KEY_PREFIX.length);
+    if (!target || UNSAFE_BIND_TARGETS.has(target)) continue;
+    const scalar = scalarValue(item);
+    if (typeof scalar === 'string' && scalar) out[key] = scalar.slice(0, 80);
+  }
+  return out;
+}
+
+/**
+ * 按注册表 schema 递归白名单清洗属性。
+ *
+ * 未在 schema 里声明的键一律丢弃——服务端只存不解释，白名单只能在前端这一层做。
+ * 不认识的区块类型退化成「只保留标量」，保证从更新版本导入的配置不会丢内容。
+ */
+export function normalizeBlockProps(type: string, value: unknown): BlockProps {
+  const def = blockDef(type);
+  const source = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  if (!def) {
+    const out: BlockProps = {};
+    for (const [key, item] of Object.entries(source)) {
+      const scalar = scalarValue(item);
+      if (scalar !== undefined) out[key] = scalar;
+    }
+    return out;
+  }
+  const out: BlockProps = boundScalars(source);
+  for (const field of def.schema) {
+    if (field.type === 'repeater') {
+      const list = normalizeRepeaterValue(source[field.key], field);
+      if (list) out[field.key] = list;
+      continue;
+    }
+    const scalar = scalarValue(source[field.key]);
+    if (scalar !== undefined) out[field.key] = scalar;
+  }
+  return out;
+}
+
+/** 读 repeater 值；坏数据一律返回空数组，渲染器不需要防御。 */
+export function blockPropRecord(block: Pick<BlockInstance, 'props'>, key: string): BlockPropRecord[] {
+  const value = block.props[key];
+  return Array.isArray(value) ? value : [];
+}
+
 function normalizeBlock(
   value: unknown,
   depth = 0,
@@ -686,11 +805,7 @@ function normalizeBlock(
   budget.count += 1;
   const known = BLOCK_TYPES.has(raw.type);
 
-  const props: Record<string, string | number | boolean> = {};
-  for (const [key, item] of Object.entries(raw.props ?? {})) {
-    const value = scalarValue(item);
-    if (value !== undefined) props[key] = value;
-  }
+  const props = normalizeBlockProps(raw.type, raw.props);
 
   let id = typeof raw.id === 'string' && raw.id ? raw.id.slice(0, 80) : nextBlockId();
   if (seen.has(id)) id = nextBlockId();
