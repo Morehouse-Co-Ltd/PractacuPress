@@ -181,7 +181,7 @@ func (h *Handler) DownloadAsset(c *gin.Context) {
 	// told not to sniff a different one.
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Content-Disposition", "inline")
-	c.Header("Cache-Control", "private, max-age=300")
+	c.Header("Cache-Control", cacheControlFor(asset.Purpose))
 
 	c.DataFromReader(http.StatusOK, asset.Size, asset.MIME, reader, nil)
 }
@@ -358,4 +358,16 @@ func mapError(err error) *apperr.Problem {
 		return problem
 	}
 	return apperr.Internal(err)
+}
+
+// cacheControlFor keeps public site assets cacheable at the edge while leaving content
+// and attachments private: a published article can be withdrawn, its images must not
+// stay in a shared cache forever.
+func cacheControlFor(purpose Purpose) string {
+	switch purpose {
+	case PurposeSite, PurposeAvatar:
+		return "public, max-age=31536000, immutable"
+	default:
+		return "private, max-age=300"
+	}
 }

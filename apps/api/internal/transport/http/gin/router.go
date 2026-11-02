@@ -35,6 +35,11 @@ func New(deps Dependencies) *gin.Engine {
 		middleware.RequestID(),
 		middleware.Recovery(deps.Logger),
 		middleware.ErrorHandler(deps.Logger),
+		// Compression runs after the security headers so a 304 or an error still
+		// carries them; it sits before handlers so every JSON body benefits. The
+		// desktop build talks to this process directly, so this is the only thing
+		// shrinking the design document on its way to a visitor.
+		middleware.Gzip(),
 	)
 
 	// Bound request work and body size before anything else reads them. The two
