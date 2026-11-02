@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // ScanInput is what the security service inspects.
@@ -25,6 +26,24 @@ type ScanInput struct {
 // inspection fail on demand.
 type Scanner interface {
 	Inspect(ctx context.Context, in ScanInput) (ScanResult, error)
+}
+
+// PublishedReferenceChecker answers whether an asset is referenced by at least one
+// published content item of the site.
+//
+// It is what lets an article image load for a logged-out visitor without exposing
+// every upload of the site: a content purpose asset only becomes anonymously readable
+// once a published revision references it. The implementation lives in the content
+// store; nil means "nothing is published", the safe default.
+type PublishedReferenceChecker interface {
+	PublishedAssetReference(ctx context.Context, siteID, assetID string) (bool, error)
+}
+
+// DesignReferenceChecker reports whether a site's saved page-builder design mentions
+// the asset. A content asset used only by a page block is not in any article body,
+// so the published rule above cannot see it; this is the second chance.
+type DesignReferenceChecker interface {
+	DesignAssetReference(ctx context.Context, siteID, assetID string) (bool, error)
 }
 
 // Repository is the persistence contract for media.
@@ -54,11 +73,13 @@ type Repository interface {
 
 // Service implements the two phase upload flow.
 type Service struct {
-	repo     Repository
-	scanner  Scanner
-	storage  Storage
-	storages map[Purpose]Storage
-	now      func() time.Time
+	repo       Repository
+	scanner    Scanner
+	storage    Storage
+	storages   map[Purpose]Storage
+	references PublishedReferenceChecker
+	design     DesignReferenceChecker
+	now        func() time.Time
 }
 
 // ServiceConfig configures a Service.
@@ -72,7 +93,13 @@ type ServiceConfig struct {
 	// Storages optionally routes each purpose to its own adapter. A missing entry
 	// falls back to Storage, which keeps old deployments unchanged.
 	Storages map[Purpose]Storage
-	Now      func() time.Time
+	// References lets the read path serve a content image anonymously once it is
+	// referenced by published content. Nil denies that case altogether.
+	References PublishedReferenceChecker
+	// Design lets a content image referenced only by the page builder load for an
+	// anonymous visitor. Nil keeps the previous behaviour.
+	Design DesignReferenceChecker
+	Now    func() time.Time
 }
 
 // NewService builds a Service.
@@ -92,11 +119,13 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	}
 
 	service := &Service{
-		repo:     cfg.Repository,
-		scanner:  cfg.Scanner,
-		storage:  cfg.Storage,
-		storages: storages,
-		now:      cfg.Now,
+		repo:       cfg.Repository,
+		scanner:    cfg.Scanner,
+		storage:    cfg.Storage,
+		storages:   storages,
+		references: cfg.References,
+		design:     cfg.Design,
+		now:        cfg.Now,
 	}
 	if service.now == nil {
 		service.now = func() time.Time { return time.Now().UTC() }
@@ -259,16 +288,24 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 	return stored, nil
 }
 
-// OpenAsset returns a clean asset and a reader over its bytes.
+// OpenAsset returns a clean asset and a reader over its bytes, after checking that
+// this caller may read it.
 //
-// Assets that failed inspection are reported as not found: telling a caller that a
-// rejected file exists is already a disclosure.
+// Editors and above may read the whole library of their site. A member may read their
+// own uploads, the site's shared assets (site images and avatars) and a content image
+// that appears in published content. Anything else is reported as not found: telling
+// a caller that someone else's private attachment exists is itself a disclosure.
 func (s *Service) OpenAsset(
 	ctx context.Context,
 	actor Actor,
 	assetID string,
 ) (Asset, io.ReadCloser, error) {
-	return s.OpenAssetInSite(ctx, actor.SiteID, assetID)
+	return s.openAsset(ctx, actor.SiteID, assetID, func(asset Asset) error {
+		if actor.Role.AtLeast(site.RoleEditor) || asset.OwnerID == actor.UserID {
+			return nil
+		}
+		return s.authorizeSharedAsset(ctx, asset)
+	})
 }
 
 // OpenAssetInSite returns a clean asset scoped to one site, without a caller.
@@ -277,11 +314,56 @@ func (s *Service) OpenAsset(
 // load for a reader who has no session at all, and the only thing that then identifies
 // the tenant is the hostname the request resolved to. Who may read at all is the
 // transport's decision (it applies the site's visibility mode); this function only
-// enforces the site scope and the scan verdict.
+// enforces the site scope, the scan verdict and the published-reference rule.
 func (s *Service) OpenAssetInSite(
 	ctx context.Context,
 	siteID string,
 	assetID string,
+) (Asset, io.ReadCloser, error) {
+	return s.openAsset(ctx, siteID, assetID, func(asset Asset) error {
+		return s.authorizeSharedAsset(ctx, asset)
+	})
+}
+
+// authorizeSharedAsset is the read rule for assets the caller does not own.
+//
+// Site images and avatars are public by design. A content asset is only public once a
+// published revision references it or the site's saved design embeds it; an attachment
+// is never shared. Rejected assets are denied before this point because only
+// referenceable (clean) rows reach it.
+func (s *Service) authorizeSharedAsset(ctx context.Context, asset Asset) error {
+	switch asset.Purpose {
+	case PurposeSite, PurposeAvatar:
+		return nil
+	case PurposeContent:
+		if s.references != nil {
+			published, err := s.references.PublishedAssetReference(ctx, asset.SiteID, asset.ID)
+			if err != nil {
+				return err
+			}
+			if published {
+				return nil
+			}
+		}
+		if s.design != nil {
+			referenced, err := s.design.DesignAssetReference(ctx, asset.SiteID, asset.ID)
+			if err != nil {
+				return err
+			}
+			if referenced {
+				return nil
+			}
+		}
+	}
+	return ErrNotFound
+}
+
+// openAsset loads a referenceable asset and opens its bytes once authorize allows it.
+func (s *Service) openAsset(
+	ctx context.Context,
+	siteID string,
+	assetID string,
+	authorize func(Asset) error,
 ) (Asset, io.ReadCloser, error) {
 	if siteID == "" || assetID == "" {
 		return Asset{}, nil, ErrNotFound
@@ -293,6 +375,9 @@ func (s *Service) OpenAssetInSite(
 	}
 	if !asset.Referenceable() {
 		return Asset{}, nil, ErrNotFound
+	}
+	if err := authorize(asset); err != nil {
+		return Asset{}, nil, err
 	}
 	storage := s.storageFor(asset.Purpose)
 	if storage == nil {
@@ -338,6 +423,13 @@ func (s *Service) ListAssets(
 		if _, err := time.Parse(time.RFC3339Nano, after.Key); err != nil {
 			return nil, "", page.ErrInvalidCursor
 		}
+	}
+
+	// A member's library is their own uploads only: the site wide library (which
+	// includes other people's drafts and attachments) is an editor view. Narrowing
+	// here, in the service, keeps every caller of the port in the same rule.
+	if !actor.Role.AtLeast(site.RoleEditor) {
+		filter.OwnerID = actor.UserID
 	}
 
 	return s.repo.ListAssets(ctx, actor.SiteID, filter, limit, after)
