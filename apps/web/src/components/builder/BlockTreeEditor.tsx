@@ -10,6 +10,7 @@ import {
   insertBlock,
   moveBlock,
   removeBlock,
+  stepTarget,
   updateBlock,
 } from '../../lib/blockTree';
 import { useT } from '../../lib/i18n';
@@ -38,7 +39,15 @@ interface AddTarget {
 function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' {
   if (type === 'columns' || type === 'text') return 'layout';
   if (type === 'image' || type === 'video' || type === 'website' || type === 'slideshow') return 'media';
-  if (type === 'stats' || type === 'chart' || type === 'list' || type === 'articles' || type === 'code') return 'data';
+  if (
+    type === 'stats' ||
+    type === 'chart' ||
+    type === 'list' ||
+    type === 'articles' ||
+    type === 'code'
+  ) {
+    return 'data';
+  }
   return 'content';
 }
 
@@ -209,13 +218,7 @@ export function BlockTreeEditor({
     const siblings = location.parent?.children ?? blocks;
     const index = location.index + direction;
     if (index < 0 || index >= siblings.length) return;
-    onChange(
-      moveBlock(blocks, id, {
-        parentId: location.parent?.id ?? null,
-        column: location.column,
-        index,
-      }),
-    );
+    onChange(moveBlock(blocks, id, stepTarget(location, direction)));
   };
 
   const remove = (id: string) => {

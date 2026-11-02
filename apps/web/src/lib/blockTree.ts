@@ -147,6 +147,23 @@ export function moveBlock(
   return insertBlock(without, { ...target, index }, found.block);
 }
 
+/**
+ * 「上移 / 下移一格」按钮对应的投放目标。
+ *
+ * `moveBlock` 的 `target.index` 是「移除前的边界下标」，所以向下移动一格要多加一：
+ * 想落到原下标 `i + 1` 的元素之后，边界下标就是 `i + 2`。
+ */
+export function stepTarget(
+  location: Pick<BlockLocation, 'parent' | 'index' | 'column'>,
+  direction: 1 | -1,
+): DropTarget {
+  return {
+    parentId: location.parent?.id ?? null,
+    ...(location.parent ? { column: location.column } : {}),
+    index: location.index + direction + (direction > 0 ? 1 : 0),
+  };
+}
+
 /** 从根级或容器里移除并返回被移除的区块。 */
 export function extractBlock(
   blocks: BlockInstance[],
