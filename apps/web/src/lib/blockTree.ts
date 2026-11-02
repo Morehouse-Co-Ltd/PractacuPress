@@ -9,6 +9,8 @@ import type { BlockInstance } from '../types';
 
 export const MAX_BLOCK_DEPTH = 8;
 export const MAX_BLOCKS = 200;
+/** 单个容器下的直接子区块上限；与深度、总数构成本项目仅有的三条树约束。 */
+export const MAX_CHILDREN_PER_CONTAINER = 80;
 
 export interface BlockLocation {
   block: BlockInstance;
@@ -130,16 +132,17 @@ export function moveBlock(
   }
 
   const without = removeBlock(blocks, id);
-  // target.index 是移除后目标兄弟数组里的插入下标；编辑器在生成投放位置时
-  // 已经按“放到某一行之后”换算过，这里不再对同一父级做二次偏移。
-  let index = target.index;
+  // 同一父级内向下移动时，移除本节点会让目标下标前移一位；编辑器给的
+  // target.index 是「插到某一项之后」，所以先补偿，再夹到合法范围。
+  const sameParent = (found.parent?.id ?? null) === (target.parentId ?? null);
+  let index = sameParent && found.index < target.index ? target.index - 1 : target.index;
   if (target.parentId) {
     const parent = findBlock(without, target.parentId)?.block;
     if (!parent) return blocks;
     const max = parent.children?.length ?? 0;
-    index = Math.min(index, max);
+    index = Math.min(Math.max(index, 0), max);
   } else {
-    index = Math.min(index, without.length);
+    index = Math.min(Math.max(index, 0), without.length);
   }
   return insertBlock(without, { ...target, index }, found.block);
 }

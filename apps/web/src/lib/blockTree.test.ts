@@ -39,7 +39,8 @@ describe('blockTree', () => {
     const moved = moveBlock([container], first.id, {
       parentId: container.id,
       column: 2,
-      index: 1,
+      // 落点是“放到 second 之后”的边界下标（移除前的兄弟数组），移入后要减一位。
+      index: 2,
     });
     expect(findBlock(moved, first.id)?.column).toBe(2);
     expect(moved[0].children?.map((block) => block.id)).toEqual([second.id, first.id]);
