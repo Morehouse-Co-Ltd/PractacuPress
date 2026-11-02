@@ -8,6 +8,7 @@ import {
   screenHasBlocks,
 } from './blocks';
 import { readCustomization } from './customize';
+import { foldDeviceLayouts } from './migrate';
 
 function layoutWithDevices() {
   const desktop = [createBlock('text', { title: '桌面文案' })];
@@ -68,10 +69,10 @@ describe('按设备选择页面编排', () => {
       },
     } as never);
     expect(customization.home.device_split).toBe(true);
-    // 桌面副本与 blocks 结构一致，v1→v2 迁移判定它冗余并折算掉；桌面视图回退到 blocks。
-    expect(customization.home.devices?.desktop).toBeUndefined();
+    // 折算推迟到渲染层开始求值 at 之后（P1），所以读入时三端编排必须原样留着；
+    // 现在折会让没被渲染的手机/平板布局悄悄退回桌面版。
+    expect(customization.home.devices?.desktop?.blocks[0].title).toBe('桌面文案');
     expect(customization.home.blocks[0].title).toBe('桌面文案');
-    // 手机编排是另一棵树（结构不同），迁移按约定原样保留。
     expect(customization.home.devices?.mobile?.blocks[0].title).toBe('手机文案');
 
     const shared = readCustomization({
@@ -86,15 +87,13 @@ describe('按设备选择页面编排', () => {
   it('迁移折算出来的 at 经过归一化仍然保留', () => {
     const desktop = [createBlock('text', { title: '共用文案' })];
     const mobile = [{ ...desktop[0], hidden: true }];
-    const customization = readCustomization({
-      customization: {
-        home: {
-          blocks: desktop,
-          device_split: true,
-          devices: { desktop: { blocks: desktop }, mobile: { blocks: mobile } },
-        },
-      },
-    } as never);
+    // P1 会在渲染 at 之前调用 foldDeviceLayouts；这个用例守的是「折算结果读一次不丢」。
+    const folded = foldDeviceLayouts(
+      { blocks: desktop, device_split: true, devices: { desktop: { blocks: desktop }, mobile: { blocks: mobile } } },
+      '首页',
+      [],
+    ) as Record<string, unknown>;
+    const customization = readCustomization({ customization: { home: folded } } as never);
     // 折算进 at 的差异必须活过归一化，否则读一次再保存就永久丢掉手机端的外观设置。
     expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
     expect(customization.home.device_split).toBeUndefined();

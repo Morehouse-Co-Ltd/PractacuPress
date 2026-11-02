@@ -91,6 +91,7 @@ function foldDisplay(
   return changed;
 }
 
+/** 真正做折算的实现；调用点的时机约束见 `foldDeviceLayouts`。 */
 function foldLayout(raw: unknown, label: string, report: string[]): unknown {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const layout = raw as ScreenLayout & Record<string, unknown>;
@@ -127,26 +128,28 @@ function foldLayout(raw: unknown, label: string, report: string[]): unknown {
   return { blocks: base, device_split: true, devices };
 }
 
+/**
+ * 把三端独立的编排折算成「一份基础编排 + at 覆盖」。
+ *
+ * 只有渲染层开始求值 `at` 之后才可以调用——在那之前调用会让手机/平板布局
+ * 悄悄退回桌面版（迁移会删掉被折算的设备树）。P1 接入 `at` 求值时由迁移流程调用。
+ */
+export function foldDeviceLayouts(layout: unknown, label: string, report: string[]): unknown {
+  return foldLayout(layout, label, report);
+}
+
+/**
+ * v1 → v2 迁移。
+ *
+ * 只做两件事：盖上版本号、把 `home` / `article` / `pages[].layout` 原样留在原位。
+ * 三端编排的折算不在这一步——见 `foldDeviceLayouts`。
+ */
 export function migrateCustomization(raw: unknown): MigrationResult {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { value: {}, report: [] };
   const doc: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
   const version = typeof doc.schema_version === 'number' ? doc.schema_version : 1;
   if (version >= CURRENT_SCHEMA_VERSION) return { value: doc, report: [] };
 
-  const report: string[] = [];
-  if (doc.home) doc.home = foldLayout(doc.home, '首页', report);
-  if (doc.article) doc.article = foldLayout(doc.article, '文章页', report);
-  if (Array.isArray(doc.pages)) {
-    doc.pages = doc.pages.map((page, index) => {
-      if (!page || typeof page !== 'object') return page;
-      const entry = page as Record<string, unknown>;
-      if (!entry.layout) return page;
-      return {
-        ...entry,
-        layout: foldLayout(entry.layout, `页面「${String(entry.title ?? index)}」`, report),
-      };
-    });
-  }
   doc.schema_version = CURRENT_SCHEMA_VERSION;
-  return { value: doc, report };
+  return { value: doc, report: [] };
 }

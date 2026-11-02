@@ -926,7 +926,8 @@ function normalizeBlock(
       id,
       type: raw.type.slice(0, 64),
       title: text(raw.title, '', 80) || raw.type.slice(0, 64),
-      props: unsupportedProps,
+      // 未知类型同样过单块体积预算：否则一条陌生类型的区块就是绕过上限的走私通道。
+      props: capPropBytes(unsupportedProps),
       animation: animation(raw.animation),
       hidden: bool(raw.hidden, false),
       unsupported: true,
@@ -971,19 +972,27 @@ function normalizeBlock(
   };
 }
 
+/**
+ * 读取路径的区块上限：只用来给恶意/损坏文档兜住内存，不是产品上限。
+ *
+ * 产品上限 `MAX_BLOCKS` 由 `blockBudgetStatus` 在保存前挡住——读的时候就截断，
+ * 会让超限设计被悄悄削掉尾巴，编辑器的「删几个再存」提示也永远不会出现。
+ */
+export const MAX_READ_BLOCKS = 2000;
+
 function normalizeBlockList(value: unknown): BlockInstance[] {
   const raw = Array.isArray(value) ? value : [];
   const blocks = raw
     .map((block) => normalizeBlock(block))
     .filter((block): block is BlockInstance => !!block);
-  if (countBlocks(blocks) <= MAX_BLOCKS) return blocks;
+  if (countBlocks(blocks) <= MAX_READ_BLOCKS) return blocks;
 
   // 极端配置里根级区块本身很少，但子树可能超限；从尾部逐棵剔除到预算内。
   const trimmed: BlockInstance[] = [];
   let total = 0;
   for (const block of blocks) {
     const size = countBlocks([block]);
-    if (total + size > MAX_BLOCKS) continue;
+    if (total + size > MAX_READ_BLOCKS) continue;
     trimmed.push(block);
     total += size;
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WebConfig } from '../types';
 import { readCustomization } from './customize';
-import { CURRENT_SCHEMA_VERSION, migrateCustomization } from './migrate';
+import { CURRENT_SCHEMA_VERSION, foldDeviceLayouts, migrateCustomization } from './migrate';
 
 function block(id: string, extra: Record<string, unknown> = {}) {
   return { id, type: 'text', title: id, props: {}, animation: 'none', hidden: false, ...extra };
@@ -29,36 +29,36 @@ describe('migrateCustomization', () => {
     expect(report).toEqual([]);
   });
 
-  it('三棵树结构完全相同时折算成 at 覆盖并丢掉分设备副本', () => {
-    const { value, report } = migrateCustomization({
-      home: {
-        blocks: [block('a'), block('b')],
-        device_split: true,
-        devices: {
-          desktop: { blocks: [block('a'), block('b')] },
-          mobile: { blocks: [block('a'), block('b', { hidden: true })] },
-        },
+  it('三端编排原样保留：不折算成 at、不删设备树、不产生报告', () => {
+    // P0 的验收标准是「v1 配置渲染不变」。渲染层还没开始求值 at，所以这里一旦折算，
+    // 用户单独画过的手机布局就会在第一次读入时被桌面版顶掉。
+    const home = {
+      blocks: [block('a'), block('b')],
+      device_split: true,
+      devices: {
+        desktop: { blocks: [block('a'), block('b')] },
+        mobile: { blocks: [block('a'), block('b', { hidden: true })] },
       },
-    });
-    const home = value.home as Record<string, unknown>;
-    const blocks = home.blocks as Array<Record<string, unknown>>;
-    expect(blocks[1].at).toEqual({ mobile: { hidden: true } });
-    expect(home.device_split).toBeUndefined();
-    expect(home.devices).toBeUndefined();
-    expect(report.join('')).toContain('手机');
+    };
+    const { value, report } = migrateCustomization({ home: structuredClone(home) });
+    const migrated = value.home as Record<string, unknown>;
+    expect(migrated).toEqual(home);
+    expect(migrated.device_split).toBe(true);
+    expect((migrated.devices as Record<string, unknown>).desktop).toBeDefined();
+    expect((migrated.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect((migrated.blocks as Array<Record<string, unknown>>)[1].at).toBeUndefined();
+    expect(report).toEqual([]);
   });
 
-  it('结构不同时保留分设备副本并在报告里说明', () => {
-    const { value, report } = migrateCustomization({
-      home: {
-        blocks: [block('a')],
-        device_split: true,
-        devices: { mobile: { blocks: [block('a'), block('only-mobile')] } },
-      },
-    });
-    const home = value.home as Record<string, unknown>;
-    expect((home.devices as Record<string, unknown>).mobile).toBeDefined();
-    expect(report.join('')).toContain('结构不同');
+  it('结构不同的设备编排同样原样保留', () => {
+    const home = {
+      blocks: [block('a')],
+      device_split: true,
+      devices: { mobile: { blocks: [block('a'), block('only-mobile')] } },
+    };
+    const { value, report } = migrateCustomization({ home: structuredClone(home) });
+    expect(value.home).toEqual(home);
+    expect(report).toEqual([]);
   });
 
   it('坏数据不抛异常', () => {
@@ -94,18 +94,58 @@ describe('migrateCustomization', () => {
     expect(twice.value).toEqual(once.value);
     expect(twice.report).toEqual([]);
   });
+});
+
+describe('foldDeviceLayouts', () => {
+  it('三棵树结构完全相同时折算成 at 覆盖并丢掉分设备副本', () => {
+    const report: string[] = [];
+    const folded = foldDeviceLayouts(
+      {
+        blocks: [block('a'), block('b')],
+        device_split: true,
+        devices: {
+          desktop: { blocks: [block('a'), block('b')] },
+          mobile: { blocks: [block('a'), block('b', { hidden: true })] },
+        },
+      },
+      '首页',
+      report,
+    ) as Record<string, unknown>;
+    const blocks = folded.blocks as Array<Record<string, unknown>>;
+    expect(blocks[1].at).toEqual({ mobile: { hidden: true } });
+    expect(folded.device_split).toBeUndefined();
+    expect(folded.devices).toBeUndefined();
+    expect(report.join('')).toContain('手机');
+  });
+
+  it('结构不同时保留分设备副本并在报告里说明', () => {
+    const report: string[] = [];
+    const folded = foldDeviceLayouts(
+      {
+        blocks: [block('a')],
+        device_split: true,
+        devices: { mobile: { blocks: [block('a'), block('only-mobile')] } },
+      },
+      '首页',
+      report,
+    ) as Record<string, unknown>;
+    expect((folded.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect(report.join('')).toContain('结构不同');
+  });
 
   it('结构相同但没有任何展示差异的设备直接丢掉、不谎报结构不同', () => {
-    const { value, report } = migrateCustomization({
-      home: {
+    const report: string[] = [];
+    const folded = foldDeviceLayouts(
+      {
         blocks: [block('a')],
         device_split: true,
         devices: { tablet: { blocks: [block('a')] } },
       },
-    });
-    const home = value.home as Record<string, unknown>;
-    expect(home.devices).toBeUndefined();
-    expect(home.device_split).toBeUndefined();
+      '首页',
+      report,
+    ) as Record<string, unknown>;
+    expect(folded.devices).toBeUndefined();
+    expect(folded.device_split).toBeUndefined();
     expect(report).toEqual([]);
   });
 
@@ -113,17 +153,21 @@ describe('migrateCustomization', () => {
     // 40 层深的两棵树：形状比较一旦递归到底就会撑破调用栈，所以必须在深度上限处
     // 停下并回答「证明不了相同」，于是手机端编排原样保住。
     const deep = [chain(40)];
-    const run = () =>
-      migrateCustomization({
-        home: {
+    const run = () => {
+      const report: string[] = [];
+      return foldDeviceLayouts(
+        {
           blocks: structuredClone(deep),
           device_split: true,
           devices: { mobile: { blocks: structuredClone(deep) } },
         },
-      });
+        '首页',
+        report,
+      ) as Record<string, unknown>;
+    };
     expect(run).not.toThrow();
-    const home = run().value.home as Record<string, unknown>;
-    expect((home.devices as Record<string, unknown>).mobile).toBeDefined();
+    const folded = run();
+    expect((folded.devices as Record<string, unknown>).mobile).toBeDefined();
   });
 });
 

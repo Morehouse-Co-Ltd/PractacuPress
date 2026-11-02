@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { blockBudgetStatus, normalizeScreenLayout } from './customize';
+import { PROPS_MAX_BYTES, blockBudgetStatus, normalizeScreenLayout } from './customize';
 
 function textBlock(id: string) {
   return { id, type: 'text', title: id, props: { body: 'hi' }, animation: 'none' as const, hidden: false };
+}
+
+function bytesOf(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value) ?? '').length;
 }
 
 describe('normalizeScreenLayout', () => {
@@ -22,6 +26,16 @@ describe('normalizeScreenLayout', () => {
     expect(layout.blocks).toHaveLength(30);
   });
 
+  it('读入时不按产品上限截断：260 个区块原样留下，交给保存前的预算检查挡', () => {
+    // 以前读的时候就裁到 200，用户会静默丢掉 60 个区块，而且编辑器永远看不到「超限」。
+    const blocks = Array.from({ length: 260 }, (_, i) => textBlock(`b${i}`));
+    const layout = normalizeScreenLayout({ blocks });
+    expect(layout.blocks).toHaveLength(260);
+    const status = blockBudgetStatus(layout);
+    expect(status.over).toBe(true);
+    expect(status.total).toBe(260);
+  });
+
   it('容器子区块仍受 80 条上限约束', () => {
     const children = Array.from({ length: 90 }, (_, i) => textBlock(`c${i}`));
     const layout = normalizeScreenLayout({
@@ -35,6 +49,17 @@ describe('normalizeScreenLayout', () => {
   it('没有任何 type 的条目直接丢弃', () => {
     const layout = normalizeScreenLayout({ blocks: [{ id: 'bad' }, textBlock('ok')] });
     expect(layout.blocks.map((block) => block.id)).toEqual(['ok']);
+  });
+
+  it('不认识类型的大字符串 props 也受单块体积预算约束', () => {
+    // 未知类型的早退分支以前自建 props，绕过了 capPropBytes；超大字符串能整条走私进来。
+    const layout = normalizeScreenLayout({
+      blocks: [{ id: 'x1', type: 'pricing-v9', title: '价格', props: { blob: 'x'.repeat(20_000) } }],
+    });
+    const block = layout.blocks[0];
+    const blob = block.props.blob;
+    expect(blob === undefined || (typeof blob === 'string' && blob.length < 20_000)).toBe(true);
+    expect(bytesOf(block)).toBeLessThan(PROPS_MAX_BYTES + 1024);
   });
 });
 
