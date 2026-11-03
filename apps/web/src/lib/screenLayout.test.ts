@@ -30,6 +30,12 @@ describe('按设备选择页面编排', () => {
     expect(builderDeviceForWidth(390)).toBe('mobile');
   });
 
+  it('编排器与思维链共用同一张断点表（手机阈值 768）', () => {
+    // P1 把 640 收敛到 BREAKPOINT_MD：700px 以前算平板，现在算手机。
+    expect(builderDeviceForWidth(700)).toBe('mobile');
+    expect(builderDeviceForWidth(768)).toBe('tablet');
+  });
+
   it('开启分割后取对应设备，缺失设备回退桌面', () => {
     const layout = layoutWithDevices();
     expect(screenBlocksForDevice(layout, 'desktop')[0].title).toBe('桌面文案');

@@ -14,6 +14,7 @@ import { playBlockAnimation } from '../../lib/blockAnimations';
 import { styleDeclarations } from '../../lib/blockStyles';
 import { motionReduced } from '../../lib/performance';
 import { BLOCK_SKELETON_SHAPES } from '../../lib/loading';
+import { applyDisplayOverrides } from '../../lib/layout';
 import { useT } from '../../lib/i18n';
 import { usePageSkeleton } from '../SkeletonMode';
 import { useFeed } from './FeedContext';
@@ -162,7 +163,9 @@ export function ScreenRenderer({
 }) {
   const t = useT();
   const device = useViewportDevice();
-  const blocks = screenBlocksForDevice(layout, device).filter((block) => !block.hidden);
+  const blocks = applyDisplayOverrides(screenBlocksForDevice(layout, device), device).filter(
+    (block) => !block.hidden,
+  );
   if (!blocks.length) return null;
   return (
     <ScreenScopeProvider scope={scope ?? { type: 'home', id: 'home' }}>

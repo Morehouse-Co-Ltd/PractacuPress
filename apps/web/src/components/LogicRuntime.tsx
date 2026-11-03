@@ -7,6 +7,7 @@ import { isPersonalSite } from '../lib/site';
 import { applyMode } from '../lib/theme';
 import { dispatchInterfaceCommand } from '../lib/interfaceCommands';
 import { evaluateChain, type LogicContext, type LogicEvent } from '../lib/logic';
+import { BREAKPOINT_MD } from '../lib/layout';
 
 /**
  * 思维链运行时。
@@ -113,7 +114,7 @@ export function LogicRuntime() {
       const state = latest.current;
       const ctx: LogicContext = {
         pathname: state.pathname,
-        isMobile: window.innerWidth < 768,
+        isMobile: window.innerWidth < BREAKPOINT_MD,
         loggedIn: state.loggedIn,
         personal: state.personal,
         mode: state.mode,
@@ -208,7 +209,7 @@ export function LogicRuntime() {
     const state = latest.current;
     const ctx: LogicContext = {
       pathname: state.pathname,
-      isMobile: window.innerWidth < 768,
+      isMobile: window.innerWidth < BREAKPOINT_MD,
       loggedIn: state.loggedIn,
       personal: state.personal,
       mode: state.mode,

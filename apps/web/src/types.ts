@@ -872,6 +872,14 @@ export interface BlockInstance {
   span?: BlockSpan;
   /** 栅格起始列偏移。 */
   offset?: BlockSpan;
+  /** 子区块在栅格里的水平对齐（P1）。 */
+  align?: 'left' | 'center' | 'right';
+  /** 栅格间距档位（P1，作用于 grid 容器）。 */
+  gap_scale?: number;
+  /** 上外边距档位（P1，间距标尺的下标）。 */
+  mt?: number;
+  /** 下外边距档位（P1，间距标尺的下标）。 */
+  mb?: number;
 }
 
 /** 夜航双栏布局的落位。 */

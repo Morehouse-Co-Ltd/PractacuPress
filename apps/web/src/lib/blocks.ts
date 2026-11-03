@@ -10,6 +10,7 @@ import type {
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 import { IMAGE_RADIUS_OPTIONS } from './imageRadius';
+import { BREAKPOINT_LG, BREAKPOINT_MD } from './layout';
 
 /**
  * 无代码区块注册表（数据侧）。
@@ -1045,10 +1046,10 @@ export function createBlock(type: string, patch?: Partial<BlockInstance>): Block
   };
 }
 
-/** 按窗口宽度判断当前设备：桌面 ≥1024，平板 641–1023，手机 ≤640。 */
+/** 按窗口宽度判断当前设备；阈值来自 lib/layout.ts 的唯一断点表。 */
 export function builderDeviceForWidth(width: number): BuilderDevice {
-  if (width <= 640) return 'mobile';
-  if (width < 1024) return 'tablet';
+  if (width < BREAKPOINT_MD) return 'mobile';
+  if (width < BREAKPOINT_LG) return 'tablet';
   return 'desktop';
 }
 
