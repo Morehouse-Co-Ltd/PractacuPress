@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
 
 // TestValidatePasswordPolicy pins the V-30 policy: length bounds, no all whitespace
@@ -54,6 +56,86 @@ func TestValidatePasswordPolicy(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestValidationErrorsCarryFieldAndRule pins the machine vocabulary the client uses to
+// explain a rejected form: the sentinel must stay matchable for the transport, while the
+// FieldError names the input and the broken rule.
+func TestValidationErrorsCarryFieldAndRule(t *testing.T) {
+	tests := []struct {
+		name  string
+		call  func() error
+		field string
+		rule  string
+	}{
+		{
+			name:  "empty email",
+			call:  func() error { _, err := NormalizeEmail(""); return err },
+			field: "email", rule: "required",
+		},
+		{
+			name:  "malformed email",
+			call:  func() error { _, err := NormalizeEmail("not-an-email"); return err },
+			field: "email", rule: "malformed",
+		},
+		{
+			name: "over-long email",
+			call: func() error {
+				_, err := NormalizeEmail(strings.Repeat("a", 300) + "@example.com")
+				return err
+			},
+			field: "email", rule: "too_long",
+		},
+		{
+			name:  "short password",
+			call:  func() error { return ValidatePassword("Aa1!Aa1") }, // 7 runes
+			field: "password", rule: "too_short",
+		},
+		{
+			name:  "long password",
+			call:  func() error { return ValidatePassword(strings.Repeat("Aa1!", 32) + "A") }, // 129 runes
+			field: "password", rule: "too_long",
+		},
+		{
+			name:  "blank password",
+			call:  func() error { return ValidatePassword("        ") }, // eight spaces
+			field: "password", rule: "blank",
+		},
+		{
+			name:  "weak password",
+			call:  func() error { return ValidatePassword("password") },
+			field: "password", rule: "too_weak",
+		},
+		{
+			name:  "missing display name",
+			call:  func() error { _, err := ValidateDisplayName("   "); return err },
+			field: "display_name", rule: "required",
+		},
+		{
+			name: "over-long display name",
+			call: func() error {
+				_, err := ValidateDisplayName(strings.Repeat("长", MaxDisplayNameLength+1))
+				return err
+			},
+			field: "display_name", rule: "too_long",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.ErrorIs(t, err, ErrInvalidInput, "the transport still matches the sentinel")
+
+			var fieldErr *apperr.FieldError
+			require.ErrorAs(t, err, &fieldErr, "the error names the failing field")
+			require.Equal(t, tt.field, fieldErr.Field)
+			require.Equal(t, tt.rule, fieldErr.Rule)
+			require.NotEmpty(t, fieldErr.Reason, "operators keep the english reason")
+		})
+	}
+
+	// A valid password is not an error at all.
+	require.NoError(t, ValidatePassword("correct horse battery"))
 }
 
 // TestNormalizeEmailStaysBelowPersistenceLength is the V-28 regression: the API must

@@ -180,7 +180,8 @@ func TestContactFormRejectsAnAddressWithoutAt(t *testing.T) {
 	require.Empty(t, h.inbox(t))
 }
 
-// TestContactFormRejectsAnEmptyMessage keeps a blank submission out of the inbox.
+// TestContactFormRejectsAnEmptyMessage keeps a blank submission out of the inbox, and
+// names the field and rule so the form can tell the reader what to fix.
 func TestContactFormRejectsAnEmptyMessage(t *testing.T) {
 	h := newHarness(t)
 	token := h.register(t, "owner@example.com")
@@ -189,8 +190,21 @@ func TestContactFormRejectsAnEmptyMessage(t *testing.T) {
 	body := validMessage()
 	body["message"] = "   "
 
-	require.Equal(t, http.StatusBadRequest, h.postContact(t, "", body).Code)
+	w := h.postContact(t, "", body)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Empty(t, h.inbox(t))
+
+	var problem struct {
+		Code    string            `json:"code"`
+		Message string            `json:"message"`
+		Details map[string]string `json:"details"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &problem))
+	require.Equal(t, "validation_failed", problem.Code)
+	require.Equal(t, "请求参数不符合要求", problem.Message)
+	require.Equal(t, "message", problem.Details["field"])
+	require.Equal(t, "required", problem.Details["rule"])
+	require.NotEmpty(t, problem.Details["reason"])
 }
 
 // TestContactFormHoneypotIsSilentlyAccepted is the brief's "202 but deliver nothing":

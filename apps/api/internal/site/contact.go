@@ -3,6 +3,7 @@ package site
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -203,27 +204,39 @@ func validateContact(in ContactRequest) (ContactRequest, error) {
 	}
 
 	if clean.Message == "" {
-		return ContactRequest{}, formatInvalid("message is required")
+		return ContactRequest{}, formatInvalidField("message", "required", "message is required")
 	}
 	if utf8.RuneCountInString(clean.Message) > MaxContactMessageLength {
-		return ContactRequest{}, formatInvalid("message is too long")
+		return ContactRequest{}, formatInvalidField("message", "too_long", "message is too long")
 	}
 	if len(clean.Name) > MaxContactNameLength {
-		return ContactRequest{}, formatInvalid("name is too long")
+		return ContactRequest{}, formatInvalidField("name", "too_long", "name is too long")
 	}
 	if clean.Email != "" {
 		if len(clean.Email) > MaxContactEmailLength {
-			return ContactRequest{}, formatInvalid("email is too long")
+			return ContactRequest{}, formatInvalidField("email", "too_long", "email is too long")
 		}
 		// The brief's rule, and the only rule a contact form needs: an address has to
 		// contain an "@". Validating deliverability here would reject valid addresses
 		// and would not prove anything anyway.
 		if !strings.Contains(clean.Email, "@") || strings.HasPrefix(clean.Email, "@") ||
 			strings.HasSuffix(clean.Email, "@") || strings.ContainsAny(clean.Email, " \t\r\n") {
-			return ContactRequest{}, formatInvalid("email is invalid")
+			return ContactRequest{}, formatInvalidField("email", "malformed", "email is invalid")
 		}
 	}
 	return clean, nil
+}
+
+// formatInvalidField is formatInvalid with the machine readable field/rule attached.
+//
+// Both sentinels are wrapped so errors.Is(err, ErrInvalidInput) keeps working while
+// errors.As recovers the FieldError for the transport.
+func formatInvalidField(field, rule, message string) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, &apperr.FieldError{
+		Field:  field,
+		Rule:   rule,
+		Reason: message,
+	})
 }
 
 // contactThrottle is the in-process submission floor.
@@ -361,6 +374,10 @@ func mapContactError(err error) *apperr.Problem {
 	case errors.Is(err, ErrContactUnavailable):
 		return apperr.Internal(err)
 	case errors.Is(err, ErrInvalidInput):
+		var fieldErr *apperr.FieldError
+		if errors.As(err, &fieldErr) {
+			return apperr.ValidationField(fieldErr.Reason, fieldErr.Field, fieldErr.Rule)
+		}
 		return apperr.Validation(cleanValidation(err))
 	}
 	return apperr.Internal(err)

@@ -518,9 +518,16 @@ func toUserResponse(user UserView) userResponse {
 
 // mapError translates domain failures into the single error model the API exposes.
 func mapError(err error) *apperr.Problem {
+	var fieldErr *apperr.FieldError
+
 	switch {
 	case err == nil:
 		return nil
+
+	case errors.As(err, &fieldErr):
+		// The input failed a known rule: the client gets the stable field/rule pair and
+		// keeps the english reason for operators.
+		return apperr.ValidationField(fieldErr.Reason, fieldErr.Field, fieldErr.Rule)
 
 	case errors.Is(err, ErrInvalidInput):
 		return apperr.Validation(err.Error())

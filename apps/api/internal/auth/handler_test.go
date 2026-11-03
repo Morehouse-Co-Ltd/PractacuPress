@@ -211,6 +211,31 @@ func TestRegisterRejectsShortPassword(t *testing.T) {
 	require.Equal(t, "validation_failed", decode(t, w)["code"])
 }
 
+// TestRegisterWeakPasswordNamesFieldAndRule is the client's side of the contract: a form
+// can translate "password -> too_weak" without parsing english, while the message stays
+// the one generic string the API has always returned.
+func TestRegisterWeakPasswordNamesFieldAndRule(t *testing.T) {
+	h := newAPIHarness(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register/email", jsonBody(t, map[string]string{
+		"email": "weak@example.com", "password": "password", "display_name": "Weak",
+	}))
+	req.Header.Set("Content-Type", "application/json")
+	w := h.do(t, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	payload := decode(t, w)
+	require.Equal(t, "validation_failed", payload["code"])
+	require.Equal(t, "请求参数不符合要求", payload["message"], "the message must stay unchanged")
+
+	details, ok := payload["details"].(map[string]any)
+	require.True(t, ok, "details must be an object")
+	require.Equal(t, "password", details["field"])
+	require.Equal(t, "too_weak", details["rule"])
+	require.NotEmpty(t, details["reason"])
+}
+
 func TestLoginAndMe(t *testing.T) {
 	h := newAPIHarness(t)
 	require.Equal(t, http.StatusCreated, register(t, h, "alice@example.com").Code)

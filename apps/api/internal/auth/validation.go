@@ -6,7 +6,24 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
+
+// invalidField builds a field error that stays matchable as ErrInvalidInput.
+//
+// Both sentinels are wrapped: errors.Is(err, ErrInvalidInput) keeps working for the
+// transport, while errors.As(err, &FieldError) recovers the field and rule the client
+// translates. FieldError itself lives in the error model package and cannot reference
+// this package's sentinel without an import cycle, which is why the wrapping happens
+// here rather than in an Unwrap method.
+func invalidField(field, rule, reason string) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, &apperr.FieldError{
+		Field:  field,
+		Rule:   rule,
+		Reason: reason,
+	})
+}
 
 // Bounds on caller supplied input.
 //
@@ -37,19 +54,19 @@ const (
 func NormalizeEmail(raw string) (string, error) {
 	email := strings.ToLower(strings.TrimSpace(raw))
 	if email == "" {
-		return "", fmt.Errorf("%w: email is required", ErrInvalidInput)
+		return "", invalidField("email", "required", "email is required")
 	}
 	if len(email) > MaxEmailLength {
-		return "", fmt.Errorf("%w: email is too long", ErrInvalidInput)
+		return "", invalidField("email", "too_long", "email is too long")
 	}
 
 	parsed, err := mail.ParseAddress(email)
 	if err != nil {
-		return "", fmt.Errorf("%w: email is malformed", ErrInvalidInput)
+		return "", invalidField("email", "malformed", "email is malformed")
 	}
 	// Reject the "Name <addr>" form: the identity is the bare address.
 	if parsed.Address != email {
-		return "", fmt.Errorf("%w: email must be a bare address", ErrInvalidInput)
+		return "", invalidField("email", "malformed", "email must be a bare address")
 	}
 	return email, nil
 }
@@ -64,17 +81,19 @@ func ValidatePassword(raw string) error {
 	length := utf8.RuneCountInString(raw)
 	switch {
 	case length < MinPasswordLength:
-		return fmt.Errorf("%w: password must be at least %d characters", ErrInvalidInput, MinPasswordLength)
+		return invalidField("password", "too_short",
+			fmt.Sprintf("password must be at least %d characters", MinPasswordLength))
 	case length > MaxPasswordLength:
-		return fmt.Errorf("%w: password must be at most %d characters", ErrInvalidInput, MaxPasswordLength)
+		return invalidField("password", "too_long",
+			fmt.Sprintf("password must be at most %d characters", MaxPasswordLength))
 	}
 	if strings.TrimSpace(raw) == "" {
-		return fmt.Errorf("%w: password must not be only whitespace", ErrInvalidInput)
+		return invalidField("password", "blank", "password must not be only whitespace")
 	}
 	if classes := passwordClasses(raw); classes < minPasswordClasses {
-		return fmt.Errorf(
-			"%w: password must combine at least %d of lowercase, uppercase, digits and symbols",
-			ErrInvalidInput, minPasswordClasses)
+		return invalidField("password", "too_weak", fmt.Sprintf(
+			"password must combine at least %d of lowercase, uppercase, digits and symbols",
+			minPasswordClasses))
 	}
 	return nil
 }
@@ -113,10 +132,10 @@ func passwordClasses(raw string) int {
 func ValidateDisplayName(raw string) (string, error) {
 	name := strings.TrimSpace(raw)
 	if name == "" {
-		return "", fmt.Errorf("%w: display name is required", ErrInvalidInput)
+		return "", invalidField("display_name", "required", "display name is required")
 	}
 	if utf8.RuneCountInString(name) > MaxDisplayNameLength {
-		return "", fmt.Errorf("%w: display name is too long", ErrInvalidInput)
+		return "", invalidField("display_name", "too_long", "display name is too long")
 	}
 	return name, nil
 }

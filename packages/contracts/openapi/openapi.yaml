@@ -2064,7 +2064,31 @@ components:
             - email_not_configured
             - quota_exceeded
         message: { type: string, description: Localised, may change. Clients branch on `code`. }
-        details: { type: object, additionalProperties: true }
+        details:
+          type: object
+          additionalProperties: true
+          description: |
+            Structured, non sensitive context for the failure. Always contains `reason`
+            on `validation_failed`; that text is english and meant for operators, so
+            clients must not display it.
+            On `validation_failed` the object optionally also carries the machine
+            readable vocabulary documented below, so a client can translate the failure
+            instead of showing the generic message. Both keys are omitted together when
+            the failing input cannot be identified (for example a malformed JSON body).
+          properties:
+            field:
+              type: string
+              description: |
+                The input that failed validation. Omitted when it cannot be identified.
+              enum: [email, password, display_name, name, message, title, slug, role, domain, document]
+            rule:
+              type: string
+              description: |
+                The rule the input broke. Omitted when it cannot be identified.
+              enum: [required, malformed, too_short, too_long, too_weak, blank, out_of_range, unknown, too_large, unsupported]
+            reason:
+              type: string
+              description: Free english detail for operators. Never shown to an end user.
         request_id: { type: string }
 
     Role:

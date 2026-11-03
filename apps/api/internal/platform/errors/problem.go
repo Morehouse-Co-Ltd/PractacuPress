@@ -132,6 +132,32 @@ func Validation(detail string) *Problem {
 	return New(CodeValidationFailed).WithDetail("reason", detail)
 }
 
+// FieldError names the input that failed and the rule it broke, in a vocabulary
+// the client can translate. `Reason` stays free text for operators.
+type FieldError struct {
+	Field  string
+	Rule   string
+	Reason string
+}
+
+// Error implements the error interface.
+func (e *FieldError) Error() string { return e.Reason }
+
+// ValidationField is Validation with the machine readable field/rule attached.
+//
+// Both keys are optional: an empty field or rule is omitted, so a failure that cannot
+// identify its input keeps today's payload shape.
+func ValidationField(detail string, field, rule string) *Problem {
+	p := Validation(detail)
+	if field != "" {
+		p.WithDetail("field", field)
+	}
+	if rule != "" {
+		p.WithDetail("rule", rule)
+	}
+	return p
+}
+
 // Unauthenticated reports a missing or invalid credential.
 func Unauthenticated() *Problem { return New(CodeUnauthenticated) }
 
