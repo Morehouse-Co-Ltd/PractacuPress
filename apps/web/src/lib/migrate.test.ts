@@ -98,6 +98,50 @@ describe('migrateCustomization', () => {
     expect(home.devices).toBeUndefined();
   });
 
+  it('桌面编辑在 devices.desktop 里时以它为准（不退回旧快照）', () => {
+    // layout.blocks 只是「打开分端那一刻」的快照，之后的桌面编辑进了 devices.desktop。
+    // 两边结构一致时若仍拿快照当基础，站点会悄悄退回旧内容。
+    const { value } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: {
+            desktop: { blocks: [{ ...block('a'), title: '桌面新标题' }] },
+            mobile: { blocks: [{ ...block('a'), title: '桌面新标题' }] },
+          },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    const blocks = home.blocks as Array<Record<string, unknown>>;
+    expect(blocks[0].title).toBe('桌面新标题');
+    expect(home.device_split).toBeUndefined();
+  });
+
+  it('桌面版自己改过内容、手机版又不一样：两边都保住', () => {
+    // 基础编排取 devices.desktop，手机版与它内容不同 → 保留手机版树（因此仍带 device_split）。
+    const { value, report } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: {
+            desktop: { blocks: [{ ...block('a'), title: '桌面新标题' }] },
+            mobile: { blocks: [block('a')] },
+          },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect((home.blocks as Array<Record<string, unknown>>)[0].title).toBe('桌面新标题');
+    expect((home.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect(home.device_split).toBe(true);
+    expect(report.join('')).toContain('内容');
+  });
+
   it('首页之外的编排也折算：文章页与自定义页面，报告逐条带上页面标签', () => {
     const split = () => ({
       blocks: [block('a')],
@@ -215,6 +259,58 @@ describe('foldDeviceLayouts', () => {
     expect(folded.devices).toBeUndefined();
     expect(folded.device_split).toBeUndefined();
     expect(report).toEqual([]);
+  });
+
+  it('同结构但内容不同：不折算、保留设备树、写进报告', () => {
+    // v1 把用户编辑过的整棵树写进 devices[device].blocks：id 与嵌套都能对上，
+    // 但标题/props 这些 at 装不下的字段可能已经不一样。折算 = 静默删掉那份内容。
+    const report: string[] = [];
+    const folded = foldDeviceLayouts(
+      {
+        blocks: [block('a')],
+        device_split: true,
+        devices: { mobile: { blocks: [{ ...block('a'), title: '手机版标题' }] } },
+      },
+      '首页',
+      report,
+    ) as Record<string, unknown>;
+    expect(folded.devices).toBeDefined();
+    expect((folded.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect((folded.blocks as Array<Record<string, unknown>>)[0].at).toBeUndefined();
+    expect(report.join('')).toContain('内容');
+  });
+
+  it('内容不同就整端不折算：展示层的差异也不写成 at（不留半折算的树）', () => {
+    const report: string[] = [];
+    const folded = foldDeviceLayouts(
+      {
+        blocks: [block('a')],
+        device_split: true,
+        devices: { mobile: { blocks: [{ ...block('a'), title: '手机版标题', hidden: true }] } },
+      },
+      '首页',
+      report,
+    ) as Record<string, unknown>;
+    expect((folded.blocks as Array<Record<string, unknown>>)[0].at).toBeUndefined();
+    expect((folded.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect(report.join('')).toContain('内容');
+  });
+
+  it('嵌套子区块的 props 不同同样算内容不同', () => {
+    const report: string[] = [];
+    const folded = foldDeviceLayouts(
+      {
+        blocks: [block('a', { children: [block('c', { props: { text: '桌面版' } })] })],
+        device_split: true,
+        devices: {
+          mobile: { blocks: [block('a', { children: [block('c', { props: { text: '手机版' } })] })] },
+        },
+      },
+      '首页',
+      report,
+    ) as Record<string, unknown>;
+    expect((folded.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect(report.join('')).toContain('内容');
   });
 
   it('嵌套远超深度上限时不爆栈，并保留设备编排', () => {

@@ -5,7 +5,8 @@ import { MAX_BLOCK_DEPTH } from './blockTree';
  * 设计文档的结构版本。
  *
  * 1 → 2：三端「整棵树复制三份」改为「一份基础编排 + 展示层覆盖」。
- * 迁移只在结构完全一致时折算；结构不同的设备编排保留，写进报告交给用户决定。
+ * 迁移只在结构**与内容**都完全一致时折算；任何不一致的设备编排保留，写进报告交给用户决定。
+ * 基础编排取 `devices.desktop`（用户后期真正在编辑的那棵），缺失时才退回 `layout.blocks` 快照。
  */
 export const CURRENT_SCHEMA_VERSION = 2;
 
@@ -38,7 +39,8 @@ function childrenOf(block: unknown): BlockInstance[] {
 }
 
 /**
- * 两棵树是否「同一批区块、同一种嵌套」；只有此时折算才不改变任何人的布局。
+ * 两棵树是否「同一批区块、同一种嵌套」；形状与内容都相同，折算才不改变任何人的布局。
+ * 这个函数只回答形状，内容由 `sameContent` 负责。
  *
  * 这里走的是原始文档，早于归一化的深度裁剪；超过 MAX_BLOCK_DEPTH 一律回答
  * 「证明不了形状相同」，于是设备编排按原样保留——宁可多留一份，也不能错折。
@@ -54,6 +56,42 @@ function sameShape(a: unknown[], b: unknown[], depth = 0): boolean {
     if (!sameShape(childrenOf(left), childrenOf(right), depth + 1)) return false;
   }
   return true;
+}
+
+/**
+ * `at` 能携带的只有展示层；这些字段它带不走，内容一旦不同折算就是丢数据。
+ *
+ * v1 的 `ThemeBuilder.persistBlocks` 把用户编辑过的整棵树写进 `devices[device].blocks`，
+ * 所以「id 与嵌套一样」并不等于「同一份内容」：手机版换过标题、改过 props 的树
+ * 也能通过形状检查。这里把 at 装不下的字段逐个比一遍。
+ */
+const CONTENT_KEYS = ['type', 'title', 'column', 'area', 'props'] as const;
+
+/**
+ * 两棵树是否「同一份内容」，而不只是同一批 id。
+ *
+ * 与 `sameShape` 一样在深度上限处回答「证明不了相同」：证明不了就保留设备编排。
+ */
+function sameContent(a: unknown[], b: unknown[], depth = 0): boolean {
+  if (depth >= MAX_BLOCK_DEPTH) return false;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+    for (const key of CONTENT_KEYS) {
+      if (JSON.stringify((left as BlockInstance)[key]) !== JSON.stringify((right as BlockInstance)[key])) {
+        return false;
+      }
+    }
+    if (!sameContent(childrenOf(left), childrenOf(right), depth + 1)) return false;
+  }
+  return true;
+}
+
+/** 折算只允许发生在「形状与内容都相同」的两棵树之间。 */
+function foldable(base: unknown[], other: unknown[], depth = 0): boolean {
+  return sameShape(base, other, depth) && sameContent(base, other, depth);
 }
 
 function diffDisplay(base: BlockInstance, other: BlockInstance): Record<string, unknown> {
@@ -72,7 +110,7 @@ function foldDisplay(
   depth = 0,
 ): boolean {
   if (depth >= MAX_BLOCK_DEPTH) return false;
-  if (!sameShape(base, other)) return false;
+  if (!foldable(base, other)) return false;
   let changed = false;
   const walk = (a: BlockInstance[], b: BlockInstance[], level: number) => {
     if (level >= MAX_BLOCK_DEPTH) return;
@@ -91,6 +129,22 @@ function foldDisplay(
   return changed;
 }
 
+/**
+ * 折算用的基础编排。
+ *
+ * v1 的 `layout.blocks` 只是「打开分端那一刻」的快照，之后的桌面编辑都落进了
+ * `devices.desktop.blocks`。以真正被编辑过的那棵为准，否则折算后站点会悄悄退回旧快照。
+ * 无论选中哪棵都先拷贝一份：折算要在上面写 `at`，绝不能碰到调用方的文档。
+ */
+function foldBase(
+  layout: ScreenLayout & Record<string, unknown>,
+  devices: Record<string, { blocks: BlockInstance[] } | undefined>,
+): BlockInstance[] {
+  const desktopBlocks = devices.desktop?.blocks;
+  if (Array.isArray(desktopBlocks)) return structuredClone(desktopBlocks);
+  return Array.isArray(layout.blocks) ? structuredClone(layout.blocks) : [];
+}
+
 /** 真正做折算的实现；调用点的时机约束见 `foldDeviceLayouts`。 */
 function foldLayout(raw: unknown, label: string, report: string[]): unknown {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
@@ -98,9 +152,10 @@ function foldLayout(raw: unknown, label: string, report: string[]): unknown {
   if (layout.device_split !== true || !layout.devices) return raw;
 
   const devices = { ...layout.devices } as Record<string, { blocks: BlockInstance[] } | undefined>;
-  const base = Array.isArray(layout.blocks) ? structuredClone(layout.blocks) : [];
+  const base = foldBase(layout, devices);
   const folded: string[] = [];
   const kept: string[] = [];
+  const contentKept: string[] = [];
 
   for (const device of OVERRIDE_DEVICES) {
     const entry = devices[device];
@@ -108,6 +163,11 @@ function foldLayout(raw: unknown, label: string, report: string[]): unknown {
     // 结构不同 = 用户真的另画了一份布局；折算会悄悄改掉它，所以原样保留并报告。
     if (!sameShape(base, entry.blocks)) {
       kept.push(DEVICE_LABEL[device]);
+      continue;
+    }
+    // 结构相同但内容不同 = at 装不下这份差异；折算会把内容删掉，所以同样保留并报告。
+    if (!sameContent(base, entry.blocks)) {
+      contentKept.push(DEVICE_LABEL[device]);
       continue;
     }
     if (foldDisplay(base, structuredClone(entry.blocks), device)) folded.push(DEVICE_LABEL[device]);
@@ -121,6 +181,7 @@ function foldLayout(raw: unknown, label: string, report: string[]): unknown {
 
   if (folded.length) report.push(`${label}：已把${folded.join('、')}端与桌面不同的展示设置折算成覆盖。`);
   if (kept.length) report.push(`${label}：${kept.join('、')}布局与桌面结构不同，保留为独立编排。`);
+  if (contentKept.length) report.push(`${label}：${contentKept.join('、')}内容与桌面不同，保留为独立编排。`);
 
   if (Object.keys(devices).length === 0) {
     return { blocks: base };
