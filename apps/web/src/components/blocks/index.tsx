@@ -35,7 +35,7 @@ import { BlockSkeleton } from './BlockSkeleton';
 import { CLASSIC_RENDERERS } from './Classic';
 import { NIGHT_RENDERERS } from './Nightflight';
 import { CONTENT_RENDERERS } from './ContentBlocks';
-import { ColumnsBlock, ContainerBlock, GridBlock } from './LayoutBlocks';
+import { ColumnsBlock, ContainerBlock, GridBlock, SectionBlock } from './LayoutBlocks';
 import { MEDIA_RENDERERS } from './MediaBlocks';
 import { DATA_RENDERERS } from './DataBlocks';
 import { ENGAGE_RENDERERS } from './EngageBlocks';
@@ -116,13 +116,16 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
   const isContainer = displayBlock.type === 'container';
   // 栅格和分栏一样，自己负责递归子区块（见下面的 GridBlock 分支）。
   const isGrid = displayBlock.type === 'grid';
+  // 分节也是子区块宿主：它自己画 children，不能再让嵌套层兜底画一遍。
+  const isSection = displayBlock.type === 'section';
   const anim = displayBlock.animation && displayBlock.animation !== 'none' ? displayBlock.animation : '';
   // 子区块服从与根级区块同一条规则：设备、角色、时间窗。没有 provider 时
   // visibility 为 null，只按 hidden 过滤（编排器预览要看全）。
   const visibleChildren = (displayBlock.children ?? []).filter(
     (child) => !child.hidden && (!visibility || isVisibleAt(child, visibility)),
   );
-  const hasNestedLayer = !isColumns && !isContainer && !isGrid && visibleChildren.length > 0;
+  const hasNestedLayer =
+    !isColumns && !isContainer && !isGrid && !isSection && visibleChildren.length > 0;
   // 骨架模式 + 内容还在加载 + 该区块依赖 FeedContext：外壳保留，内部只画骨架。
   // 未登记的类型（标题/文本/按钮/hero 等）照常渲染，不会把能立刻显示的内容藏起来。
   const skeletonShape = motion && feed.loading ? BLOCK_SKELETON_SHAPES[displayBlock.type] : undefined;
@@ -174,6 +177,14 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
           block={{ ...displayBlock, children: visibleChildren }}
           renderChild={(child) => <BlockView key={child.id} block={child} />}
         />
+      ) : isSection ? (
+        // 与栅格同理：过滤后的子区块交给分节，分节只负责留白、限宽与底色。
+        // 这一支必须在 hasNestedLayer 的排除名单里，否则子区块会被画两遍。
+        <SectionBlock block={displayBlock}>
+          {visibleChildren.map((child) => (
+            <BlockView key={child.id} block={child} />
+          ))}
+        </SectionBlock>
       ) : Renderer ? (
         <Renderer block={displayBlock} />
       ) : null}

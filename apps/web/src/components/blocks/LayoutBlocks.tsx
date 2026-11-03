@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { BlockInstance } from '../../types';
-import { blockProp, gridCellVars, gridTemplate } from '../../lib/blocks';
+import { blockProp, gridCellVars, gridTemplate, sectionLayout } from '../../lib/blocks';
 import { columnCount } from '../../lib/blockTree';
 
 export function ContainerBlock({ children }: { children: ReactNode }) {
@@ -75,5 +75,36 @@ export function GridBlock({
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * 分节：限宽 + 上下留白 + 可选底色与上下分隔线。
+ *
+ * 取宽 / 留白 / 颜色的取值与回落都在 `sectionLayout` 里，这里只负责摆 DOM：
+ * 外层铺底色与留白（要通栏铺满），内层按档位限宽并居中。
+ * 子区块由 `blocks/index.tsx` 过滤好再传进来，渲染器不自己递归。
+ */
+export function SectionBlock({
+  block,
+  children,
+}: {
+  block: BlockInstance;
+  children: ReactNode;
+}) {
+  const { maxWidth, paddingY, background, divider } = sectionLayout(block);
+  return (
+    <section
+      className={`pp-section${divider ? ' pp-section-divided' : ''}`}
+      style={{
+        paddingTop: paddingY,
+        paddingBottom: paddingY,
+        background: background ?? undefined,
+      }}
+    >
+      <div className="pp-section-inner" style={{ maxWidth: maxWidth ? `${maxWidth}px` : undefined }}>
+        {children}
+      </div>
+    </section>
   );
 }

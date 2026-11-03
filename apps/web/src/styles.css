@@ -6094,6 +6094,16 @@ kbd {
   }
 }
 
+/*
+ * 分节。
+ *
+ * 外层负责通栏的底色与上下留白（留白是行内 style，档位在 lib/blocks.ts 里折算），
+ * 内层才限宽并居中：底色要铺满整幅，内容才收在 640 / 860 / 1200 里。
+ * `max-width` 由渲染器按档位写成行内样式，这里只给"没设上限时也要居中"的兜底。
+ */
+.pp-section-inner { margin-inline: auto; width: 100%; }
+.pp-section-divided { border-block: 1px solid var(--line); }
+
 .pp-text-block { width: 100%; }
 .pp-text-eyebrow {
   margin: 0 0 8px;

@@ -1320,3 +1320,54 @@ export function gridCellVars(block: BlockInstance, columns: number): Record<stri
   return vars;
 }
 
+/* ---------------- 分节（section） ---------------- */
+
+/** 取宽带的三档宽度；`full` 不设上限（返回 undefined 即"不限"）。 */
+const SECTION_WIDTHS: Record<string, number | undefined> = {
+  narrow: 640,
+  normal: 860,
+  wide: 1200,
+  full: undefined,
+};
+
+/**
+ * 缺省留白档：6 → 32px。
+ *
+ * 存的是 `SPACING_SCALE` 的下标而不是像素；32px 是分节默认的上下留白
+ * （与 `padding_y` 坏值时的回落值同一个数，渲染才不会因为"有没有这个字段"
+ * 而跳一下）。
+ */
+const SECTION_DEFAULT_PADDING_INDEX = 6;
+
+/**
+ * section 的取宽带与留白；颜色只接受 #rgb / #rrggbb / #rrggbbaa。
+ *
+ * 宽度是「回落」：认不出的档位（旧数据、手写的字符串）一律按常规 860 处理，
+ * 因为一个 0 宽的版面比常规宽度更像故障。留白档同理：非整数或越界（99）
+ * 当作没设，回到缺省的 32px，而不是夹到 96px 的巨缝。
+ * 颜色只有十六进制能原样落进 style，其余（主题令牌、拼错的名字）丢弃——
+ * 让底色退回主题，别把一个无效值写进 CSS。
+ */
+export function sectionLayout(block: BlockInstance): {
+  maxWidth?: number;
+  paddingY: number;
+  background?: string;
+  divider: boolean;
+} {
+  const raw = block.props;
+  const width = typeof raw.max_width === 'string' ? raw.max_width : 'normal';
+  const paddingIndex =
+    typeof raw.padding_y === 'number' ? raw.padding_y : SECTION_DEFAULT_PADDING_INDEX;
+  const paddingY = spacingPx(paddingIndex) ?? 32;
+  const color = typeof raw.background === 'string' ? raw.background.trim() : '';
+  // 用 `in` 而不是 `?? 860`：`full` 的合法值就是 undefined（不限宽），
+  // 空值合并会把"满宽"错当成"没认出这个档位"再补回 860。
+  const maxWidth = width in SECTION_WIDTHS ? SECTION_WIDTHS[width] : 860;
+  return {
+    maxWidth,
+    paddingY,
+    background: /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color) ? color : undefined,
+    divider: raw.divider === true,
+  };
+}
+
