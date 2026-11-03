@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { WebConfig } from '../types';
+import type { BlockDisplayOverride, WebConfig } from '../types';
 import { readCustomization } from './customize';
-import { CURRENT_SCHEMA_VERSION, foldDeviceLayouts, migrateCustomization } from './migrate';
+import {
+  CURRENT_SCHEMA_VERSION,
+  DISPLAY_KEYS,
+  foldDeviceLayouts,
+  migrateCustomization,
+} from './migrate';
 
 function block(id: string, extra: Record<string, unknown> = {}) {
   return { id, type: 'text', title: id, props: {}, animation: 'none', hidden: false, ...extra };
@@ -367,6 +372,105 @@ describe('foldDeviceLayouts', () => {
     expect(report.join('')).toContain('内容');
   });
 
+  it('只有 offset 不同的设备树照常折算，offset 作为 at 补丁活下来', () => {
+    // 曾经静默丢数据的那个用例：offset 不在展示键里 → 折算时算不出补丁 → 设备树照样被删，
+    // 手机端的起始列偏移就此消失。
+    const { value, report } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { offset: { base: 3 } })] } },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect(home.device_split).toBeUndefined();
+    expect(home.devices).toBeUndefined();
+    expect((home.blocks as Array<Record<string, unknown>>)[0].at).toEqual({
+      mobile: { offset: { base: 3 } },
+    });
+    expect(report.join('')).toContain('手机');
+  });
+
+  it('折算出来的 offset 活过归一化：读一次再保存不会丢', () => {
+    const customization = readCustomization({
+      customization: {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { offset: { base: 3 } })] } },
+        },
+      },
+    } as unknown as WebConfig);
+    expect(customization.home.blocks[0].at).toEqual({ mobile: { offset: { base: 3 } } });
+    expect(customization.home.devices).toBeUndefined();
+  });
+
+  it('只有 align 不同的设备树照常折算，align 留在 at 里', () => {
+    const { value, report } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { align: 'center' })] } },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect(home.devices).toBeUndefined();
+    expect((home.blocks as Array<Record<string, unknown>>)[0].at).toEqual({
+      mobile: { align: 'center' },
+    });
+    expect(report.join('')).toContain('手机');
+  });
+
+  it('只有 visible 不同的设备树不折算：条件显示是 at 装不下的内容差异', () => {
+    // visible 进不了 at；折了就等于把「手机上才显示」这个决定删掉。
+    const { value, report } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { visible: { devices: ['mobile'] } })] } },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect(home.device_split).toBe(true);
+    expect((home.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect((home.blocks as Array<Record<string, unknown>>)[0].at).toBeUndefined();
+    expect(report.join('')).toContain('内容');
+  });
+
+  it('子区块只有展示层差异时照常折算：内容守卫比的是内容，不是整棵子树', () => {
+    // 这条锁住 CONTENT_KEYS 不列 `children` 的决定：若整棵子树一起 JSON 比较，
+    // 子区块的 offset 会把这次合法的折算判成「内容不同」。
+    const { value } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('grid', { children: [block('c')] })],
+          device_split: true,
+          devices: {
+            mobile: {
+              blocks: [block('grid', { children: [block('c', { offset: { base: 2 } })] })],
+            },
+          },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect(home.devices).toBeUndefined();
+    const parent = (home.blocks as Array<Record<string, unknown>>)[0];
+    expect((parent.children as Array<Record<string, unknown>>)[0].at).toEqual({
+      mobile: { offset: { base: 2 } },
+    });
+  });
+
   it('嵌套远超深度上限时不爆栈，并保留设备编排', () => {
     // 40 层深的两棵树：形状比较一旦递归到底就会撑破调用栈，所以必须在深度上限处
     // 停下并回答「证明不了相同」，于是手机端编排原样保住。
@@ -444,5 +548,30 @@ describe('迁移结果落盘', () => {
     expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
     expect(customization.home.device_split).toBeUndefined();
     expect(customization.home.devices).toBeUndefined();
+  });
+});
+
+describe('DISPLAY_KEYS 与 BlockDisplayOverride 保持同步', () => {
+  it('BlockDisplayOverride 的每个键都在 DISPLAY_KEYS 里', () => {
+    // 每个键都写满：下面比的是键集合本身，多一个少一个都会红。
+    // `satisfies` 管值类型，`Record<keyof BlockDisplayOverride, unknown>` 管「一个都不能少」——
+    // 后者是类型层的那道闸：未来给 BlockDisplayOverride 加了字段，这个字面量先编译不过
+    // （`npm run typecheck`），不会等到线上才发现折算把新字段吃掉。
+    const sample = {
+      span: { base: 6 },
+      offset: { base: 1 },
+      appearance: { radius: 'md' },
+      animation: 'fade',
+      hidden: true,
+      custom_css: '.x { color: red; }',
+      width: 320,
+      height: 240,
+      align: 'center',
+      gap_scale: 2,
+      mt: 1,
+      mb: 1,
+    } satisfies BlockDisplayOverride;
+    const complete: Record<keyof BlockDisplayOverride, unknown> = sample;
+    expect(Object.keys(complete).sort()).toEqual([...DISPLAY_KEYS].sort());
   });
 });

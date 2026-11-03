@@ -1,4 +1,4 @@
-import type { BlockInstance, ScreenLayout } from '../types';
+import type { BlockDisplayOverride, BlockInstance, ScreenLayout } from '../types';
 import { MAX_BLOCK_DEPTH } from './blockTree';
 
 /**
@@ -16,16 +16,38 @@ export interface MigrationResult {
   report: string[];
 }
 
-/** 允许被 at 覆盖的展示层字段。 */
-const DISPLAY_KEYS = [
+/**
+ * 允许被 at 覆盖的展示层字段，也就是「可以安全地不同、然后被折算进 at」的那批键。
+ *
+ * 必须与 `types.ts` 的 `BlockDisplayOverride` 逐键保持一致（`overlayAt` 叠到区块上的
+ * 正是这些键）：这里多一个，折算就会写出没人求值的补丁；少一个，设备树被删掉、
+ * 差异却没人接着——静默丢数据。下面的 `UncoveredDisplayKeys` 是编译期守卫，
+ * `migrate.test.ts` 里还有一条键集合用例，两处都会在 `BlockDisplayOverride` 长出新
+ * 字段而这里没跟上时报警。
+ */
+export const DISPLAY_KEYS = [
   'span',
+  'offset',
   'appearance',
   'animation',
   'hidden',
   'custom_css',
   'width',
   'height',
+  'align',
+  'gap_scale',
+  'mt',
+  'mb',
 ] as const;
+
+/**
+ * 编译期守卫：`BlockDisplayOverride` 上出现 `DISPLAY_KEYS` 装不下的键时，
+ * `Exclude` 不再是 `never`，下面的约束不成立，`npm run typecheck` 直接报错。
+ */
+type AssertNever<T extends never> = T;
+export type UncoveredDisplayKeys = AssertNever<
+  Exclude<keyof BlockDisplayOverride, (typeof DISPLAY_KEYS)[number]>
+>;
 
 const DEVICE_LABEL: Record<string, string> = { tablet: '平板', mobile: '手机' };
 
@@ -59,13 +81,37 @@ function sameShape(a: unknown[], b: unknown[], depth = 0): boolean {
 }
 
 /**
- * `at` 能携带的只有展示层；这些字段它带不走，内容一旦不同折算就是丢数据。
+ * `at` 带不走的内容与落位字段：这里任何一项不同，折算都会把它删掉。
+ *
+ * 必须与 `types.ts` 的 `BlockInstance` 保持同步：凡是**进不了** `BlockDisplayOverride`
+ * （因此永远无法被 `at` 还原）、又代表内容或排布的字段都要列进来。折算删掉的是整棵
+ * 设备树，`at` 只补展示层，`props` / `visible` / `column` / `area` 这些没有任何通道。
  *
  * v1 的 `ThemeBuilder.persistBlocks` 把用户编辑过的整棵树写进 `devices[device].blocks`，
  * 所以「id 与嵌套一样」并不等于「同一份内容」：手机版换过标题、改过 props 的树
- * 也能通过形状检查。这里把 at 装不下的字段逐个比一遍。
+ * 也能通过形状检查。这里把 at 装不下的字段逐个比一遍，尤其要盯住 `visible`——
+ * 条件显示是内容决策，折算成 at 之后它就没有地方可去了。
+ * `unsupported`（归一化打上的「本版本不认识的区块类型」标记）也一并比：它描述的是
+ * 这块内容的身份，不是外观。
+ *
+ * 故意不列的三个：
+ * - `id`：`sameShape` 已经逐个比过，形状相同的两棵树 id 必然相同；
+ * - `children`：递归已经按同一张表逐层比过子区块。若把整棵子树一起 JSON 比较，
+ *   子区块的展示层字段（`hidden`、`offset`…）也会被拖进内容守卫，
+ *   让「只有子区块外观不同」的合法折算被误判成内容不同；
+ * - `at`：折算本身就要往 base 的 `at` 里写。把它算进内容比较，同一份文档里
+ *   第二台设备就会拿「已被第一台写过的 base」去比，被误判成内容不同。
  */
-const CONTENT_KEYS = ['type', 'title', 'column', 'area', 'props'] as const;
+const CONTENT_KEYS = [
+  'type',
+  'title',
+  'column',
+  'area',
+  'props',
+  'visible',
+  'anchor',
+  'unsupported',
+] as const;
 
 /**
  * 两棵树是否「同一份内容」，而不只是同一批 id。
