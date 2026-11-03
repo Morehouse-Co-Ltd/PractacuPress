@@ -455,15 +455,21 @@ v1 三端编排自动折算成 `at`；检查器的「已覆盖 / 恢复继承」
 4. `span`/`offset` 没有编辑入口（栅格对作者等于纵向堆叠）→ 检查器新增「栅格占位」。
    修复时又发现分设备 `offset` 被归一化白名单丢掉（刷新即失），一并补上。
 
-**仍未解决、需要在 P2 处理的三条**（阶段评审提出，未在本轮修）：
+**阶段评审提出的三条遗留，已在收尾轮全部收掉**：
 
-- **栅格档位与覆盖档位的判据不一致**：CSS 按**容器宽**选 span 档，`applyDisplayOverrides` 按
-  **视口宽**选设备。把 grid 放进窄 section / 半栏 columns / 有侧栏的 main 里，桌面视口下
-  容器只有 640px，于是"排版按手机档、覆盖按桌面档"，同一次渲染两套档位。
-  要么让覆盖也走容器查询（CSS 变量），要么明确"覆盖只按视口"并写进文档。
-- `migrate.ts` 的 `DISPLAY_KEYS` / `CONTENT_KEYS` 没有覆盖 `offset` / `align` / `gap_scale` /
-  `mt` / `mb` / `visible`：两个设备树只在这些字段上不同时，会被判定成"内容相同"而折算掉差异。
-- 迁移 `report` 仍被 `readCustomization` 丢弃，§5.1 要求的"首次打开一次性提示"没有落点。
+- **栅格档位与覆盖档位的判据不一致** → 统一为**视口宽**：栅格从容器查询换成媒体查询
+  （768 / 1024，取自同一张断点表），与 `at` 覆盖同一判据。理由：预览 iframe 本身就是视口，
+  容器查询没换来任何好处，却造出第二套"设备"定义。代价：放进窄容器的 grid 不再自动降档，
+  要更窄的排版请用 `at` 覆盖——这条已写进 CSS 注释与文档。
+- **折算白名单漏字段** → `DISPLAY_KEYS` 补齐 `BlockDisplayOverride` 的全部 12 个键，
+  `CONTENT_KEYS` 补上 `visible` / `anchor` / `unsupported` 等 `at` 无法承载的字段；
+  并加了一个**编译期守卫**（`Exclude<keyof BlockDisplayOverride, 已有键>` 必须是 `never`），
+  以后往覆盖层加字段却忘了同步白名单，`tsc` 直接报错。
+  `children` 故意不入 `CONTENT_KEYS`——递归已经逐块比较，整棵子树 JSON 比较会把嵌套的
+  展示差异也算成内容差异，反而挡住安全的折算。
+- **迁移报告无处呈现** → 新增 `lib/migrationNotice.ts` + 页面编排页的一次性弹窗
+  「版面已自动升级」：逐条列出这次被折算/保留了什么，同一份报告只提示一次
+  （签名存 localStorage，最多记 20 条）。匿名访客路径只入内存队列，不写 localStorage。
 
-**刻意留到 P2**：`anchor` 与 `anchor-nav`、间距标尺的档位按钮、迁移报告面板、
+**刻意留到 P2**：`anchor` 与 `anchor-nav`、间距标尺的档位按钮、
 `richtext` / `page` / `taxonomy` / `icon` / `token-color` 五种 schema 类型。
