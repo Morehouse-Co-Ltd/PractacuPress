@@ -377,6 +377,46 @@ const fragment: Dictionary = {
     'Thumbnails are cropped to the same ratio; click one to see the full image.',
   '最多 20 张。说明会显示在大图下方，也用作图片的替代文字。':
     'Up to 20 images. The caption is shown below the large image and also used as its alt text.',
+
+  // ---- 2026-11-03 说服型区块（定价 / 常见问题 / 用户评价 / 图文交替） ----
+  定价表: 'Pricing table',
+  '几档价格并排，推荐档用主题色标出；功能清单一行一条，行首加 - 表示这一档不含。':
+    'A few price tiers side by side, with the recommended one outlined in the accent colour. Write the feature list one per line; start a line with - to mark a feature as not included.',
+  档位: 'Tier',
+  '最多 4 档。功能清单一行一条，行首加 - 表示不含该项。':
+    'Up to 4 tiers. Write the feature list one per line; start a line with - to mark an item as not included.',
+  档位名称: 'Tier name',
+  价格: 'Price',
+  周期: 'Billing period',
+  功能清单: 'Feature list',
+  按钮链接: 'Button link',
+  推荐档: 'Recommended tier',
+  常见问题: 'FAQ',
+  '一问一答的折叠列表，第一条可以默认展开。':
+    'A collapsible list of questions and answers; the first one can start expanded.',
+  默认展开第一条: 'Expand the first one by default',
+  问题: 'Question',
+  '最多 20 条。问题写在折叠标题上，答案展开后显示。':
+    'Up to 20 entries. The question sits on the collapsed row; the answer appears once it is expanded.',
+  答案: 'Answer',
+  用户评价: 'Testimonials',
+  '客户评价卡片：栅格排开，或者一行横滑翻看。':
+    'Customer quotes as cards, either in a grid or on one swipeable row.',
+  横向滑动: 'Swipe sideways',
+  '横向滑动在触屏上左右滑，桌面用方向键或滚动。':
+    'The carousel scrolls sideways on touch screens; on desktop use the arrow keys or scroll.',
+  评价: 'Testimonial',
+  '最多 9 条。评价写一段话，姓名与头衔用于署名。':
+    'Up to 9 quotes. Write a short paragraph; the name and role are used as the signature.',
+  评价内容: 'Quote',
+  图文交替: 'Image and text',
+  '一图一文左右排开，正文支持 Markdown；窄屏自动图在上、文在下。':
+    'An image beside a block of text, with Markdown support; on narrow screens the image moves above the text.',
+  '读屏用；纯装饰可留空。': 'Read by screen readers; leave it empty for decorative images.',
+  图在哪一侧: 'Image side',
+  左侧: 'Left',
+  右侧: 'Right',
+  '窄屏一律图在上、文在下。': 'On narrow screens the image always sits above the text.',
 };
 
 export default fragment;

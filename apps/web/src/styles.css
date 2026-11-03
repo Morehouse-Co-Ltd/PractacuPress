@@ -8269,3 +8269,217 @@ button.theme-bundle-card {
   .pp-logo-wall img { transition: none; }
   .pp-gallery-thumb { transition: none; }
 }
+
+/* =========================================================
+   说服区块（定价 / 常见问题 / 用户评价 / 图文交替，2026-11-03 P2）
+   ---------------------------------------------------------
+   数据在 lib/blocks.ts，渲染器在 components/blocks/ConversionBlocks.tsx。
+   断点沿用 P1 的 767px，不新造断点；颜色全部走主题令牌。
+   横滑用原生滚动 + scroll-snap，不引 JavaScript——纯 CSS 拿不到滚动位置，
+   所以没做分页圆点（要跟随高亮就得挂滚动监听，为一个装饰点不值得）。
+   所有交互只改颜色，不做位移；减少动效时连过渡也去掉。
+   ========================================================= */
+
+.pp-conversion { display: flex; flex-direction: column; gap: 18px; }
+.pp-conversion-heading {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 400;
+  color: var(--ink);
+}
+
+/* ---------- 定价表 ---------- */
+/* 档位数 1–4，不给「列数」属性：auto-fit 让两档不会摊成两半宽的空卡阵。 */
+.pp-pricing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.pp-pricing-plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 24px 20px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+}
+/* 推荐档：主题色描边 + 一层同色内阴影，不靠投影浮起来（减少动效下也一样）。 */
+.pp-pricing-plan.is-featured {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-subtle));
+}
+.pp-pricing-badge {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  padding: 2px 10px;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.pp-pricing-name { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+/* 价格是主角，周期是配角：一个字号大两倍，一个贴在下沿对齐。 */
+.pp-pricing-amount { display: flex; align-items: baseline; gap: 4px; margin: 0; }
+.pp-pricing-price {
+  font-family: var(--serif);
+  font-size: clamp(26px, 3.2vw, 34px);
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.pp-pricing-period { font-size: 12px; color: var(--muted); }
+.pp-pricing-features {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pp-pricing-feature { font-size: 12.5px; line-height: 1.6; color: var(--ink-soft); }
+.pp-pricing-feature.is-excluded { color: var(--muted); text-decoration: line-through; }
+.pp-pricing-cta,
+.pp-media-text-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+/* 按钮沉到底部：同排档位的按钮对齐，短清单不会把按钮顶上来。 */
+.pp-pricing-cta { margin-top: auto; }
+.pp-pricing-plan.is-featured .pp-pricing-cta { background: var(--accent); color: #fff; }
+.pp-pricing-cta:hover,
+.pp-media-text-cta:hover { background: var(--accent); color: #fff; }
+.pp-pricing-cta[aria-disabled='true'],
+.pp-media-text-cta[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+.pp-pricing-cta:focus-visible,
+.pp-media-text-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- 常见问题 ---------- */
+.pp-faq { display: flex; flex-direction: column; gap: 8px; }
+.pp-faq-item {
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+}
+.pp-faq-question { padding: 13px 0; font-size: 14px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.pp-faq-question:hover { color: var(--accent); }
+.pp-faq-question:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 展开状态由浏览器维护，样式只跟着 [open] 走。 */
+.pp-faq-item[open] .pp-faq-question { border-bottom: 1px solid var(--line); }
+.pp-faq-answer {
+  margin: 0;
+  padding: 12px 0 14px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* ---------- 用户评价 ---------- */
+.pp-testimonial.is-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+/* 横滑：原生滚动 + 吸附，一行排开，卡与卡之间固定留白。 */
+.pp-testimonial.is-carousel {
+  display: flex;
+  gap: 14px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+}
+.pp-testimonial.is-carousel .pp-testimonial-card {
+  flex: 0 0 min(300px, 82%);
+  scroll-snap-align: start;
+}
+.pp-testimonial.is-carousel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pp-testimonial-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 20px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+}
+.pp-testimonial-quote {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.pp-testimonial-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pp-testimonial-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.pp-testimonial-name { font-weight: 600; color: var(--ink); }
+.pp-testimonial-role { color: var(--muted); }
+
+/* ---------- 图文交替 ---------- */
+.pp-media-text {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+  align-items: center;
+}
+.pp-media-text-figure { margin: 0; min-width: 0; }
+.pp-media-text-figure img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  border-radius: var(--r-lg);
+}
+/* 图在右：只调换两栏的顺序，DOM 里仍是「图文」，读屏顺序不变。 */
+.pp-media-text.is-right .pp-media-text-figure { order: 2; }
+.pp-media-text-copy { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pp-media-text-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 500;
+  color: var(--ink);
+}
+.pp-media-text-body { font-size: 14px; line-height: 1.8; color: var(--ink-soft); }
+.pp-media-text-cta { align-self: flex-start; }
+
+/* 窄屏：一栏，图在上、文在下，`side` 不再说了算（断点与 P1 一致）。 */
+@media (max-width: 767px) {
+  .pp-media-text {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .pp-media-text.is-right .pp-media-text-figure { order: 0; }
+  .pp-media-text-figure img { max-height: 320px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-pricing-cta,
+  .pp-media-text-cta { transition: none; }
+  .pp-testimonial.is-carousel { scroll-behavior: auto; }
+}

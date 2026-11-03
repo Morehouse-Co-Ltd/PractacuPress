@@ -43,6 +43,7 @@ import { ACTION_RENDERERS } from './ActionBlocks';
 import { ARTICLE_RENDERERS } from './ArticleBlocks';
 import { MARKETING_RENDERERS } from './MarketingBlocks';
 import { MEDIA_GALLERY_RENDERERS } from './MediaGalleryBlocks';
+import { CONVERSION_RENDERERS } from './ConversionBlocks';
 import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
 
 /**
@@ -68,6 +69,7 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...ARTICLE_RENDERERS,
   ...MARKETING_RENDERERS,
   ...MEDIA_GALLERY_RENDERERS,
+  ...CONVERSION_RENDERERS,
 };
 
 /**
