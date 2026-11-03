@@ -2080,7 +2080,7 @@ components:
               type: string
               description: |
                 The input that failed validation. Omitted when it cannot be identified.
-              enum: [email, password, display_name, name, message, title, slug, role, domain, document]
+              enum: [email, password, display_name, name, message, title, summary, slug, body, tags, role, domain, document, target, depth, color, file, limit, range]
             rule:
               type: string
               description: |

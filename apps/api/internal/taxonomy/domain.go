@@ -14,8 +14,24 @@ import (
 	"strings"
 	"time"
 
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
+
+// invalidField builds a field error that stays matchable as ErrInvalidInput.
+//
+// Both sentinels are wrapped: errors.Is(err, ErrInvalidInput) keeps working for the
+// transport, while errors.As(err, &FieldError) recovers the field and rule the client
+// translates. FieldError itself lives in the error model package and cannot reference
+// this package's sentinel without an import cycle, which is why the wrapping happens
+// here rather than in an Unwrap method.
+func invalidField(field, rule, reason string) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, &apperr.FieldError{
+		Field:  field,
+		Rule:   rule,
+		Reason: reason,
+	})
+}
 
 // Kind distinguishes the two taxonomy term types.
 type Kind string
@@ -110,7 +126,7 @@ func Validate(in Input) (Input, error) {
 		return Input{}, err
 	}
 	if normalized.slug == "" {
-		return Input{}, fmt.Errorf("%w: slug is required", ErrInvalidInput)
+		return Input{}, invalidField("slug", "required", "slug is required")
 	}
 
 	in.Name = normalized.name
@@ -153,7 +169,7 @@ func (p PatchInput) Apply(term Term) (Term, error) {
 		normalized.slug = SlugFromName(normalized.name)
 	}
 	if normalized.slug == "" {
-		return Term{}, fmt.Errorf("%w: slug is required", ErrInvalidInput)
+		return Term{}, invalidField("slug", "required", "slug is required")
 	}
 
 	term.Name = normalized.name
@@ -177,20 +193,21 @@ func normalizeFields(name, slug, description, color string) (fields, error) {
 	color = strings.ToLower(strings.TrimSpace(color))
 
 	if name == "" {
-		return fields{}, fmt.Errorf("%w: name is required", ErrInvalidInput)
+		return fields{}, invalidField("name", "required", "name is required")
 	}
 	if len([]rune(name)) > MaxNameLength {
-		return fields{}, fmt.Errorf("%w: name is too long", ErrInvalidInput)
+		return fields{}, invalidField("name", "too_long", "name is too long")
 	}
 	if slug == "" {
 		slug = SlugFromName(name)
 	}
 	if slug != "" {
 		if len(slug) > MaxSlugLength {
-			return fields{}, fmt.Errorf("%w: slug is too long", ErrInvalidInput)
+			return fields{}, invalidField("slug", "too_long", "slug is too long")
 		}
 		if !slugPattern.MatchString(slug) {
-			return fields{}, fmt.Errorf("%w: slug must be lowercase letters, digits and hyphens", ErrInvalidInput)
+			return fields{}, invalidField("slug", "malformed",
+				"slug must be lowercase letters, digits and hyphens")
 		}
 	}
 	if len([]rune(description)) > MaxDescriptionLength {
@@ -198,10 +215,10 @@ func normalizeFields(name, slug, description, color string) (fields, error) {
 	}
 	if color != "" {
 		if len(color) > MaxColorLength {
-			return fields{}, fmt.Errorf("%w: color is too long", ErrInvalidInput)
+			return fields{}, invalidField("color", "too_long", "color is too long")
 		}
 		if !colorPattern.MatchString(color) {
-			return fields{}, fmt.Errorf("%w: color must be a #rrggbb value", ErrInvalidInput)
+			return fields{}, invalidField("color", "malformed", "color must be a #rrggbb value")
 		}
 	}
 

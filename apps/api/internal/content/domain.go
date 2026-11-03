@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -136,6 +137,21 @@ const (
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+// invalidField builds a field error that stays matchable as ErrInvalidInput.
+//
+// Both sentinels are wrapped: errors.Is(err, ErrInvalidInput) keeps working for the
+// transport, while errors.As(err, &FieldError) recovers the field and rule the client
+// translates. FieldError itself lives in the error model package and cannot reference
+// this package's sentinel without an import cycle, which is why the wrapping happens
+// here rather than in an Unwrap method.
+func invalidField(field, rule, reason string) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, &apperr.FieldError{
+		Field:  field,
+		Rule:   rule,
+		Reason: reason,
+	})
+}
 
 // Actor is the caller performing a content action.
 type Actor struct {
@@ -325,32 +341,35 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 	in.Tags = tags
 
 	if in.Title == "" {
-		return DraftInput{}, fmt.Errorf("%w: title is required", ErrInvalidInput)
+		return DraftInput{}, invalidField("title", "required", "title is required")
 	}
 	if len([]rune(in.Title)) > MaxTitleLength {
-		return DraftInput{}, fmt.Errorf("%w: title is too long", ErrInvalidInput)
+		return DraftInput{}, invalidField("title", "too_long", "title is too long")
 	}
 	if len([]rune(in.Summary)) > MaxSummaryLength {
-		return DraftInput{}, fmt.Errorf("%w: summary is too long", ErrInvalidInput)
+		return DraftInput{}, invalidField("summary", "too_long", "summary is too long")
 	}
 	if in.SourceFormat == "" {
 		in.SourceFormat = FormatMarkdown
 	}
 	if !in.SourceFormat.Valid() {
-		return DraftInput{}, fmt.Errorf("%w: unknown source format", ErrInvalidInput)
+		// The format is part of the body's declaration, and the closed vocabulary has no
+		// source_format name yet, so the failure is attributed to the body.
+		return DraftInput{}, invalidField("body", "unknown", "unknown source format")
 	}
 	if in.SourceBody == "" {
-		return DraftInput{}, fmt.Errorf("%w: body is required", ErrInvalidInput)
+		return DraftInput{}, invalidField("body", "required", "body is required")
 	}
 	if len([]rune(in.SourceBody)) > MaxSourceLength {
-		return DraftInput{}, fmt.Errorf("%w: body is too long", ErrInvalidInput)
+		return DraftInput{}, invalidField("body", "too_long", "body is too long")
 	}
 	if in.Slug != "" {
 		if len(in.Slug) > MaxSlugLength {
-			return DraftInput{}, fmt.Errorf("%w: slug is too long", ErrInvalidInput)
+			return DraftInput{}, invalidField("slug", "too_long", "slug is too long")
 		}
 		if !slugPattern.MatchString(in.Slug) {
-			return DraftInput{}, fmt.Errorf("%w: slug must be lowercase letters, digits and hyphens", ErrInvalidInput)
+			return DraftInput{}, invalidField("slug", "malformed",
+				"slug must be lowercase letters, digits and hyphens")
 		}
 	}
 	if in.CategoryID != "" && len(in.CategoryID) > 36 {
@@ -373,7 +392,7 @@ func NormalizeTags(raw []string) ([]string, error) {
 			continue
 		}
 		if len([]rune(label)) > MaxTagLength {
-			return nil, fmt.Errorf("%w: tag is too long", ErrInvalidInput)
+			return nil, invalidField("tags", "too_long", "tag is too long")
 		}
 		if _, exists := seen[label]; exists {
 			continue
@@ -381,7 +400,7 @@ func NormalizeTags(raw []string) ([]string, error) {
 		seen[label] = struct{}{}
 		tags = append(tags, label)
 		if len(tags) > MaxTags {
-			return nil, fmt.Errorf("%w: too many tags", ErrInvalidInput)
+			return nil, invalidField("tags", "out_of_range", "too many tags")
 		}
 	}
 	return tags, nil
