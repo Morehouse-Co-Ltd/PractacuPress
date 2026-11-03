@@ -8,6 +8,12 @@ const fragment: Dictionary = {
   '这个组件类型已不存在，删除它再添加新的。':
     'This block type no longer exists. Delete it and add a new one.',
   '这个组件没有可配置的属性。': 'This block has no configurable properties.',
+  // ---- 组件文字「显示什么数据」 ----
+  显示什么数据: 'What data to show',
+  自定义文字: 'Custom text',
+  收起预览: 'Hide preview',
+  '由数据自动填充，回到「自定义文字」可以手改。':
+    'Filled in automatically from data; switch back to “Custom text” to edit it by hand.',
 };
 
 export default fragment;

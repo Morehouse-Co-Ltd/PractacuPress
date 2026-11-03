@@ -3,6 +3,7 @@ import type { BlockInstance, BlockProps as BlockPropsValue, BlockPropValue } fro
 import { blockDef, blockProp, type PropSchema } from '../../lib/blocks';
 import { BLOCK_DATA_SOURCES, bindKeyOf, boundToken } from '../../lib/blocksData';
 import { blockPropRecord } from '../../lib/customize';
+import { renderMarkdown, sanitizeHtml } from '../../lib/markdown';
 import { useT } from '../../lib/i18n';
 import { Button, Field, Input, Select, Textarea, Toggle } from '../ui';
 import { MediaPicker } from './MediaPicker';
@@ -59,6 +60,7 @@ function PropControl({
   const t = useT();
   const id = `blk-${block.id}-${schema.key}`;
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (schema.type === 'repeater') {
     const items = blockPropRecord(block, schema.key);
@@ -326,6 +328,55 @@ function PropControl({
           />
           <code>{String(block.props[schema.key] ?? '')}</code>
         </div>
+      </Field>
+    );
+  }
+
+  if (schema.type === 'richtext') {
+    const bound = !!boundToken(block.props, schema.key);
+    const value = String(block.props[schema.key] ?? '');
+    const hasContent = value.trim() !== '';
+    return (
+      <Field
+        label={schema.label}
+        hint={bound ? t('由数据自动填充，回到「自定义文字」可以手改。') : schema.hint}
+        htmlFor={id}
+      >
+        {schema.bindable === false ? null : (
+          <BindPicker block={block} schema={schema} onChange={onChange} />
+        )}
+        <Textarea
+          id={id}
+          value={value}
+          disabled={bound}
+          onChange={(event) => onChange(schema.key, event.target.value)}
+          style={{ minHeight: 140 }}
+        />
+        {hasContent ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-expanded={previewOpen}
+            onClick={() => setPreviewOpen((open) => !open)}
+          >
+            {previewOpen ? t('收起预览') : t('预览')}
+          </Button>
+        ) : null}
+        {hasContent && previewOpen ? (
+          <div
+            className="richtext-preview article-body"
+            // 与 text 区块同一条渲染链路：Markdown 先转 HTML，再过同一套 sanitizeHtml。
+            // 不在这里另写清洗规则——第二条路径就是第二个漏点。
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderMarkdown(value)) }}
+            style={{
+              marginTop: 12,
+              padding: '14px 16px',
+              border: '1px solid var(--line)',
+              borderRadius: 10,
+              background: 'var(--bg-subtle)',
+            }}
+          />
+        ) : null}
       </Field>
     );
   }

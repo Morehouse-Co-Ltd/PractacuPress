@@ -24,6 +24,14 @@ import { BREAKPOINT_LG, BREAKPOINT_MD, SPACING_SCALE, spacingPx } from './layout
 export type PropType =
   | 'text'
   | 'textarea'
+  /**
+   * 富文本正文：值是 Markdown 字符串，渲染前必须过 `sanitizeHtml(renderMarkdown(...))`。
+   *
+   * 与 `textarea` 的差别只在两处：长度上限是 8000 字节（见 `customize.ts` 的
+   * `richtextValue`），编辑器里多一个清洗后的预览折叠区。存储形状与 `textarea`
+   * 一样是纯字符串，所以把既有字段升级成它不会改动已保存的配置。
+   */
+  | 'richtext'
   | 'number'
   | 'select'
   | 'toggle'
@@ -59,7 +67,7 @@ export interface PropSchema {
   itemSchema?: PropSchema[];
   minItems?: number;
   /**
-   * 这个字段能不能绑定成「显示什么数据」（只对 text / textarea 生效）。
+   * 这个字段能不能绑定成「显示什么数据」（只对 text / textarea / richtext 生效）。
    * 代码类字段（CSS、HTML、JS）默认关掉：把文章标题塞进样式表没有意义。
    */
   bindable?: boolean;
@@ -674,7 +682,12 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     schema: [
       { key: 'eyebrow', label: t('眉题'), type: 'text' },
       { key: 'title', label: t('标题'), type: 'textarea' },
-      { key: 'body', label: t('正文'), type: 'textarea' },
+      {
+        key: 'body',
+        label: t('正文'),
+        type: 'richtext',
+        hint: t('Markdown 正文：段落、列表、引用、链接与强调都支持；保存的是这段原文。'),
+      },
       {
         key: 'align',
         label: t('对齐'),

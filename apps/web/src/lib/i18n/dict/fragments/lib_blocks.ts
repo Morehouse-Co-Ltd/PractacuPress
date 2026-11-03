@@ -123,6 +123,8 @@ const fragment: Dictionary = {
   '眉题 + 大标题 + 副标题 + 行动按钮，编辑排版风。':
     'Eyebrow, big headline, subhead and call to action — editorial typography.',
   '眉题、标题、正文与局部 CSS。': 'Eyebrow, title, body and scoped CSS.',
+  'Markdown 正文：段落、列表、引用、链接与强调都支持；保存的是这段原文。':
+    'Markdown body: paragraphs, lists, quotes, links and emphasis are supported; the text itself is what gets saved.',
   内容来源: 'Content source',
   内容流: 'Content feed',
   昵称: 'Display name',

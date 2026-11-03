@@ -568,6 +568,51 @@ function scalarValue(item: unknown): string | number | boolean | undefined {
   return undefined;
 }
 
+/**
+ * `richtext` 值的长度上限：8000。
+ *
+ * 单位是「写进 JSON 之后的字节」，不是字符。两个原因：
+ * - 单块 props 的预算是 {@link PROPS_MAX_BYTES}（8 KB），超出的键会被 `capPropBytes`
+ *   **整条丢弃**。一段 8000 字（汉字 3 字节）的正文是 24 KB，按字符收的话它不会变成
+ *   8000 字节的长文，而是整个 body 消失——用户在刷新后丢内容，比截断坏得多；
+ * - JSON 还会把换行、引号、反斜杠转义成 2 字节，多行 Markdown 的转义开销不小。
+ *   按转义后的宽度计数，才能保证截断过的值一定过得了单块预算。
+ *
+ * 一个区块里有多条 richtext 字段时，加起来的体积仍受 `PROPS_MAX_BYTES` 约束（§4.5 的
+ * 既有规则）；单条字段在上面这个上限内一定留得下。
+ */
+export const RICHTEXT_MAX_BYTES = 8000;
+
+/** 一个字符写进 JSON 字符串之后占几个字节（UTF-8 + 必要的转义）。 */
+function jsonCharWidth(char: string): number {
+  const code = char.codePointAt(0) ?? 0;
+  if (code === 0x22 || code === 0x5c || code === 0x0a || code === 0x09) return 2;
+  if (code < 0x20) return 6;
+  if (code < 0x80) return 1;
+  if (code < 0x800) return 2;
+  if (code < 0x10000) return 3;
+  return 4;
+}
+
+/**
+ * `richtext` 值：只接受字符串，超出上限时按字符边界截断（不会切出半个汉字）。
+ *
+ * 与 `textarea` 同一条路径（都只是文本），但上限更宽、且非字符串一律丢弃：
+ * 富文本正文一旦被写成数字或数组，渲染链路拿到的就不是 Markdown 了。
+ */
+export function richtextValue(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  let used = 0;
+  let out = '';
+  for (const char of value) {
+    const width = jsonCharWidth(char);
+    if (used + width > RICHTEXT_MAX_BYTES) break;
+    used += width;
+    out += char;
+  }
+  return out;
+}
+
 /* ---------- v2 展示层字段（at / visible / anchor / span / offset） ---------- */
 
 /** 12 列栅格的取值范围。 */
@@ -909,6 +954,13 @@ export function normalizeBlockProps(type: string, value: unknown): BlockProps {
       }
       const media = normalizeMediaUrl(item);
       if (media) out[key] = media;
+      continue;
+    }
+    if (field.type === 'richtext') {
+      // Markdown 原文原样存：清洗发生在渲染时（renderMarkdown + sanitizeHtml），
+      // 归一化只要截断，不该改写内容。
+      const rich = richtextValue(item);
+      if (rich !== undefined) out[key] = rich;
       continue;
     }
     const scalar = scalarValue(item);
