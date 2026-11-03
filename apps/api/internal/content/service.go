@@ -279,7 +279,30 @@ func (s *Service) Actions(ctx context.Context, actor Actor, item Content) ([]Act
 	return Policy{PublishMode: mode}.AvailableActions(item, actor), nil
 }
 
+// Listing orders accepted by the list endpoints.
+const (
+	// SortNewest is the default order: most recent first.
+	SortNewest = "newest"
+	// SortOldest reads the same listing backwards: oldest first.
+	SortOldest = "oldest"
+)
+
+// MaxTagFilterLength bounds the tag name a listing request may ask for.
+//
+// It sits above MaxTagLength, the storage bound, because the contract advertises the
+// filter bound and a client should not have to know the per item one. A longer value
+// cannot be a name this site ever stored, so it is refused rather than truncated into
+// a different tag.
+const MaxTagFilterLength = 40
+
+// maxCategoryIDLength mirrors the column bound on content_item.category_id.
+const maxCategoryIDLength = 36
+
 // ListFilter narrows a listing query.
+//
+// The service fills SiteID, Kind, Statuses, After and Limit itself; the remaining
+// fields are the caller's narrowing. Keeping both in one value means the repository
+// has a single argument to read.
 type ListFilter struct {
 	SiteID string
 	Kind   Kind
@@ -287,9 +310,104 @@ type ListFilter struct {
 	Statuses []Status
 	// AuthorID restricts the result to one author.
 	AuthorID string
+	// CategoryID restricts the result to one category. Empty means any.
+	CategoryID string
+	// Tag restricts the result to items carrying this tag.
+	Tag string
+	// Since keeps items created at or after this instant. Zero means unbounded.
+	Since time.Time
+	// Sort picks the ordering: "newest" (default) or "oldest".
+	Sort string
 	// After is the page boundary; zero means the first page.
 	After page.Cursor
 	Limit int
+}
+
+// NormalizeTag turns a raw tag query value into the name the store may search for.
+//
+// The returned name never contains a double quote or a backslash. That is what makes
+// the quoted token match in the repository safe: the value cannot break out of the
+// JSON array text it is compared against. An empty result means the value is not a tag
+// name at all — blank, too long, or carrying a character the JSON encoding would
+// escape — and the caller must refuse it instead of dropping the filter, because a
+// dropped filter would widen the page.
+func NormalizeTag(raw string) string {
+	name := strings.TrimSpace(raw)
+	if name == "" || len([]rune(name)) > MaxTagFilterLength {
+		return ""
+	}
+	if strings.ContainsAny(name, `"\`) {
+		return ""
+	}
+	return name
+}
+
+// ValidateSort returns the ordering the repository understands.
+//
+// An empty value is the documented default rather than an error, so a client that
+// sends no sort gets exactly the page it would get from "newest". Any other value is
+// rejected: silently falling back would make a typo look like a working filter.
+func ValidateSort(raw string) (string, error) {
+	switch strings.TrimSpace(raw) {
+	case "", SortNewest:
+		return SortNewest, nil
+	case SortOldest:
+		return SortOldest, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported sort", ErrInvalidInput)
+	}
+}
+
+// listFilter merges the caller's narrowing with the fields the service owns.
+//
+// Site, kind, page size and page boundary describe the request, and visibility is
+// decided here, so neither is taken from the caller: a filter that arrives with
+// statuses set cannot widen what the actor may see.
+func (s *Service) listFilter(
+	actor Actor,
+	kind Kind,
+	limit int,
+	after page.Cursor,
+	narrow ListFilter,
+) (ListFilter, error) {
+	filter := ListFilter{
+		SiteID:   actor.SiteID,
+		Kind:     kind,
+		AuthorID: strings.TrimSpace(narrow.AuthorID),
+		After:    after,
+		Limit:    limit,
+	}
+
+	if narrow.CategoryID != "" {
+		categoryID := strings.TrimSpace(narrow.CategoryID)
+		if len([]rune(categoryID)) > maxCategoryIDLength {
+			return ListFilter{}, fmt.Errorf("%w: category id is malformed", ErrInvalidInput)
+		}
+		filter.CategoryID = categoryID
+	}
+
+	if narrow.Tag != "" {
+		tag := NormalizeTag(narrow.Tag)
+		if tag == "" {
+			return ListFilter{}, fmt.Errorf("%w: tag is malformed", ErrInvalidInput)
+		}
+		filter.Tag = tag
+	}
+
+	filter.Since = narrow.Since
+
+	sort, err := ValidateSort(narrow.Sort)
+	if err != nil {
+		return ListFilter{}, err
+	}
+	filter.Sort = sort
+
+	// Visibility is recomputed, never inherited from the caller's filter.
+	if !actor.Role.AtLeast(site.RoleEditor) {
+		filter.Statuses = []Status{StatusPublished}
+	}
+
+	return filter, nil
 }
 
 // ListAfter returns one page of visible items plus the cursor for the next page.
@@ -303,23 +421,23 @@ func (s *Service) ListAfter(
 	limit int,
 	after page.Cursor,
 ) ([]Content, string, error) {
-	return s.ListAfterFilter(ctx, actor, kind, limit, after, "")
+	return s.ListAfterFilter(ctx, actor, kind, limit, after, ListFilter{})
 }
 
-// ListAfterFilter is ListAfter narrowed to one author.
+// ListAfterFilter is ListAfter narrowed by the caller's query filters.
 //
-// It backs the public author archive (/u/{userID}): the visibility rules stay
-// exactly those of ListAfter, so a reader only ever gets published items while a
-// moderator may also see the author's queue. authorID is a plain filter value, not a
-// validated resource: an unknown id simply matches nothing, which is why a stale
-// archive link yields an empty page instead of an error.
+// It backs the public listing and the author archive (/u/{userID}): the visibility
+// rules stay exactly those of ListAfter, so a reader only ever gets published items
+// while a moderator may also see the author's queue. The narrowing values are plain
+// filter values, not validated resources: an unknown author or category simply matches
+// nothing, which is why a stale archive link yields an empty page instead of an error.
 func (s *Service) ListAfterFilter(
 	ctx context.Context,
 	actor Actor,
 	kind Kind,
 	limit int,
 	after page.Cursor,
-	authorID string,
+	narrow ListFilter,
 ) ([]Content, string, error) {
 	if kind != "" && !kind.Valid() {
 		return nil, "", ErrInvalidInput
@@ -328,9 +446,9 @@ func (s *Service) ListAfterFilter(
 		limit = 20
 	}
 
-	filter := ListFilter{SiteID: actor.SiteID, Kind: kind, Limit: limit, After: after, AuthorID: authorID}
-	if !actor.Role.AtLeast(site.RoleEditor) {
-		filter.Statuses = []Status{StatusPublished}
+	filter, err := s.listFilter(actor, kind, limit, after, narrow)
+	if err != nil {
+		return nil, "", err
 	}
 
 	items, err := s.repo.List(ctx, filter)
@@ -350,8 +468,15 @@ func (s *Service) ListAfterFilter(
 //
 // Visibility is decided here, not by the caller: anonymous and ordinary readers only
 // ever get published items, while an author additionally sees their own work and a
-// moderator sees everything on the site.
-func (s *Service) List(ctx context.Context, actor Actor, kind Kind, limit int) ([]Content, error) {
+// moderator sees everything on the site. narrow carries the optional query filters;
+// the fields the service owns are overwritten, so a filter can only narrow the page.
+func (s *Service) List(
+	ctx context.Context,
+	actor Actor,
+	kind Kind,
+	limit int,
+	narrow ListFilter,
+) ([]Content, error) {
 	if kind != "" && !kind.Valid() {
 		return nil, ErrInvalidInput
 	}
@@ -359,16 +484,9 @@ func (s *Service) List(ctx context.Context, actor Actor, kind Kind, limit int) (
 		limit = 20
 	}
 
-	filter := ListFilter{SiteID: actor.SiteID, Kind: kind, Limit: limit}
-	switch {
-	case actor.Role.AtLeast(site.RoleEditor):
-		// Moderators see the queue as well as published content.
-	case actor.UserID != "":
-		// Authors see their own drafts plus public content.
-		filter.Statuses = []Status{StatusPublished}
-		filter.AuthorID = ""
-	default:
-		filter.Statuses = []Status{StatusPublished}
+	filter, err := s.listFilter(actor, kind, limit, page.Cursor{}, narrow)
+	if err != nil {
+		return nil, err
 	}
 
 	return s.repo.List(ctx, filter)

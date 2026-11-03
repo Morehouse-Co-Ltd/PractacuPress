@@ -17,6 +17,9 @@ type fakeRepo struct {
 	items  map[string]Content
 	audits []site.AuditEntry
 	seq    int
+	// lastFilter records the filter the service handed down, so tests can assert on
+	// the narrowing the store would receive.
+	lastFilter ListFilter
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{items: make(map[string]Content)} }
@@ -60,6 +63,7 @@ func (f *fakeRepo) Transition(_ context.Context, item Content, from Status, audi
 }
 
 func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error) {
+	f.lastFilter = filter
 	out := make([]Content, 0, len(f.items))
 	for _, item := range f.items {
 		if item.SiteID != filter.SiteID {
@@ -399,12 +403,12 @@ func TestListHidesUnpublishedFromReaders(t *testing.T) {
 	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
 	ctx := context.Background()
 
-	visible, err := service.List(ctx, actor("reader", site.RoleMember), KindArticle, 10)
+	visible, err := service.List(ctx, actor("reader", site.RoleMember), KindArticle, 10, ListFilter{})
 	require.NoError(t, err)
 	require.Len(t, visible, 1)
 	require.Equal(t, "published", visible[0].ID)
 
-	moderated, err := service.List(ctx, actor("mod", site.RoleEditor), KindArticle, 10)
+	moderated, err := service.List(ctx, actor("mod", site.RoleEditor), KindArticle, 10, ListFilter{})
 	require.NoError(t, err)
 	require.Len(t, moderated, 2, "a moderator sees the review queue")
 
@@ -416,7 +420,7 @@ func TestListHidesUnpublishedFromReaders(t *testing.T) {
 func TestListRejectsUnknownKind(t *testing.T) {
 	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
 
-	_, err := service.List(context.Background(), actor("u", site.RoleMember), Kind("comment"), 10)
+	_, err := service.List(context.Background(), actor("u", site.RoleMember), Kind("comment"), 10, ListFilter{})
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
@@ -464,7 +468,7 @@ func TestListAfterFilterNarrowsToOneAuthor(t *testing.T) {
 
 	// A reader gets the author's published work only, never the draft.
 	readerItems, readerNext, err := service.ListAfterFilter(ctx,
-		actor("reader", site.RoleMember), KindArticle, 10, page.Cursor{}, "alice")
+		actor("reader", site.RoleMember), KindArticle, 10, page.Cursor{}, ListFilter{AuthorID: "alice"})
 	require.NoError(t, err)
 	require.Len(t, readerItems, 1)
 	require.Equal(t, "alice-pub", readerItems[0].ID)
@@ -472,7 +476,7 @@ func TestListAfterFilterNarrowsToOneAuthor(t *testing.T) {
 
 	// A moderator keeps the existing visibility rule under the same filter.
 	editorItems, _, err := service.ListAfterFilter(ctx,
-		actor("mod", site.RoleEditor), KindArticle, 10, page.Cursor{}, "alice")
+		actor("mod", site.RoleEditor), KindArticle, 10, page.Cursor{}, ListFilter{AuthorID: "alice"})
 	require.NoError(t, err)
 	editorIDs := make([]string, 0, len(editorItems))
 	for _, item := range editorItems {
@@ -483,7 +487,7 @@ func TestListAfterFilterNarrowsToOneAuthor(t *testing.T) {
 	// An unknown author is an empty page, not a validation error: archive links can
 	// outlive the account they point at.
 	empty, next, err := service.ListAfterFilter(ctx,
-		actor("reader", site.RoleMember), KindArticle, 10, page.Cursor{}, "ghost")
+		actor("reader", site.RoleMember), KindArticle, 10, page.Cursor{}, ListFilter{AuthorID: "ghost"})
 	require.NoError(t, err)
 	require.Empty(t, empty)
 	require.Empty(t, next)

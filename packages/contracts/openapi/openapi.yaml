@@ -713,6 +713,10 @@ paths:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/AuthorID'
+        - $ref: '#/components/parameters/CategoryID'
+        - $ref: '#/components/parameters/Tag'
+        - $ref: '#/components/parameters/Since'
+        - $ref: '#/components/parameters/Sort'
       responses:
         '200':
           description: One page of articles
@@ -875,6 +879,10 @@ paths:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/AuthorID'
+        - $ref: '#/components/parameters/CategoryID'
+        - $ref: '#/components/parameters/Tag'
+        - $ref: '#/components/parameters/Since'
+        - $ref: '#/components/parameters/Sort'
       responses:
         '200':
           description: One page of posts
@@ -1827,6 +1835,30 @@ components:
         /u/{userID} uses. The id is not validated against membership: an unknown or
         malformed id simply matches nothing and yields an empty page.
       schema: { type: string }
+    CategoryID:
+      name: category_id
+      in: query
+      required: false
+      description: Narrow the page to one category.
+      schema: { type: string, maxLength: 36 }
+    Tag:
+      name: tag
+      in: query
+      required: false
+      description: Narrow the page to items carrying this tag (exact match).
+      schema: { type: string, maxLength: 40 }
+    Since:
+      name: since
+      in: query
+      required: false
+      description: Only items created at or after this instant (RFC 3339).
+      schema: { type: string, format: date-time }
+    Sort:
+      name: sort
+      in: query
+      required: false
+      description: Ordering. `newest` (default) or `oldest`.
+      schema: { type: string, enum: [newest, oldest] }
     Purpose:
       name: purpose
       in: query

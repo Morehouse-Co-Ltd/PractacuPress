@@ -185,6 +185,49 @@ func (h *Handler) search(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": views, "next_cursor": "", "has_more": false})
 }
 
+// parseListFilter reads the optional narrowing parameters of a listing request.
+//
+// Every value is validated here rather than in the store: a typo must become a 400,
+// never a silently ignored filter, because an ignored filter widens the page. Absent
+// values are defaults, not errors, so a plain GET /articles keeps working.
+func parseListFilter(c *gin.Context) (ListFilter, error) {
+	var filter ListFilter
+	filter.AuthorID = strings.TrimSpace(c.Query("author_id"))
+
+	if rawCategory := strings.TrimSpace(c.Query("category_id")); rawCategory != "" {
+		if len([]rune(rawCategory)) > maxCategoryIDLength {
+			return ListFilter{}, ErrInvalidInput
+		}
+		filter.CategoryID = rawCategory
+	}
+
+	if rawTag := strings.TrimSpace(c.Query("tag")); rawTag != "" {
+		// NormalizeTag rejects quotes and backslashes, which is what keeps the JSON
+		// token match in the store exact and uninjectable.
+		tag := NormalizeTag(rawTag)
+		if tag == "" {
+			return ListFilter{}, ErrInvalidInput
+		}
+		filter.Tag = tag
+	}
+
+	if rawSince := strings.TrimSpace(c.Query("since")); rawSince != "" {
+		since, err := time.Parse(time.RFC3339, rawSince)
+		if err != nil {
+			return ListFilter{}, ErrInvalidInput
+		}
+		filter.Since = since
+	}
+
+	sort, err := ValidateSort(c.Query("sort"))
+	if err != nil {
+		return ListFilter{}, err
+	}
+	filter.Sort = sort
+
+	return filter, nil
+}
+
 // list returns the items of a site the caller may see.
 func (h *Handler) list(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
@@ -199,6 +242,12 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 		}
 	}
 
+	filter, err := parseListFilter(c)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
 	cursor, err := page.Decode(c.Query("cursor"))
 	if err != nil {
 		_ = c.Error(apperr.New(apperr.CodeInvalidCursor).WithRequestID(c.GetHeader("X-Request-ID")))
@@ -211,7 +260,7 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 		kind,
 		limit,
 		cursor,
-		strings.TrimSpace(c.Query("author_id")),
+		filter,
 	)
 	if err != nil {
 		_ = c.Error(mapError(err))

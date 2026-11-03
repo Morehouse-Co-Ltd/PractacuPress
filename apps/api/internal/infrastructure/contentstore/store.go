@@ -142,7 +142,7 @@ func (s *Store) FindByID(ctx context.Context, siteID, contentID string) (content
 	return toContent(row), nil
 }
 
-// List returns items of a site filtered by status and author.
+// List returns items of a site filtered by status, author and the caller's narrowing.
 func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.Content, error) {
 	query := s.client.ContentItem.Query().
 		Where(contentitem.SiteIDEQ(filter.SiteID))
@@ -153,6 +153,20 @@ func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.
 	if filter.AuthorID != "" {
 		query = query.Where(contentitem.AuthorIDEQ(filter.AuthorID))
 	}
+	if filter.CategoryID != "" {
+		query = query.Where(contentitem.CategoryIDEQ(filter.CategoryID))
+	}
+	if filter.Tag != "" {
+		// tags is a JSON array of names stored as text, with no join table, so the tag
+		// filter is a quoted token match: `"Go"` matches the element "Go" but never the
+		// element "GoLang". NormalizeTag rejects `"` and `\`, so the value cannot escape
+		// the token. Contains compiles to LIKE, the only operator SQLite, MySQL and
+		// PostgreSQL agree on for this column; JSON path syntax would not be portable.
+		query = query.Where(contentitem.TagsContains(`"` + filter.Tag + `"`))
+	}
+	if !filter.Since.IsZero() {
+		query = query.Where(contentitem.CreatedAtGTE(filter.Since))
+	}
 	if len(filter.Statuses) > 0 {
 		statuses := make([]string, 0, len(filter.Statuses))
 		for _, status := range filter.Statuses {
@@ -161,19 +175,42 @@ func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.
 		query = query.Where(contentitem.StatusIn(statuses...))
 	}
 
+	// Newest first is the default; "oldest" is the same listing read backwards. The
+	// page boundary has to follow the ordering, otherwise the second page of an
+	// ascending listing would jump back to the items the caller already has.
+	descending := filter.Sort != content.SortOldest
+
 	if !filter.After.IsZero() {
 		boundary, parseErr := time.Parse(time.RFC3339Nano, filter.After.Key)
 		if parseErr != nil {
 			return nil, content.ErrInvalidInput
 		}
-		query = query.Where(contentitem.Or(
-			contentitem.CreatedAtLT(boundary),
-			contentitem.And(contentitem.CreatedAtEQ(boundary), contentitem.IDLT(filter.After.ID)),
-		))
+		if descending {
+			query = query.Where(contentitem.Or(
+				contentitem.CreatedAtLT(boundary),
+				contentitem.And(contentitem.CreatedAtEQ(boundary), contentitem.IDLT(filter.After.ID)),
+			))
+		} else {
+			query = query.Where(contentitem.Or(
+				contentitem.CreatedAtGT(boundary),
+				contentitem.And(contentitem.CreatedAtEQ(boundary), contentitem.IDGT(filter.After.ID)),
+			))
+		}
+	}
+
+	order := []contentitem.OrderOption{
+		entgen.Desc(contentitem.FieldCreatedAt),
+		entgen.Desc(contentitem.FieldID),
+	}
+	if !descending {
+		order = []contentitem.OrderOption{
+			entgen.Asc(contentitem.FieldCreatedAt),
+			entgen.Asc(contentitem.FieldID),
+		}
 	}
 
 	rows, err := query.
-		Order(entgen.Desc(contentitem.FieldCreatedAt), entgen.Desc(contentitem.FieldID)).
+		Order(order...).
 		Limit(filter.Limit).
 		All(ctx)
 	if err != nil {
