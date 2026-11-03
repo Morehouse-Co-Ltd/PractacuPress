@@ -15,6 +15,8 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import type { ProblemBody } from '../../types';
+import { problemDetail, problemDetailText } from '../problemDetail';
 import { DICT } from './dict';
 import { DEFAULT_LOCALE, normalizeLocale, type Locale } from './locales';
 import { interpolate, pickPlural, type Entry, type Vars } from './plural';
@@ -128,6 +130,23 @@ function codeOf(err: unknown): string | null {
 }
 
 /**
+ * 取异常随身的响应体（`ApiError.problem`，或直接就是一个 problem 对象）。
+ *
+ * `validation_failed` 的 `message` 是固定的「请求参数不符合要求」，真正的原因在
+ * `details.field` / `details.rule` 里；`problemDetailText` 负责把它翻成人话。
+ */
+function problemOf(err: unknown): ProblemBody | null {
+  if (!err || typeof err !== 'object') return null;
+  const candidate = (err as { problem?: unknown }).problem;
+  const source = candidate && typeof candidate === 'object' ? candidate : err;
+  const record = source as { code?: unknown; details?: unknown };
+  if (typeof record.code !== 'string' || !record.details || typeof record.details !== 'object') {
+    return null;
+  }
+  return source as ProblemBody;
+}
+
+/**
  * 取异常自带的 message。
  *
  * 真实错误是 `Error`；测试、`Promise.reject({…})` 或未来客户端可能给一个带
@@ -151,11 +170,17 @@ function messageOf(err: unknown): string {
 /**
  * 把任意异常变成当前语言的提示文案。
  *
- * 中文下完全保留今天的行为（原样返回 `Error.message`）；
- * 英文下先试错误码映射，再回退服务端原文。
+ * 顺序：
+ * 1. `validation_failed` 且带 `details.field`/`rule` → 说清是哪个字段错了（中英都走这一条）；
+ * 2. 英文下按错误码给通用英文（避免把服务端中文丢给英文用户）；
+ * 3. 其它一律回退异常自带的 message。
  */
 export function errorText(err: unknown): string {
   if (!err) return '';
+  if (codeOf(err) === 'validation_failed') {
+    const specific = problemDetailText(problemDetail(problemOf(err)), t);
+    if (specific) return specific;
+  }
   if (current === 'en') {
     const code = codeOf(err);
     const mapped = code ? ERROR_MESSAGE_EN[code] : undefined;
