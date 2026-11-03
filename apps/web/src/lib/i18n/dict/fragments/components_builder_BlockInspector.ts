@@ -78,6 +78,22 @@ const fragment: Dictionary = {
   恢复继承: 'Restore inherited',
   '只改这一台设备；其他设备保持原样。': 'Editing this device only; the others stay unchanged.',
   '已覆盖：只对这一台设备生效。': 'Overridden: applies to this device only.',
+
+  // ---- 2026-11-03 栅格占位 ----
+  栅格占位: 'Grid placement',
+  占位栏数: 'Column span',
+  '最多 12 栏；与偏移冲突时先退偏移，栏数优先。':
+    'Up to 12 columns; when it clashes with the offset, the offset moves back first so the span is kept.',
+  起始列偏移: 'Column offset',
+  '0 表示从第一栏开始；放不下时自动前移。':
+    '0 starts at the first column; it moves back automatically when the span does not fit.',
+  水平对齐: 'Horizontal alignment',
+  '只对这一格生效；「跟随内容」用组件自己的对齐设置。':
+    'Applies to this grid cell only; “Follow content” keeps the block’s own alignment.',
+  跟随内容: 'Follow content',
+  左对齐: 'Left',
+  居中: 'Center',
+  右对齐: 'Right',
 };
 
 export default fragment;

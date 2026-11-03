@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { BlockInstance } from '../types';
+import type { BlockPlacementPatch } from './layout';
 import {
   BREAKPOINT_LG,
   BREAKPOINT_MD,
   BREAKPOINT_SM,
   SPACING_SCALE,
   applyDisplayOverrides,
+  clampGridPlacement,
   overlayAt,
   spacingPx,
   writeOverride,
@@ -150,6 +152,64 @@ describe('writeOverride', () => {
     const next = writeOverride(block, 'mobile', { appearance: { radius: undefined } });
     expect(next.at).toEqual({ tablet: { hidden: true } });
     expect(writeOverride(next, 'tablet', {})).not.toHaveProperty('at');
+  });
+});
+
+describe('clampGridPlacement', () => {
+  it('合法取值原样返回', () => {
+    expect(clampGridPlacement(6, 3, 12)).toEqual({ span: 6, offset: 3 });
+    expect(clampGridPlacement(1, 0, 12)).toEqual({ span: 1, offset: 0 });
+    expect(clampGridPlacement(12, 0, 12)).toEqual({ span: 12, offset: 0 });
+  });
+
+  it('span 夹进 1–12', () => {
+    expect(clampGridPlacement(0, 0, 12)).toEqual({ span: 1, offset: 0 });
+    expect(clampGridPlacement(-5, 0, 12)).toEqual({ span: 1, offset: 0 });
+    expect(clampGridPlacement(99, 0, 12)).toEqual({ span: 12, offset: 0 });
+  });
+
+  it('offset 夹进 0–11', () => {
+    expect(clampGridPlacement(1, -3, 12)).toEqual({ span: 1, offset: 0 });
+    expect(clampGridPlacement(1, 99, 12)).toEqual({ span: 1, offset: 11 });
+  });
+
+  it('offset + span 超出栏数时只退 offset，栏数原样保住', () => {
+    expect(clampGridPlacement(8, 9, 12)).toEqual({ span: 8, offset: 4 });
+    expect(clampGridPlacement(12, 1, 12)).toEqual({ span: 12, offset: 0 });
+  });
+
+  it('容器比 span 还窄时 span 收窄到栏数、offset 归零', () => {
+    expect(clampGridPlacement(12, 3, 4)).toEqual({ span: 4, offset: 0 });
+    expect(clampGridPlacement(6, 2, 1)).toEqual({ span: 1, offset: 0 });
+  });
+
+  it('非有限输入回落到整行、不偏移', () => {
+    expect(clampGridPlacement(Number.NaN, 3, 6)).toEqual({ span: 6, offset: 0 });
+    expect(clampGridPlacement(4, Number.POSITIVE_INFINITY, 6)).toEqual({ span: 6, offset: 0 });
+  });
+});
+
+describe('栅格位移按设备分层', () => {
+  it('手机上的 offset 落进 at.mobile，桌面写回基础字段', () => {
+    const block = mk('a');
+    const mobile = writeOverride(block, 'mobile', { offset: { base: 2 } });
+    expect(mobile.offset).toBeUndefined();
+    expect(mobile.at?.mobile).toEqual({ offset: { base: 2 } });
+    expect(block.at).toBeUndefined();
+
+    const desktop = writeOverride(block, 'desktop', { offset: { base: 2 } });
+    expect(desktop.offset).toEqual({ base: 2 });
+    expect(desktop.at).toBeUndefined();
+  });
+
+  it('overlayAt 叠上 at[device].offset；清掉覆盖后回到基础偏移', () => {
+    const tablet: BlockPlacementPatch = { offset: { base: 4 } };
+    const block = mk('a', { offset: { base: 1 }, at: { tablet } });
+    expect(overlayAt(block, 'tablet').offset).toEqual({ base: 4 });
+    expect(overlayAt(block, 'desktop').offset).toEqual({ base: 1 });
+    expect(overlayAt(writeOverride(block, 'tablet', { offset: undefined }), 'tablet').offset).toEqual({
+      base: 1,
+    });
   });
 });
 

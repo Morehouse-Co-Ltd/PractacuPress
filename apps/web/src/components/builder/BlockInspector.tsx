@@ -2,8 +2,8 @@ import type {
   BlockAnimation,
   BlockAppearance,
   BlockArea,
-  BlockDisplayOverride,
   BlockInstance,
+  BlockSpan,
   BuilderDevice,
 } from '../../types';
 import { findBlock, updateBlock } from '../../lib/blockTree';
@@ -15,7 +15,14 @@ import {
   BLOCK_SHADOW_OPTIONS,
   hasBlockAppearance,
 } from '../../lib/blockAppearance';
-import { overlayAt, overrideOf, writeOverride } from '../../lib/layout';
+import { gridPlacements, gridTemplate } from '../../lib/blocks';
+import {
+  clampGridPlacement,
+  overlayAt,
+  overrideOf,
+  writeOverride,
+  type BlockPlacementPatch,
+} from '../../lib/layout';
 import { useT } from '../../lib/i18n';
 import { BlockProps } from './BlockProps';
 import { Field, Input, Select, Textarea, Toggle, Button, Badge } from '../ui';
@@ -24,12 +31,21 @@ const ANIMATIONS: BlockAnimation[] = ['none', 'fade', 'fade-up', 'slide-left', '
 
 const AREAS: BlockArea[] = ['full', 'main', 'side'];
 
+/** 栅格里的水平对齐；空值（未选）表示跟随组件自己的设置。 */
+const GRID_ALIGNS = ['left', 'center', 'right'] as const;
+
+/** 只改某一档的 base，保留已有的 md / sm 分档。 */
+function withBase(value: BlockSpan | undefined, base: number): BlockSpan {
+  return { ...value, base };
+}
+
 /**
  * 展示层字段：能按设备覆盖的、也就是「恢复继承」能清掉的全部内容。
  * 内容（`props`）不在其中——内容永远只有一份，这是 P0 定下的规矩。
  */
 const DISPLAY_KEYS = [
   'span',
+  'offset',
   'appearance',
   'animation',
   'hidden',
@@ -89,9 +105,18 @@ export function BlockInspector({
    */
   const view = overlayAt(block, device);
   /** 这项是不是当前设备单独设过的（用于「已覆盖」标记）。 */
-  const overridden = (key: keyof BlockDisplayOverride) => local?.[key] !== undefined;
+  const overridden = (key: keyof BlockPlacementPatch) => local?.[key] !== undefined;
   const overriddenAppearance = (key: keyof BlockAppearance) =>
     local?.appearance?.[key] !== undefined;
+  /**
+   * 只有 `grid` 的直接子区块才有格子可摆；栏数来自父区块的 `props.columns`
+   * （`gridTemplate` 已按 1–12 夹好）。0 表示「不在栅格里」，整段「栅格占位」不渲染。
+   */
+  const gridColumns = parent?.type === 'grid' ? gridTemplate(parent).columns : 0;
+  /** 基础层的落位（含夹取）；非桌面写覆盖时拿它判断「这项是不是等于继承值」。 */
+  const basePlacement = gridColumns > 0 ? gridPlacements(block, gridColumns).base : null;
+  /** 当前设备实际生效的落位，表单显示的就是它，而不是被覆盖掉的基础值。 */
+  const placement = gridColumns > 0 ? gridPlacements(view, gridColumns).base : null;
   /**
    * 展示层字段的写入通道。
    *
@@ -99,8 +124,8 @@ export function BlockInspector({
    * `at[device]`，基础编排一动不动。非桌面会先把「本来就等于基础值」的编辑抹成
    * undefined：覆盖层只记真正的差异，点回原值就等于恢复继承。
    */
-  const writeDisplay = (override: BlockDisplayOverride) => {
-    const patchable: BlockDisplayOverride =
+  const writeDisplay = (override: BlockPlacementPatch) => {
+    const patchable: BlockPlacementPatch =
       device === 'desktop'
         ? override
         : (Object.fromEntries(
@@ -108,7 +133,7 @@ export function BlockInspector({
               key,
               value === block[key as keyof BlockInstance] ? undefined : value,
             ]),
-          ) as BlockDisplayOverride);
+          ) as BlockPlacementPatch);
     const next = writeOverride(block, device, patchable);
     const changed: Partial<BlockInstance> = {};
     for (const key of DISPLAY_KEYS) {
@@ -148,6 +173,33 @@ export function BlockInspector({
     else writeDisplay({ appearance: undefined });
   };
   const clearDeviceOverride = () => writeDisplay({});
+  /**
+   * 写一次栅格落位。
+   *
+   * 夹取全交给 `clampGridPlacement`（栏数优先，冲突先退偏移），这里只负责「写哪一层」：
+   * 桌面并回基础字段并保住 md / sm 分档，平板 / 手机只写这一层的差异——与基础层一致的
+   * 值写 `undefined`，等于恢复继承，覆盖层里不会留一条和基础值一样的死记录。
+   */
+  const writePlacement = (span: number, offset: number) => {
+    if (!gridColumns || !basePlacement) return;
+    const fit = clampGridPlacement(span, offset, gridColumns);
+    if (device === 'desktop') {
+      const next: Partial<BlockInstance> = {};
+      if (fit.span !== basePlacement.span) next.span = withBase(block.span, fit.span);
+      if (fit.offset !== basePlacement.offset) next.offset = withBase(block.offset, fit.offset);
+      if (Object.keys(next).length) patch(next);
+      return;
+    }
+    writeDisplay({
+      span: fit.span === basePlacement.span ? undefined : { base: fit.span },
+      offset: fit.offset === basePlacement.offset ? undefined : { base: fit.offset },
+    });
+  };
+  const alignLabels: Record<(typeof GRID_ALIGNS)[number], string> = {
+    left: t('左对齐'),
+    center: t('居中'),
+    right: t('右对齐'),
+  };
   const deviceLabels: Record<BuilderDevice, string> = {
     desktop: t('桌面'),
     tablet: t('平板'),
@@ -231,18 +283,22 @@ export function BlockInspector({
           </Button>
         ) : null}
         {parent ? (
-          <Field label={t('所在栏')}>
-            <Select
-              value={String(block.column ?? 1)}
-              onChange={(event) => patch({ column: Number(event.target.value) })}
-            >
-              {Array.from({ length: Math.max(1, Number(parent.props.columns ?? 2)) }, (_, index) => (
-                <option key={index + 1} value={String(index + 1)}>
-                  {t('第 {index} 栏', { index: index + 1 })}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          // 栅格子区块的落位由下面的「栅格占位」负责：`column` 只有分栏容器会消费，
+          // 在 grid 里摆出来只会多一个不起作用的控件。
+          parent.type === 'grid' ? null : (
+            <Field label={t('所在栏')}>
+              <Select
+                value={String(block.column ?? 1)}
+                onChange={(event) => patch({ column: Number(event.target.value) })}
+              >
+                {Array.from({ length: Math.max(1, Number(parent.props.columns ?? 2)) }, (_, index) => (
+                  <option key={index + 1} value={String(index + 1)}>
+                    {t('第 {index} 栏', { index: index + 1 })}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )
         ) : (
           <Field label={t('夜航布局落位')} hint={t('只在夜航（bento）布局下生效。')}>
             <Select
@@ -257,6 +313,70 @@ export function BlockInspector({
             </Select>
           </Field>
         )}
+        {placement ? (
+          <div className="inspector-children">
+            <div className="inspector-section-head">
+              <strong>{t('栅格占位')}</strong>
+            </div>
+            <div className="form-grid">
+              <Field
+                label={t('占位栏数')}
+                hint={t('最多 12 栏；与偏移冲突时先退偏移，栏数优先。')}
+                aside={overridden('span') ? <Badge tone="accent">{t('已覆盖')}</Badge> : undefined}
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  step={1}
+                  value={placement.span}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (Number.isFinite(value)) writePlacement(value, placement.offset);
+                  }}
+                />
+              </Field>
+              <Field
+                label={t('起始列偏移')}
+                hint={t('0 表示从第一栏开始；放不下时自动前移。')}
+                aside={overridden('offset') ? <Badge tone="accent">{t('已覆盖')}</Badge> : undefined}
+              >
+                <Input
+                  type="number"
+                  min={0}
+                  max={11}
+                  step={1}
+                  value={placement.offset}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (Number.isFinite(value)) writePlacement(placement.span, value);
+                  }}
+                />
+              </Field>
+            </div>
+            <Field
+              label={t('水平对齐')}
+              hint={t('只对这一格生效；「跟随内容」用组件自己的对齐设置。')}
+              aside={overridden('align') ? <Badge tone="accent">{t('已覆盖')}</Badge> : undefined}
+            >
+              <Select
+                value={view.align ?? ''}
+                onChange={(event) =>
+                  writeDisplay({
+                    align: (event.target.value || undefined) as BlockInstance['align'],
+                  })
+                }
+              >
+                <option value="">{t('跟随内容')}</option>
+                {GRID_ALIGNS.map((value) => (
+                  <option key={value} value={value}>
+                    {alignLabels[value]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        ) : null}
         <div className="form-grid">
           <Field
             label={t('组件宽度')}
