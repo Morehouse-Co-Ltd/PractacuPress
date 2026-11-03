@@ -168,6 +168,9 @@ func (s *Store) ListAssets(
 	if filter.ScanStatus != "" {
 		query = query.Where(mediaasset.ScanStatusEQ(string(filter.ScanStatus)))
 	}
+	if filter.OwnerID != "" {
+		query = query.Where(mediaasset.OwnerIDEQ(filter.OwnerID))
+	}
 
 	// The tie breaker on id is what makes the boundary stable when several rows share a
 	// timestamp, which is the normal case for a burst of uploads in the same second.

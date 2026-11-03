@@ -175,3 +175,48 @@ func TestReportPropagatesRepositoryFailure(t *testing.T) {
 	}, "site_1", Range24h)
 	require.Error(t, err)
 }
+
+// TestRecordDeduplicatesPerSessionAndPathMinute pins the V-10 noise filter: one
+// session viewing one path is stored once per minute, and the window is per site.
+func TestRecordDeduplicatesPerSessionAndPathMinute(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{}
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Now:        func() time.Time { return now },
+	})
+	require.NoError(t, err)
+
+	visit := VisitInput{Path: "/a/cnt_1", Session: "vs_1", Surface: SurfaceSite}
+	require.NoError(t, service.Record(context.Background(), "site_1", visit))
+	require.NoError(t, service.Record(context.Background(), "site_1", visit))
+	require.Len(t, repo.visits, 1, "a duplicate inside the same minute is dropped")
+
+	// A different session and a different path are distinct views.
+	require.NoError(t, service.Record(context.Background(), "site_1", VisitInput{
+		Path: "/a/cnt_1", Session: "vs_2", Surface: SurfaceSite,
+	}))
+	require.NoError(t, service.Record(context.Background(), "site_1", VisitInput{
+		Path: "/", Session: "vs_1", Surface: SurfaceSite,
+	}))
+	require.Len(t, repo.visits, 3)
+
+	// The same session and path on another tenant must not be suppressed.
+	require.NoError(t, service.Record(context.Background(), "site_2", visit))
+	require.Len(t, repo.visits, 4)
+
+	// The next minute is a new window.
+	now = now.Add(time.Minute)
+	require.NoError(t, service.Record(context.Background(), "site_1", visit))
+	require.Len(t, repo.visits, 5)
+
+	// A rejected visit never enters the dedupe table: fixing the payload must work
+	// in the same minute.
+	require.ErrorIs(t, service.Record(context.Background(), "site_1", VisitInput{
+		Path: "relative", Session: "vs_1", Surface: SurfaceSite,
+	}), ErrInvalidInput)
+	require.NoError(t, service.Record(context.Background(), "site_1", VisitInput{
+		Path: "/ok", Session: "vs_1", Surface: SurfaceSite,
+	}))
+	require.Len(t, repo.visits, 6)
+}

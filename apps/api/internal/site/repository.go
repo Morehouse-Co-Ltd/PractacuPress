@@ -39,6 +39,10 @@ var (
 	// index on sites.domain would reject it anyway; checking first turns that into a
 	// clean 409 instead of a database error.
 	ErrDomainTaken = errors.New("site: domain already taken")
+	// ErrDomainVerificationFailed means the DNS TXT challenge did not prove ownership
+	// of the declared domain. It is a conflict (409), not a validation error: the
+	// request was well formed, the world just did not match it yet.
+	ErrDomainVerificationFailed = errors.New("site: domain verification failed")
 	// ErrCustomizationNotFound means the site has never saved a design document. It is
 	// not an error condition for readers: the browser falls back to its own defaults.
 	ErrCustomizationNotFound = errors.New("site: customization not found")
@@ -85,22 +89,33 @@ type AuditEntry struct {
 }
 
 // SettingsInput carries the site settings a manager may change.
+//
+// Domain is only written when non-empty, which keeps the endpoint a partial update;
+// writing a domain through settings creates a fresh verification challenge exactly
+// like PUT /sites/{id}/domain and never marks it verified.
 type SettingsInput struct {
 	Name           string
 	Description    string
 	VisibilityMode VisibilityMode
 	PublishMode    PublishMode
 	Domain         string
-	// DomainVerifiedAt is set together with Domain when the caller is the new
-	// primary domain: an operator supplied domain is treated as declared ownership,
-	// not as an unproven hostname.
-	DomainVerifiedAt *time.Time
+	// DomainToken is the challenge token stored together with Domain. It is empty
+	// when the domain is not being changed.
+	DomainToken string
+	// RegistrationOpen is nil when the caller did not touch the registration switch.
+	// A non-nil value is stored as given: there is no default for an explicit update.
+	RegistrationOpen *bool
 }
 
-// DomainInput is a primary domain change. An empty Domain clears both the domain and
-// its verification; a non-empty Domain carries the verified_at timestamp to store.
+// DomainInput is a primary domain change.
+//
+// An empty Domain clears the domain, the challenge token and the verification. A
+// non-empty Domain stores the domain together with the new challenge Token; VerifiedAt
+// is nil for a freshly declared domain and only becomes non-nil when the DNS challenge
+// succeeds.
 type DomainInput struct {
 	Domain     string
+	Token      string
 	VerifiedAt *time.Time
 }
 

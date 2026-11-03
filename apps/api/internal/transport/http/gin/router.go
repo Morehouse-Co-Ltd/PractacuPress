@@ -10,9 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
-	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 )
 
@@ -35,6 +35,9 @@ func New(deps Dependencies) *gin.Engine {
 		middleware.RequestID(),
 		middleware.Recovery(deps.Logger),
 		middleware.ErrorHandler(deps.Logger),
+		// Browser security headers run before any handler so aborted and error
+		// responses carry them too; a CSP only on 200s protects nothing.
+		middleware.SecurityHeaders(),
 		// Compression runs after the security headers so a 304 or an error still
 		// carries them; it sits before handlers so every JSON body benefits. The
 		// desktop build talks to this process directly, so this is the only thing
@@ -103,9 +106,11 @@ func New(deps Dependencies) *gin.Engine {
 		if deps.AccessTokens != nil {
 			// The guard binds the token to the resolved site: a token minted on site A
 			// must never authenticate a request for site B, whose hostname is what
-			// selected the tenant in the first place.
-			guard = middleware.RequireAuthForSite(deps.AccessTokens)
-			optionalAuth = middleware.OptionalAuth(deps.AccessTokens)
+			// selected the tenant in the first place. The membership resolver then
+			// replaces the token's role with the live role and rejects a caller whose
+			// membership was suspended or removed, so revocation is immediate.
+			guard = middleware.RequireAuthForSite(deps.AccessTokens, deps.Memberships)
+			optionalAuth = middleware.OptionalAuth(deps.AccessTokens, deps.Memberships)
 		} else {
 			guard = func(c *gin.Context) {
 				middleware.AbortProblem(c, apperr.Unauthenticated().
@@ -236,10 +241,17 @@ func setupStatus(report InstallReporter, trusted middleware.TrustedProxies) gin.
 		}
 
 		body := gin.H{"installed": status.Installed, "has_admin": status.HasAdmin}
+		if status.Installed {
+			// O-3: visitor-facing clients hide the register entry point when the site
+			// has closed self-service sign-ups. Only meaningful for an installed site.
+			body["registration_open"] = status.RegistrationOpen
+		}
 		if status.Reason != "" {
 			body["reason"] = status.Reason
 		}
 		if status.SiteID != "" {
+			// The site id and name are needed by an anonymous visitor bootstrapping the
+			// public site (V-09 accepted residual: the name is public branding anyway).
 			body["site_id"] = status.SiteID
 			body["site_name"] = status.SiteName
 		}

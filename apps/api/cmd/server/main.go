@@ -104,11 +104,6 @@ func run() error {
 		}
 	}
 
-	authHandler, issuer, err := buildAuth(cfg, logger, handle, securityClient)
-	if err != nil {
-		return err
-	}
-
 	// Site resolution is always on: without it every request would fall back to a
 	// default site, which breaks tenant isolation the moment a second site exists.
 	// In production a single site without a domain only answers on a public IP
@@ -122,6 +117,11 @@ func run() error {
 		return fmt.Errorf("build site service: %w", err)
 	}
 
+	authHandler, issuer, err := buildAuth(cfg, logger, handle, securityClient, siteService)
+	if err != nil {
+		return err
+	}
+
 	replayer, err := outbox.NewReplayer(outboxstore.New(handle.Client))
 	if err != nil {
 		return fmt.Errorf("build event replayer: %w", err)
@@ -132,21 +132,31 @@ func run() error {
 		return fmt.Errorf("open media storage: %w", err)
 	}
 
+	// The content repository is built before media because the media read path asks it
+	// whether a content asset is referenced by a published revision. One repository
+	// instance serves both dependencies so they cannot drift.
+	contentRepo := contentstore.New(handle.Client)
+
 	mediaService, err := media.NewService(media.ServiceConfig{
 		Repository: mediastore.New(handle.Client),
 		Scanner:    securityScanner{client: securityClient},
 		Storage:    mediaStorage,
 		Storages:   mediaStorages,
-		// Page-builder images are content-purpose assets that no article body
-		// mentions, so the saved design document is the second reference source.
-		Design: sitestore.NewDesignReferences(handle.Client),
+		References: contentRepo,
+		Design:     sitestore.NewDesignReferences(handle.Client),
 	})
 	if err != nil {
 		return fmt.Errorf("build media service: %w", err)
 	}
 
 	communityStore := communitystore.New(handle.Client)
-	communityService, err := community.NewService(communityStore, communityStore)
+	communityService, err := community.NewService(communityStore, communityStore,
+		// Resolve the target before writing an interaction (V-15) and require an active
+		// membership for follows. Both checks are optional in the package; the server
+		// always wires them.
+		community.WithTargetChecker(communityStore),
+		community.WithMembershipChecker(siteMembershipChecker{sites: siteService}),
+	)
 	if err != nil {
 		return fmt.Errorf("build community service: %w", err)
 	}
@@ -165,7 +175,11 @@ func run() error {
 	}
 	go runOutbox(ctx, logger, worker)
 
-	messageService, err := messaging.NewService(messagingstore.New(handle.Client))
+	messageService, err := messaging.NewService(
+		messagingstore.New(handle.Client),
+		// Only active members of the site may be put into a conversation (V-14).
+		messaging.WithMembershipChecker(siteMembershipChecker{sites: siteService}),
+	)
 	if err != nil {
 		return fmt.Errorf("build messaging service: %w", err)
 	}
@@ -188,7 +202,10 @@ func run() error {
 	}
 
 	contentService, err := content.NewService(content.ServiceConfig{
-		Repository: contentstore.New(handle.Client),
+		Repository: contentRepo,
+		// The same repository enforces the per-author draft quota (V-06): a free
+		// account cannot grow the database without bound by creating drafts.
+		DraftQuota: contentRepo,
 		Sanitizer:  securitySanitizer{client: securityClient},
 		PublishMode: func(ctx context.Context, siteID string) (site.PublishMode, error) {
 			return siteService.PublishMode(ctx, siteID)
@@ -219,7 +236,10 @@ func run() error {
 		SiteResolver: siteService,
 		Install:      siteService,
 		AccessTokens: issuer,
-		Auth:         authHandler,
+		// The guard re-reads the live membership, so a demoted, suspended or removed
+		// account loses its authority immediately instead of when its token expires.
+		Memberships: siteService,
+		Auth:        authHandler,
 		Sites: site.NewHandler(siteService, site.HandlerConfig{
 			Principal: func(c *gin.Context) (string, string, bool) {
 				principal, ok := middleware.PrincipalFrom(c)
@@ -278,7 +298,7 @@ func run() error {
 				if !ok {
 					return media.Actor{}, false
 				}
-				return media.Actor{UserID: principal.UserID, SiteID: principal.SiteID}, true
+				return media.Actor{UserID: principal.UserID, SiteID: principal.SiteID, Role: principal.Role}, true
 			},
 			// Anonymous downloads are scoped by the resolved host; uploads never are.
 			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
@@ -377,7 +397,7 @@ func run() error {
 }
 
 // buildAuth wires the authentication module.
-func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client) (*auth.Handler, *auth.TokenIssuer, error) {
+func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client, sites *site.Service) (*auth.Handler, *auth.TokenIssuer, error) {
 	issuer, ephemeral, err := auth.NewTokenIssuer(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build token issuer: %w", err)
@@ -394,9 +414,13 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 		// A desktop install has no operator console to promote its first account,
 		// so registration does it once. Every other deployment keeps plain members.
 		BootstrapFirstAdmin: cfg.DesktopMode,
-		Mailer:              buildMailer(cfg, logger),
-		PublicBaseURL:       cfg.PublicBaseURL,
-		Logger:              logger,
+		// Self-service registration follows the site setting (O-3): an operator can
+		// close sign-ups without redeploying, and the desktop wizard still creates the
+		// first administrator into a fresh (default-open) site.
+		RegistrationPolicy: sites.RegistrationOpen,
+		Mailer:             buildMailer(cfg, logger),
+		PublicBaseURL:      cfg.PublicBaseURL,
+		Logger:             logger,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("build auth service: %w", err)
@@ -417,6 +441,10 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 			return cfg.DefaultSiteID
 		},
 		Principal: middleware.PrincipalFrom,
+		// The desktop bootstrap lets the first account become platform administrator.
+		// Only a loopback caller may claim that seat, so a not yet installed instance
+		// exposed over the network cannot be taken over before the operator arrives.
+		FirstAdminAllowed: auth.AllowFirstAdminFromLoopback,
 	})
 
 	return handler, issuer, nil
@@ -568,6 +596,28 @@ func (s securityScanner) Inspect(ctx context.Context, in media.ScanInput) (media
 		Status:     media.ScanStatus(result.Status),
 		ReasonCode: result.ReasonCode,
 	}, nil
+}
+
+// siteMembershipChecker adapts the site service to the authorization ports of the
+// community and messaging services.
+//
+// Both packages accept a narrow IsActiveMember check instead of importing the site
+// aggregate. A suspended or removed membership is reported as "not active"; any other
+// failure propagates so the caller fails closed instead of silently skipping the check.
+type siteMembershipChecker struct {
+	sites *site.Service
+}
+
+// IsActiveMember implements community.UserMembershipChecker and
+// messaging.MembershipChecker.
+func (c siteMembershipChecker) IsActiveMember(ctx context.Context, siteID, userID string) (bool, error) {
+	if _, err := c.sites.Membership(ctx, siteID, userID); err != nil {
+		if errors.Is(err, site.ErrMemberNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // outboxHandler forwards a published event to live subscribers.

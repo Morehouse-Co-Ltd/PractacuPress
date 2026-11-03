@@ -3,8 +3,30 @@ package messaging
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
+
+// MembershipChecker reports whether a user is an active member of a site.
+//
+// It is the authorization port used when a conversation is created: a conversation
+// must not name a user who does not exist, belongs to another site, or has been
+// suspended. The server wires it over the site membership service.
+type MembershipChecker interface {
+	IsActiveMember(ctx context.Context, siteID, userID string) (bool, error)
+}
+
+// ServiceOption customises a Service without breaking existing callers.
+type ServiceOption func(*Service)
+
+// WithMembershipChecker installs the active membership check used by StartConversation.
+//
+// Without it the check is skipped, which is the pre-hardening behaviour: callers that
+// do not pass the option still compile, but the server must pass it so a client cannot
+// inject arbitrary user ids into a conversation (V-14).
+func WithMembershipChecker(checker MembershipChecker) ServiceOption {
+	return func(s *Service) { s.members = checker }
+}
 
 // Repository is the persistence contract for messaging.
 type Repository interface {
@@ -36,14 +58,23 @@ const (
 type Service struct {
 	repo Repository
 	now  func() time.Time
+	// members is nil when the deployment did not wire the membership check; in that
+	// case conversation creation trusts the supplied user ids.
+	members MembershipChecker
 }
 
 // NewService builds a Service.
-func NewService(repo Repository) (*Service, error) {
+func NewService(repo Repository, options ...ServiceOption) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("messaging: repository is required")
 	}
-	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}, nil
+	service := &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service, nil
 }
 
 // StartConversation creates a thread.
@@ -51,6 +82,11 @@ func NewService(repo Repository) (*Service, error) {
 // The caller is always a member: a conversation a user cannot read is not a useful
 // thing to create, and requiring it removes a whole class of "created but invisible"
 // bugs.
+//
+// Every member id, including the creator, must resolve to an active member of the
+// actor's site when a MembershipChecker is wired. Without that check any user id
+// could be written into conversation_member, letting an attacker create ghost rows or
+// pull an administrator into a thread they never joined (V-14).
 func (s *Service) StartConversation(
 	ctx context.Context,
 	actor Actor,
@@ -70,6 +106,10 @@ func (s *Service) StartConversation(
 		return Conversation{}, err
 	}
 
+	if err := s.validateMembers(ctx, actor.SiteID, members); err != nil {
+		return Conversation{}, err
+	}
+
 	now := s.now()
 	memberRows := make([]Member, 0, len(members))
 	for _, memberID := range members {
@@ -83,6 +123,28 @@ func (s *Service) StartConversation(
 		Members:   memberRows,
 		CreatedAt: now,
 	})
+}
+
+// validateMembers refuses conversation members that are not active on the site.
+//
+// An id that does not exist, belongs to another site, or is suspended answers
+// ErrInvalidInput rather than ErrNotFound: the client supplied a bad member list, and
+// the response must not become an account-enumeration oracle. A checker failure is
+// propagated as an internal error so an outage cannot silently disable the check.
+func (s *Service) validateMembers(ctx context.Context, siteID string, members []string) error {
+	if s.members == nil {
+		return nil
+	}
+	for _, memberID := range members {
+		active, err := s.members.IsActiveMember(ctx, siteID, memberID)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return fmt.Errorf("%w: member is not an active member of this site", ErrInvalidInput)
+		}
+	}
+	return nil
 }
 
 // List returns the caller's conversations.

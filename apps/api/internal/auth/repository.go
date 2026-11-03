@@ -140,6 +140,10 @@ type Repository interface {
 	FindSessionByHash(ctx context.Context, tokenHash string) (SessionRecord, error)
 	// RotateSession marks oldID as rotated and inserts next in one transaction.
 	RotateSession(ctx context.Context, oldID string, rotatedAt time.Time, next SessionRecord) error
+	// FamilyCreatedAt returns when a refresh token lineage first came into being: the
+	// created_at of its oldest session row. Rotation never rewrites it, which is what
+	// makes a hard absolute lifetime on the lineage enforceable.
+	FamilyCreatedAt(ctx context.Context, familyID string) (time.Time, error)
 	// RevokeFamily revokes every live session in a family.
 	RevokeFamily(ctx context.Context, familyID, reason string, at time.Time) error
 	// RevokeSession revokes one session. Revoking an already revoked session is a

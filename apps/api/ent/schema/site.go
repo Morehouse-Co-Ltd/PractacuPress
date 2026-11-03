@@ -41,6 +41,11 @@ func (Site) Fields() []ent.Field {
 			Default(PublishModeReview).
 			Validate(oneOf(PublishModeOpen, PublishModeReview, PublishModeRoleBased)),
 		field.String("description").MaxLen(2000).Optional().Nillable(),
+		// RegistrationOpen controls whether anonymous visitors may create a member
+		// account. The first account of a desktop install is unaffected (it is the
+		// bootstrap administrator); closing registration is an anti-abuse switch for
+		// public sites.
+		field.Bool("registration_open").Default(true),
 		field.Bool("disabled").Default(false),
 		createdField(),
 		updatedField(),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -62,6 +63,9 @@ type Service struct {
 	// IP literals. It is enabled in production only, so a desktop or development
 	// install keeps working on 127.0.0.1.
 	requirePublicAddress bool
+	// txtLookup resolves the DNS TXT challenge of a domain verification. It is an
+	// interface so the network dependency can be replaced in tests.
+	txtLookup TXTLookup
 }
 
 // Option configures optional Service behaviour.
@@ -77,13 +81,29 @@ func RequirePublicAddress(required bool) Option {
 	return func(s *Service) { s.requirePublicAddress = required }
 }
 
+// WithTXTLookup replaces the DNS resolver used by VerifyDomain.
+//
+// The default is net.DefaultResolver. Tests inject a fake so the ownership challenge
+// can be exercised without DNS; a nil lookup is ignored so the default stays in place.
+func WithTXTLookup(lookup TXTLookup) Option {
+	return func(s *Service) {
+		if lookup != nil {
+			s.txtLookup = lookup
+		}
+	}
+}
+
 // NewService builds a Service. Options keep the original NewService(repo) call sites
 // working unchanged.
 func NewService(repo Repository, opts ...Option) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("site: repository is required")
 	}
-	service := &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
+	service := &Service{
+		repo:      repo,
+		now:       func() time.Time { return time.Now().UTC() },
+		txtLookup: net.DefaultResolver,
+	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(service)
@@ -119,18 +139,32 @@ func (s *Service) Resolve(ctx context.Context, hostname string) (Site, error) {
 	if err != nil {
 		return Site{}, err
 	}
-	if ok && solo.Domain == "" {
-		// Without a domain the site answers on any host, which is convenient for a
-		// desktop install but an accidental exposure on a server. Production therefore
-		// accepts only public IP literals here; a hostname is what the domain setting
-		// is for.
-		if s.requirePublicAddress && !isPublicAddress(host) {
-			return Site{}, ErrNotFound
+	if ok {
+		switch {
+		case solo.Domain == "":
+			// Without a domain the site answers on any host, which is convenient for a
+			// desktop install but an accidental exposure on a server. Production therefore
+			// accepts only public IP literals here; a hostname is what the domain setting
+			// is for.
+			if s.requirePublicAddress && !isPublicAddress(host) {
+				return Site{}, ErrNotFound
+			}
+			if validateErr := solo.ValidateForServing(host); validateErr != nil {
+				return Site{}, validateErr
+			}
+			return solo, nil
+
+		case solo.DomainVerifiedAt == nil && allowsSetupWindowHost(host):
+			// The domain has been declared but its DNS challenge is still pending. The
+			// operator has to reach the admin UI to publish the record and verify, so a
+			// loopback or IP-literal host keeps resolving to the site until then; every
+			// other hostname stays not found, exactly as before. The declared domain
+			// itself still answers "unverified", so this is not a bypass for visitors.
+			if solo.Disabled {
+				return Site{}, ErrDisabled
+			}
+			return solo, nil
 		}
-		if validateErr := solo.ValidateForServing(host); validateErr != nil {
-			return Site{}, validateErr
-		}
-		return solo, nil
 	}
 
 	return Site{}, ErrNotFound
@@ -441,6 +475,11 @@ func formatInvalid(message string) error {
 //
 // Visibility and publish mode are read by every content write, so they are treated
 // as privileged: only a site administrator may change them.
+//
+// A domain written through this endpoint is treated exactly like one written through
+// UpdateDomain: it creates a fresh DNS challenge and is never marked verified here.
+// Re-sending the current domain is a no-op and keeps its verification state, because
+// admin forms commonly submit every field on each save.
 func (s *Service) UpdateSettings(
 	ctx context.Context,
 	actor Member,
@@ -466,23 +505,45 @@ func (s *Service) UpdateSettings(
 	}
 
 	normalized := SettingsInput{
-		Name:           strings.TrimSpace(in.Name),
-		Description:    strings.TrimSpace(in.Description),
-		VisibilityMode: in.VisibilityMode,
-		PublishMode:    in.PublishMode,
+		Name:             strings.TrimSpace(in.Name),
+		Description:      strings.TrimSpace(in.Description),
+		VisibilityMode:   in.VisibilityMode,
+		PublishMode:      in.PublishMode,
+		RegistrationOpen: in.RegistrationOpen,
 	}
-	// A domain written through the general settings endpoint is verified exactly like
-	// one written through PUT /sites/{id}/domain. Leaving it unverified would make the
-	// site unreachable: ValidateForServing rejects an unverified domain.
+	detail := map[string]any{
+		"visibility_mode": string(normalized.VisibilityMode),
+		"publish_mode":    string(normalized.PublishMode),
+	}
+	if in.RegistrationOpen != nil {
+		detail["registration_open"] = *in.RegistrationOpen
+	}
+
 	if in.Domain != "" {
 		domain, domainErr := normalizeDomain(in.Domain)
 		if domainErr != nil {
 			return domainErr
 		}
-		normalized.Domain = domain
-		if domain != "" {
-			verifiedAt := s.now()
-			normalized.DomainVerifiedAt = &verifiedAt
+		current, findCurrentErr := s.repo.FindByID(ctx, siteID)
+		if findCurrentErr != nil {
+			return findCurrentErr
+		}
+		if !strings.EqualFold(current.Domain, domain) {
+			// The domain index is unique. Checking first gives the caller a 409 rather
+			// than a database error; a concurrent write can still lose the race.
+			existing, findErr := s.repo.FindByDomain(ctx, domain)
+			switch {
+			case findErr == nil && existing.ID != siteID:
+				return ErrDomainTaken
+			case findErr == nil:
+				// This site already owns the value; falling through to a challenge is
+				// still correct, a re-declaration restarts verification.
+			case !errors.Is(findErr, ErrNotFound):
+				return findErr
+			}
+			if err := s.startDomainChallenge(&normalized, detail, domain); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -492,20 +553,34 @@ func (s *Service) UpdateSettings(
 		Action:    "site.settings.updated",
 		Target:    siteID,
 		RequestID: requestID,
-		Detail: map[string]any{
-			"visibility_mode": string(normalized.VisibilityMode),
-			"publish_mode":    string(normalized.PublishMode),
-		},
-		At: s.now(),
+		Detail:    detail,
+		At:        s.now(),
 	})
+}
+
+// startDomainChallenge fills the domain fields of a settings update with a fresh,
+// unverified challenge and documents it in the audit detail.
+func (s *Service) startDomainChallenge(normalized *SettingsInput, detail map[string]any, domain string) error {
+	token, err := NewDomainVerificationToken()
+	if err != nil {
+		return err
+	}
+	normalized.Domain = domain
+	normalized.DomainToken = token
+	detail["domain"] = domain
+	detail["domain_token_set"] = true
+	detail["domain_verified"] = false
+	return nil
 }
 
 // UpdateDomain sets or clears the site's primary domain.
 //
-// A non-empty domain is treated as operator declared ownership: it is stored together
-// with domain_verified_at = now, because an unverified domain would fail
-// ValidateForServing and take the site offline. An empty string clears both the domain
-// and the verification, which restores the domain-less fallback.
+// A non-empty domain is only a declaration of intent: it is stored together with a
+// freshly generated DNS challenge token and an empty domain_verified_at. Serving on
+// that hostname starts only after VerifyDomain proves the TXT record, which is what
+// stops any administrator from claiming a hostname they do not control (V-12). An
+// empty string clears the domain, the token and the verification, restoring the
+// domain-less fallback.
 func (s *Service) UpdateDomain(
 	ctx context.Context,
 	actor Member,
@@ -521,6 +596,11 @@ func (s *Service) UpdateDomain(
 	}
 
 	in := DomainInput{Domain: normalized}
+	detail := map[string]any{
+		"domain":           normalized,
+		"domain_token_set": false,
+		"domain_verified":  false,
+	}
 	if normalized != "" {
 		// The domain index is unique. Checking first gives the caller a 409 instead of
 		// a database error; a concurrent write can still lose the race and surface as a
@@ -530,12 +610,16 @@ func (s *Service) UpdateDomain(
 		case findErr == nil && existing.ID != siteID:
 			return ErrDomainTaken
 		case findErr == nil:
-			// The site already owns this domain.
+			// The site already owns this domain; a re-declaration restarts the challenge.
 		case !errors.Is(findErr, ErrNotFound):
 			return findErr
 		}
-		verifiedAt := s.now()
-		in.VerifiedAt = &verifiedAt
+		token, tokenErr := NewDomainVerificationToken()
+		if tokenErr != nil {
+			return tokenErr
+		}
+		in.Token = token
+		detail["domain_token_set"] = true
 	}
 
 	return s.repo.UpdateDomain(ctx, siteID, in, AuditEntry{
@@ -544,9 +628,97 @@ func (s *Service) UpdateDomain(
 		Action:    "site.domain.updated",
 		Target:    siteID,
 		RequestID: requestID,
-		Detail:    map[string]any{"domain": normalized},
-		At:        s.now(),
+		// The challenge token itself is never written to the audit log: anyone able to
+		// read it could publish the TXT record and claim the domain.
+		Detail: detail,
+		At:     s.now(),
 	})
+}
+
+// DomainStatus returns the domain screen state of a site to its manager.
+func (s *Service) DomainStatus(ctx context.Context, actor Member, siteID string) (DomainStatus, error) {
+	if err := authorize(actor, siteID, ActionManageSite); err != nil {
+		return DomainStatus{}, err
+	}
+	found, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return DomainStatus{}, err
+	}
+	return domainStatusOf(found), nil
+}
+
+// VerifyDomain runs the DNS TXT challenge and marks the domain verified on success.
+//
+// The challenge is checked against the stored token only, never against a value from
+// the request: the client cannot choose what would prove ownership. A successful
+// re-check of an already verified domain is idempotent.
+func (s *Service) VerifyDomain(
+	ctx context.Context,
+	actor Member,
+	siteID, requestID string,
+) (DomainStatus, error) {
+	if err := authorize(actor, siteID, ActionManageSite); err != nil {
+		return DomainStatus{}, err
+	}
+	found, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return DomainStatus{}, err
+	}
+	if found.Domain == "" {
+		return DomainStatus{}, formatInvalid("no domain is configured")
+	}
+	if found.DomainVerified() {
+		return domainStatusOf(found), nil
+	}
+	if found.DomainVerificationToken == "" {
+		// A row from before the challenge existed: declaring the domain again mints a
+		// token. This is a validation failure of the current state, not a DNS failure.
+		return DomainStatus{}, formatInvalid("no verification challenge is pending; save the domain again")
+	}
+
+	recordName := DomainVerificationRecordName(found.Domain)
+	lookupCtx, cancel := context.WithTimeout(ctx, domainVerificationLookupTimeout)
+	defer cancel()
+	records, lookupErr := s.txtLookup.LookupTXT(lookupCtx, recordName)
+	if lookupErr != nil {
+		return DomainStatus{}, fmt.Errorf("%w: lookup %s: %w", ErrDomainVerificationFailed, recordName, lookupErr)
+	}
+	if !matchesDomainChallenge(records, found.DomainVerificationToken) {
+		return DomainStatus{}, fmt.Errorf(
+			"%w: no TXT value at %s matches the challenge", ErrDomainVerificationFailed, recordName)
+	}
+
+	now := s.now()
+	if err := s.repo.UpdateDomain(ctx, siteID, DomainInput{
+		Domain:     found.Domain,
+		Token:      found.DomainVerificationToken,
+		VerifiedAt: &now,
+	}, AuditEntry{
+		SiteID:    siteID,
+		ActorID:   actor.UserID,
+		Action:    "site.domain.verified",
+		Target:    siteID,
+		RequestID: requestID,
+		Detail:    map[string]any{"domain": found.Domain, "record_name": recordName},
+		At:        now,
+	}); err != nil {
+		return DomainStatus{}, err
+	}
+
+	verified := found
+	verified.DomainVerifiedAt = &now
+	return domainStatusOf(verified), nil
+}
+
+// RegistrationOpen reports whether anonymous visitors may create an account on the
+// site. The auth service reads it before accepting a registration; an unknown site is
+// an error so the caller can refuse instead of defaulting to open.
+func (s *Service) RegistrationOpen(ctx context.Context, siteID string) (bool, error) {
+	found, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return false, err
+	}
+	return found.RegistrationOpen, nil
 }
 
 // authorize rejects a member that may not act on this site.

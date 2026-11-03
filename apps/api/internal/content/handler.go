@@ -432,6 +432,9 @@ func mapError(err error) *apperr.Problem {
 
 	case errors.Is(err, ErrSecurityUnavailable):
 		return apperr.New(apperr.CodeSecurityUnavailable)
+
+	case errors.Is(err, ErrQuotaExceeded):
+		return quotaExceededProblem()
 	}
 
 	var problem *apperr.Problem
@@ -439,4 +442,12 @@ func mapError(err error) *apperr.Problem {
 		return problem
 	}
 	return apperr.Internal(err)
+}
+
+// quotaExceededProblem is the HTTP 429 projection of ErrQuotaExceeded.
+//
+// The stable code lives in platform/errors so clients can branch on it exactly like
+// every other API error.
+func quotaExceededProblem() *apperr.Problem {
+	return apperr.New(apperr.CodeQuotaExceeded).WithMessage("草稿数量或草稿容量已达上限")
 }

@@ -43,15 +43,63 @@ type AuthorLookup interface {
 	AuthorOf(ctx context.Context, siteID string, targetType TargetType, targetID string) (string, error)
 }
 
+// Target is the resolved state of a content interaction target.
+//
+// It is the minimal projection the interaction rules need: who owns the target and
+// whether every reader may see it. The community module owns this shape so it does not
+// import the content aggregate.
+type Target struct {
+	AuthorID string
+	// Published reports whether the target is visible to every reader.
+	Published bool
+}
+
+// ContentTargetChecker resolves article and post targets before an interaction is
+// written. Returning ErrTargetNotFound for a missing row keeps the caller from
+// creating relations that point at nonexistent or invisible content (V-15).
+type ContentTargetChecker interface {
+	TargetOf(ctx context.Context, siteID string, targetType TargetType, targetID string) (Target, error)
+}
+
+// UserMembershipChecker reports whether a user is an active member of a site.
+//
+// It backs the follow rule: following an unknown or suspended account would create a
+// relationship to a user who can never appear in the follower's list.
+type UserMembershipChecker interface {
+	IsActiveMember(ctx context.Context, siteID, userID string) (bool, error)
+}
+
+// ServiceOption customises a Service without breaking existing callers.
+type ServiceOption func(*Service)
+
+// WithTargetChecker installs the content target resolver used by AddComment,
+// ToggleReaction and ToggleBookmark.
+//
+// When it is not set those writes keep the pre-hardening behaviour of trusting the
+// target id; the server must pass it (V-15).
+func WithTargetChecker(checker ContentTargetChecker) ServiceOption {
+	return func(s *Service) { s.targets = checker }
+}
+
+// WithMembershipChecker installs the active membership check used by ToggleFollow.
+// When it is not set the follow target is not validated; the server must pass it.
+func WithMembershipChecker(checker UserMembershipChecker) ServiceOption {
+	return func(s *Service) { s.members = checker }
+}
+
 // Service implements comments and idempotent interactions.
 type Service struct {
 	repo    Repository
 	authors AuthorLookup
+	// targets and members are nil when the server did not wire the optional checks;
+	// in that case the corresponding validation is skipped.
+	targets ContentTargetChecker
+	members UserMembershipChecker
 	now     func() time.Time
 }
 
 // NewService builds a Service.
-func NewService(repo Repository, authors AuthorLookup) (*Service, error) {
+func NewService(repo Repository, authors AuthorLookup, options ...ServiceOption) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("community: repository is required")
 	}
@@ -60,7 +108,13 @@ func NewService(repo Repository, authors AuthorLookup) (*Service, error) {
 		// interaction still lands, only the notification is skipped.
 		authors = missingLookup{}
 	}
-	return &Service{repo: repo, authors: authors, now: func() time.Time { return time.Now().UTC() }}, nil
+	service := &Service{repo: repo, authors: authors, now: func() time.Time { return time.Now().UTC() }}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service, nil
 }
 
 type missingLookup struct{}
@@ -88,6 +142,9 @@ func (s *Service) notifyFor(ctx context.Context, actor Actor, targetType TargetT
 func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInput) (Comment, error) {
 	validated, err := ValidateComment(in)
 	if err != nil {
+		return Comment{}, err
+	}
+	if err := s.checkCommentTarget(ctx, actor, validated); err != nil {
 		return Comment{}, err
 	}
 
@@ -127,6 +184,85 @@ func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInpu
 		Detail:  map[string]any{"target_type": string(validated.TargetType)},
 		At:      now,
 	})
+}
+
+// resolveTrackedTarget resolves article and post targets when the server wired a
+// checker. The bool is false for target types this version cannot resolve: a comment
+// target is reached through its parent row, while a custom page or a user has no
+// publication state to check. Those keep their previous behaviour.
+func (s *Service) resolveTrackedTarget(
+	ctx context.Context,
+	actor Actor,
+	targetType TargetType,
+	targetID string,
+) (Target, bool, error) {
+	if s.targets == nil {
+		return Target{}, false, nil
+	}
+	switch targetType {
+	case TargetArticle, TargetPost:
+		target, err := s.targets.TargetOf(ctx, actor.SiteID, targetType, targetID)
+		if err != nil {
+			return Target{}, false, err
+		}
+		return target, true, nil
+	default:
+		return Target{}, false, nil
+	}
+}
+
+// checkCommentTarget refuses a comment on content the caller cannot see: published
+// content is visible to every reader, an unpublished row only to its author.
+func (s *Service) checkCommentTarget(ctx context.Context, actor Actor, in NewCommentInput) error {
+	target, tracked, err := s.resolveTrackedTarget(ctx, actor, in.TargetType, in.TargetID)
+	if err != nil {
+		return err
+	}
+	if !tracked || target.Published {
+		return nil
+	}
+	if actor.UserID != "" && target.AuthorID == actor.UserID {
+		return nil
+	}
+	// Not visible: answer exactly like a missing target so an unpublished id cannot
+	// be probed through comments.
+	return ErrTargetNotFound
+}
+
+// requirePublishedTarget refuses an interaction with content that is not published.
+//
+// It runs only when an interaction is being turned on, so a stale reaction or bookmark
+// can still be removed after its target was archived.
+func (s *Service) requirePublishedTarget(
+	ctx context.Context,
+	actor Actor,
+	targetType TargetType,
+	targetID string,
+) error {
+	target, tracked, err := s.resolveTrackedTarget(ctx, actor, targetType, targetID)
+	if err != nil {
+		return err
+	}
+	if !tracked || target.Published {
+		return nil
+	}
+	return ErrTargetNotFound
+}
+
+// requireActiveMember refuses a follow of a user who is not an active member of the
+// actor's site, which also covers unknown and suspended accounts.
+func (s *Service) requireActiveMember(ctx context.Context, actor Actor, userID string) error {
+	if s.members == nil {
+		return nil
+	}
+	active, err := s.members.IsActiveMember(ctx, actor.SiteID, userID)
+	if err != nil {
+		return err
+	}
+	if !active {
+		return ErrTargetNotFound
+	}
+	return nil
 }
 
 // EditComment changes a comment body.
@@ -301,6 +437,13 @@ func (s *Service) ToggleReaction(
 	if !decision.Changed {
 		return decision.Active, nil
 	}
+	// Turning a reaction on requires a visible target; turning it off must stay
+	// possible after the target was archived.
+	if decision.Active {
+		if err := s.requirePublishedTarget(ctx, actor, targetType, targetID); err != nil {
+			return false, err
+		}
+	}
 
 	if err := s.repo.SetReaction(ctx, Reaction{
 		SiteID:     actor.SiteID,
@@ -349,6 +492,11 @@ func (s *Service) ToggleBookmark(
 	if !decision.Changed {
 		return decision.Active, nil
 	}
+	if decision.Active {
+		if err := s.requirePublishedTarget(ctx, actor, targetType, targetID); err != nil {
+			return false, err
+		}
+	}
 
 	if err := s.repo.SetBookmark(ctx, actor.SiteID, actor.UserID, string(targetType), targetID,
 		decision.Active); err != nil {
@@ -371,6 +519,13 @@ func (s *Service) ToggleFollow(ctx context.Context, actor Actor, followeeID stri
 	decision := Toggle(current, desired)
 	if !decision.Changed {
 		return decision.Active, nil
+	}
+	// A new follow must point at an active member; unfollowing a suspended account
+	// must remain possible.
+	if decision.Active {
+		if err := s.requireActiveMember(ctx, actor, followeeID); err != nil {
+			return false, err
+		}
 	}
 
 	if err := s.repo.SetFollow(ctx, actor.SiteID, actor.UserID, followeeID, decision.Active); err != nil {

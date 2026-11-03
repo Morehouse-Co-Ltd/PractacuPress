@@ -35,10 +35,19 @@ var (
 	ErrTokenExpired = errors.New("auth: access token expired")
 	// ErrInvalidInput means a caller supplied value failed validation.
 	ErrInvalidInput = errors.New("auth: invalid input")
+	// ErrRegistrationClosed means the site has switched self-service registration off.
+	ErrRegistrationClosed = errors.New("auth: registration closed")
+
 	// ErrPermissionToSite means the account is not a member of the target site.
 	ErrPermissionToSite = errors.New("auth: not a member of this site")
 	// ErrActionNotAllowed means the caller's role is too low for the action.
 	ErrActionNotAllowed = errors.New("auth: action not allowed")
+	// ErrTooManyAttempts means an account is temporarily locked after repeated failed
+	// logins. The returned error also carries how long the caller must wait.
+	ErrTooManyAttempts = errors.New("auth: too many failed login attempts")
+	// ErrInstallRequiresLocalAccess means the install's first account (which becomes
+	// the platform administrator) may only be created from a loopback host.
+	ErrInstallRequiresLocalAccess = errors.New("auth: first administrator requires local access")
 )
 
 // Account status values mirrored from the persistence schema.

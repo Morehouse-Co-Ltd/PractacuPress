@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -51,16 +52,23 @@ type HandlerConfig struct {
 	// of memory in the security service). A separate, far tighter budget keeps a
 	// credential stuffing run from saturating the hashing path.
 	CredentialLimiter gin.HandlerFunc
+	// FirstAdminAllowed decides whether this request may create the install's first
+	// account (which the bootstrap promotes to platform administrator). Nil means "no
+	// request may": a deployment that enables BootstrapFirstAdmin must wire this,
+	// normally to AllowFirstAdminFromLoopback, or its setup wizard can never create an
+	// administrator.
+	FirstAdminAllowed FirstAdminFunc
 }
 
 // Handler exposes the authentication use cases over HTTP.
 type Handler struct {
-	service       *Service
-	secure        bool
-	domain        string
-	siteID        SiteIDFunc
-	principal     PrincipalFunc
-	credential    gin.HandlerFunc
+	service    *Service
+	secure     bool
+	domain     string
+	siteID     SiteIDFunc
+	principal  PrincipalFunc
+	credential gin.HandlerFunc
+	firstAdmin FirstAdminFunc
 }
 
 // NewHandler builds a Handler.
@@ -84,6 +92,7 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 		siteID:     siteID,
 		principal:  principal,
 		credential: credential,
+		firstAdmin: cfg.FirstAdminAllowed,
 	}
 }
 
@@ -93,15 +102,18 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 // an access token, and logout must work with an expired one.
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/auth")
-	group.POST("/register/email", h.credential, h.RegisterEmail)
-	group.POST("/login/password", h.credential, h.LoginPassword)
-	group.POST("/token/refresh", h.Refresh)
-	group.POST("/logout", h.Logout)
+	// The credential limiter runs first (it is the cheapest rejection and the first
+	// brute force tier); the write guard then enforces same-origin plus JSON before any
+	// body is parsed or cookie is written.
+	group.POST("/register/email", h.credential, h.guard(true), h.RegisterEmail)
+	group.POST("/login/password", h.credential, h.guard(true), h.LoginPassword)
+	group.POST("/token/refresh", h.guard(false), h.Refresh)
+	group.POST("/logout", h.guard(false), h.Logout)
 	// Password reset must work for a caller who cannot log in at all, so the whole
 	// flow sits next to registration rather than behind requireAuth.
 	group.GET("/password-reset/policy", h.PasswordResetPolicy)
-	group.POST("/password-reset/request", h.credential, h.RequestPasswordReset)
-	group.POST("/password-reset/confirm", h.credential, h.ResetPassword)
+	group.POST("/password-reset/request", h.credential, h.guard(true), h.RequestPasswordReset)
+	group.POST("/password-reset/confirm", h.credential, h.guard(true), h.ResetPassword)
 
 	r.GET("/me", requireAuth, h.Me)
 	// Account creation lives with authentication because it owns password hashing and
@@ -189,10 +201,11 @@ func (h *Handler) RegisterEmail(c *gin.Context) {
 	}
 
 	session, err := h.service.RegisterEmail(c.Request.Context(), h.siteID(c), RegisterEmailInput{
-		Email:       req.Email,
-		Password:    req.Password,
-		DisplayName: req.DisplayName,
-		ClientMeta:  clientMeta(c),
+		Email:           req.Email,
+		Password:        req.Password,
+		DisplayName:     req.DisplayName,
+		AllowFirstAdmin: h.firstAdmin != nil && h.firstAdmin(c),
+		ClientMeta:      clientMeta(c),
 	})
 	if err != nil {
 		_ = c.Error(mapError(err))
@@ -216,11 +229,29 @@ func (h *Handler) LoginPassword(c *gin.Context) {
 		ClientMeta: clientMeta(c),
 	})
 	if err != nil {
+		// A locked account answers 429 with Retry-After, matching the IP scoped
+		// limiter's contract so the client can back off the same way for both tiers.
+		var locked *TooManyAttemptsError
+		if errors.As(err, &locked) {
+			c.Header("Retry-After", retryAfterSeconds(locked.RetryAfter))
+		}
 		_ = c.Error(mapError(err))
 		return
 	}
 
 	h.writeSession(c, http.StatusOK, session)
+}
+
+// retryAfterSeconds renders a lock duration as the whole seconds Retry-After wants.
+func retryAfterSeconds(after time.Duration) string {
+	seconds := int(after / time.Second)
+	if after%time.Second != 0 {
+		seconds++
+	}
+	if seconds < 1 {
+		seconds = 1
+	}
+	return strconv.Itoa(seconds)
 }
 
 // PasswordResetPolicy reports whether this deployment can deliver reset links.
@@ -358,6 +389,14 @@ func (h *Handler) Refresh(c *gin.Context) {
 		_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "csrf_mismatch"))
 		return
 	}
+	// A self-consistent pair is not enough: it must be the pair derived from this
+	// exact refresh token. Otherwise a cookie writer could plant any equal pair (or
+	// reuse the previous session's pair) and the double submit would degrade to a
+	// global equality test (V-27). Still no session state is touched.
+	if !TokensEqual(headerCSRF, h.service.CSRFToken(refreshToken)) {
+		_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "csrf_mismatch"))
+		return
+	}
 
 	session, err := h.service.Refresh(c.Request.Context(), h.siteID(c), refreshToken)
 	if err != nil {
@@ -370,8 +409,26 @@ func (h *Handler) Refresh(c *gin.Context) {
 }
 
 // Logout revokes the session and clears the cookies.
+//
+// Logout writes cookies, so it is a CSRF target too: a cross-site page must not be
+// able to force a logout (and clear the victim's cookies) just by letting the browser
+// attach them. When a refresh cookie is present the request therefore has to carry its
+// matching derived CSRF pair, exactly like refresh. Without a refresh cookie there is
+// nothing to revoke, and the handler keeps its tolerant "clear and answer 204"
+// behaviour so retries and CLI callers are not broken.
 func (h *Handler) Logout(c *gin.Context) {
 	token, _ := c.Cookie(RefreshCookieName)
+
+	if token != "" {
+		cookieCSRF, cookieErr := c.Cookie(CSRFCookieName)
+		headerCSRF := c.GetHeader(CSRFHeaderName)
+		if cookieErr != nil || cookieCSRF == "" || headerCSRF == "" ||
+			!TokensEqual(cookieCSRF, headerCSRF) ||
+			!TokensEqual(headerCSRF, h.service.CSRFToken(token)) {
+			_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "csrf_mismatch"))
+			return
+		}
+	}
 
 	if err := h.service.Logout(c.Request.Context(), token); err != nil {
 		_ = c.Error(mapError(err))
@@ -469,6 +526,11 @@ func mapError(err error) *apperr.Problem {
 		return apperr.Validation(err.Error())
 
 	case errors.Is(err, ErrIdentityExists):
+		// V-29 residual: the status code still reveals that an address is registered.
+		// Hiding it would break the SPA's duplicate account handling, so the trade-off
+		// is an explicit code plus the credential rate limiter and the shared hashing
+		// cost in RegisterEmail: this endpoint is not a fast oracle like the old login
+		// timing channel was.
 		return apperr.Conflict(apperr.CodeConflict).
 			WithDetail("reason", "identity_exists").
 			WithMessage("\u8be5\u90ae\u7bb1\u5df2\u88ab\u6ce8\u518c")
@@ -481,6 +543,20 @@ func mapError(err error) *apperr.Problem {
 
 	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrAccountNotFound):
 		return apperr.Unauthenticated().WithDetail("reason", "invalid_credentials")
+
+	case errors.Is(err, ErrTooManyAttempts):
+		// A distinct code (rather than unauthenticated) tells the client to back off
+		// instead of showing "wrong password"; the payload is identical for known and
+		// unknown addresses, so it is not an enumeration oracle.
+		return apperr.RateLimited().WithDetail("reason", "too_many_attempts")
+
+	case errors.Is(err, ErrInstallRequiresLocalAccess):
+		return apperr.PermissionDenied().WithDetail("reason", "install_requires_local_access")
+
+	case errors.Is(err, ErrRegistrationClosed):
+		return apperr.PermissionDenied().
+			WithDetail("reason", "registration_closed").
+			WithMessage("本站暂未开放注册")
 
 	case errors.Is(err, ErrResetTokenInvalid):
 		// A reset link that no longer works is a client error the UI can explain
@@ -519,4 +595,3 @@ func mapError(err error) *apperr.Problem {
 	}
 	return apperr.Internal(err)
 }
-

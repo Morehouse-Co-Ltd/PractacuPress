@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -164,4 +165,117 @@ func TestRequireAuthForSiteRejectsInvalidToken(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	require.Equal(t, http.StatusOK, serve(engine, req).Code)
+}
+
+// fakeMembershipResolver models the live membership table for the revocation tests.
+type fakeMembershipResolver struct {
+	member site.Member
+	err    error
+	calls  int
+}
+
+func (f *fakeMembershipResolver) Membership(_ context.Context, siteID, userID string) (site.Member, error) {
+	f.calls++
+	if f.err != nil {
+		return site.Member{}, f.err
+	}
+	member := f.member
+	if member.SiteID == "" {
+		member.SiteID = siteID
+	}
+	if member.UserID == "" {
+		member.UserID = userID
+	}
+	return member, nil
+}
+
+// roleEngine mounts RequireAuthForSite with a membership resolver and reports the role
+// the handler actually saw.
+func roleEngine(verifier AccessTokenVerifier, resolver MembershipResolver, resolved site.Site) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RequestID(), ErrorHandler(nil))
+	r.Use(func(c *gin.Context) {
+		withSite(c, resolved)
+		c.Next()
+	})
+	r.Use(RequireAuthForSite(verifier, resolver))
+	r.GET("/api/v1/me", func(c *gin.Context) {
+		principal, ok := PrincipalFrom(c)
+		if !ok {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"role": string(principal.Role), "user_id": principal.UserID})
+	})
+	return r
+}
+
+// TestRequireAuthForSiteUsesLiveRole is the regression test for V-02: a token minted
+// while the account was site_admin must stop being treated as site_admin once the
+// database says member, without waiting for the token to expire.
+func TestRequireAuthForSiteUsesLiveRole(t *testing.T) {
+	issuer := testIssuer(t)
+	token, _, err := issuer.IssueAccess(auth.Principal{
+		UserID: "user_1", SiteID: "site_a", Role: site.RoleSiteAdmin,
+	})
+	require.NoError(t, err)
+
+	resolver := &fakeMembershipResolver{member: site.Member{
+		UserID: "user_1", SiteID: "site_a", Role: site.RoleMember, Status: site.MemberStatusActive,
+	}}
+	engine := roleEngine(issuer, resolver, site.Site{ID: "site_a"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := serve(engine, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.JSONEq(t, `{"role":"member","user_id":"user_1"}`, w.Body.String())
+	require.Equal(t, 1, resolver.calls, "the guard must consult the membership table")
+}
+
+// TestRequireAuthForSiteRejectsInactiveMembership covers suspension and removal: the
+// access token stays cryptographically valid, but it must not authenticate any more.
+func TestRequireAuthForSiteRejectsInactiveMembership(t *testing.T) {
+	issuer := testIssuer(t)
+	token := issueFor(t, issuer, "site_a")
+
+	resolver := &fakeMembershipResolver{err: site.ErrMemberNotFound}
+	engine := roleEngine(issuer, resolver, site.Site{ID: "site_a"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := serve(engine, req)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
+	problem := decodeProblem(t, w.Body.Bytes())
+	require.Equal(t, "membership_inactive", problem["details"].(map[string]any)["reason"])
+}
+
+// TestOptionalAuthDropsInactiveMembership keeps public reads working for a suspended
+// account without granting it the authenticated view: the request continues anonymously.
+func TestOptionalAuthDropsInactiveMembership(t *testing.T) {
+	issuer := testIssuer(t)
+	token := issueFor(t, issuer, "site_a")
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RequestID(), ErrorHandler(nil))
+	r.Use(func(c *gin.Context) {
+		withSite(c, site.Site{ID: "site_a"})
+		c.Next()
+	})
+	r.Use(OptionalAuth(issuer, &fakeMembershipResolver{err: site.ErrMemberNotFound}))
+	r.GET("/x", func(c *gin.Context) {
+		_, ok := PrincipalFrom(c)
+		c.JSON(http.StatusOK, gin.H{"authenticated": ok})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := serve(r, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.JSONEq(t, `{"authenticated":false}`, w.Body.String())
 }

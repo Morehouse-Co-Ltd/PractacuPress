@@ -1696,16 +1696,20 @@ func init() {
 	siteDescDescription := siteFields[8].Descriptor()
 	// site.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
 	site.DescriptionValidator = siteDescDescription.Validators[0].(func(string) error)
+	// siteDescRegistrationOpen is the schema descriptor for registration_open field.
+	siteDescRegistrationOpen := siteFields[9].Descriptor()
+	// site.DefaultRegistrationOpen holds the default value on creation for the registration_open field.
+	site.DefaultRegistrationOpen = siteDescRegistrationOpen.Default.(bool)
 	// siteDescDisabled is the schema descriptor for disabled field.
-	siteDescDisabled := siteFields[9].Descriptor()
+	siteDescDisabled := siteFields[10].Descriptor()
 	// site.DefaultDisabled holds the default value on creation for the disabled field.
 	site.DefaultDisabled = siteDescDisabled.Default.(bool)
 	// siteDescCreatedAt is the schema descriptor for created_at field.
-	siteDescCreatedAt := siteFields[10].Descriptor()
+	siteDescCreatedAt := siteFields[11].Descriptor()
 	// site.DefaultCreatedAt holds the default value on creation for the created_at field.
 	site.DefaultCreatedAt = siteDescCreatedAt.Default.(func() time.Time)
 	// siteDescUpdatedAt is the schema descriptor for updated_at field.
-	siteDescUpdatedAt := siteFields[11].Descriptor()
+	siteDescUpdatedAt := siteFields[12].Descriptor()
 	// site.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	site.DefaultUpdatedAt = siteDescUpdatedAt.Default.(func() time.Time)
 	// site.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

@@ -104,6 +104,11 @@ func Description(v string) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldDescription, v))
 }
 
+// RegistrationOpen applies equality check predicate on the "registration_open" field. It's identical to RegistrationOpenEQ.
+func RegistrationOpen(v bool) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldRegistrationOpen, v))
+}
+
 // Disabled applies equality check predicate on the "disabled" field. It's identical to DisabledEQ.
 func Disabled(v bool) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldDisabled, v))
@@ -652,6 +657,16 @@ func DescriptionEqualFold(v string) predicate.Site {
 // DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
 func DescriptionContainsFold(v string) predicate.Site {
 	return predicate.Site(sql.FieldContainsFold(FieldDescription, v))
+}
+
+// RegistrationOpenEQ applies the EQ predicate on the "registration_open" field.
+func RegistrationOpenEQ(v bool) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldRegistrationOpen, v))
+}
+
+// RegistrationOpenNEQ applies the NEQ predicate on the "registration_open" field.
+func RegistrationOpenNEQ(v bool) predicate.Site {
+	return predicate.Site(sql.FieldNEQ(FieldRegistrationOpen, v))
 }
 
 // DisabledEQ applies the EQ predicate on the "disabled" field.

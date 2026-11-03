@@ -71,13 +71,13 @@ func TestProblemIsMatchable(t *testing.T) {
 
 func TestConstructorsUseStableStatuses(t *testing.T) {
 	cases := map[*Problem]int{
-		Validation("title"):            http.StatusBadRequest,
-		Unauthenticated():              http.StatusUnauthorized,
-		PermissionDenied():             http.StatusForbidden,
-		NotFound("article"):            http.StatusNotFound,
-		Conflict(""):                   http.StatusConflict,
-		RateLimited():                  http.StatusTooManyRequests,
-		Internal(errors.New("boom")):   http.StatusInternalServerError,
+		Validation("title"):          http.StatusBadRequest,
+		Unauthenticated():            http.StatusUnauthorized,
+		PermissionDenied():           http.StatusForbidden,
+		NotFound("article"):          http.StatusNotFound,
+		Conflict(""):                 http.StatusConflict,
+		RateLimited():                http.StatusTooManyRequests,
+		Internal(errors.New("boom")): http.StatusInternalServerError,
 	}
 	for p, want := range cases {
 		require.Equal(t, want, p.Status, string(p.Code))
@@ -90,7 +90,8 @@ func TestEveryCodeHasSpec(t *testing.T) {
 		CodeNotFound, CodeConflict, CodeRateLimited, CodeInternal,
 		CodeInvalidCursor, CodeIdempotencyKeyReuse, CodeSiteNotFound,
 		CodeSiteDomainUnverified, CodeContentStateInvalid, CodeSecurityUnavailable,
-		CodeProviderNotConfigured, CodeInvalidDatabaseDriver,
+		CodeProviderNotConfigured, CodeInvalidDatabaseDriver, CodeEmailNotConfigured,
+		CodeQuotaExceeded,
 	}
 	for _, c := range codes {
 		_, ok := specs[c]

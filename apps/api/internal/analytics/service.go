@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/site"
@@ -13,6 +14,12 @@ import (
 type Service struct {
 	repo Repository
 	now  func() time.Time
+
+	// mu guards seen, the in-process duplicate visit table.
+	mu sync.Mutex
+	// seen maps a visit key to the minute bucket it was last accepted in. It is per
+	// process only: a second replica keeps its own table, so dedupe is best effort.
+	seen map[string]time.Time
 }
 
 // ServiceConfig configures a Service.
@@ -32,13 +39,19 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
-	return &Service{repo: cfg.Repository, now: now}, nil
+	return &Service{repo: cfg.Repository, now: now, seen: make(map[string]time.Time)}, nil
 }
 
 // Record stores one page view for a site.
 //
 // It has no authorization check by design: the write endpoint is anonymous, and the
-// site is the one the host resolver picked, never a value from the request body.
+// site is the one the host resolver picked, never a value from the request body. The
+// handler additionally refuses anonymous writes to a members-only site.
+//
+// Repeated views of the same path by the same session inside one minute are dropped
+// in process to keep a reload loop or a trivial script from inflating the report.
+// The table is not shared between replicas and is bounded; it is a noise filter, not
+// an authorization or rate limiting mechanism.
 func (s *Service) Record(ctx context.Context, siteID string, in VisitInput) error {
 	if strings.TrimSpace(siteID) == "" {
 		return ErrInvalidInput
@@ -49,6 +62,11 @@ func (s *Service) Record(ctx context.Context, siteID string, in VisitInput) erro
 		return err
 	}
 
+	now := s.now().UTC()
+	if s.isDuplicateVisit(siteID, validated, now) {
+		return nil
+	}
+
 	return s.repo.Insert(ctx, Visit{
 		SiteID:    siteID,
 		Path:      validated.Path,
@@ -56,8 +74,49 @@ func (s *Service) Record(ctx context.Context, siteID string, in VisitInput) erro
 		Referrer:  validated.Referrer,
 		Session:   validated.Session,
 		Surface:   validated.Surface,
-		CreatedAt: s.now().UTC(),
+		CreatedAt: now,
 	})
+}
+
+// isDuplicateVisit reports whether this view was already accepted in the current
+// one minute window, recording it otherwise.
+//
+// The key is scoped by site so two tenants cannot suppress each other's traffic, and
+// it intentionally excludes title and referrer: a page view is identified by who
+// browsed what path.
+func (s *Service) isDuplicateVisit(siteID string, in VisitInput, now time.Time) bool {
+	key := siteID + "\x00" + in.Session + "\x00" + in.Path
+	bucket := now.Truncate(DuplicateVisitWindow)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.seen == nil {
+		s.seen = make(map[string]time.Time)
+	}
+	if last, ok := s.seen[key]; ok && last.Equal(bucket) {
+		return true
+	}
+	if len(s.seen) >= MaxTrackedVisitKeys {
+		s.pruneVisitKeysLocked(bucket)
+	}
+	s.seen[key] = bucket
+	return false
+}
+
+// pruneVisitKeysLocked drops keys from older windows and, if the table is still full
+// of distinct keys from the same window, resets it. Resetting can let a duplicate
+// through once, which is fine: the table exists to bound noise and memory, not to be
+// an exact set.
+func (s *Service) pruneVisitKeysLocked(current time.Time) {
+	cutoff := current.Add(-DuplicateVisitWindow)
+	for key, bucket := range s.seen {
+		if bucket.Before(cutoff) {
+			delete(s.seen, key)
+		}
+	}
+	if len(s.seen) >= MaxTrackedVisitKeys {
+		s.seen = make(map[string]time.Time)
+	}
 }
 
 // Report builds the dashboard payload for one site and range.

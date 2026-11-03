@@ -329,6 +329,81 @@ func (s *Store) Transition(
 	return toContent(updated), nil
 }
 
+// Active draft states: every state before publication counts against the author's
+// quota, including rejected and security-checked rows, otherwise a client could park
+// storage in a state the quota does not count.
+var activeDraftStatuses = []string{
+	string(content.StatusDraft),
+	string(content.StatusPendingReview),
+	string(content.StatusRejected),
+	string(content.StatusPendingSecurityCheck),
+}
+
+// CountActiveDraftsByAuthor counts the items of one author that have not been
+// published or archived. It backs the per-account draft quota.
+func (s *Store) CountActiveDraftsByAuthor(ctx context.Context, siteID, authorID string) (int, error) {
+	if siteID == "" || authorID == "" {
+		return 0, nil
+	}
+	return s.client.ContentItem.Query().
+		Where(
+			contentitem.SiteIDEQ(siteID),
+			contentitem.AuthorIDEQ(authorID),
+			contentitem.StatusIn(activeDraftStatuses...),
+		).
+		Count(ctx)
+}
+
+// SumActiveDraftBytesByAuthor sums len(source_body) over the same rows.
+//
+// The limit is about stored bytes, not runes, so len() is the right measure here even
+// though the per-item cap counts runes.
+func (s *Store) SumActiveDraftBytesByAuthor(ctx context.Context, siteID, authorID string) (int64, error) {
+	if siteID == "" || authorID == "" {
+		return 0, nil
+	}
+	rows, err := s.client.ContentItem.Query().
+		Where(
+			contentitem.SiteIDEQ(siteID),
+			contentitem.AuthorIDEQ(authorID),
+			contentitem.StatusIn(activeDraftStatuses...),
+		).
+		Select(contentitem.FieldSourceBody).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, row := range rows {
+		total += int64(len(row.SourceBody))
+	}
+	return total, nil
+}
+
+// PublishedAssetReference reports whether any published item of the site mentions the
+// asset id in its source or rendered HTML.
+//
+// Media uses it to decide whether an anonymous reader may fetch a content asset: an
+// image from a draft must stay private, while the same image in a published article is
+// part of the public page. The match is a substring on the stored bodies, which is safe
+// for asset ids (opaque ULIDs, no LIKE wildcards) and cheap enough because the media
+// read path only calls it for non-owners.
+func (s *Store) PublishedAssetReference(ctx context.Context, siteID, assetID string) (bool, error) {
+	if siteID == "" || assetID == "" {
+		return false, nil
+	}
+	return s.client.ContentItem.Query().
+		Where(
+			contentitem.SiteIDEQ(siteID),
+			contentitem.StatusEQ(string(content.StatusPublished)),
+			contentitem.Or(
+				contentitem.RenderedHTMLContains(assetID),
+				contentitem.SourceBodyContains(assetID),
+			),
+		).
+		Exist(ctx)
+}
+
 func insertAudit(ctx context.Context, client *entgen.Client, entry site.AuditEntry, kind content.Kind, contentID string) error {
 	at := entry.At
 	if at.IsZero() {

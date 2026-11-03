@@ -131,6 +131,11 @@ paths:
                   site_name:
                     type: string
                     description: Present when `installed` is true.
+                  registration_open:
+                    type: boolean
+                    description: |
+                      Present when `installed` is true. Lets a visitor-facing client hide
+                      the register entry point when the site has closed sign-ups.
         '503':
           description: The site service is not mounted in this process
           content:
@@ -595,12 +600,19 @@ paths:
                 description: { type: string, maxLength: 2000 }
                 visibility_mode: { $ref: '#/components/schemas/VisibilityMode' }
                 publish_mode: { $ref: '#/components/schemas/PublishMode' }
+                registration_open:
+                  type: boolean
+                  description: |
+                    Whether anonymous visitors may create a member account. Omitted means
+                    unchanged. Closing registration does not affect existing members or
+                    administrator-created accounts.
                 domain:
                   type: string
                   description: |
                     Convenience field kept for existing clients; a non-empty value is
-                    validated and stored as verified. Use PUT /sites/{siteID}/domain to
-                    clear a domain.
+                    validated, stored together with a new DNS TXT challenge token and is
+                    not verified until POST /sites/{siteID}/domain/verify succeeds. Use
+                    PUT /sites/{siteID}/domain to clear a domain.
       responses:
         '204':
           description: Settings updated and audited
@@ -714,15 +726,39 @@ paths:
           $ref: '#/components/responses/Conflict'
 
   /sites/{siteID}/domain:
+    get:
+      tags: [sites]
+      summary: Domain verification state
+      description: |
+        Requires site administrator authority and applies to the caller's own site.
+        Returns the primary domain, whether a DNS TXT challenge has proven it, and,
+        while pending, the record name and token the operator must publish. A verified
+        domain returns an empty `verification_token`.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: Domain state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteDomainStatus' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
       tags: [sites]
       summary: Set or clear the site domain
       description: |
         Requires site administrator authority and applies to the caller's own site.
-        A non-empty domain is stored with `domain_verified_at = now`: the operator
-        declaring the value is treated as proof of ownership, so the site becomes
-        reachable on it immediately. An empty string clears both the domain and its
-        verification and restores the domain-less fallback.
+        A non-empty domain is stored together with a fresh DNS TXT challenge token and
+        `domain_verified_at = NULL`; the site only becomes reachable on it after
+        POST /sites/{siteID}/domain/verify proves ownership. While the challenge is
+        pending the site stays reachable from loopback / IP-literal hosts so the
+        operator can finish the check. An empty string clears the domain, its token and
+        its verification and restores the domain-less fallback.
       parameters:
         - $ref: '#/components/parameters/SiteID'
       requestBody:
@@ -733,6 +769,36 @@ paths:
       responses:
         '204':
           description: Domain updated and audited
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /sites/{siteID}/domain/verify:
+    post:
+      tags: [sites]
+      summary: Verify domain ownership
+      description: |
+        Requires site administrator authority. Looks up the TXT record
+        `_practacu-verify.<domain>` and marks the domain verified when any value equals
+        the stored challenge token. A missing record or a mismatch answers `409` with
+        detail reason `domain_verification_failed`; verifying an already verified domain
+        is idempotent; without a pending challenge it answers `400`. Declaring the
+        domain (PUT /sites/{siteID}/domain) mints the challenge.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: Domain state after the attempt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteDomainStatus' }
         '400':
           $ref: '#/components/responses/ValidationFailed'
         '401':
@@ -1996,6 +2062,7 @@ components:
             - provider_not_configured
             - invalid_database_driver
             - email_not_configured
+            - quota_exceeded
         message: { type: string, description: Localised, may change. Clients branch on `code`. }
         details: { type: object, additionalProperties: true }
         request_id: { type: string }
@@ -2057,9 +2124,29 @@ components:
         slug: { type: string }
         name: { type: string }
         domain: { type: string }
+        domain_verified:
+          type: boolean
+          description: True when a DNS TXT challenge has proven the primary domain.
+        registration_open:
+          type: boolean
+          description: Whether anonymous visitors may create a member account.
         visibility_mode: { $ref: '#/components/schemas/VisibilityMode' }
         publish_mode: { $ref: '#/components/schemas/PublishMode' }
         disabled: { type: boolean }
+
+    SiteDomainStatus:
+      type: object
+      required: [domain, verified, verification_token, record_name, record_type]
+      properties:
+        domain: { type: string }
+        verified: { type: boolean }
+        verification_token:
+          type: string
+          description: TXT value to publish while pending; empty once verified.
+        record_name:
+          type: string
+          description: DNS record name, `_practacu-verify.<domain>`.
+        record_type: { type: string, enum: [TXT] }
 
     SiteDomainInput:
       type: object
@@ -2070,8 +2157,8 @@ components:
           maxLength: 253
           description: |
             Bare hostname; punycode labels are accepted. Scheme, port, path, wildcard,
-            IP address and whitespace are rejected. An empty string clears the domain
-            and its verification timestamp.
+            IP address and whitespace are rejected. An empty string clears the domain,
+            its challenge token and its verification timestamp.
 
     Member:
       type: object

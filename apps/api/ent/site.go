@@ -33,6 +33,8 @@ type Site struct {
 	PublishMode string `json:"publish_mode,omitempty"`
 	// Description holds the value of the "description" field.
 	Description *string `json:"description,omitempty"`
+	// RegistrationOpen holds the value of the "registration_open" field.
+	RegistrationOpen bool `json:"registration_open,omitempty"`
 	// Disabled holds the value of the "disabled" field.
 	Disabled bool `json:"disabled,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -47,7 +49,7 @@ func (*Site) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case site.FieldDisabled:
+		case site.FieldRegistrationOpen, site.FieldDisabled:
 			values[i] = new(sql.NullBool)
 		case site.FieldID, site.FieldSlug, site.FieldName, site.FieldDomain, site.FieldDomainVerificationToken, site.FieldVisibilityMode, site.FieldPublishMode, site.FieldDescription:
 			values[i] = new(sql.NullString)
@@ -125,6 +127,12 @@ func (_m *Site) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Description = new(string)
 				*_m.Description = value.String
+			}
+		case site.FieldRegistrationOpen:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field registration_open", values[i])
+			} else if value.Valid {
+				_m.RegistrationOpen = value.Bool
 			}
 		case site.FieldDisabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -211,6 +219,9 @@ func (_m *Site) String() string {
 		builder.WriteString("description=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("registration_open=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RegistrationOpen))
 	builder.WriteString(", ")
 	builder.WriteString("disabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Disabled))

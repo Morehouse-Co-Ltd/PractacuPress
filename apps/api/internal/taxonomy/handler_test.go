@@ -18,6 +18,11 @@ import (
 
 func newHandlerEngine(t *testing.T, repo *fakeRepo) *gin.Engine {
 	t.Helper()
+	return newHandlerEngineWithVisibility(t, repo, site.VisibilityPublic)
+}
+
+func newHandlerEngineWithVisibility(t *testing.T, repo *fakeRepo, visibility site.VisibilityMode) *gin.Engine {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	service := newTestService(t, repo)
@@ -36,7 +41,7 @@ func newHandlerEngine(t *testing.T, repo *fakeRepo) *gin.Engine {
 			if resolved := c.GetHeader("X-Test-Site"); resolved != "" {
 				return site.Site{ID: resolved}, true
 			}
-			return site.Site{ID: "site_1"}, true
+			return site.Site{ID: "site_1", VisibilityMode: visibility}, true
 		},
 	})
 
@@ -83,6 +88,46 @@ func TestHandlerRejectsForeignSiteRead(t *testing.T) {
 	engine.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusForbidden, recorder.Code)
+}
+
+// TestHandlerRefusesAnonymousReadOnMembersOnlySite is the V-11 regression: taxonomy
+// names describe content a members-only site hides, so an anonymous reader must get
+// the same 401 that every other read endpoint returns.
+func TestHandlerRefusesAnonymousReadOnMembersOnlySite(t *testing.T) {
+	repo := &fakeRepo{terms: []Term{
+		{ID: "c1", SiteID: "site_1", Kind: KindCategory, Name: "Secret Category", Slug: "secret"},
+	}}
+	engine := newHandlerEngineWithVisibility(t, repo, site.VisibilityMembersOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sites/site_1/taxonomy", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Equal(t, "unauthenticated", payload["code"])
+	require.NotContains(t, recorder.Body.String(), "Secret Category",
+		"the refusal must not leak the terms it protects")
+}
+
+// TestHandlerAllowsMemberReadOnMembersOnlySite keeps the fix precise: a session scoped
+// to the site still gets the taxonomy, because its pages render the navigation.
+func TestHandlerAllowsMemberReadOnMembersOnlySite(t *testing.T) {
+	repo := &fakeRepo{terms: []Term{
+		{ID: "t1", SiteID: "site_1", Kind: KindTag, Name: "Go", Slug: "go"},
+	}}
+	engine := newHandlerEngineWithVisibility(t, repo, site.VisibilityMembersOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sites/site_1/taxonomy", nil)
+	request.Header.Set("X-Test-Principal", "1")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	var payload termListResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Len(t, payload.Tags, 1)
 }
 
 func TestHandlerTaxonomyWrites(t *testing.T) {

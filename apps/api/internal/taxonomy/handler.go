@@ -88,9 +88,15 @@ type patchRequest struct {
 
 // List returns the categories and tags of a site.
 //
-// It is readable without a session, but never across tenants: the path site must be
-// the site the request host resolved to. Without a resolved site the read is refused
-// because there is nothing to prove the path belongs to the caller's host.
+// It is readable without a session on a public site, but never across tenants: the
+// path site must be the site the request host resolved to. Without a resolved site the
+// read is refused because there is nothing to prove the path belongs to the caller's
+// host.
+//
+// On a members-only site the read requires a session scoped to that site. Category and
+// tag names describe content anonymous readers cannot see, so serving them publicly
+// would leak the tenant's taxonomy (V-11). The rule mirrors content/handler.go actor():
+// a session scoped to this site is enough, the live membership role is not involved.
 func (h *Handler) List(c *gin.Context) {
 	siteID := c.Param("siteID")
 
@@ -103,8 +109,13 @@ func (h *Handler) List(c *gin.Context) {
 		_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "cross_site"))
 		return
 	}
-	if actor, authenticated := h.principal(c); authenticated && actor.SiteID != siteID {
+	actor, authenticated := h.principal(c)
+	if authenticated && actor.SiteID != siteID {
 		_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "cross_site"))
+		return
+	}
+	if resolved.IsMembersOnly() && !authenticated {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "members_only_site"))
 		return
 	}
 

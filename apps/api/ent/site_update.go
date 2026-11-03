@@ -164,6 +164,20 @@ func (_u *SiteUpdate) ClearDescription() *SiteUpdate {
 	return _u
 }
 
+// SetRegistrationOpen sets the "registration_open" field.
+func (_u *SiteUpdate) SetRegistrationOpen(v bool) *SiteUpdate {
+	_u.mutation.SetRegistrationOpen(v)
+	return _u
+}
+
+// SetNillableRegistrationOpen sets the "registration_open" field if the given value is not nil.
+func (_u *SiteUpdate) SetNillableRegistrationOpen(v *bool) *SiteUpdate {
+	if v != nil {
+		_u.SetRegistrationOpen(*v)
+	}
+	return _u
+}
+
 // SetDisabled sets the "disabled" field.
 func (_u *SiteUpdate) SetDisabled(v bool) *SiteUpdate {
 	_u.mutation.SetDisabled(v)
@@ -312,6 +326,9 @@ func (_u *SiteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(site.FieldDescription, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistrationOpen(); ok {
+		_spec.SetField(site.FieldRegistrationOpen, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Disabled(); ok {
 		_spec.SetField(site.FieldDisabled, field.TypeBool, value)
@@ -472,6 +489,20 @@ func (_u *SiteUpdateOne) SetNillableDescription(v *string) *SiteUpdateOne {
 // ClearDescription clears the value of the "description" field.
 func (_u *SiteUpdateOne) ClearDescription() *SiteUpdateOne {
 	_u.mutation.ClearDescription()
+	return _u
+}
+
+// SetRegistrationOpen sets the "registration_open" field.
+func (_u *SiteUpdateOne) SetRegistrationOpen(v bool) *SiteUpdateOne {
+	_u.mutation.SetRegistrationOpen(v)
+	return _u
+}
+
+// SetNillableRegistrationOpen sets the "registration_open" field if the given value is not nil.
+func (_u *SiteUpdateOne) SetNillableRegistrationOpen(v *bool) *SiteUpdateOne {
+	if v != nil {
+		_u.SetRegistrationOpen(*v)
+	}
 	return _u
 }
 
@@ -653,6 +684,9 @@ func (_u *SiteUpdateOne) sqlSave(ctx context.Context) (_node *Site, err error) {
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(site.FieldDescription, field.TypeString)
+	}
+	if value, ok := _u.mutation.RegistrationOpen(); ok {
+		_spec.SetField(site.FieldRegistrationOpen, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Disabled(); ok {
 		_spec.SetField(site.FieldDisabled, field.TypeBool, value)

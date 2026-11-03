@@ -2,6 +2,7 @@ package site
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -197,8 +198,21 @@ func (f *fakeRepo) DeleteMember(_ context.Context, siteID, userID string, audit 
 	return nil
 }
 
-func (f *fakeRepo) UpdateSettings(_ context.Context, _ string, in SettingsInput, audit AuditEntry) error {
+func (f *fakeRepo) UpdateSettings(_ context.Context, siteID string, in SettingsInput, audit AuditEntry) error {
 	f.settings = &in
+	for i := range f.sites {
+		if f.sites[i].ID != siteID {
+			continue
+		}
+		if in.Domain != "" {
+			f.sites[i].Domain = in.Domain
+			f.sites[i].DomainVerificationToken = in.DomainToken
+			f.sites[i].DomainVerifiedAt = nil
+		}
+		if in.RegistrationOpen != nil {
+			f.sites[i].RegistrationOpen = *in.RegistrationOpen
+		}
+	}
 	f.audits = append(f.audits, audit)
 	return nil
 }
@@ -209,6 +223,7 @@ func (f *fakeRepo) UpdateDomain(_ context.Context, siteID string, in DomainInput
 			continue
 		}
 		f.sites[i].Domain = in.Domain
+		f.sites[i].DomainVerificationToken = in.Token
 		f.sites[i].DomainVerifiedAt = in.VerifiedAt
 		f.domainUpdates++
 		f.audits = append(f.audits, audit)
@@ -779,7 +794,7 @@ func TestPublicMemberHidesUnknownSuspendedAndOtherSiteMembers(t *testing.T) {
 
 // --- primary domain and the public address fallback ------------------------
 
-func TestUpdateDomainStoresVerificationAndResolves(t *testing.T) {
+func TestUpdateDomainStartsChallengeAndResolvesOnlyAfterVerification(t *testing.T) {
 	repo := newFakeRepo()
 	repo.sites = []Site{{ID: "s1"}}
 	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
@@ -790,12 +805,28 @@ func TestUpdateDomainStoresVerificationAndResolves(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "press.example.com", repo.sites[0].Domain)
-	require.NotNil(t, repo.sites[0].DomainVerifiedAt, "an operator supplied domain is stored as verified")
+	require.Nil(t, repo.sites[0].DomainVerifiedAt, "declaring a domain must not verify it")
+	require.NotEmpty(t, repo.sites[0].DomainVerificationToken, "a DNS challenge token must be minted")
+	require.LessOrEqual(t, len(repo.sites[0].DomainVerificationToken), 64)
+	require.Regexp(t, `^[A-Za-z0-9_-]+$`, repo.sites[0].DomainVerificationToken, "the token must be base64url")
+
 	require.Equal(t, 1, repo.domainUpdates)
 	require.Len(t, repo.audits, 1)
 	require.Equal(t, "site.domain.updated", repo.audits[0].Action)
+	require.Equal(t, false, repo.audits[0].Detail["domain_verified"])
+	require.Equal(t, true, repo.audits[0].Detail["domain_token_set"])
+	require.NotContains(t, repo.audits[0].Detail, "token", "the challenge token must not reach the audit log")
+	for _, value := range repo.audits[0].Detail {
+		require.NotEqual(t, repo.sites[0].DomainVerificationToken, value,
+			"the challenge token must never be written to the audit log")
+	}
 
-	found, err := service.Resolve(context.Background(), "press.example.com")
+	// The declared but unproven domain does not serve yet.
+	_, err = service.Resolve(context.Background(), "press.example.com")
+	require.ErrorIs(t, err, ErrDomainUnverified)
+
+	// The setup window keeps the operator's own host working.
+	found, err := service.Resolve(context.Background(), "127.0.0.1")
 	require.NoError(t, err)
 	require.Equal(t, "s1", found.ID)
 }
@@ -803,19 +834,24 @@ func TestUpdateDomainStoresVerificationAndResolves(t *testing.T) {
 func TestUpdateDomainClearsDomainAndVerification(t *testing.T) {
 	verified := time.Now().UTC()
 	repo := newFakeRepo()
-	repo.sites = []Site{{ID: "s1", Domain: "press.example.com", DomainVerifiedAt: &verified}}
+	repo.sites = []Site{{
+		ID: "s1", Domain: "press.example.com", DomainVerifiedAt: &verified,
+		DomainVerificationToken: "pending-token",
+	}}
 	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
 	service := newService(t, repo)
 	actor := repo.members[memberKey("s1", "admin")]
 
 	require.NoError(t, service.UpdateDomain(context.Background(), actor, "s1", "", ""))
 	require.Empty(t, repo.sites[0].Domain)
+	require.Empty(t, repo.sites[0].DomainVerificationToken)
 	require.Nil(t, repo.sites[0].DomainVerifiedAt)
 
 	// With the domain cleared the single site fallback answers again.
 	found, err := service.Resolve(context.Background(), "127.0.0.1")
 	require.NoError(t, err)
 	require.Equal(t, "s1", found.ID)
+	require.Equal(t, false, repo.audits[0].Detail["domain_token_set"])
 }
 
 func TestUpdateDomainAcceptsPunycodeAndTrailingDot(t *testing.T) {
@@ -896,9 +932,9 @@ func TestUpdateDomainRequiresSiteAdministratorOfTheSite(t *testing.T) {
 	require.Zero(t, repo.domainUpdates)
 }
 
-func TestUpdateSettingsVerifiesANewDomain(t *testing.T) {
+func TestUpdateSettingsStartsWithAnUnverifiedChallenge(t *testing.T) {
 	repo := newFakeRepo()
-	repo.sites = []Site{{ID: "s1"}}
+	repo.sites = []Site{{ID: "s1", RegistrationOpen: true}}
 	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
 	service := newService(t, repo)
 	actor := repo.members[memberKey("s1", "admin")]
@@ -909,10 +945,82 @@ func TestUpdateSettingsVerifiesANewDomain(t *testing.T) {
 	}, ""))
 	require.NotNil(t, repo.settings)
 	require.Equal(t, "press.example.com", repo.settings.Domain)
-	require.NotNil(t, repo.settings.DomainVerifiedAt, "settings must not store an unverified domain")
+	require.NotEmpty(t, repo.settings.DomainToken, "settings must mint a challenge token for the domain")
+	require.Nil(t, repo.sites[0].DomainVerifiedAt, "settings must not store an unverified domain as verified")
 
-	err := service.UpdateSettings(context.Background(), actor, "s1", SettingsInput{Domain: "https://bad"}, "")
+	// The unproven host keeps answering unverified; the setup window stays open.
+	_, err := service.Resolve(context.Background(), "press.example.com")
+	require.ErrorIs(t, err, ErrDomainUnverified)
+	found, err := service.Resolve(context.Background(), "localhost")
+	require.NoError(t, err)
+	require.Equal(t, "s1", found.ID)
+
+	err = service.UpdateSettings(context.Background(), actor, "s1", SettingsInput{Domain: "https://bad"}, "")
 	require.ErrorIs(t, err, ErrInvalidInput)
+
+	// A domain owned by another site is a conflict, not a challenge.
+	repo.sites = append(repo.sites, Site{ID: "s2", Domain: "taken.example.com", DomainVerifiedAt: ptrTime(time.Now().UTC())})
+	err = service.UpdateSettings(context.Background(), actor, "s1", SettingsInput{Domain: "taken.example.com"}, "")
+	require.ErrorIs(t, err, ErrDomainTaken)
+}
+
+// TestUpdateSettingsResendingCurrentDomainKeepsVerification keeps a settings form that
+// submits every field from silently unverifying a working site.
+func TestUpdateSettingsResendingCurrentDomainKeepsVerification(t *testing.T) {
+	verified := time.Now().UTC()
+	repo := newFakeRepo()
+	repo.sites = []Site{{
+		ID: "s1", Domain: "press.example.com", DomainVerifiedAt: &verified,
+		DomainVerificationToken: "old-token",
+	}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	service := newService(t, repo)
+
+	require.NoError(t, service.UpdateSettings(context.Background(),
+		repo.members[memberKey("s1", "admin")], "s1", SettingsInput{Domain: "PRESS.example.com"}, ""))
+	require.NotEmpty(t, repo.sites[0].DomainVerifiedAt, "the unchanged domain keeps its verification")
+	require.Equal(t, "old-token", repo.sites[0].DomainVerificationToken)
+}
+
+// TestUpdateSettingsRegistrationSwitch pins the O-3 site half: nil leaves the switch
+// alone, an explicit value is stored as given.
+func TestUpdateSettingsRegistrationSwitch(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1", RegistrationOpen: true}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	service := newService(t, repo)
+	actor := repo.members[memberKey("s1", "admin")]
+	ctx := context.Background()
+
+	closed := false
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{RegistrationOpen: &closed}, ""))
+	require.NotNil(t, repo.settings.RegistrationOpen)
+	require.False(t, *repo.settings.RegistrationOpen)
+	require.False(t, repo.sites[0].RegistrationOpen)
+	require.Equal(t, false, repo.audits[0].Detail["registration_open"])
+
+	// Omitting the field leaves the stored value untouched.
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{Name: "Main"}, ""))
+	require.Nil(t, repo.settings.RegistrationOpen)
+	require.False(t, repo.sites[0].RegistrationOpen)
+
+	open := true
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{RegistrationOpen: &open}, ""))
+	require.True(t, repo.sites[0].RegistrationOpen)
+}
+
+func TestRegistrationOpenReadsTheSite(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1", RegistrationOpen: false}}
+	service := newService(t, repo)
+	ctx := context.Background()
+
+	open, err := service.RegistrationOpen(ctx, "s1")
+	require.NoError(t, err)
+	require.False(t, open)
+
+	_, err = service.RegistrationOpen(ctx, "ghost")
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestResolveWithoutDomainRequiresPublicAddressWhenEnabled(t *testing.T) {
@@ -967,4 +1075,255 @@ func TestResolveWithVerifiedDomainIgnoresPublicAddressOption(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 	_, err = service.Resolve(ctx, "127.0.0.1")
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// --- domain ownership verification (V-12) ---------------------------------
+
+// fakeTXT is the injectable DNS resolver used by the verification tests.
+type fakeTXT struct {
+	records map[string][]string
+	err     error
+	calls   []string
+}
+
+func (f *fakeTXT) LookupTXT(_ context.Context, name string) ([]string, error) {
+	f.calls = append(f.calls, name)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.records[name], nil
+}
+
+func newServiceWithTXT(t *testing.T, repo Repository, lookup TXTLookup) *Service {
+	t.Helper()
+	service, err := NewService(repo, WithTXTLookup(lookup))
+	require.NoError(t, err)
+	return service
+}
+
+// TestResolveSetupWindowForUnverifiedSingleSite covers the operator escape hatch: while
+// the declared domain is unproven, loopback and IP-literal hosts keep resolving so the
+// admin UI can publish the DNS record, while every real hostname stays refused.
+func TestResolveSetupWindowForUnverifiedSingleSite(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "only", Domain: "press.example.com"}}
+	service := newService(t, repo)
+	ctx := context.Background()
+
+	for _, host := range []string{"127.0.0.1", "localhost", "::1", "203.0.113.10", "10.1.2.3"} {
+		found, err := service.Resolve(ctx, host)
+		require.NoError(t, err, host)
+		require.Equal(t, "only", found.ID, host)
+	}
+
+	_, err := service.Resolve(ctx, "evil.test")
+	require.ErrorIs(t, err, ErrNotFound, "a hostname cannot use the setup window")
+
+	_, err = service.Resolve(ctx, "press.example.com")
+	require.ErrorIs(t, err, ErrDomainUnverified, "the declared domain itself stays unverified")
+
+	repo.sites[0].Disabled = true
+	_, err = service.Resolve(ctx, "127.0.0.1")
+	require.ErrorIs(t, err, ErrDisabled, "a disabled site is not reachable even in the setup window")
+}
+
+// TestResolveSetupWindowNeedsSingleSite: with more than one site a loopback host cannot
+// identify which site it means, so it must not resolve to any of them.
+func TestResolveSetupWindowNeedsSingleSite(t *testing.T) {
+	repo := newFakeRepo()
+	verified := time.Now().UTC()
+	repo.sites = []Site{
+		{ID: "s1", Domain: "press.example.com"},
+		{ID: "s2", Domain: "other.example.com", DomainVerifiedAt: &verified},
+	}
+
+	_, err := newService(t, repo).Resolve(context.Background(), "127.0.0.1")
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// TestDomainVerifiedReportsProof pins the helper the handler and install status rely on.
+func TestDomainVerifiedReportsProof(t *testing.T) {
+	verified := time.Now().UTC()
+	require.False(t, Site{}.DomainVerified())
+	require.False(t, Site{Domain: "press.example.com"}.DomainVerified())
+	require.True(t, Site{Domain: "press.example.com", DomainVerifiedAt: &verified}.DomainVerified())
+}
+
+func TestDomainStatusShapeAndPermissions(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1"}, {ID: "s2"}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	repo.members[memberKey("s1", "editor")] = activeMember("s1", "editor", RoleEditor)
+	repo.members[memberKey("s2", "root")] = activeMember("s2", "root", RoleSiteAdmin)
+	service := newService(t, repo)
+	admin := repo.members[memberKey("s1", "admin")]
+
+	status, err := service.DomainStatus(context.Background(), admin, "s1")
+	require.NoError(t, err)
+	require.Empty(t, status.Domain)
+	require.Empty(t, status.VerificationToken)
+	require.Empty(t, status.RecordName)
+	require.Equal(t, DomainVerificationRecordType, status.RecordType)
+
+	repo.sites[0] = Site{ID: "s1", Domain: "press.example.com", DomainVerificationToken: "tok_123"}
+	status, err = service.DomainStatus(context.Background(), admin, "s1")
+	require.NoError(t, err)
+	require.Equal(t, "press.example.com", status.Domain)
+	require.False(t, status.Verified)
+	require.Equal(t, "tok_123", status.VerificationToken)
+	require.Equal(t, "_practacu-verify.press.example.com", status.RecordName)
+	require.Equal(t, "TXT", status.RecordType)
+
+	verified := time.Now().UTC()
+	repo.sites[0].DomainVerifiedAt = &verified
+	status, err = service.DomainStatus(context.Background(), admin, "s1")
+	require.NoError(t, err)
+	require.True(t, status.Verified)
+	require.Empty(t, status.VerificationToken, "a verified domain has nothing left to prove")
+
+	_, err = service.DomainStatus(context.Background(), repo.members[memberKey("s1", "editor")], "s1")
+	require.ErrorIs(t, err, ErrPermissionDenied)
+	_, err = service.DomainStatus(context.Background(), repo.members[memberKey("s2", "root")], "s1")
+	require.ErrorIs(t, err, ErrCrossSite)
+}
+
+func TestVerifyDomainSucceedsWithAnyMatchingTXT(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1", Domain: "press.example.com", DomainVerificationToken: "challenge-token"}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	lookup := &fakeTXT{records: map[string][]string{
+		"_practacu-verify.press.example.com": {"unrelated-value", "  challenge-token  "},
+	}}
+	service := newServiceWithTXT(t, repo, lookup)
+	service.now = func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) }
+
+	status, err := service.VerifyDomain(context.Background(),
+		repo.members[memberKey("s1", "admin")], "s1", "req_verify")
+	require.NoError(t, err)
+	require.True(t, status.Verified)
+	require.Empty(t, status.VerificationToken)
+	require.Equal(t, []string{"_practacu-verify.press.example.com"}, lookup.calls)
+
+	require.NotNil(t, repo.sites[0].DomainVerifiedAt)
+	require.Equal(t, time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC), *repo.sites[0].DomainVerifiedAt)
+	require.Len(t, repo.audits, 1)
+	require.Equal(t, "site.domain.verified", repo.audits[0].Action)
+	require.Equal(t, "req_verify", repo.audits[0].RequestID)
+	require.Equal(t, "_practacu-verify.press.example.com", repo.audits[0].Detail["record_name"])
+	for _, value := range repo.audits[0].Detail {
+		require.NotEqual(t, "challenge-token", value, "the challenge token must not reach the audit log")
+	}
+
+	// The verified domain now serves.
+	found, err := service.Resolve(context.Background(), "press.example.com")
+	require.NoError(t, err)
+	require.Equal(t, "s1", found.ID)
+}
+
+func TestVerifyDomainFailureModes(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1", Domain: "press.example.com", DomainVerificationToken: "challenge-token"}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	service := newServiceWithTXT(t, repo, &fakeTXT{records: map[string][]string{
+		"_practacu-verify.press.example.com": {"wrong-value"},
+	}})
+	admin := repo.members[memberKey("s1", "admin")]
+
+	_, err := service.VerifyDomain(context.Background(), admin, "s1", "")
+	require.ErrorIs(t, err, ErrDomainVerificationFailed)
+	require.Nil(t, repo.sites[0].DomainVerifiedAt)
+	require.Zero(t, repo.domainUpdates)
+
+	// A DNS outage is reported as a failed challenge, not as an internal error the
+	// client cannot act on.
+	lookupErr := errors.New("dns timeout")
+	service = newServiceWithTXT(t, repo, &fakeTXT{err: lookupErr})
+	_, err = service.VerifyDomain(context.Background(), admin, "s1", "")
+	require.ErrorIs(t, err, ErrDomainVerificationFailed)
+	require.ErrorIs(t, err, lookupErr)
+	require.Zero(t, repo.domainUpdates)
+
+	// Empty records are a mismatch, not an accidental success.
+	service = newServiceWithTXT(t, repo, &fakeTXT{records: map[string][]string{
+		"_practacu-verify.press.example.com": {},
+	}})
+	_, err = service.VerifyDomain(context.Background(), admin, "s1", "")
+	require.ErrorIs(t, err, ErrDomainVerificationFailed)
+}
+
+func TestVerifyDomainRequiresPendingChallenge(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1"}, {ID: "s2", Domain: "legacy.example.com"}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	repo.members[memberKey("s2", "admin")] = activeMember("s2", "admin", RoleSiteAdmin)
+	lookup := &fakeTXT{}
+	service := newServiceWithTXT(t, repo, lookup)
+
+	_, err := service.VerifyDomain(context.Background(), repo.members[memberKey("s1", "admin")], "s1", "")
+	require.ErrorIs(t, err, ErrInvalidInput, "a site without a domain has nothing to verify")
+
+	_, err = service.VerifyDomain(context.Background(), repo.members[memberKey("s2", "admin")], "s2", "")
+	require.ErrorIs(t, err, ErrInvalidInput, "a row without a challenge must be re-saved first")
+	require.Empty(t, lookup.calls, "no DNS query is made without a challenge")
+}
+
+func TestVerifyDomainAlreadyVerifiedIsIdempotent(t *testing.T) {
+	verified := time.Now().UTC()
+	repo := newFakeRepo()
+	repo.sites = []Site{{
+		ID: "s1", Domain: "press.example.com", DomainVerificationToken: "challenge-token",
+		DomainVerifiedAt: &verified,
+	}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	lookup := &fakeTXT{err: errors.New("must not be called")}
+	service := newServiceWithTXT(t, repo, lookup)
+
+	status, err := service.VerifyDomain(context.Background(),
+		repo.members[memberKey("s1", "admin")], "s1", "")
+	require.NoError(t, err)
+	require.True(t, status.Verified)
+	require.Empty(t, lookup.calls, "an already verified domain is not re-checked")
+	require.Zero(t, repo.domainUpdates)
+}
+
+func TestVerifyDomainPermissions(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{
+		{ID: "s1", Domain: "press.example.com", DomainVerificationToken: "tok"},
+		{ID: "s2"},
+	}
+	repo.members[memberKey("s1", "editor")] = activeMember("s1", "editor", RoleEditor)
+	repo.members[memberKey("s2", "root")] = activeMember("s2", "root", RoleSiteAdmin)
+	lookup := &fakeTXT{}
+	service := newServiceWithTXT(t, repo, lookup)
+
+	_, err := service.VerifyDomain(context.Background(), repo.members[memberKey("s1", "editor")], "s1", "")
+	require.ErrorIs(t, err, ErrPermissionDenied)
+	_, err = service.VerifyDomain(context.Background(), repo.members[memberKey("s2", "root")], "s1", "")
+	require.ErrorIs(t, err, ErrCrossSite)
+	require.Empty(t, lookup.calls)
+}
+
+// TestInstallStatusSetupWindowAndRegistration closes the O-3 loop on status: the
+// operator's loopback host still sees the install, and the sign-up switch is surfaced.
+func TestInstallStatusSetupWindowAndRegistration(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{
+		ID: "site_main", Name: "Practacu Press", Domain: "press.example.com",
+		RegistrationOpen: true,
+	}}
+	repo.members[memberKey("site_main", "usr_owner")] = activeMember("site_main", "usr_owner", RoleSiteAdmin)
+	service := newService(t, repo)
+
+	status, err := service.InstallStatus(context.Background(), "127.0.0.1")
+	require.NoError(t, err)
+	require.True(t, status.Installed)
+	require.True(t, status.RegistrationOpen)
+	require.Equal(t, "site_main", status.SiteID)
+
+	// The declared domain itself remains a domain_unverified answer for the wizard.
+	status, err = service.InstallStatus(context.Background(), "press.example.com")
+	require.NoError(t, err)
+	require.False(t, status.Installed)
+	require.Equal(t, InstallReasonDomainUnverified, status.Reason)
 }

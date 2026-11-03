@@ -7,6 +7,7 @@ package site
 
 import (
 	"errors"
+	"net"
 	"strings"
 	"time"
 )
@@ -84,14 +85,25 @@ type Site struct {
 	Name        string
 	Domain      string
 	Description string
+	// DomainVerificationToken is the challenge an operator publishes as a DNS TXT
+	// record to prove the domain belongs to this site. It is only meaningful while
+	// DomainVerifiedAt is nil.
+	DomainVerificationToken string
 	// DomainVerifiedAt is nil until the hostname is proven to belong to the site.
 	DomainVerifiedAt *time.Time
 	VisibilityMode   VisibilityMode
 	PublishMode      PublishMode
+	// RegistrationOpen controls whether anonymous visitors may create an account on
+	// this site. It is an anti-abuse switch for public sites; the first account of a
+	// desktop install is the bootstrap administrator and is not governed by it.
+	RegistrationOpen bool
 	Disabled         bool
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
+
+// DomainVerified reports whether the site's domain may be served.
+func (s Site) DomainVerified() bool { return s.Domain != "" && s.DomainVerifiedAt != nil }
 
 // ValidateForServing returns the reason this site must not serve the given host,
 // or nil when it may.
@@ -99,6 +111,11 @@ type Site struct {
 // The check is deliberately strict: an unverified or mismatched host is a hard
 // failure rather than a fallback, because silently serving the wrong site leaks
 // another site's content.
+//
+// A site that declared a domain but has not verified it yet answers
+// ErrDomainUnverified for that host. The operator still reaches it through a loopback
+// or IP-literal host during the setup window; that exception lives in Service.Resolve,
+// which knows whether a single site deployment can identify the site from such a host.
 func (s Site) ValidateForServing(host string) error {
 	if s.Disabled {
 		return ErrDisabled
@@ -113,6 +130,21 @@ func (s Site) ValidateForServing(host string) error {
 		return ErrDomainUnverified
 	}
 	return nil
+}
+
+// allowsSetupWindowHost reports whether host may reach a site whose declared domain is
+// still unverified.
+//
+// The setup window exists so the operator can finish the DNS challenge from the machine
+// running the site: loopback names and bare IP literals cannot be claimed by a third
+// party through DNS, so they are the safe fallback while the domain is unproven. Every
+// other hostname is refused until verification succeeds.
+func allowsSetupWindowHost(host string) bool {
+	normalized := normalizeHost(host)
+	if normalized == "localhost" {
+		return true
+	}
+	return net.ParseIP(normalized) != nil
 }
 
 // IsMembersOnly reports whether anonymous reads must be refused.

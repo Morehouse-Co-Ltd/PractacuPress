@@ -24,6 +24,9 @@ type InstallStatus struct {
 	// HasAdmin reports whether an active administrator exists. A site without one
 	// cannot be finished by the wizard, so callers may treat it as unfinished.
 	HasAdmin bool
+	// RegistrationOpen reports whether the public sign-up page may be shown. The
+	// setup wizard hides its registration entry when the site has closed sign-ups.
+	RegistrationOpen bool
 }
 
 // Reasons reported when a hostname does not map to a usable install.
@@ -57,9 +60,10 @@ func (s *Service) InstallStatus(ctx context.Context, hostname string) (InstallSt
 		return InstallStatus{}, err
 	}
 	return InstallStatus{
-		Installed: true,
-		SiteID:    resolved.ID,
-		SiteName:  resolved.Name,
-		HasAdmin:  admins > 0,
+		Installed:        true,
+		SiteID:           resolved.ID,
+		SiteName:         resolved.Name,
+		HasAdmin:         admins > 0,
+		RegistrationOpen: resolved.RegistrationOpen,
 	}, nil
 }

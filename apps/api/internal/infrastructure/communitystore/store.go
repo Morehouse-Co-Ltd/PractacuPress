@@ -6,14 +6,15 @@ import (
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/community"
+	"github.com/practacu/practacu-press/apps/api/internal/content"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 
-		"github.com/google/uuid"
+	"github.com/google/uuid"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
-	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
@@ -258,6 +259,7 @@ func (s *Store) AuthorOf(ctx context.Context, siteID string, targetType communit
 		return "", community.ErrNotFound
 	}
 }
+
 // HasReaction reports whether the user already reacted with this kind.
 func (s *Store) HasReaction(ctx context.Context, userID, targetType, targetID, kind string) (bool, error) {
 	return s.client.Reaction.Query().Where(
@@ -422,6 +424,37 @@ func insertAudit(ctx context.Context, client *entgen.Client, entry site.AuditEnt
 	return err
 }
 
+// TargetOf resolves an interaction target to its author and publication state.
+//
+// Only content targets can be resolved here; comment/page/user targets either resolve
+// through their own table or do not have an author to compare against, and the
+// community service treats a missing target as "not interactable". The site predicate
+// is mandatory: a target id from another tenant is not visible here.
+func (s *Store) TargetOf(
+	ctx context.Context,
+	siteID string,
+	targetType community.TargetType,
+	targetID string,
+) (community.Target, error) {
+	switch targetType {
+	case community.TargetArticle, community.TargetPost:
+		row, err := s.client.ContentItem.Query().
+			Where(contentitem.IDEQ(targetID), contentitem.SiteIDEQ(siteID)).
+			Only(ctx)
+		if err != nil {
+			if entgen.IsNotFound(err) {
+				return community.Target{}, community.ErrTargetNotFound
+			}
+			return community.Target{}, err
+		}
+		return community.Target{
+			AuthorID:  row.AuthorID,
+			Published: row.Status == string(content.StatusPublished),
+		}, nil
+	default:
+		return community.Target{}, community.ErrTargetNotFound
+	}
+}
 func toComment(row *entgen.Comment) community.Comment {
 	item := community.Comment{
 		ID:         row.ID,

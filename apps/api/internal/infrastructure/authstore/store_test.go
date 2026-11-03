@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -101,7 +102,15 @@ func TestBootstrapFirstAdminPromotesOnlyTheFirstAccount(t *testing.T) {
 		cfg.BootstrapFirstAdmin = true
 	})
 
-	owner := h.register(t, "owner@example.com")
+	// The transport layer only sets AllowFirstAdmin for a loopback caller; the store
+	// level test plays that role directly.
+	owner, err := h.service.RegisterEmail(h.ctx, h.siteID, auth.RegisterEmailInput{
+		Email:           "owner@example.com",
+		Password:        "correct horse battery",
+		DisplayName:     "Owner",
+		AllowFirstAdmin: true,
+	})
+	require.NoError(t, err)
 	member := h.register(t, "member@example.com")
 
 	ownerPrincipal, err := h.issuerVerify(owner.AccessToken)
@@ -113,6 +122,26 @@ func TestBootstrapFirstAdminPromotesOnlyTheFirstAccount(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, site.RoleMember, memberPrincipal.Role,
 		"later accounts keep the plain member role")
+}
+
+// TestBootstrapFirstAdminRequiresLocalAccess is the V-16 regression: a fresh install
+// that is reachable over the network must not hand the owner role to whoever registers
+// first. The request must be refused before any account is created.
+func TestBootstrapFirstAdminRequiresLocalAccess(t *testing.T) {
+	h := newHarnessWith(t, func(cfg *auth.ServiceConfig) {
+		cfg.BootstrapFirstAdmin = true
+	})
+
+	_, err := h.service.RegisterEmail(h.ctx, h.siteID, auth.RegisterEmailInput{
+		Email:       "attacker@example.com",
+		Password:    "correct horse battery",
+		DisplayName: "Attacker",
+	})
+	require.ErrorIs(t, err, auth.ErrInstallRequiresLocalAccess)
+
+	members, err := h.db.Client.SiteMember.Query().Count(h.ctx)
+	require.NoError(t, err)
+	require.Zero(t, members, "a refused bootstrap must not create an account")
 }
 
 func TestRegisterRejectsDuplicateEmailCaseInsensitively(t *testing.T) {
@@ -282,8 +311,37 @@ func TestSuspendedMembershipBlocksSessionIssue(t *testing.T) {
 	require.ErrorIs(t, err, auth.ErrPermissionToSite)
 }
 
+// TestFamilyCreatedAtIsStableAcrossRotation proves the query that backs the refresh
+// lineage's absolute lifetime: the oldest row's created_at, unaffected by rotation.
+func TestFamilyCreatedAtIsStableAcrossRotation(t *testing.T) {
+	h := newHarness(t)
+	registered := h.register(t, "alice@example.com")
+	store := authstore.New(h.db.Client)
+
+	root, err := store.FindSessionByHash(h.ctx, auth.HashOpaqueToken(registered.RefreshToken))
+	require.NoError(t, err)
+
+	createdAt, err := store.FamilyCreatedAt(h.ctx, root.FamilyID)
+	require.NoError(t, err)
+	require.WithinDuration(t, registered.RefreshExpiresAt.Add(-auth.RefreshTTL), createdAt,
+		2*time.Second, "a fresh lineage is born when the session is created")
+
+	rotated, err := h.service.Refresh(h.ctx, h.siteID, registered.RefreshToken)
+	require.NoError(t, err)
+	next, err := store.FindSessionByHash(h.ctx, auth.HashOpaqueToken(rotated.RefreshToken))
+	require.NoError(t, err)
+	require.Equal(t, root.FamilyID, next.FamilyID)
+
+	afterRotation, err := store.FamilyCreatedAt(h.ctx, next.FamilyID)
+	require.NoError(t, err)
+	require.Equal(t, createdAt.UTC(), afterRotation.UTC(),
+		"rotation must inherit the lineage birth time instead of resetting it")
+
+	_, err = store.FamilyCreatedAt(h.ctx, "no-such-family")
+	require.ErrorIs(t, err, auth.ErrSessionNotFound)
+}
+
 // issuerVerify re-verifies a token with the harness issuer.
 func (h *harness) issuerVerify(token string) (auth.Principal, error) {
 	return h.issuer.VerifyAccess(token)
 }
-

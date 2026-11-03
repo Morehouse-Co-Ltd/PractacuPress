@@ -42,6 +42,21 @@ type Repository interface {
 	Transition(ctx context.Context, item Content, from Status, audit site.AuditEntry) (Content, error)
 }
 
+// DraftQuotaStore is the optional storage capability that backs the per-author draft
+// quota.
+//
+// It is an optional port rather than a method on Repository so a deployment that has
+// not wired it still compiles and still serves content reads: when ServiceConfig
+// leaves DraftQuota nil the quota is not enforced (documented degraded mode). The
+// server wires the content store into it, which implements both counts.
+type DraftQuotaStore interface {
+	// CountActiveDraftsByAuthor counts the author's items in draft, pending_review,
+	// rejected and pending_security_check on one site.
+	CountActiveDraftsByAuthor(ctx context.Context, siteID, authorID string) (int, error)
+	// SumActiveDraftBytesByAuthor sums the source body bytes of those items.
+	SumActiveDraftBytesByAuthor(ctx context.Context, siteID, authorID string) (int64, error)
+}
+
 // PublishModeFunc resolves the publishing rule of a site.
 type PublishModeFunc func(ctx context.Context, siteID string) (site.PublishMode, error)
 
@@ -50,6 +65,7 @@ type Service struct {
 	repo        Repository
 	sanitizer   Sanitizer
 	publishMode PublishModeFunc
+	draftQuota  DraftQuotaStore
 	now         func() time.Time
 }
 
@@ -58,7 +74,10 @@ type ServiceConfig struct {
 	Repository  Repository
 	Sanitizer   Sanitizer
 	PublishMode PublishModeFunc
-	Now         func() time.Time
+	// DraftQuota enables the per-author draft quota (V-06). When nil the quota is
+	// skipped so an unwired deployment keeps working; the server must set it.
+	DraftQuota DraftQuotaStore
+	Now        func() time.Time
 }
 
 // NewService builds a Service.
@@ -74,6 +93,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		repo:        cfg.Repository,
 		sanitizer:   cfg.Sanitizer,
 		publishMode: cfg.PublishMode,
+		draftQuota:  cfg.DraftQuota,
 		now:         cfg.Now,
 	}
 	if service.publishMode == nil {
@@ -93,12 +113,19 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 // If the security service is unavailable the item is stored in
 // pending_security_check and the error is returned: the content is preserved for the
 // author, but it cannot be published until a real sanitization succeeds.
+//
+// The author quota is checked first: once an account holds too many active drafts, or
+// too many bytes of draft source, the write is refused with ErrQuotaExceeded so an
+// open registration cannot grow the database and the review queue without limit (V-06).
 func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in DraftInput) (Content, error) {
 	if !kind.Valid() {
 		return Content{}, ErrInvalidInput
 	}
 	validated, err := ValidateDraft(in)
 	if err != nil {
+		return Content{}, err
+	}
+	if err := s.checkDraftQuota(ctx, actor, validated.SourceBody); err != nil {
 		return Content{}, err
 	}
 
@@ -138,6 +165,45 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 	return saved, securityErr
 }
 
+// checkDraftQuota refuses a new draft that would exceed the author's quota.
+//
+// The incoming body counts against the byte quota, so the check bounds the result of
+// the write rather than only the already stored state. Both counts and the write are
+// separate operations, so two concurrent requests can race past the limit by one item
+// or one body; that is accepted: the quota bounds growth, it is not an exact ledger.
+func (s *Service) checkDraftQuota(ctx context.Context, actor Actor, incomingSource string) error {
+	if s.draftQuota == nil {
+		return nil
+	}
+
+	count, err := s.draftQuota.CountActiveDraftsByAuthor(ctx, actor.SiteID, actor.UserID)
+	if err != nil {
+		return err
+	}
+	if count >= MaxActiveDraftsPerAuthor {
+		return fmt.Errorf("%w: too many active drafts", ErrQuotaExceeded)
+	}
+	return s.checkDraftByteQuota(ctx, actor, int64(len(incomingSource)))
+}
+
+// checkDraftByteQuota refuses a write that would push the author's stored active
+// draft source over the byte limit. growth is the number of bytes the write adds:
+// shrinking a draft (or rewriting it to the same size) is always allowed, so an author
+// can recover from a full quota by editing rather than only by deleting.
+func (s *Service) checkDraftByteQuota(ctx context.Context, actor Actor, growth int64) error {
+	if s.draftQuota == nil || growth <= 0 {
+		return nil
+	}
+	used, err := s.draftQuota.SumActiveDraftBytesByAuthor(ctx, actor.SiteID, actor.UserID)
+	if err != nil {
+		return err
+	}
+	if used+growth > MaxActiveDraftBytesPerAuthor {
+		return fmt.Errorf("%w: draft source is too large", ErrQuotaExceeded)
+	}
+	return nil
+}
+
 // UpdateDraft edits an item that has not been published yet.
 //
 // Published content is immutable: a correction is a new revision that goes through
@@ -156,6 +222,17 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 
 	validated, err := ValidateDraft(in)
 	if err != nil {
+		return Content{}, err
+	}
+	// Editing a draft can grow its source, so the same byte quota applies to growth
+	// here: otherwise an author could create small drafts and then inflate each one
+	// past the limit. The quota belongs to the item's author, not to an editor who is
+	// rewriting someone else's draft.
+	if err := s.checkDraftByteQuota(
+		ctx,
+		Actor{SiteID: item.SiteID, UserID: item.AuthorID},
+		int64(len(validated.SourceBody))-int64(len(item.SourceBody)),
+	); err != nil {
 		return Content{}, err
 	}
 

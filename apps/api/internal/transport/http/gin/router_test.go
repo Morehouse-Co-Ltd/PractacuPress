@@ -108,10 +108,11 @@ func (emptySites) Resolve(context.Context, string) (site.Site, error) {
 
 func TestRouterSetupStatusReportsTheResolvedInstall(t *testing.T) {
 	report := &stubInstall{status: site.InstallStatus{
-		Installed: true,
-		SiteID:    "site_main",
-		SiteName:  "Practacu Press",
-		HasAdmin:  true,
+		Installed:        true,
+		SiteID:           "site_main",
+		SiteName:         "Practacu Press",
+		HasAdmin:         true,
+		RegistrationOpen: true,
 	}}
 	r := testRouter(t, Dependencies{Install: report})
 	w := httptest.NewRecorder()
@@ -119,7 +120,7 @@ func TestRouterSetupStatusReportsTheResolvedInstall(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/setup/status", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.JSONEq(t, `{"installed":true,"has_admin":true,"site_id":"site_main","site_name":"Practacu Press"}`, w.Body.String())
+	require.JSONEq(t, `{"installed":true,"has_admin":true,"site_id":"site_main","site_name":"Practacu Press","registration_open":true}`, w.Body.String())
 	require.Equal(t, "example.com", report.host)
 }
 

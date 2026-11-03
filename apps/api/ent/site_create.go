@@ -119,6 +119,20 @@ func (_c *SiteCreate) SetNillableDescription(v *string) *SiteCreate {
 	return _c
 }
 
+// SetRegistrationOpen sets the "registration_open" field.
+func (_c *SiteCreate) SetRegistrationOpen(v bool) *SiteCreate {
+	_c.mutation.SetRegistrationOpen(v)
+	return _c
+}
+
+// SetNillableRegistrationOpen sets the "registration_open" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableRegistrationOpen(v *bool) *SiteCreate {
+	if v != nil {
+		_c.SetRegistrationOpen(*v)
+	}
+	return _c
+}
+
 // SetDisabled sets the "disabled" field.
 func (_c *SiteCreate) SetDisabled(v bool) *SiteCreate {
 	_c.mutation.SetDisabled(v)
@@ -218,6 +232,10 @@ func (_c *SiteCreate) defaults() {
 		v := site.DefaultPublishMode
 		_c.mutation.SetPublishMode(v)
 	}
+	if _, ok := _c.mutation.RegistrationOpen(); !ok {
+		v := site.DefaultRegistrationOpen
+		_c.mutation.SetRegistrationOpen(v)
+	}
 	if _, ok := _c.mutation.Disabled(); !ok {
 		v := site.DefaultDisabled
 		_c.mutation.SetDisabled(v)
@@ -284,6 +302,9 @@ func (_c *SiteCreate) check() error {
 		if err := site.DescriptionValidator(v); err != nil {
 			return &ValidationError{Name: "description", err: fmt.Errorf(`ent: validator failed for field "Site.description": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RegistrationOpen(); !ok {
+		return &ValidationError{Name: "registration_open", err: errors.New(`ent: missing required field "Site.registration_open"`)}
 	}
 	if _, ok := _c.mutation.Disabled(); !ok {
 		return &ValidationError{Name: "disabled", err: errors.New(`ent: missing required field "Site.disabled"`)}
@@ -366,6 +387,10 @@ func (_c *SiteCreate) createSpec() (*Site, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(site.FieldDescription, field.TypeString, value)
 		_node.Description = &value
+	}
+	if value, ok := _c.mutation.RegistrationOpen(); ok {
+		_spec.SetField(site.FieldRegistrationOpen, field.TypeBool, value)
+		_node.RegistrationOpen = value
 	}
 	if value, ok := _c.mutation.Disabled(); ok {
 		_spec.SetField(site.FieldDisabled, field.TypeBool, value)
@@ -548,6 +573,18 @@ func (u *SiteUpsert) UpdateDescription() *SiteUpsert {
 // ClearDescription clears the value of the "description" field.
 func (u *SiteUpsert) ClearDescription() *SiteUpsert {
 	u.SetNull(site.FieldDescription)
+	return u
+}
+
+// SetRegistrationOpen sets the "registration_open" field.
+func (u *SiteUpsert) SetRegistrationOpen(v bool) *SiteUpsert {
+	u.Set(site.FieldRegistrationOpen, v)
+	return u
+}
+
+// UpdateRegistrationOpen sets the "registration_open" field to the value that was provided on create.
+func (u *SiteUpsert) UpdateRegistrationOpen() *SiteUpsert {
+	u.SetExcluded(site.FieldRegistrationOpen)
 	return u
 }
 
@@ -763,6 +800,20 @@ func (u *SiteUpsertOne) UpdateDescription() *SiteUpsertOne {
 func (u *SiteUpsertOne) ClearDescription() *SiteUpsertOne {
 	return u.Update(func(s *SiteUpsert) {
 		s.ClearDescription()
+	})
+}
+
+// SetRegistrationOpen sets the "registration_open" field.
+func (u *SiteUpsertOne) SetRegistrationOpen(v bool) *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetRegistrationOpen(v)
+	})
+}
+
+// UpdateRegistrationOpen sets the "registration_open" field to the value that was provided on create.
+func (u *SiteUpsertOne) UpdateRegistrationOpen() *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateRegistrationOpen()
 	})
 }
 
@@ -1149,6 +1200,20 @@ func (u *SiteUpsertBulk) UpdateDescription() *SiteUpsertBulk {
 func (u *SiteUpsertBulk) ClearDescription() *SiteUpsertBulk {
 	return u.Update(func(s *SiteUpsert) {
 		s.ClearDescription()
+	})
+}
+
+// SetRegistrationOpen sets the "registration_open" field.
+func (u *SiteUpsertBulk) SetRegistrationOpen(v bool) *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetRegistrationOpen(v)
+	})
+}
+
+// UpdateRegistrationOpen sets the "registration_open" field to the value that was provided on create.
+func (u *SiteUpsertBulk) UpdateRegistrationOpen() *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateRegistrationOpen()
 	})
 }
 

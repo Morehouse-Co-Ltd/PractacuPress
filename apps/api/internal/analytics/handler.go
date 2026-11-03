@@ -106,12 +106,22 @@ type reportResponse struct {
 // RecordVisit stores one page view and answers 204.
 //
 // The site always comes from host resolution, never from the body: a browser must
-// not be able to attribute traffic to another tenant.
+// not be able to attribute traffic to another tenant. A members-only site only
+// accepts writes from a session scoped to that site, because its pages are not
+// readable by anonymous visitors in the first place; accepting their writes would let
+// a stranger inject rows into an administrator's report.
 func (h *Handler) RecordVisit(c *gin.Context) {
 	resolved, ok := h.site(c)
 	if !ok {
 		_ = c.Error(apperr.New(apperr.CodeSiteNotFound).WithRequestID(c.GetHeader("X-Request-ID")))
 		return
+	}
+	if resolved.IsMembersOnly() {
+		principal, authenticated := h.principal(c)
+		if !authenticated || principal.SiteID != resolved.ID {
+			_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "members_only_site"))
+			return
+		}
 	}
 
 	var req visitRequest

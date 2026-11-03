@@ -12,22 +12,23 @@ type Code string
 
 // The complete set of error codes the API can return.
 const (
-	CodeValidationFailed       Code = "validation_failed"
-	CodeUnauthenticated        Code = "unauthenticated"
-	CodePermissionDenied       Code = "permission_denied"
-	CodeNotFound               Code = "not_found"
-	CodeConflict               Code = "conflict"
-	CodeRateLimited            Code = "rate_limited"
-	CodeInternal               Code = "internal"
-	CodeInvalidCursor          Code = "invalid_cursor"
-	CodeIdempotencyKeyReuse    Code = "idempotency_key_reuse"
-	CodeSiteNotFound           Code = "site_not_found"
-	CodeSiteDomainUnverified   Code = "site_domain_unverified"
-	CodeContentStateInvalid    Code = "content_state_invalid"
-	CodeSecurityUnavailable    Code = "security_unavailable"
-	CodeProviderNotConfigured  Code = "provider_not_configured"
-	CodeInvalidDatabaseDriver  Code = "invalid_database_driver"
-	CodeEmailNotConfigured     Code = "email_not_configured"
+	CodeValidationFailed      Code = "validation_failed"
+	CodeUnauthenticated       Code = "unauthenticated"
+	CodePermissionDenied      Code = "permission_denied"
+	CodeNotFound              Code = "not_found"
+	CodeConflict              Code = "conflict"
+	CodeRateLimited           Code = "rate_limited"
+	CodeInternal              Code = "internal"
+	CodeInvalidCursor         Code = "invalid_cursor"
+	CodeIdempotencyKeyReuse   Code = "idempotency_key_reuse"
+	CodeSiteNotFound          Code = "site_not_found"
+	CodeSiteDomainUnverified  Code = "site_domain_unverified"
+	CodeContentStateInvalid   Code = "content_state_invalid"
+	CodeSecurityUnavailable   Code = "security_unavailable"
+	CodeProviderNotConfigured Code = "provider_not_configured"
+	CodeInvalidDatabaseDriver Code = "invalid_database_driver"
+	CodeEmailNotConfigured    Code = "email_not_configured"
+	CodeQuotaExceeded         Code = "quota_exceeded"
 )
 
 // spec is the fixed HTTP projection of a code. Keeping it in one table is what
@@ -68,6 +69,11 @@ var specs = map[Code]spec{
 		status:  http.StatusTooManyRequests,
 		title:   "Rate limited",
 		message: "请求过于频繁，请稍后重试",
+	},
+	CodeQuotaExceeded: {
+		status:  http.StatusTooManyRequests,
+		title:   "Quota exceeded",
+		message: "请求超出资源配额，请稍后重试",
 	},
 	CodeInternal: {
 		status:  http.StatusInternalServerError,

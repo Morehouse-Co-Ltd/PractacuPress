@@ -45,6 +45,11 @@ type Dependencies struct {
 	Install InstallReporter
 	// AccessTokens verifies bearer tokens for guarded routes. Nil disables auth.
 	AccessTokens middleware.AccessTokenVerifier
+	// Memberships resolves the live membership of an authenticated caller. When set,
+	// every guarded request uses the database role instead of the token's role claim,
+	// so demotion, suspension and removal take effect immediately. Nil keeps the
+	// token-only behaviour (used by tests that do not model membership).
+	Memberships middleware.MembershipResolver
 	// Auth mounts the authentication endpoints when non nil.
 	Auth *auth.Handler
 	// Sites mounts the site administration endpoints when non nil.

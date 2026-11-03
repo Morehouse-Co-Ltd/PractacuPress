@@ -100,6 +100,8 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFun
 	group.PATCH("/:siteID/members/:userID/status", h.UpdateMemberStatus)
 	group.DELETE("/:siteID/members/:userID", h.DeleteMember)
 	group.PUT("/:siteID/domain", h.UpdateDomain)
+	group.GET("/:siteID/domain", h.GetDomain)
+	group.POST("/:siteID/domain/verify", h.VerifyDomain)
 	group.PATCH("/:siteID/settings", h.UpdateSettings)
 	group.PUT("/:siteID/customization", h.UpdateCustomization)
 }
@@ -123,13 +125,15 @@ type publicUserResponse struct {
 }
 
 type siteResponse struct {
-	ID             string `json:"id"`
-	Slug           string `json:"slug"`
-	Name           string `json:"name"`
-	Domain         string `json:"domain"`
-	VisibilityMode string `json:"visibility_mode"`
-	PublishMode    string `json:"publish_mode"`
-	Disabled       bool   `json:"disabled"`
+	ID               string `json:"id"`
+	Slug             string `json:"slug"`
+	Name             string `json:"name"`
+	Domain           string `json:"domain"`
+	DomainVerified   bool   `json:"domain_verified"`
+	RegistrationOpen bool   `json:"registration_open"`
+	VisibilityMode   string `json:"visibility_mode"`
+	PublishMode      string `json:"publish_mode"`
+	Disabled         bool   `json:"disabled"`
 }
 
 type changeRoleRequest struct {
@@ -147,17 +151,41 @@ type updateMemberStatusRequest struct {
 }
 
 type settingsRequest struct {
-	Name           string `json:"name"`
-	Description    string `json:"description"`
-	VisibilityMode string `json:"visibility_mode"`
-	PublishMode    string `json:"publish_mode"`
-	Domain         string `json:"domain"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	VisibilityMode   string `json:"visibility_mode"`
+	PublishMode      string `json:"publish_mode"`
+	Domain           string `json:"domain"`
+	RegistrationOpen *bool  `json:"registration_open"`
 }
 
 // siteDomainRequest is a full domain replacement: the field is required so an empty
 // body cannot silently clear the domain.
 type siteDomainRequest struct {
 	Domain *string `json:"domain"`
+}
+
+// domainResponse is the domain screen payload.
+//
+// While the domain is pending, verification_token and record_name tell the operator
+// exactly which DNS TXT record to publish; once verified the token is omitted. With no
+// domain all four fields are empty.
+type domainResponse struct {
+	Domain            string `json:"domain"`
+	Verified          bool   `json:"verified"`
+	VerificationToken string `json:"verification_token"`
+	RecordName        string `json:"record_name"`
+	RecordType        string `json:"record_type"`
+}
+
+func toDomainResponse(status DomainStatus) domainResponse {
+	return domainResponse{
+		Domain:            status.Domain,
+		Verified:          status.Verified,
+		VerificationToken: status.VerificationToken,
+		RecordName:        status.RecordName,
+		RecordType:        status.RecordType,
+	}
 }
 
 // GetSite returns the site to one of its members.
@@ -174,13 +202,15 @@ func (h *Handler) GetSite(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, siteResponse{
-		ID:             found.ID,
-		Slug:           found.Slug,
-		Name:           found.Name,
-		Domain:         found.Domain,
-		VisibilityMode: string(found.VisibilityMode),
-		PublishMode:    string(found.PublishMode),
-		Disabled:       found.Disabled,
+		ID:               found.ID,
+		Slug:             found.Slug,
+		Name:             found.Name,
+		Domain:           found.Domain,
+		DomainVerified:   found.DomainVerified(),
+		RegistrationOpen: found.RegistrationOpen,
+		VisibilityMode:   string(found.VisibilityMode),
+		PublishMode:      string(found.PublishMode),
+		Disabled:         found.Disabled,
 	})
 }
 
@@ -374,11 +404,12 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	}
 
 	err := h.service.UpdateSettings(c.Request.Context(), actor, actor.SiteID, SettingsInput{
-		Name:           req.Name,
-		Description:    req.Description,
-		VisibilityMode: VisibilityMode(req.VisibilityMode),
-		PublishMode:    PublishMode(req.PublishMode),
-		Domain:         req.Domain,
+		Name:             req.Name,
+		Description:      req.Description,
+		VisibilityMode:   VisibilityMode(req.VisibilityMode),
+		PublishMode:      PublishMode(req.PublishMode),
+		Domain:           req.Domain,
+		RegistrationOpen: req.RegistrationOpen,
 	}, h.requestID(c))
 	if err != nil {
 		_ = c.Error(mapError(err))
@@ -388,11 +419,12 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// UpdateDomain sets or clears the site's primary domain.
+// UpdateDomain declares or clears the site's primary domain.
 //
-// A non-empty value is stored with domain_verified_at, so the site becomes reachable
-// on it immediately; an empty string clears both and restores the domain-less
-// fallback. Validation rejects anything that is not a bare hostname.
+// A non-empty value only starts a DNS ownership challenge: it is stored unverified
+// together with a fresh TXT token, and serving on it begins after
+// POST /sites/{id}/domain/verify succeeds. An empty string clears the domain, the
+// challenge and the verification, restoring the domain-less fallback.
 func (h *Handler) UpdateDomain(c *gin.Context) {
 	actor, ok := h.actor(c, c.Param("siteID"))
 	if !ok {
@@ -421,6 +453,39 @@ func (h *Handler) UpdateDomain(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// GetDomain returns the domain screen state of the site.
+func (h *Handler) GetDomain(c *gin.Context) {
+	actor, ok := h.actor(c, c.Param("siteID"))
+	if !ok {
+		return
+	}
+
+	status, err := h.service.DomainStatus(c.Request.Context(), actor, actor.SiteID)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, toDomainResponse(status))
+}
+
+// VerifyDomain runs the DNS TXT challenge and reports the new state.
+//
+// A mismatch or DNS failure answers 409 with reason domain_verification_failed; the
+// client is expected to fix the record and retry.
+func (h *Handler) VerifyDomain(c *gin.Context) {
+	actor, ok := h.actor(c, c.Param("siteID"))
+	if !ok {
+		return
+	}
+
+	status, err := h.service.VerifyDomain(c.Request.Context(), actor, actor.SiteID, h.requestID(c))
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, toDomainResponse(status))
 }
 
 // customizationResponse is the design document a browser renders the site from.
@@ -655,6 +720,11 @@ func mapError(err error) *apperr.Problem {
 		return apperr.Conflict(apperr.CodeConflict).
 			WithDetail("reason", "domain_taken").
 			WithMessage("该域名已经被其他站点使用")
+
+	case errors.Is(err, ErrDomainVerificationFailed):
+		return apperr.Conflict(apperr.CodeConflict).
+			WithDetail("reason", "domain_verification_failed").
+			WithMessage("域名所有权验证未通过，请检查 DNS TXT 记录后重试")
 
 	case errors.Is(err, ErrCustomizationConflict):
 		return apperr.Conflict(apperr.CodeConflict).

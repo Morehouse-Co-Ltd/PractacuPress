@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -17,6 +18,42 @@ import (
 // issuer's key material.
 type AccessTokenVerifier interface {
 	VerifyAccess(raw string) (auth.Principal, error)
+}
+
+// MembershipResolver loads the caller's live membership of one site.
+//
+// A token is a snapshot: the role and the membership status it was minted with stay
+// true for its whole lifetime, while the database may already have demoted, suspended
+// or removed the account. Every site-scoped authorization decision therefore re-reads
+// the membership, and the token only proves "this account was here". Leaving this out
+// would let a revoked administrator keep publishing until the access token expires.
+type MembershipResolver interface {
+	// Membership returns the active membership of userID in siteID.
+	// A non-active or missing membership is reported as an error.
+	Membership(ctx context.Context, siteID, userID string) (site.Member, error)
+}
+
+// membershipResolver picks the first non-nil resolver so callers can pass an optional
+// dependency without branching at every construction site.
+func membershipResolver(resolvers []MembershipResolver) MembershipResolver {
+	for _, resolver := range resolvers {
+		if resolver != nil {
+			return resolver
+		}
+	}
+	return nil
+}
+
+// livePrincipal replaces the token's role claim with the database role. It reports
+// whether the caller still has an active membership; a database failure counts as
+// "not a member", which is the safe direction for an authorization check.
+func livePrincipal(c *gin.Context, resolver MembershipResolver, principal auth.Principal) (auth.Principal, bool) {
+	member, err := resolver.Membership(c.Request.Context(), principal.SiteID, principal.UserID)
+	if err != nil {
+		return auth.Principal{}, false
+	}
+	principal.Role = member.Role
+	return principal, true
 }
 
 // RequireAuth rejects requests without a valid bearer access token.
@@ -55,12 +92,21 @@ func RequireAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
 // describes a different tenant. Keeping it would let an account registered on site A
 // browse site B with A's identity, and every anonymous-read handler keys its queries
 // off the principal's site, so the reader would silently be served the wrong site.
-func OptionalAuth(verifier AccessTokenVerifier) gin.HandlerFunc {
+//
+// The optional membership resolver additionally drops a token whose account is no
+// longer an active member of the resolved site, so suspended or removed readers fall
+// back to the anonymous view immediately instead of keeping their old role.
+func OptionalAuth(verifier AccessTokenVerifier, memberships ...MembershipResolver) gin.HandlerFunc {
+	resolver := membershipResolver(memberships)
 	return func(c *gin.Context) {
 		raw, ok := bearerToken(c.GetHeader("Authorization"))
 		if ok && verifier != nil {
 			if principal, err := verifier.VerifyAccess(raw); err == nil && siteMatches(c, principal) {
-				withPrincipal(c, principal)
+				if resolver == nil {
+					withPrincipal(c, principal)
+				} else if live, active := livePrincipal(c, resolver, principal); active {
+					withPrincipal(c, live)
+				}
 			}
 		}
 		c.Next()
@@ -78,6 +124,7 @@ func siteMatches(c *gin.Context, principal auth.Principal) bool {
 	}
 	return principal.SiteID == resolved.ID
 }
+
 // RequireAuthForSite verifies the bearer token and binds it to the site this request
 // resolves to.
 //
@@ -86,7 +133,13 @@ func siteMatches(c *gin.Context, principal auth.Principal) bool {
 // against tenant B's hostname, where the same account may hold a different role - or
 // no membership at all. It is the composed form of RequireAuth + RequireSiteMatch and
 // exists so the route groups can keep taking a single guard handler.
-func RequireAuthForSite(verifier AccessTokenVerifier) gin.HandlerFunc {
+//
+// The optional membership resolver replaces the token's role with the live database
+// role and rejects the request outright when the membership is no longer active. That
+// is what makes a demotion, suspension or removal effective immediately rather than
+// when the access token expires.
+func RequireAuthForSite(verifier AccessTokenVerifier, memberships ...MembershipResolver) gin.HandlerFunc {
+	resolver := membershipResolver(memberships)
 	return func(c *gin.Context) {
 		raw, ok := bearerToken(c.GetHeader("Authorization"))
 		if !ok {
@@ -103,6 +156,14 @@ func RequireAuthForSite(verifier AccessTokenVerifier) gin.HandlerFunc {
 		withPrincipal(c, principal)
 		if !rejectForeignSite(c, principal) {
 			return
+		}
+		if resolver != nil {
+			live, active := livePrincipal(c, resolver, principal)
+			if !active {
+				abortUnauthenticated(c, "membership_inactive")
+				return
+			}
+			withPrincipal(c, live)
 		}
 		c.Next()
 	}

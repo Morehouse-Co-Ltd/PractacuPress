@@ -20,11 +20,20 @@ type Service struct {
 	tokens              *TokenIssuer
 	now                 func() time.Time
 	refreshTTL          time.Duration
+	familyAbsoluteTTL   time.Duration
 	requireVerification bool
 	bootstrapFirstAdmin bool
+	// loginFailures is the account scoped half of the brute force defence. It is
+	// in-process (see loginThrottle) and layered on top of the IP scoped limiter the
+	// transport layer charges.
+	loginFailures *loginThrottle
 	// mailer delivers password reset links. Nil means the deployment has no SMTP
 	// relay, and the reset endpoints report themselves as unavailable.
-	mailer mailer.Sender
+	// registrationPolicy answers whether anonymous accounts may be created on a
+	// site. Nil means "open" (legacy behaviour); the server wires it to the site
+	// setting so an operator can close sign-ups without a redeploy.
+	registrationPolicy func(ctx context.Context, siteID string) (bool, error)
+	mailer             mailer.Sender
 	// publicBaseURL overrides the origin of reset links. Empty means the origin of
 	// the request that asked for the reset is used.
 	publicBaseURL string
@@ -49,8 +58,14 @@ type ServiceConfig struct {
 	BootstrapFirstAdmin bool
 	// RefreshTTL defaults to RefreshTTL.
 	RefreshTTL time.Duration
+	// RefreshFamilyAbsoluteTTL caps the lifetime of one refresh lineage in total,
+	// regardless of rotation. Defaults to RefreshFamilyAbsoluteTTL (90 days).
+	RefreshFamilyAbsoluteTTL time.Duration
 	// Now defaults to time.Now().UTC.
 	Now func() time.Time
+	// RegistrationPolicy, when set, is consulted before a self-service account is
+	// created. A false answer is reported as ErrRegistrationClosed.
+	RegistrationPolicy func(ctx context.Context, siteID string) (bool, error)
 	// Mailer delivers transactional mail. Leaving it nil disables password reset,
 	// which is the correct behaviour for an install without an SMTP relay.
 	Mailer mailer.Sender
@@ -78,8 +93,10 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		tokens:              cfg.Tokens,
 		now:                 cfg.Now,
 		refreshTTL:          cfg.RefreshTTL,
+		familyAbsoluteTTL:   cfg.RefreshFamilyAbsoluteTTL,
 		requireVerification: cfg.RequireEmailVerification,
 		bootstrapFirstAdmin: cfg.BootstrapFirstAdmin,
+		registrationPolicy:  cfg.RegistrationPolicy,
 		mailer:              cfg.Mailer,
 		publicBaseURL:       cfg.PublicBaseURL,
 		logger:              cfg.Logger,
@@ -87,9 +104,13 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if s.refreshTTL <= 0 {
 		s.refreshTTL = RefreshTTL
 	}
+	if s.familyAbsoluteTTL <= 0 {
+		s.familyAbsoluteTTL = RefreshFamilyAbsoluteTTL
+	}
 	if s.now == nil {
 		s.now = func() time.Time { return time.Now().UTC() }
 	}
+	s.loginFailures = newLoginThrottle(s.now)
 	return s, nil
 }
 
@@ -105,6 +126,11 @@ type RegisterEmailInput struct {
 	Email       string
 	Password    string
 	DisplayName string
+	// AllowFirstAdmin reports whether this request is allowed to claim the install's
+	// first account when BootstrapFirstAdmin is on. The handler sets it from the
+	// request host: only a loopback caller may become the first platform administrator
+	// (an exposed, not yet installed instance must not be claimable over the network).
+	AllowFirstAdmin bool
 	ClientMeta
 }
 
@@ -136,9 +162,14 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 		return Session{}, err
 	}
 
-	passwordHash, err := s.hasher.Hash(ctx, in.Password)
-	if err != nil {
-		return Session{}, err
+	if s.registrationPolicy != nil {
+		open, policyErr := s.registrationPolicy(ctx, siteID)
+		if policyErr != nil {
+			return Session{}, policyErr
+		}
+		if !open {
+			return Session{}, ErrRegistrationClosed
+		}
 	}
 
 	role := string(site.RoleMember)
@@ -146,13 +177,26 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 		// The count and the insert are not one transaction, so two simultaneous first
 		// registrations could both win. A desktop install only ever has one operator,
 		// and a server deployment never enables this rule.
+		//
+		// Only a loopback caller may claim the first account: an install that is
+		// already exposed before its owner registers would otherwise be taken over by
+		// whoever reaches it first (V-16). The check happens before hashing so a remote
+		// caller cannot spend the Argon2 budget on a request that will be refused.
 		members, countErr := s.repo.CountSiteMembers(ctx, siteID)
 		if countErr != nil {
 			return Session{}, countErr
 		}
 		if members == 0 {
+			if !in.AllowFirstAdmin {
+				return Session{}, ErrInstallRequiresLocalAccess
+			}
 			role = string(site.RolePlatformAdmin)
 		}
+	}
+
+	passwordHash, err := s.hasher.Hash(ctx, in.Password)
+	if err != nil {
+		return Session{}, err
 	}
 
 	user, err := s.repo.CreateAccountWithEmail(ctx, CreateAccountInput{
@@ -167,7 +211,7 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 		return Session{}, err
 	}
 
-	session, record, err := s.buildSession(ctx, user, siteID, "", "", in.ClientMeta)
+	session, record, err := s.buildSession(ctx, user, siteID, "", "", in.ClientMeta, time.Time{})
 	if err != nil {
 		return Session{}, err
 	}
@@ -251,9 +295,15 @@ func (s *Service) CreateMember(
 
 // LoginPassword verifies an email and password and starts a session.
 //
-// An unknown account, a wrong password and a missing password credential all return
-// ErrInvalidCredentials with identical shape, so the endpoint cannot be used to
-// enumerate accounts.
+// An unknown account, a wrong password and a disabled account all return
+// ErrInvalidCredentials with identical shape and, crucially, identical cost: when no
+// account (or no password credential) matches, the submitted password is still run
+// through a dummy verification against a fixed PHC string, so the response time does
+// not reveal whether the address is registered.
+//
+// Repeated failures for one address are counted in-process and the account is
+// temporarily locked with exponential backoff (see loginThrottle). The transport
+// layer's credential rate limiter stays as the independent IP scoped half.
 func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInput) (Session, error) {
 	if siteID == "" {
 		return Session{}, fmt.Errorf("%w: site is required", ErrInvalidInput)
@@ -267,15 +317,36 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 		return Session{}, ErrInvalidCredentials
 	}
 
+	if retryAfter, locked := s.loginFailures.blocked(email); locked {
+		return Session{}, &TooManyAttemptsError{RetryAfter: retryAfter}
+	}
+
 	identity, err := s.repo.FindEmailIdentity(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
+			// Spend the same hashing work as an existing account would. A failure of
+			// the hasher is propagated, not swallowed: otherwise an unknown address
+			// would answer 401 while a known one answers 5xx when the security service
+			// is down, which is itself an existence oracle.
+			if _, verifyErr := s.hasher.Verify(ctx, in.Password, dummyPasswordHash); verifyErr != nil {
+				return Session{}, verifyErr
+			}
+			// Count the failure as if the account existed. The lockout must not become
+			// a faster enumeration oracle than the timing it replaced: "5x 401 then
+			// 429" has to look identical for registered and unknown addresses.
+			s.loginFailures.failure(email)
 			return Session{}, ErrInvalidCredentials
 		}
 		return Session{}, err
 	}
 
 	if identity.PasswordHash == "" {
+		// A provider-only identity has no password to compare. Do the same dummy work
+		// so "this address exists but is OAuth-only" is not a timing signal either.
+		if _, verifyErr := s.hasher.Verify(ctx, in.Password, dummyPasswordHash); verifyErr != nil {
+			return Session{}, verifyErr
+		}
+		s.loginFailures.failure(email)
 		return Session{}, ErrInvalidCredentials
 	}
 
@@ -288,27 +359,37 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 		return Session{}, err
 	}
 	if !matches {
+		s.loginFailures.failure(email)
 		return Session{}, ErrInvalidCredentials
 	}
 
 	user, err := s.repo.FindUser(ctx, identity.UserID)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
+			s.loginFailures.failure(email)
 			return Session{}, ErrInvalidCredentials
 		}
 		return Session{}, err
 	}
 	if user.Status != AccountStatusActive {
-		return Session{}, ErrAccountDisabled
+		// The password was correct, so this is not a guessing attempt: clear the streak
+		// instead of locking the owner out. The response is byte for byte the same as a
+		// wrong password: a distinct "account disabled" code would be an enumeration
+		// channel (a refresh of an existing session may still surface the disabled
+		// state, because there the caller already proved possession of a token).
+		s.loginFailures.success(email)
+		return Session{}, ErrInvalidCredentials
 	}
 
-	session, record, err := s.buildSession(ctx, user, siteID, "", "", in.ClientMeta)
+	session, record, err := s.buildSession(ctx, user, siteID, "", "", in.ClientMeta, time.Time{})
 	if err != nil {
 		return Session{}, err
 	}
 	if err := s.repo.CreateSession(ctx, record); err != nil {
 		return Session{}, err
 	}
+
+	s.loginFailures.success(email)
 	return session, nil
 }
 
@@ -316,7 +397,13 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 //
 // Presenting an already rotated token means the token leaked: the whole lineage is
 // revoked before the error is returned, so both the legitimate client and the
-// attacker are logged out (design §7.3 rule 2).
+// attacker are logged out (design §7.3 rule 2). The same applies to a lost rotation
+// race: another request rotated this token between our read and our conditional
+// update, which is indistinguishable from a replay, so the family is revoked too.
+//
+// Rotation inherits the lineage's birth time: a family has an absolute lifetime
+// (RefreshFamilyAbsoluteTTL) that no amount of refreshing can extend. Past it the
+// family is revoked instead of rotated.
 func (s *Service) Refresh(ctx context.Context, siteID, refreshToken string) (Session, error) {
 	if refreshToken == "" {
 		return Session{}, ErrSessionRevoked
@@ -333,7 +420,7 @@ func (s *Service) Refresh(ctx context.Context, siteID, refreshToken string) (Ses
 	now := s.now()
 
 	if record.RotatedAt != nil {
-		if revokeErr := s.repo.RevokeFamily(ctx, record.FamilyID, "refresh_reuse", now); revokeErr != nil {
+		if revokeErr := s.revokeFamily(ctx, record.FamilyID, "refresh_reuse", now); revokeErr != nil {
 			return Session{}, revokeErr
 		}
 		return Session{}, ErrRefreshReuse
@@ -360,23 +447,55 @@ func (s *Service) Refresh(ctx context.Context, siteID, refreshToken string) (Ses
 		return Session{}, ErrAccountDisabled
 	}
 
+	// The lineage's hard ceiling: rotation must inherit the birth time, never reset it.
+	familyCreatedAt, err := s.repo.FamilyCreatedAt(ctx, record.FamilyID)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return Session{}, ErrSessionRevoked
+		}
+		return Session{}, err
+	}
+	familyExpiresAt := familyCreatedAt.Add(s.familyAbsoluteTTL)
+	if !now.Before(familyExpiresAt) {
+		if revokeErr := s.revokeFamily(ctx, record.FamilyID, "refresh_family_expired", now); revokeErr != nil {
+			return Session{}, revokeErr
+		}
+		return Session{}, ErrSessionRevoked
+	}
+
 	session, next, err := s.buildSession(ctx, user, siteID, record.FamilyID, record.ID, ClientMeta{
 		UserAgent: record.UserAgent,
 		IPAddress: record.IPAddress,
-	})
+	}, familyExpiresAt)
 	if err != nil {
 		return Session{}, err
 	}
 
 	if err := s.repo.RotateSession(ctx, record.ID, now, next); err != nil {
 		if errors.Is(err, ErrSessionNotFound) {
-			// Another request won the race and already rotated this token.
-			return Session{}, ErrSessionRevoked
+			// Lost the compare and swap: another request rotated the same token between
+			// our read and this update. That is exactly the concurrent reuse case: the
+			// loser must not leave the winner's session alive, so the family dies.
+			if revokeErr := s.revokeFamily(ctx, record.FamilyID, "refresh_reuse", s.now()); revokeErr != nil {
+				return Session{}, revokeErr
+			}
+			s.logInfo("refresh token reuse detected on concurrent rotation",
+				"user_id", record.UserID)
+			return Session{}, ErrRefreshReuse
 		}
 		return Session{}, err
 	}
 
 	return session, nil
+}
+
+// revokeFamily burns a refresh token lineage and records why.
+func (s *Service) revokeFamily(ctx context.Context, familyID, reason string, at time.Time) error {
+	if err := s.repo.RevokeFamily(ctx, familyID, reason, at); err != nil {
+		return err
+	}
+	s.logInfo("refresh token family revoked", "reason", reason)
+	return nil
 }
 
 // Logout revokes the session behind a refresh token.
@@ -407,13 +526,27 @@ func (s *Service) Me(ctx context.Context, userID string) (UserView, error) {
 	return user.View(), nil
 }
 
+// CSRFToken returns the double submit token bound to one refresh token.
+//
+// The transport layer recomputes it from the refresh cookie before accepting a
+// refresh or logout, so a cookie/header pair that is merely self-consistent still
+// fails (it was not derived from that token).
+func (s *Service) CSRFToken(refreshPlain string) string {
+	return s.tokens.CSRFToken(refreshPlain)
+}
+
 // buildSession mints the token material for a session but does not persist it, so
 // the caller can join the write to an existing transaction.
+//
+// expiresNotAfter, when set, is a hard ceiling for the refresh expiry (the lineage's
+// absolute deadline); the idle lifetime is capped by it so neither the stored row nor
+// the cookie can outlive the lineage.
 func (s *Service) buildSession(
 	ctx context.Context,
 	user UserAccount,
 	siteID, familyID, parentID string,
 	meta ClientMeta,
+	expiresNotAfter time.Time,
 ) (Session, SessionRecord, error) {
 	role, err := s.repo.FindMembershipRole(ctx, siteID, user.ID)
 	if err != nil {
@@ -428,10 +561,10 @@ func (s *Service) buildSession(
 		return Session{}, SessionRecord{}, err
 	}
 
-	csrf, err := NewCSRFToken()
-	if err != nil {
-		return Session{}, SessionRecord{}, err
-	}
+	// The double submit token is not independent random material: it is derived from
+	// the refresh token, so a pair is only valid together with the exact token it was
+	// issued for (V-27). Rotation therefore changes the CSRF token automatically.
+	csrf := s.tokens.CSRFToken(refresh.Plain)
 
 	accessToken, accessExpiry, err := s.tokens.IssueAccess(Principal{
 		UserID: user.ID,
@@ -447,6 +580,10 @@ func (s *Service) buildSession(
 	}
 
 	now := s.now()
+	expiresAt := now.Add(s.refreshTTL)
+	if !expiresNotAfter.IsZero() && expiresAt.After(expiresNotAfter) {
+		expiresAt = expiresNotAfter
+	}
 	record := SessionRecord{
 		ID:        uuid.Must(uuid.NewV7()).String(),
 		UserID:    user.ID,
@@ -456,7 +593,7 @@ func (s *Service) buildSession(
 		ParentID:  parentID,
 		UserAgent: truncate(meta.UserAgent, 512),
 		IPAddress: truncate(meta.IPAddress, 64),
-		ExpiresAt: now.Add(s.refreshTTL),
+		ExpiresAt: expiresAt,
 	}
 
 	return Session{

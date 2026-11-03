@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -154,4 +155,125 @@ func TestUpdateSettingsIsPartial(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Original", updated.Name, "an omitted field must not be cleared")
 	require.Equal(t, string(site.PublishModeOpen), updated.PublishMode)
+}
+
+// TestToSiteReadsRegistrationAndChallengeFields pins the row to domain projection for
+// the O-3 switch and the V-12 token.
+func TestToSiteReadsRegistrationAndChallengeFields(t *testing.T) {
+	store, handle := newStore(t)
+	ctx := context.Background()
+
+	created, err := handle.Client.Site.Create().SetSlug("main").SetName("Main").Save(ctx)
+	require.NoError(t, err)
+
+	found, err := store.FindByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.True(t, found.RegistrationOpen, "the schema default allows sign-ups")
+
+	_, err = handle.Client.Site.UpdateOneID(created.ID).
+		SetDomain("press.example.com").
+		SetDomainVerificationToken("challenge-token").
+		Save(ctx)
+	require.NoError(t, err)
+
+	found, err = store.FindByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "press.example.com", found.Domain)
+	require.Equal(t, "challenge-token", found.DomainVerificationToken)
+	require.Nil(t, found.DomainVerifiedAt)
+	require.True(t, found.RegistrationOpen)
+}
+
+func TestUpdateDomainPersistsChallengeThenVerificationThenClear(t *testing.T) {
+	store, handle := newStore(t)
+	ctx := context.Background()
+
+	created, err := handle.Client.Site.Create().SetSlug("main").SetName("Main").Save(ctx)
+	require.NoError(t, err)
+
+	// Declaring a domain stores the challenge and leaves verification empty.
+	err = store.UpdateDomain(ctx, created.ID, site.DomainInput{
+		Domain: "press.example.com", Token: "challenge-token",
+	}, site.AuditEntry{SiteID: created.ID, Action: "site.domain.updated"})
+	require.NoError(t, err)
+
+	row, err := handle.Client.Site.Get(ctx, created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, row.Domain)
+	require.Equal(t, "press.example.com", *row.Domain)
+	require.NotNil(t, row.DomainVerificationToken)
+	require.Equal(t, "challenge-token", *row.DomainVerificationToken)
+	require.Nil(t, row.DomainVerifiedAt)
+
+	// The successful challenge keeps the token and sets the timestamp.
+	verifiedAt := time.Now().UTC().Truncate(time.Second)
+	err = store.UpdateDomain(ctx, created.ID, site.DomainInput{
+		Domain: "press.example.com", Token: "challenge-token", VerifiedAt: &verifiedAt,
+	}, site.AuditEntry{SiteID: created.ID, Action: "site.domain.verified"})
+	require.NoError(t, err)
+
+	row, err = handle.Client.Site.Get(ctx, created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, row.DomainVerifiedAt)
+	require.True(t, row.DomainVerifiedAt.Equal(verifiedAt))
+
+	// Clearing drops all three columns.
+	err = store.UpdateDomain(ctx, created.ID, site.DomainInput{},
+		site.AuditEntry{SiteID: created.ID, Action: "site.domain.updated"})
+	require.NoError(t, err)
+
+	row, err = handle.Client.Site.Get(ctx, created.ID)
+	require.NoError(t, err)
+	require.Nil(t, row.Domain)
+	require.Nil(t, row.DomainVerificationToken)
+	require.Nil(t, row.DomainVerifiedAt)
+
+	entries, err := handle.Client.AuditLog.Query().
+		Where(auditlog.SiteIDEQ(created.ID)).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+}
+
+func TestUpdateSettingsDomainStartsUnverifiedChallenge(t *testing.T) {
+	store, handle := newStore(t)
+	ctx := context.Background()
+
+	verifiedAt := time.Now().UTC()
+	created, err := handle.Client.Site.Create().
+		SetSlug("main").SetName("Main").
+		SetDomain("old.example.com").
+		SetDomainVerifiedAt(verifiedAt).
+		Save(ctx)
+	require.NoError(t, err)
+
+	closed := false
+	err = store.UpdateSettings(ctx, created.ID, site.SettingsInput{
+		Domain:           "new.example.com",
+		DomainToken:      "new-token",
+		RegistrationOpen: &closed,
+	}, site.AuditEntry{SiteID: created.ID, Action: "site.settings.updated"})
+	require.NoError(t, err)
+
+	row, err := handle.Client.Site.Get(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "new.example.com", *row.Domain)
+	require.Equal(t, "new-token", *row.DomainVerificationToken)
+	require.Nil(t, row.DomainVerifiedAt, "a domain written through settings is never auto-verified")
+	require.False(t, row.RegistrationOpen)
+
+	// A partial update without domain fields leaves the challenge untouched.
+	reopen := true
+	err = store.UpdateSettings(ctx, created.ID, site.SettingsInput{
+		PublishMode:      site.PublishModeOpen,
+		RegistrationOpen: &reopen,
+	}, site.AuditEntry{SiteID: created.ID, Action: "site.settings.updated"})
+	require.NoError(t, err)
+
+	row, err = handle.Client.Site.Get(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "new.example.com", *row.Domain)
+	require.Equal(t, "new-token", *row.DomainVerificationToken)
+	require.Nil(t, row.DomainVerifiedAt)
+	require.True(t, row.RegistrationOpen)
 }

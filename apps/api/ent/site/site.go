@@ -29,6 +29,8 @@ const (
 	FieldPublishMode = "publish_mode"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldRegistrationOpen holds the string denoting the registration_open field in the database.
+	FieldRegistrationOpen = "registration_open"
 	// FieldDisabled holds the string denoting the disabled field in the database.
 	FieldDisabled = "disabled"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -50,6 +52,7 @@ var Columns = []string{
 	FieldVisibilityMode,
 	FieldPublishMode,
 	FieldDescription,
+	FieldRegistrationOpen,
 	FieldDisabled,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -84,6 +87,8 @@ var (
 	PublishModeValidator func(string) error
 	// DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
 	DescriptionValidator func(string) error
+	// DefaultRegistrationOpen holds the default value on creation for the "registration_open" field.
+	DefaultRegistrationOpen bool
 	// DefaultDisabled holds the default value on creation for the "disabled" field.
 	DefaultDisabled bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -144,6 +149,11 @@ func ByPublishMode(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
+}
+
+// ByRegistrationOpen orders the results by the registration_open field.
+func ByRegistrationOpen(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistrationOpen, opts...).ToFunc()
 }
 
 // ByDisabled orders the results by the disabled field.

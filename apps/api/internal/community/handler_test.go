@@ -10,17 +10,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-		"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 func newEngine(repo Repository, actor Actor) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-
 	service, err := NewService(repo, nil)
 	if err != nil {
 		panic(err)
 	}
+	return newEngineWithService(service, actor)
+}
+
+func newEngineWithService(service *Service, actor Actor) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+
 	handler := NewHandler(service, HandlerConfig{
 		Principal: func(*gin.Context) (Actor, bool) { return actor, true },
 	})

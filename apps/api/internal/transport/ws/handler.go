@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/coder/websocket"
+	"github.com/gin-gonic/gin"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
@@ -24,10 +24,10 @@ type HandlerConfig struct {
 
 // Handler serves the ticket endpoint and the WebSocket itself.
 type Handler struct {
-	tickets  *TicketStore
-	hub      *Hub
+	tickets   *TicketStore
+	hub       *Hub
 	principal PrincipalFunc
-	origins  []string
+	origins   []string
 }
 
 // NewHandler builds a Handler.
@@ -80,7 +80,12 @@ func (h *Handler) Connect(c *gin.Context) {
 		return
 	}
 
-	options := &websocket.AcceptOptions{InsecureSkipVerify: len(h.origins) == 0}
+	// Origin policy: the request host is always accepted. Without explicit origin
+	// patterns only a same-origin handshake is allowed (the browser sends Origin, and
+	// a page on another site cannot forge it). A CLI client that sends no Origin is
+	// accepted too, which keeps native tooling working. Configuring OriginPatterns
+	// opts into a cross-origin allow list; the request host stays authorized.
+	options := &websocket.AcceptOptions{}
 	if len(h.origins) > 0 {
 		options.OriginPatterns = h.origins
 	}

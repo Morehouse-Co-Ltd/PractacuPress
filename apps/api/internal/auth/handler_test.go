@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -23,23 +24,40 @@ import (
 )
 
 type apiHarness struct {
-	router *gin.Engine
-	db     *db.DB
-	siteID string
+	router  *gin.Engine
+	db      *db.DB
+	siteID  string
+	service *auth.Service
 }
 
 type staticResolver struct{ site site.Site }
 
 func (s staticResolver) Resolve(context.Context, string) (site.Site, error) { return s.site, nil }
 
+// apiHarnessOptions lets a test replace the pieces it needs to control (clock,
+// hasher, bootstrap rule) while keeping the real Ent store, router and middleware.
+type apiHarnessOptions struct {
+	mailer              mailer.Sender
+	hasher              auth.PasswordHasher
+	now                 func() time.Time
+	bootstrapFirstAdmin bool
+	firstAdminAllowed   auth.FirstAdminFunc
+	registrationPolicy  func(ctx context.Context, siteID string) (bool, error)
+}
+
 func newAPIHarness(t *testing.T) *apiHarness {
 	t.Helper()
-	return newAPIHarnessWithMail(t, nil)
+	return newAPIHarnessWithOptions(t, apiHarnessOptions{})
 }
 
 // newAPIHarnessWithMail is the harness variant used by the password reset tests: a
 // nil sender is exactly the "no SMTP configured" deployment.
 func newAPIHarnessWithMail(t *testing.T, sender mailer.Sender) *apiHarness {
+	t.Helper()
+	return newAPIHarnessWithOptions(t, apiHarnessOptions{mailer: sender})
+}
+
+func newAPIHarnessWithOptions(t *testing.T, opts apiHarnessOptions) *apiHarness {
 	t.Helper()
 	ctx := context.Background()
 
@@ -60,13 +78,21 @@ func newAPIHarnessWithMail(t *testing.T, sender mailer.Sender) *apiHarness {
 	issuer, _, err := auth.NewTokenIssuer(cfg)
 	require.NoError(t, err)
 
-	service, err := auth.NewService(auth.ServiceConfig{
-		Repository: authstore.New(handle.Client),
-		Hasher: auth.NewArgon2idHasher(auth.Argon2Params{
+	hasher := opts.hasher
+	if hasher == nil {
+		hasher = auth.NewArgon2idHasher(auth.Argon2Params{
 			Memory: 8 * 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
-		}),
-		Tokens: issuer,
-		Mailer: sender,
+		})
+	}
+
+	service, err := auth.NewService(auth.ServiceConfig{
+		Repository:          authstore.New(handle.Client),
+		Hasher:              hasher,
+		Tokens:              issuer,
+		Mailer:              opts.mailer,
+		Now:                 opts.now,
+		BootstrapFirstAdmin: opts.bootstrapFirstAdmin,
+		RegistrationPolicy:  opts.registrationPolicy,
 	})
 	require.NoError(t, err)
 
@@ -77,7 +103,8 @@ func newAPIHarnessWithMail(t *testing.T, sender mailer.Sender) *apiHarness {
 			}
 			return cfg.DefaultSiteID
 		},
-		Principal: middleware.PrincipalFrom,
+		Principal:         middleware.PrincipalFrom,
+		FirstAdminAllowed: opts.firstAdminAllowed,
 	})
 
 	router := ginrouter.New(ginrouter.Dependencies{
@@ -87,7 +114,7 @@ func newAPIHarnessWithMail(t *testing.T, sender mailer.Sender) *apiHarness {
 		Auth:         handler,
 	})
 
-	return &apiHarness{router: router, db: handle, siteID: siteRow.ID}
+	return &apiHarness{router: router, db: handle, siteID: siteRow.ID, service: service}
 }
 
 func (h *apiHarness) do(t *testing.T, req *http.Request) *httptest.ResponseRecorder {
@@ -301,6 +328,8 @@ func TestLogoutClearsCookiesAndRevokes(t *testing.T) {
 
 	logoutReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	logoutReq.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: refresh})
+	logoutReq.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: csrf})
+	logoutReq.Header.Set(auth.CSRFHeaderName, csrf)
 	logout := h.do(t, logoutReq)
 
 	require.Equal(t, http.StatusNoContent, logout.Code)

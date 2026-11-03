@@ -207,6 +207,29 @@ func TestCSRFTokensAreUnique(t *testing.T) {
 	require.NotEmpty(t, a)
 }
 
+// TestCSRFTokenIsDerivedFromTheRefreshToken pins the V-27 derivation: deterministic for
+// one refresh token, different across tokens, and long enough to compare safely.
+func TestCSRFTokenIsDerivedFromTheRefreshToken(t *testing.T) {
+	issuer := newTestIssuer(t)
+
+	first, err := NewRefreshToken()
+	require.NoError(t, err)
+	second, err := NewRefreshToken()
+	require.NoError(t, err)
+
+	csrf := issuer.CSRFToken(first.Plain)
+	require.Len(t, csrf, 43, "base64url of an HMAC-SHA256 digest")
+	require.Equal(t, csrf, issuer.CSRFToken(first.Plain), "the derivation must be deterministic")
+	require.NotEqual(t, csrf, issuer.CSRFToken(second.Plain),
+		"a rotated refresh token must get a different CSRF token")
+	require.NotEqual(t, csrf, first.Plain)
+
+	// The derivation is keyed: another issuer (another signing key) yields another
+	// value, which is what stops a client from computing it locally.
+	other := newTestIssuer(t)
+	require.NotEqual(t, csrf, other.CSRFToken(first.Plain))
+}
+
 func TestTokensEqualIsConstantTimeComparison(t *testing.T) {
 	require.True(t, TokensEqual("abc", "abc"))
 	require.False(t, TokensEqual("abc", "abd"))

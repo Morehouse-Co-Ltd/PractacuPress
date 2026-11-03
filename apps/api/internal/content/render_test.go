@@ -41,6 +41,19 @@ func TestMarkdownIsConvertedBeforeSanitization(t *testing.T) {
 	require.Contains(t, sanitizer.lastSource, "<h1")
 }
 
+// TestDiagramFenceSurvivesMarkdownRendering pins the article-diagram storage contract:
+// charts are drawn on the client from the JSON spec, so the server only has to preserve
+// a <pre><code class="language-pp-diagram"> fence — all three parts are in the
+// sanitizer allow-list, which is why article diagrams need no backend changes.
+func TestDiagramFenceSurvivesMarkdownRendering(t *testing.T) {
+	source := "```pp-diagram\n{\"type\":\"chart\",\"kind\":\"bar\",\"items\":[{\"label\":\"一\",\"value\":1}]}\n```\n"
+	out, err := renderMarkdown(source)
+	require.NoError(t, err)
+	require.Contains(t, out, `<pre><code class="language-pp-diagram">`)
+	require.Contains(t, out, "&quot;type&quot;")
+	require.Contains(t, out, "</code></pre>")
+}
+
 func TestHTMLAndPlainArePassedThrough(t *testing.T) {
 	sanitizer := okSanitizer()
 	service := newService(t, newFakeRepo(), sanitizer, site.PublishModeOpen)

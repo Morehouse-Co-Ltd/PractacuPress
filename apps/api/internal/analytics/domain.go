@@ -72,6 +72,15 @@ const (
 	MaxTopPages = 8
 	// MaxTopContent bounds the content leaderboard.
 	MaxTopContent = 8
+	// DuplicateVisitWindow suppresses repeated writes of the same page view by the
+	// same client session inside one process. It is a noise filter, not a security
+	// boundary: replicas keep separate windows and an attacker can still rotate
+	// sessions. The real limits on anonymous writes are rate limiting and the
+	// members-only visibility gate.
+	DuplicateVisitWindow = time.Minute
+	// MaxTrackedVisitKeys bounds the in-process dedupe table so a flood of distinct
+	// sessions cannot grow it without bound.
+	MaxTrackedVisitKeys = 4096
 )
 
 // Sentinel errors.

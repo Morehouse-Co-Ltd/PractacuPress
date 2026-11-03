@@ -329,6 +329,10 @@ func mapError(err error) *apperr.Problem {
 		return apperr.Validation("invalid interaction")
 	case errors.Is(err, ErrNotFound):
 		return apperr.NotFound("comment")
+	case errors.Is(err, ErrTargetNotFound):
+		// A target that is missing or not visible to the caller is reported the same
+		// way, so interactions cannot probe unpublished content ids.
+		return apperr.NotFound("interaction target")
 	case errors.Is(err, ErrCrossSite):
 		return apperr.PermissionDenied().WithDetail("reason", "cross_site")
 	case errors.Is(err, ErrPermissionDenied):

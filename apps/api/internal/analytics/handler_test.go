@@ -19,6 +19,11 @@ import (
 
 func newHandlerEngine(t *testing.T, repo *fakeRepo, now time.Time) *gin.Engine {
 	t.Helper()
+	return newHandlerEngineWithSite(t, repo, now, site.Site{ID: "site_1"})
+}
+
+func newHandlerEngineWithSite(t *testing.T, repo *fakeRepo, now time.Time, resolved site.Site) *gin.Engine {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	service, err := NewService(ServiceConfig{Repository: repo, Now: func() time.Time { return now }})
@@ -31,7 +36,7 @@ func newHandlerEngine(t *testing.T, repo *fakeRepo, now time.Time) *gin.Engine {
 			}
 			return Actor{UserID: "u1", SiteID: "site_1", Role: site.RoleSiteAdmin}, true
 		},
-		Site: func(*gin.Context) (site.Site, bool) { return site.Site{ID: "site_1"}, true },
+		Site: func(*gin.Context) (site.Site, bool) { return resolved, true },
 	})
 
 	engine := gin.New()
@@ -109,4 +114,72 @@ func TestHandlerReportRequiresPrincipal(t *testing.T) {
 	engine.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+// TestHandlerRefusesAnonymousVisitOnMembersOnlySite is the V-10 regression: a
+// members-only site must not accept anonymous analytics writes, because a stranger
+// could otherwise poison the administrator's report.
+func TestHandlerRefusesAnonymousVisitOnMembersOnlySite(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{}
+	engine := newHandlerEngineWithSite(t, repo, now,
+		site.Site{ID: "site_1", VisibilityMode: site.VisibilityMembersOnly})
+
+	body := []byte(`{"path":"/pwned","session":"atk-1","surface":"site","title":"PWNED"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/analytics/visits", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.Equal(t, "unauthenticated", problemCode(t, recorder))
+	require.Empty(t, repo.visits, "a refused write must not reach storage")
+}
+
+// TestHandlerAcceptsMemberVisitOnMembersOnlySite keeps the fix precise: the member
+// front end must still be able to record its own traffic.
+func TestHandlerAcceptsMemberVisitOnMembersOnlySite(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{}
+	engine := newHandlerEngineWithSite(t, repo, now,
+		site.Site{ID: "site_1", VisibilityMode: site.VisibilityMembersOnly})
+
+	body := []byte(`{"path":"/a/cnt_1","session":"m-1","surface":"site"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/analytics/visits", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Test-Principal", "1")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+	require.Len(t, repo.visits, 1)
+}
+
+// TestHandlerDropsDuplicateVisit pins the in-process minute dedupe: a reload loop
+// answers 204 but only one row lands.
+func TestHandlerDropsDuplicateVisit(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{}
+	engine := newHandlerEngine(t, repo, now)
+
+	body := []byte(`{"path":"/a/cnt_1","session":"vs_1","surface":"site"}`)
+	send := func() int {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/analytics/visits", bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+
+	require.Equal(t, http.StatusNoContent, send())
+	require.Equal(t, http.StatusNoContent, send())
+	require.Len(t, repo.visits, 1, "the same session and path inside one minute is one view")
+}
+
+func problemCode(t *testing.T, recorder *httptest.ResponseRecorder) string {
+	t.Helper()
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	code, _ := payload["code"].(string)
+	return code
 }

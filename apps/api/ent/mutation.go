@@ -13677,6 +13677,7 @@ type SiteMutation struct {
 	visibility_mode           *string
 	publish_mode              *string
 	description               *string
+	registration_open         *bool
 	disabled                  *bool
 	created_at                *time.Time
 	updated_at                *time.Time
@@ -14130,6 +14131,42 @@ func (m *SiteMutation) ResetDescription() {
 	delete(m.clearedFields, site.FieldDescription)
 }
 
+// SetRegistrationOpen sets the "registration_open" field.
+func (m *SiteMutation) SetRegistrationOpen(b bool) {
+	m.registration_open = &b
+}
+
+// RegistrationOpen returns the value of the "registration_open" field in the mutation.
+func (m *SiteMutation) RegistrationOpen() (r bool, exists bool) {
+	v := m.registration_open
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegistrationOpen returns the old "registration_open" field's value of the Site entity.
+// If the Site object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SiteMutation) OldRegistrationOpen(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegistrationOpen is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegistrationOpen requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegistrationOpen: %w", err)
+	}
+	return oldValue.RegistrationOpen, nil
+}
+
+// ResetRegistrationOpen resets all changes to the "registration_open" field.
+func (m *SiteMutation) ResetRegistrationOpen() {
+	m.registration_open = nil
+}
+
 // SetDisabled sets the "disabled" field.
 func (m *SiteMutation) SetDisabled(b bool) {
 	m.disabled = &b
@@ -14272,7 +14309,7 @@ func (m *SiteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SiteMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.slug != nil {
 		fields = append(fields, site.FieldSlug)
 	}
@@ -14296,6 +14333,9 @@ func (m *SiteMutation) Fields() []string {
 	}
 	if m.description != nil {
 		fields = append(fields, site.FieldDescription)
+	}
+	if m.registration_open != nil {
+		fields = append(fields, site.FieldRegistrationOpen)
 	}
 	if m.disabled != nil {
 		fields = append(fields, site.FieldDisabled)
@@ -14330,6 +14370,8 @@ func (m *SiteMutation) Field(name string) (ent.Value, bool) {
 		return m.PublishMode()
 	case site.FieldDescription:
 		return m.Description()
+	case site.FieldRegistrationOpen:
+		return m.RegistrationOpen()
 	case site.FieldDisabled:
 		return m.Disabled()
 	case site.FieldCreatedAt:
@@ -14361,6 +14403,8 @@ func (m *SiteMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldPublishMode(ctx)
 	case site.FieldDescription:
 		return m.OldDescription(ctx)
+	case site.FieldRegistrationOpen:
+		return m.OldRegistrationOpen(ctx)
 	case site.FieldDisabled:
 		return m.OldDisabled(ctx)
 	case site.FieldCreatedAt:
@@ -14431,6 +14475,13 @@ func (m *SiteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDescription(v)
+		return nil
+	case site.FieldRegistrationOpen:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegistrationOpen(v)
 		return nil
 	case site.FieldDisabled:
 		v, ok := value.(bool)
@@ -14552,6 +14603,9 @@ func (m *SiteMutation) ResetField(name string) error {
 		return nil
 	case site.FieldDescription:
 		m.ResetDescription()
+		return nil
+	case site.FieldRegistrationOpen:
+		m.ResetRegistrationOpen()
 		return nil
 	case site.FieldDisabled:
 		m.ResetDisabled()

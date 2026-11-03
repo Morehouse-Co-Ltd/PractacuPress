@@ -48,6 +48,17 @@ func newHarness(t *testing.T) *harness {
 
 func newHarnessWithVisibility(t *testing.T, visibility site.VisibilityMode) *harness {
 	t.Helper()
+	return newHarnessWithOptions(t, visibility, nil)
+}
+
+// newHarnessWithTXT lets a test drive the DNS challenge without touching real DNS.
+func newHarnessWithTXT(t *testing.T, lookup site.TXTLookup) *harness {
+	t.Helper()
+	return newHarnessWithOptions(t, site.VisibilityPublic, lookup)
+}
+
+func newHarnessWithOptions(t *testing.T, visibility site.VisibilityMode, lookup site.TXTLookup) *harness {
+	t.Helper()
 	ctx := context.Background()
 
 	handle, err := db.Open(ctx, "sqlite", db.SQLiteDSN(filepath.Join(t.TempDir(), "site-api.db")))
@@ -72,7 +83,11 @@ func newHarnessWithVisibility(t *testing.T, visibility site.VisibilityMode) *har
 	})
 	require.NoError(t, err)
 
-	siteService, err := site.NewService(sitestore.New(handle.Client))
+	var siteOptions []site.Option
+	if lookup != nil {
+		siteOptions = append(siteOptions, site.WithTXTLookup(lookup))
+	}
+	siteService, err := site.NewService(sitestore.New(handle.Client), siteOptions...)
 	require.NoError(t, err)
 
 	siteID := siteRow.ID
@@ -636,8 +651,22 @@ func TestPublicUserProfileOnMembersOnlySiteRequiresSession(t *testing.T) {
 
 // --- primary domain --------------------------------------------------------
 
-func TestUpdateDomainSetsDomainAndVerification(t *testing.T) {
-	h := newHarness(t)
+// fakeTXTLookup is an injectable DNS resolver for the handler level challenge tests.
+type fakeTXTLookup struct {
+	records map[string][]string
+	err     error
+}
+
+func (f *fakeTXTLookup) LookupTXT(_ context.Context, name string) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.records[name], nil
+}
+
+func TestUpdateDomainStartsUnverifiedChallenge(t *testing.T) {
+	lookup := &fakeTXTLookup{records: map[string][]string{}}
+	h := newHarnessWithTXT(t, lookup)
 	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
 
 	w := h.do(t, http.MethodPut, "/api/v1/sites/"+h.siteID+"/domain", adminToken,
@@ -648,12 +677,130 @@ func TestUpdateDomainSetsDomainAndVerification(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, row.Domain)
 	require.Equal(t, "press.example.com", *row.Domain)
-	require.NotNil(t, row.DomainVerifiedAt, "setting a domain must verify it, or the site would 404")
+	require.Nil(t, row.DomainVerifiedAt, "declaring a domain must not verify it")
+	require.NotNil(t, row.DomainVerificationToken, "declaring a domain must mint a challenge token")
+	require.NotEmpty(t, *row.DomainVerificationToken)
 
-	// The site resolves through the domain it just accepted.
-	resolved, err := h.siteService.Resolve(context.Background(), "press.example.com")
+	// The declared host does not serve until the challenge passes; the operator's own
+	// loopback host keeps working so the admin UI stays reachable.
+	_, err = h.siteService.Resolve(context.Background(), "press.example.com")
+	require.ErrorIs(t, err, site.ErrDomainUnverified)
+	_, err = h.siteService.Resolve(context.Background(), "127.0.0.1")
 	require.NoError(t, err)
+
+	// The site payload exposes the verification state to the admin UI.
+	got := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID, adminToken, "")
+	require.Equal(t, http.StatusOK, got.Code)
+	var sitePayload map[string]any
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &sitePayload))
+	require.Equal(t, false, sitePayload["domain_verified"])
+
+	// GET /domain returns the exact record the operator has to publish.
+	domain := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/domain", adminToken, "")
+	require.Equal(t, http.StatusOK, domain.Code, domain.Body.String())
+	var domainPayload map[string]any
+	require.NoError(t, json.Unmarshal(domain.Body.Bytes(), &domainPayload))
+	require.Equal(t, "press.example.com", domainPayload["domain"])
+	require.Equal(t, false, domainPayload["verified"])
+	require.Equal(t, *row.DomainVerificationToken, domainPayload["verification_token"])
+	require.Equal(t, "_practacu-verify.press.example.com", domainPayload["record_name"])
+	require.Equal(t, "TXT", domainPayload["record_type"])
+}
+
+func TestDomainVerificationFlow(t *testing.T) {
+	lookup := &fakeTXTLookup{records: map[string][]string{}}
+	h := newHarnessWithTXT(t, lookup)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	path := "/api/v1/sites/" + h.siteID
+
+	put := h.do(t, http.MethodPut, path+"/domain", adminToken, `{"domain":"press.example.com"}`)
+	require.Equal(t, http.StatusNoContent, put.Code, put.Body.String())
+
+	row, err := h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	token := *row.DomainVerificationToken
+	recordName := "_practacu-verify.press.example.com"
+
+	// A wrong record is a conflict with a machine readable reason, and changes nothing.
+	lookup.records[recordName] = []string{"not-the-token"}
+	failed := h.do(t, http.MethodPost, path+"/domain/verify", adminToken, "")
+	require.Equal(t, http.StatusConflict, failed.Code, failed.Body.String())
+	require.Equal(t, "conflict", decodeCode(t, failed))
+	require.Equal(t, "domain_verification_failed", decodeReason(t, failed))
+
+	row, err = h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.Nil(t, row.DomainVerifiedAt, "a failed challenge must not verify")
+
+	// The published record proves ownership; any matching value counts.
+	lookup.records[recordName] = []string{"unrelated", " " + token + " "}
+	verified := h.do(t, http.MethodPost, path+"/domain/verify", adminToken, "")
+	require.Equal(t, http.StatusOK, verified.Code, verified.Body.String())
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(verified.Body.Bytes(), &payload))
+	require.Equal(t, true, payload["verified"])
+	require.Equal(t, "", payload["verification_token"], "a verified domain has nothing left to prove")
+	require.Equal(t, recordName, payload["record_name"])
+	require.Equal(t, "TXT", payload["record_type"])
+
+	row, err = h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.NotNil(t, row.DomainVerifiedAt)
+
+	resolved, err := h.siteService.Resolve(context.Background(), "press.example.com")
+	require.NoError(t, err, "the verified domain starts serving")
 	require.Equal(t, h.siteID, resolved.ID)
+
+	// A second verification is idempotent.
+	again := h.do(t, http.MethodPost, path+"/domain/verify", adminToken, "")
+	require.Equal(t, http.StatusOK, again.Code, again.Body.String())
+
+	// The site payload now reports the domain as verified.
+	got := h.do(t, http.MethodGet, path, adminToken, "")
+	var sitePayload map[string]any
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &sitePayload))
+	require.Equal(t, true, sitePayload["domain_verified"])
+}
+
+func TestGetDomainWithoutDomainIsEmpty(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+
+	domain := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/domain", adminToken, "")
+	require.Equal(t, http.StatusOK, domain.Code, domain.Body.String())
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(domain.Body.Bytes(), &payload))
+	require.Equal(t, "", payload["domain"])
+	require.Equal(t, false, payload["verified"])
+	require.Equal(t, "", payload["verification_token"])
+	require.Equal(t, "", payload["record_name"])
+	require.Equal(t, "TXT", payload["record_type"])
+
+	// Verifying without a domain is a validation failure.
+	verify := h.do(t, http.MethodPost, "/api/v1/sites/"+h.siteID+"/domain/verify", adminToken, "")
+	require.Equal(t, http.StatusBadRequest, verify.Code)
+	require.Equal(t, "validation_failed", decodeCode(t, verify))
+}
+
+func TestDomainEndpointsRequireManager(t *testing.T) {
+	h := newHarness(t)
+	memberToken := h.register(t, "member@example.com")
+
+	editorToken := h.register(t, "editor@example.com")
+	h.setRole(t, h.userID(t, editorToken), site.RoleEditor)
+	editorToken = h.login(t, "editor@example.com")
+
+	path := "/api/v1/sites/" + h.siteID + "/domain"
+
+	require.Equal(t, http.StatusUnauthorized, h.do(t, http.MethodGet, path, "", "").Code)
+	require.Equal(t, http.StatusUnauthorized, h.do(t, http.MethodPost, path+"/verify", "", "").Code)
+	require.Equal(t, http.StatusForbidden, h.do(t, http.MethodGet, path, memberToken, "").Code)
+	require.Equal(t, http.StatusForbidden, h.do(t, http.MethodPost, path+"/verify", memberToken, "").Code)
+	require.Equal(t, http.StatusForbidden, h.do(t, http.MethodGet, path, editorToken, "").Code)
+
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	require.Equal(t, http.StatusOK, h.do(t, http.MethodGet, path, adminToken, "").Code)
 }
 
 func TestUpdateDomainClearsDomainAndRestoresFallback(t *testing.T) {
@@ -664,6 +811,10 @@ func TestUpdateDomainClearsDomainAndRestoresFallback(t *testing.T) {
 		`{"domain":"press.example.com"}`)
 	require.Equal(t, http.StatusNoContent, first.Code, first.Body.String())
 
+	pending, err := h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.NotNil(t, pending.DomainVerificationToken)
+
 	clear := h.do(t, http.MethodPut, "/api/v1/sites/"+h.siteID+"/domain", adminToken, `{"domain":""}`)
 	require.Equal(t, http.StatusNoContent, clear.Code, clear.Body.String())
 
@@ -671,6 +822,7 @@ func TestUpdateDomainClearsDomainAndRestoresFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, row.Domain == nil || *row.Domain == "")
 	require.Nil(t, row.DomainVerifiedAt)
+	require.Nil(t, row.DomainVerificationToken, "clearing a domain must drop the challenge token")
 
 	// A single site without a domain answers through the fallback again.
 	resolved, err := h.siteService.Resolve(context.Background(), "127.0.0.1")
@@ -740,4 +892,49 @@ func TestUpdateDomainRejectsDomainOfAnotherSite(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
 	require.Equal(t, "domain_taken", decodeReason(t, w))
+}
+
+// --- registration switch (O-3 site half) -----------------------------------
+
+func TestGetSiteExposesRegistrationOpen(t *testing.T) {
+	h := newHarness(t)
+	token := h.register(t, "member@example.com")
+
+	w := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID, token, "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
+	require.Equal(t, true, payload["registration_open"], "new sites allow sign-ups by default")
+}
+
+func TestUpdateSettingsRegistrationSwitch(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+	path := "/api/v1/sites/" + h.siteID + "/settings"
+
+	closed := h.do(t, http.MethodPatch, path, adminToken, `{"registration_open":false}`)
+	require.Equal(t, http.StatusNoContent, closed.Code, closed.Body.String())
+
+	row, err := h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.False(t, row.RegistrationOpen)
+
+	// A patch that omits the field must not reopen it.
+	other := h.do(t, http.MethodPatch, path, adminToken, `{"publish_mode":"open"}`)
+	require.Equal(t, http.StatusNoContent, other.Code, other.Body.String())
+	row, err = h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.False(t, row.RegistrationOpen, "an omitted field must not change the switch")
+
+	reopened := h.do(t, http.MethodPatch, path, adminToken, `{"registration_open":true}`)
+	require.Equal(t, http.StatusNoContent, reopened.Code, reopened.Body.String())
+	row, err = h.db.Client.Site.Get(context.Background(), h.siteID)
+	require.NoError(t, err)
+	require.True(t, row.RegistrationOpen)
+
+	// Only managers may flip the switch.
+	memberToken := h.register(t, "member2@example.com")
+	denied := h.do(t, http.MethodPatch, path, memberToken, `{"registration_open":false}`)
+	require.Equal(t, http.StatusForbidden, denied.Code)
 }

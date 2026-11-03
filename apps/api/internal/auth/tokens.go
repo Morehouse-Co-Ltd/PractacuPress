@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/ed25519"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -25,8 +26,13 @@ const (
 	// AccessTTL is deliberately short: the access token is kept in browser memory
 	// and is not revocable, so a short window bounds the damage of theft.
 	AccessTTL = 15 * time.Minute
-	// RefreshTTL is the absolute lifetime of one refresh lineage.
+	// RefreshTTL is the idle lifetime of one refresh token. Rotation issues a new
+	// token with a fresh idle deadline.
 	RefreshTTL = 30 * 24 * time.Hour
+	// RefreshFamilyAbsoluteTTL is the hard ceiling on a refresh lineage, no matter how
+	// often it rotates. Without it a stolen refresh cookie could be kept alive forever
+	// by refreshing it inside every idle window.
+	RefreshFamilyAbsoluteTTL = 90 * 24 * time.Hour
 	// RefreshTokenBytes is the entropy of an opaque refresh token.
 	RefreshTokenBytes = 32
 	// CSRFTokenBytes is the entropy of the double submit CSRF token.
@@ -246,7 +252,36 @@ func HashOpaqueToken(plain string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// NewCSRFToken mints the double submit token paired with a refresh cookie.
+// csrfDerivationPrefix separates the CSRF derivation from any other use of the
+// signing key as an HMAC key.
+const csrfDerivationPrefix = "csrf:"
+
+// CSRFToken derives the double submit token bound to one refresh token.
+//
+// The derivation is deterministic and keyed by a secret the client never sees (the
+// Ed25519 seed), so:
+//
+//   - the same refresh token always yields the same CSRF token (the client can keep
+//     using the value it read from the response or the pp_csrf cookie),
+//   - a rotated refresh token yields a different one automatically, so an old CSRF
+//     value dies together with its token,
+//   - a cookie/header pair that was merely made to match itself is worthless, because
+//     the server can recompute the expected value from the presented refresh token and
+//     a value planted by a cookie-injection primitive will not match.
+//
+// The output is base64url-encoded HMAC-SHA256 (43 characters).
+func (i *TokenIssuer) CSRFToken(refreshPlain string) string {
+	mac := hmac.New(sha256.New, i.key.Seed())
+	mac.Write([]byte(csrfDerivationPrefix))
+	mac.Write([]byte(refreshPlain))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// NewCSRFToken mints a random double submit token.
+//
+// Sessions no longer use this: their CSRF token is derived from the refresh token by
+// TokenIssuer.CSRFToken so the pair is bound to one token (V-27). The helper is kept
+// for callers and tests that need an unbound random value.
 func NewCSRFToken() (string, error) { return randomToken(CSRFTokenBytes) }
 
 func randomToken(size int) (string, error) {

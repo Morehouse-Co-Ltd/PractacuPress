@@ -100,6 +100,23 @@ var (
 	// ErrSecurityUnavailable means sanitization could not be performed, so the item
 	// must stay held rather than be published unaudited.
 	ErrSecurityUnavailable = errors.New("content: security check unavailable")
+	// ErrQuotaExceeded means the author already has as many active drafts, or as many
+	// bytes of active draft source, as the account quota allows (V-06).
+	ErrQuotaExceeded = errors.New("content: draft quota exceeded")
+)
+
+// Per-author draft quotas.
+//
+// They bound the cheap-growth attack from the audit: registration is open, so without
+// quotas one account can grow the database and the review queue without limit. A
+// published or archived item is no longer counted: it already passed the review
+// process, which is the natural place to bound storage.
+const (
+	// MaxActiveDraftsPerAuthor bounds the number of editable draft states per author
+	// and site.
+	MaxActiveDraftsPerAuthor = 200
+	// MaxActiveDraftBytesPerAuthor bounds the total source bytes of those drafts.
+	MaxActiveDraftBytesPerAuthor int64 = 20 << 20 // 20 MiB
 )
 
 // Bounds on caller supplied content.

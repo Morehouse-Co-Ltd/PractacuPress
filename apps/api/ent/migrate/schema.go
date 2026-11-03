@@ -587,6 +587,7 @@ var (
 		{Name: "visibility_mode", Type: field.TypeString, Default: "public"},
 		{Name: "publish_mode", Type: field.TypeString, Default: "review"},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2000},
+		{Name: "registration_open", Type: field.TypeBool, Default: true},
 		{Name: "disabled", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},

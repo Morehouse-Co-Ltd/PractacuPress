@@ -434,13 +434,22 @@ func (s *Store) UpdateSettings(
 	if in.PublishMode != "" {
 		update.SetPublishMode(string(in.PublishMode))
 	}
+	if in.RegistrationOpen != nil {
+		// nil means "leave untouched"; the explicit value is stored as given so a
+		// reopened registration can never be flipped back by a default.
+		update.SetRegistrationOpen(*in.RegistrationOpen)
+	}
 	if in.Domain != "" {
 		update.SetDomain(in.Domain)
-		// The domain is only trusted through domain_verified_at, so the two are always
-		// written together. Otherwise the site would 404 on the domain it just accepted.
-		if in.DomainVerifiedAt != nil {
-			update.SetDomainVerifiedAt(*in.DomainVerifiedAt)
+		// A domain written through settings is a fresh challenge: store the token and
+		// drop any previous verification, so the hostname only starts serving after
+		// the DNS proof succeeds.
+		if in.DomainToken != "" {
+			update.SetDomainVerificationToken(in.DomainToken)
+		} else {
+			update.ClearDomainVerificationToken()
 		}
+		update.ClearDomainVerifiedAt()
 	}
 
 	if _, err := update.Save(ctx); err != nil {
@@ -461,10 +470,13 @@ func (s *Store) UpdateSettings(
 	return nil
 }
 
-// UpdateDomain sets or clears the primary domain and its verification timestamp.
+// UpdateDomain sets or clears the primary domain, its challenge token and its
+// verification timestamp.
 //
-// Clearing writes SQL NULL for both columns, which is what makes the single-site
-// domain-less fallback active again. The audit entry is committed with the change.
+// Clearing writes SQL NULL for all three columns, which is what makes the single-site
+// domain-less fallback active again. A non-empty domain stores the token and only
+// keeps domain_verified_at when VerifiedAt is supplied (the DNS challenge succeeded).
+// The audit entry is committed with the change.
 func (s *Store) UpdateDomain(
 	ctx context.Context,
 	siteID string,
@@ -484,9 +496,14 @@ func (s *Store) UpdateDomain(
 
 	update := tx.Site.UpdateOneID(siteID)
 	if in.Domain == "" {
-		update.ClearDomain().ClearDomainVerifiedAt()
+		update.ClearDomain().ClearDomainVerificationToken().ClearDomainVerifiedAt()
 	} else {
 		update.SetDomain(in.Domain)
+		if in.Token != "" {
+			update.SetDomainVerificationToken(in.Token)
+		} else {
+			update.ClearDomainVerificationToken()
+		}
 		if in.VerifiedAt != nil {
 			update.SetDomainVerifiedAt(*in.VerifiedAt)
 		} else {
@@ -543,17 +560,21 @@ func insertAudit(ctx context.Context, client *entgen.Client, entry site.AuditEnt
 
 func toSite(row *entgen.Site) site.Site {
 	result := site.Site{
-		ID:             row.ID,
-		Slug:           row.Slug,
-		Name:           row.Name,
-		VisibilityMode: site.VisibilityMode(row.VisibilityMode),
-		PublishMode:    site.PublishMode(row.PublishMode),
-		Disabled:       row.Disabled,
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
+		ID:               row.ID,
+		Slug:             row.Slug,
+		Name:             row.Name,
+		VisibilityMode:   site.VisibilityMode(row.VisibilityMode),
+		PublishMode:      site.PublishMode(row.PublishMode),
+		RegistrationOpen: row.RegistrationOpen,
+		Disabled:         row.Disabled,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}
 	if row.Domain != nil {
 		result.Domain = *row.Domain
+	}
+	if row.DomainVerificationToken != nil {
+		result.DomainVerificationToken = *row.DomainVerificationToken
 	}
 	if row.Description != nil {
 		result.Description = *row.Description

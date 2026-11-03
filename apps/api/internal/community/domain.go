@@ -21,10 +21,10 @@ type TargetType string
 
 // Supported interaction targets.
 const (
-	TargetArticle  TargetType = "article"
-	TargetPost     TargetType = "post"
-	TargetComment  TargetType = "comment"
-	TargetUser     TargetType = "user"
+	TargetArticle TargetType = "article"
+	TargetPost    TargetType = "post"
+	TargetComment TargetType = "comment"
+	TargetUser    TargetType = "user"
 	// TargetPage stands for a custom site page, for example a guestbook.
 	TargetPage TargetType = "page"
 )
@@ -41,10 +41,10 @@ func (t TargetType) Valid() bool {
 
 // Comment status values.
 const (
-	CommentStatusVisible   = "visible"
-	CommentStatusHidden    = "hidden"
-	CommentStatusDeleted   = "deleted"
-	CommentStatusPending   = "pending_review"
+	CommentStatusVisible = "visible"
+	CommentStatusHidden  = "hidden"
+	CommentStatusDeleted = "deleted"
+	CommentStatusPending = "pending_review"
 )
 
 // Comment status aliases used by moderation.
@@ -68,6 +68,10 @@ var (
 	ErrDepthExceeded = errors.New("community: reply depth exceeded")
 	// ErrSelfTarget means the actor targeted itself, which follow and report forbid.
 	ErrSelfTarget = errors.New("community: cannot target yourself")
+	// ErrTargetNotFound means the interaction target does not exist on this site, or is
+	// not visible to the caller. It is deliberately indistinguishable from a missing
+	// row so unpublished content cannot be probed through interactions.
+	ErrTargetNotFound = errors.New("community: target not found")
 )
 
 // Bounds on caller supplied content.
@@ -88,9 +92,9 @@ type Actor struct {
 
 // Comment is one comment or reply.
 type Comment struct {
-	ID         string
-	SiteID     string
-	AuthorID   string
+	ID       string
+	SiteID   string
+	AuthorID string
 	// AuthorName is a read model field: it is joined when listing comments and is
 	// never persisted on the comment row.
 	AuthorName string

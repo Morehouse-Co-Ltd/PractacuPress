@@ -13,8 +13,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
-	entsite "github.com/practacu/practacu-press/apps/api/ent/site"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
+	entsite "github.com/practacu/practacu-press/apps/api/ent/site"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
@@ -315,6 +315,25 @@ func (s *Store) RotateSession(ctx context.Context, oldID string, rotatedAt time.
 	}
 	committed = true
 	return nil
+}
+
+// FamilyCreatedAt returns the creation time of the oldest row of a lineage.
+//
+// The first row of a family is written when the session is created (login,
+// registration or a provider sign-in) and every rotation inserts a new row instead of
+// updating it, so the minimum created_at is the lineage's birth time.
+func (s *Store) FamilyCreatedAt(ctx context.Context, familyID string) (time.Time, error) {
+	row, err := s.client.Session.Query().
+		Where(session.FamilyIDEQ(familyID)).
+		Order(entgen.Asc(session.FieldCreatedAt)).
+		First(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return time.Time{}, auth.ErrSessionNotFound
+		}
+		return time.Time{}, err
+	}
+	return row.CreatedAt, nil
 }
 
 // RevokeFamily revokes every live session in a family.
