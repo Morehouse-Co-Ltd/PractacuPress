@@ -322,9 +322,15 @@ func toCommentResponse(comment Comment) commentResponse {
 
 // mapError translates community failures into the API error model.
 func mapError(err error) *apperr.Problem {
+	var fieldErr *apperr.FieldError
+
 	switch {
 	case err == nil:
 		return nil
+	case errors.As(err, &fieldErr):
+		// The input failed a known rule: the client gets the stable field/rule pair and
+		// keeps the english reason for operators.
+		return apperr.ValidationField(fieldErr.Reason, fieldErr.Field, fieldErr.Rule)
 	case errors.Is(err, ErrInvalidInput):
 		return apperr.Validation("invalid interaction")
 	case errors.Is(err, ErrNotFound):
@@ -338,9 +344,9 @@ func mapError(err error) *apperr.Problem {
 	case errors.Is(err, ErrPermissionDenied):
 		return apperr.PermissionDenied()
 	case errors.Is(err, ErrDepthExceeded):
-		return apperr.Validation("reply depth exceeded")
+		return apperr.ValidationField("reply depth exceeded", "depth", "out_of_range")
 	case errors.Is(err, ErrSelfTarget):
-		return apperr.Validation("cannot target yourself")
+		return apperr.ValidationField("cannot target yourself", "target", "unsupported")
 	}
 
 	var problem *apperr.Problem

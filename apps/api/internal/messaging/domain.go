@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -48,6 +49,21 @@ const (
 	// MinDirectMembers is exact membership of a direct thread.
 	MinDirectMembers = 2
 )
+
+// invalidField builds a field error that stays matchable as ErrInvalidInput.
+//
+// Both sentinels are wrapped: errors.Is(err, ErrInvalidInput) keeps working for the
+// transport, while errors.As(err, &FieldError) recovers the field and rule the client
+// translates. FieldError itself lives in the error model package and cannot reference
+// this package's sentinel without an import cycle, which is why the wrapping happens
+// here rather than in an Unwrap method.
+func invalidField(field, rule, reason string) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, &apperr.FieldError{
+		Field:  field,
+		Rule:   rule,
+		Reason: reason,
+	})
+}
 
 // Actor is the caller.
 type Actor struct {
@@ -123,10 +139,10 @@ func ValidateMessage(in NewMessageInput) (NewMessageInput, error) {
 		return NewMessageInput{}, fmt.Errorf("%w: conversation is required", ErrInvalidInput)
 	}
 	if in.Body == "" {
-		return NewMessageInput{}, fmt.Errorf("%w: body is required", ErrInvalidInput)
+		return NewMessageInput{}, invalidField("body", "required", "body is required")
 	}
 	if len([]rune(in.Body)) > MaxBodyLength {
-		return NewMessageInput{}, fmt.Errorf("%w: body is too long", ErrInvalidInput)
+		return NewMessageInput{}, invalidField("body", "too_long", "body is too long")
 	}
 	return in, nil
 }

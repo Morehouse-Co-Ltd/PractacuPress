@@ -1,11 +1,13 @@
 package messaging
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -41,6 +43,51 @@ func TestValidateMessage(t *testing.T) {
 	}
 	_, err = ValidateMessage(NewMessageInput{ConversationID: "c1", Body: string(long)})
 	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+// TestMessageValidationErrorsCarryFieldAndRule pins the machine vocabulary the client
+// uses to explain a rejected message: the sentinel stays matchable for the transport,
+// while the FieldError names the input and the broken rule.
+func TestMessageValidationErrorsCarryFieldAndRule(t *testing.T) {
+	tests := []struct {
+		name  string
+		call  func() error
+		field string
+		rule  string
+	}{
+		{
+			name: "empty body",
+			call: func() error {
+				_, err := ValidateMessage(NewMessageInput{ConversationID: "c1", Body: "   "})
+				return err
+			},
+			field: "body", rule: "required",
+		},
+		{
+			name: "over-long body",
+			call: func() error {
+				_, err := ValidateMessage(NewMessageInput{
+					ConversationID: "c1",
+					Body:           strings.Repeat("x", MaxBodyLength+1),
+				})
+				return err
+			},
+			field: "body", rule: "too_long",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.ErrorIs(t, err, ErrInvalidInput, "the transport still matches the sentinel")
+
+			var fieldErr *apperr.FieldError
+			require.ErrorAs(t, err, &fieldErr, "the error names the failing field")
+			require.Equal(t, tt.field, fieldErr.Field)
+			require.Equal(t, tt.rule, fieldErr.Rule)
+			require.NotEmpty(t, fieldErr.Reason, "operators keep the english reason")
+		})
+	}
 }
 
 // TestAuthorizeRejectsOutsiders is the property the whole package exists for.

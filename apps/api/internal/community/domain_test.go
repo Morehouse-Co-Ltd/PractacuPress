@@ -1,10 +1,12 @@
 package community
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -40,6 +42,82 @@ func TestValidateComment(t *testing.T) {
 
 	_, err = ValidateComment(NewCommentInput{TargetType: TargetComment, Body: "y"})
 	require.Error(t, err, "a reply needs its parent target id")
+}
+
+// TestCommentValidationErrorsCarryFieldAndRule pins the machine vocabulary the client
+// uses to explain a rejected comment: the sentinel stays matchable for the transport,
+// while the FieldError names the input and the broken rule.
+func TestCommentValidationErrorsCarryFieldAndRule(t *testing.T) {
+	tests := []struct {
+		name  string
+		call  func() error
+		field string
+		rule  string
+	}{
+		{
+			name: "empty body",
+			call: func() error {
+				_, err := ValidateComment(NewCommentInput{
+					TargetType: TargetArticle, TargetID: "a1", Body: "   ",
+				})
+				return err
+			},
+			field: "body", rule: "required",
+		},
+		{
+			name: "over-long body",
+			call: func() error {
+				_, err := ValidateComment(NewCommentInput{
+					TargetType: TargetArticle,
+					TargetID:   "a1",
+					Body:       strings.Repeat("x", MaxCommentLength+1),
+				})
+				return err
+			},
+			field: "body", rule: "too_long",
+		},
+		{
+			name: "empty reply target",
+			call: func() error {
+				_, err := ValidateComment(NewCommentInput{
+					TargetType: TargetComment, TargetID: "c1", Body: "y",
+				})
+				return err
+			},
+			field: "target", rule: "required",
+		},
+		{
+			name: "unknown target type",
+			call: func() error {
+				_, err := ValidateComment(NewCommentInput{
+					TargetType: "video", TargetID: "a1", Body: "y",
+				})
+				return err
+			},
+			field: "target", rule: "unknown",
+		},
+		{
+			name: "reply too deep",
+			call: func() error {
+				_, err := NextDepth(&Comment{Depth: MaxReplyDepth})
+				return err
+			},
+			field: "depth", rule: "out_of_range",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.ErrorIs(t, err, ErrInvalidInput, "the transport still matches the sentinel")
+
+			var fieldErr *apperr.FieldError
+			require.ErrorAs(t, err, &fieldErr, "the error names the failing field")
+			require.Equal(t, tt.field, fieldErr.Field)
+			require.Equal(t, tt.rule, fieldErr.Rule)
+			require.NotEmpty(t, fieldErr.Reason, "operators keep the english reason")
+		})
+	}
 }
 
 func TestNextDepthBoundsNesting(t *testing.T) {

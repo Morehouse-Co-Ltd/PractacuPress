@@ -88,6 +88,29 @@ func TestCommentValidationError(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// TestCommentValidationNamesTheField is the end to end contract: the status and the
+// human message stay as they were, while details names the field and rule the client
+// translates.
+func TestCommentValidationNamesTheField(t *testing.T) {
+	r := newEngine(newFakeRepo(), memberActor())
+
+	w := do(r, http.MethodPost, "/comments", `{"target_type":"article","target_id":"a1","body":""}`)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var problem struct {
+		Message string         `json:"message"`
+		Details map[string]any `json:"details"`
+	}
+	require.NoError(t, decodeJSON(w.Body.Bytes(), &problem))
+
+	require.Equal(t, apperr.New(apperr.CodeValidationFailed).Message, problem.Message,
+		"the human readable message is unchanged")
+	require.Equal(t, "body", problem.Details["field"])
+	require.Equal(t, "required", problem.Details["rule"])
+	require.NotEmpty(t, problem.Details["reason"], "operators keep the english reason")
+}
+
 func TestDeleteCommentByModerator(t *testing.T) {
 	repo := newFakeRepo()
 	author := newEngine(repo, memberActor())

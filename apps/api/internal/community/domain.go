@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
@@ -82,6 +83,21 @@ const (
 	// comment, so a depth of 3 means three levels of replies.
 	MaxReplyDepth = 3
 )
+
+// invalidField builds a field error that stays matchable as ErrInvalidInput.
+//
+// Both sentinels are wrapped: errors.Is(err, ErrInvalidInput) keeps working for the
+// transport, while errors.As(err, &FieldError) recovers the field and rule the client
+// translates. FieldError itself lives in the error model package and cannot reference
+// this package's sentinel without an import cycle, which is why the wrapping happens
+// here rather than in an Unwrap method.
+func invalidField(field, rule, reason string) error {
+	return fmt.Errorf("%w: %w", ErrInvalidInput, &apperr.FieldError{
+		Field:  field,
+		Rule:   rule,
+		Reason: reason,
+	})
+}
 
 // Actor is the caller performing an interaction.
 type Actor struct {
@@ -170,19 +186,19 @@ func ValidateComment(in NewCommentInput) (NewCommentInput, error) {
 	in.ParentID = strings.TrimSpace(in.ParentID)
 
 	if !in.TargetType.Valid() {
-		return NewCommentInput{}, fmt.Errorf("%w: unknown target type", ErrInvalidInput)
+		return NewCommentInput{}, invalidField("target", "unknown", "unknown target type")
 	}
 	if in.TargetID == "" {
-		return NewCommentInput{}, fmt.Errorf("%w: target is required", ErrInvalidInput)
+		return NewCommentInput{}, invalidField("target", "required", "target is required")
 	}
 	if in.Body == "" {
-		return NewCommentInput{}, fmt.Errorf("%w: body is required", ErrInvalidInput)
+		return NewCommentInput{}, invalidField("body", "required", "body is required")
 	}
 	if len([]rune(in.Body)) > MaxCommentLength {
-		return NewCommentInput{}, fmt.Errorf("%w: body is too long", ErrInvalidInput)
+		return NewCommentInput{}, invalidField("body", "too_long", "body is too long")
 	}
 	if in.TargetType == TargetComment && in.ParentID == "" {
-		return NewCommentInput{}, fmt.Errorf("%w: reply target is required", ErrInvalidInput)
+		return NewCommentInput{}, invalidField("target", "required", "reply target is required")
 	}
 	return in, nil
 }
@@ -197,7 +213,11 @@ func NextDepth(parent *Comment) (int, error) {
 	}
 	next := parent.Depth + 1
 	if next > MaxReplyDepth {
-		return 0, ErrDepthExceeded
+		// Three errors are wrapped: existing callers match ErrDepthExceeded, every
+		// input rejection stays matchable as ErrInvalidInput, and the client gets the
+		// field/rule pair. The reason keeps the operator facing text the handler used.
+		return 0, fmt.Errorf("%w: %w: %w", ErrDepthExceeded, ErrInvalidInput,
+			&apperr.FieldError{Field: "depth", Rule: "out_of_range", Reason: "reply depth exceeded"})
 	}
 	return next, nil
 }
