@@ -22,7 +22,12 @@
  * 7. 断言 localStorage `pp.web.config.v1.customization.home.blocks` 里存在
  *    type=button，且按钮的 appearance 与两个按钮条目都已落盘；刷新后重新打开
  *    `/admin/theme` 断言仍在（配置与预览渲染都还在）；
- * 8. 截图存 `.tmp/shots-builder/`，打印 PASS/FAIL 汇总，失败时退出码非 0。
+ * 8. 工具型区块（P2 Task 5）：从组件库追加「对比表」并填表头 / 一行对比，断言
+ *    iframe 里是**真表格**（`<table>` + `th[scope=col]` × 3 + `th[scope=row]`）且
+ *    外面是 `.pp-comparison-scroll` 滚动容器；追加「倒计时」并填目标日期，断言
+ *    四格数字、`role="timer"`、文案里没有 `NaN`；追加「音频」并填地址，断言原生
+ *    `<audio controls preload="metadata">` 且**没有** `autoplay` 属性；
+ * 9. 截图存 `.tmp/shots-builder/`，打印 PASS/FAIL 汇总，失败时退出码非 0。
  *
  * 前置：
  *   cd apps/web
@@ -675,6 +680,315 @@ async function addButtonRow(index, label, link) {
   return true;
 }
 
+/**
+ * 按属性面板里的字段名（`label.field-label` 的文案）填一个普通文本字段。
+ *
+ * 普通字段的 id 是 `blk-<blockId>-<key>`，blockId 每次新建都不同，所以只能从
+ * 字段名倒推 `for` 再取元素。repeater 的行内字段另有一套 aria-label（见 addButtonRow）。
+ */
+async function fillFieldByLabel(label, value) {
+  const result = await evaljs(`(() => {
+    const wanted = ${q(label)};
+    const labels = [...document.querySelectorAll('.builder-inspector label.field-label')];
+    const hit = labels.find((node) => (node.textContent ?? '').replace(/\\s+/g, ' ').trim() === wanted);
+    if (!hit) {
+      return {
+        ok: false,
+        reason: '属性面板里没有字段「' + wanted + '」',
+        fields: labels.map((node) => (node.textContent ?? '').trim()).filter(Boolean).slice(0, 30),
+      };
+    }
+    const el = hit.htmlFor ? document.getElementById(hit.htmlFor) : null;
+    if (!el) return { ok: false, reason: '字段「' + wanted + '」找不到对应输入框（for=' + hit.htmlFor + '）' };
+    const proto = el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : el instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, ${q(value)});
+    else el.value = ${q(value)};
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return { ok: true, value: el.value };
+  })()`);
+  if (!result?.ok) {
+    throw new Error(
+      `填写字段「${label}」失败：${result?.reason ?? 'unknown'}${result?.fields?.length ? `；可见字段: ${result.fields.join(' / ')}` : ''}`,
+    );
+  }
+  await sleep(150);
+  return result.value;
+}
+
+/** 点属性面板 repeater 里的「添加<行>」按钮（按钮文案由 itemLabel 决定）。 */
+async function clickInspectorAdd(label) {
+  const result = await evaljs(`(() => {
+    const wanted = ${q(label)};
+    const button = [...document.querySelectorAll('.builder-inspector .itemlist button')]
+      .find((node) => (node.textContent ?? '').trim() === wanted);
+    if (!button) {
+      return {
+        ok: false,
+        reason: '属性面板里没有「' + wanted + '」按钮',
+        inspector: (document.querySelector('.builder-inspector')?.innerText ?? '')
+          .replace(/\\s+/g, ' ')
+          .trim()
+          .slice(0, 200),
+      };
+    }
+    if (button.disabled) return { ok: false, reason: '「' + wanted + '」已禁用（可能已达上限）' };
+    button.click();
+    return { ok: true };
+  })()`);
+  if (!result?.ok) {
+    throw new Error(`点「${label}」失败：${result?.reason ?? 'unknown'}${result?.inspector ? `；面板文案=«${result.inspector}»` : ''}`);
+  }
+  await sleep(250);
+  return true;
+}
+
+/** 读预览 iframe 里对比表的表格语义。 */
+async function readComparison() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="comparison"]');
+    if (!section) {
+      return {
+        ok: false,
+        reason: '预览 iframe 里没有 comparison 区块',
+        types: [...doc.querySelectorAll('section[data-pp-block]')].map((node) => node.getAttribute('data-block-type')),
+      };
+    }
+    const table = section.querySelector('table.pp-comparison-table');
+    const scroller = section.querySelector('.pp-comparison-scroll');
+    const text = (node) => (node?.textContent ?? '').replace(/\\s+/g, ' ').trim();
+    const heads = table ? [...table.querySelectorAll('thead th')] : [];
+    const rowHeads = table ? [...table.querySelectorAll('tbody th')] : [];
+    return {
+      ok: true,
+      hasTable: !!table,
+      colScopes: heads.map((node) => node.getAttribute('scope')),
+      colHeads: heads.map(text),
+      rowScopes: rowHeads.map((node) => node.getAttribute('scope')),
+      rowHeads: rowHeads.map(text),
+      cells: table ? [...table.querySelectorAll('tbody td')].map(text) : [],
+      hasScroller: !!scroller,
+      scrollerTabIndex: scroller ? scroller.getAttribute('tabindex') : null,
+      scrollerRole: scroller ? scroller.getAttribute('role') : null,
+    };
+  `));
+}
+
+/** 读预览 iframe 里倒计时的四格与 role。 */
+async function readCountdown() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="countdown"]');
+    if (!section) {
+      return {
+        ok: false,
+        reason: '预览 iframe 里没有 countdown 区块',
+        types: [...doc.querySelectorAll('section[data-pp-block]')].map((node) => node.getAttribute('data-block-type')),
+      };
+    }
+    const clock = section.querySelector('.pp-countdown-clock');
+    return {
+      ok: true,
+      values: [...section.querySelectorAll('.pp-countdown-value')].map((node) => (node.textContent ?? '').trim()),
+      labels: [...section.querySelectorAll('.pp-countdown-label')].map((node) => (node.textContent ?? '').trim()),
+      role: clock ? clock.getAttribute('role') : null,
+      text: (section.textContent ?? '').replace(/\\s+/g, ' ').trim(),
+    };
+  `));
+}
+
+/** 读预览 iframe 里音频播放器的属性（是否自动播放是硬规则）。 */
+async function readAudio() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="audio"]');
+    if (!section) {
+      return {
+        ok: false,
+        reason: '预览 iframe 里没有 audio 区块',
+        types: [...doc.querySelectorAll('section[data-pp-block]')].map((node) => node.getAttribute('data-block-type')),
+      };
+    }
+    const players = [...section.querySelectorAll('audio.pp-audio-player')];
+    const player = players[0] ?? null;
+    return {
+      ok: true,
+      players: players.length,
+      controls: player ? player.hasAttribute('controls') : null,
+      preload: player ? player.getAttribute('preload') : null,
+      autoplay: player ? player.hasAttribute('autoplay') : null,
+      src: player ? player.getAttribute('src') : null,
+    };
+  `));
+}
+
+/**
+ * B2. 工具型区块（P2 Task 5）：对比表 / 倒计时 / 音频。
+ *
+ * 三段都走「组件库点一下 → 属性面板补内容 → 预览 iframe 里读 DOM」的同一节奏，
+ * 因为这三块的默认值都是空的（旧配置里也没有内容），不补内容就只能看到空状态。
+ */
+async function runUtilityChecks() {
+  console.log('\n=== B2. 工具型区块：对比表 / 倒计时 / 音频 ===');
+
+  /* ---------- 对比表 ---------- */
+  const comparison = await clickPalette(['对比表', 'Comparison table']);
+  const comparisonAdded = comparison?.ok === true;
+  await check(
+    'UTILITY',
+    '组件库里有「对比表」并可点击追加',
+    comparisonAdded,
+    comparison?.ok
+      ? `组件=${comparison.label}`
+      : `${comparison?.reason ?? 'unknown'}${comparison?.candidates?.length ? `；候选: ${comparison.candidates.join(' / ')}` : ''}`,
+  );
+  if (comparisonAdded) {
+    try {
+      await waitUntil(`!!document.querySelector('.builder-inspector .itemlist')`, 12000);
+      await fillFieldByLabel('左栏表头', '个人版');
+      await fillFieldByLabel('右栏表头', '团队版');
+      await clickInspectorAdd('添加行');
+      await waitUntil(`!!document.querySelector(${q('[aria-label="条目 第 1 条 项目"]')})`, 8000);
+      await fillInput('[aria-label="条目 第 1 条 项目"]', '并发发布');
+      await fillInput('[aria-label="条目 第 1 条 左栏"]', '1 人');
+      await fillInput('[aria-label="条目 第 1 条 右栏"]', '10 人');
+      await check('UTILITY', '属性面板里填好两个表头与一行对比', true, '个人版 / 团队版 · 并发发布 1 人 → 10 人');
+    } catch (err) {
+      await check(
+        'UTILITY',
+        '属性面板里填好两个表头与一行对比',
+        false,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    // 等三格都落到预览里再断言：属性面板改一次就往 storage 写一次，预览 iframe
+    // 隔几帧才跟上，只等「表格出现」会读到右栏还没同步的中间态。
+    const table = await pollValue(
+      readComparison,
+      (value) =>
+        value?.ok &&
+        value.hasTable &&
+        value.rowHeads.length === 1 &&
+        value.cells.join(',') === '1 人,10 人',
+      15000,
+    );
+    await check(
+      'UTILITY',
+      'iframe 里对比表渲染成 <table>（不是 div 拼的表格）',
+      table?.hasTable === true,
+      table?.ok ? '' : String(table?.reason ?? 'unknown'),
+    );
+    if (table?.hasTable) {
+      await check(
+        'UTILITY',
+        '列表头三格都是 th scope=col，且文案对位',
+        table.colScopes.length === 3 &&
+          table.colScopes.every((scope) => scope === 'col') &&
+          table.colHeads[1] === '个人版' &&
+          table.colHeads[2] === '团队版',
+        `scope=[${table.colScopes.join(',')}] 文案=[${table.colHeads.join(' | ')}]`,
+      );
+      await check(
+        'UTILITY',
+        '行头是 th scope=row，单元格按左 / 右对位',
+        table.rowScopes.length === 1 &&
+          table.rowScopes[0] === 'row' &&
+          table.rowHeads[0] === '并发发布' &&
+          table.cells.join(',') === '1 人,10 人',
+        `行头=[${table.rowHeads.join(' | ')}] 单元格=[${table.cells.join(' | ')}]`,
+      );
+      await check(
+        'UTILITY',
+        '窄屏靠 .pp-comparison-scroll 横向滚动容器（可聚焦）',
+        table.hasScroller === true && table.scrollerTabIndex === '0' && !!table.scrollerRole,
+        `容器=${table.hasScroller ? '有' : '无'} tabindex=${table.scrollerTabIndex} role=${table.scrollerRole}`,
+      );
+    }
+    await scrollFrameTo('section[data-block-type="comparison"]');
+    await shot('02b-comparison-block');
+  }
+
+  /* ---------- 倒计时 ---------- */
+  const countdown = await clickPalette(['倒计时', 'Countdown']);
+  const countdownAdded = countdown?.ok === true;
+  await check(
+    'UTILITY',
+    '组件库里有「倒计时」并可点击追加',
+    countdownAdded,
+    countdown?.ok
+      ? `组件=${countdown.label}`
+      : `${countdown?.reason ?? 'unknown'}${countdown?.candidates?.length ? `；候选: ${countdown.candidates.join(' / ')}` : ''}`,
+  );
+  if (countdownAdded) {
+    try {
+      await fillFieldByLabel('目标日期', '2099-12-31');
+    } catch (err) {
+      await check('UTILITY', '倒计时填好目标日期', false, err instanceof Error ? err.message : String(err));
+    }
+    const clock = await pollValue(
+      readCountdown,
+      (value) => value?.ok && value.values.length === 4,
+      15000,
+    );
+    await check(
+      'UTILITY',
+      '倒计时渲染四格数字（天 / 小时 / 分 / 秒），文案里没有 NaN',
+      clock?.values.length === 4 &&
+        clock.values.every((value) => /^\d{2,}$/.test(value)) &&
+        !String(clock.text ?? '').includes('NaN'),
+      clock?.ok ? `数值=[${clock.values.join(':')}] 标签=[${clock.labels.join('/')}]` : String(clock?.reason ?? 'unknown'),
+    );
+    await check(
+      'UTILITY',
+      '倒计时带 role="timer"（读屏不会每秒念一遍）',
+      clock?.role === 'timer',
+      `role=${clock?.role ?? 'null'}`,
+    );
+    await scrollFrameTo('section[data-block-type="countdown"]');
+    await shot('02c-countdown-block');
+  }
+
+  /* ---------- 音频 ---------- */
+  const audio = await clickPalette(['音频', 'Audio']);
+  const audioAdded = audio?.ok === true;
+  await check(
+    'UTILITY',
+    '组件库里有「音频」并可点击追加',
+    audioAdded,
+    audio?.ok
+      ? `组件=${audio.label}`
+      : `${audio?.reason ?? 'unknown'}${audio?.candidates?.length ? `；候选: ${audio.candidates.join(' / ')}` : ''}`,
+  );
+  if (audioAdded) {
+    try {
+      await fillFieldByLabel('音频地址', '/media/e2e-audio.mp3');
+    } catch (err) {
+      await check('UTILITY', '音频填好地址', false, err instanceof Error ? err.message : String(err));
+    }
+    const player = await pollValue(readAudio, (value) => value?.ok && value.players === 1, 15000);
+    await check(
+      'UTILITY',
+      '音频渲染原生 <audio controls preload="metadata">',
+      player?.players === 1 && player.controls === true && player.preload === 'metadata',
+      player?.ok
+        ? `播放器=${player.players} controls=${player.controls} preload=${player.preload} src=${player.src}`
+        : String(player?.reason ?? 'unknown'),
+    );
+    await check(
+      'UTILITY',
+      '音频没有 autoplay 属性（不自动播放）',
+      player?.autoplay === false,
+      `autoplay=${player?.autoplay === null ? '缺失' : String(player?.autoplay)}`,
+    );
+    await scrollFrameTo('section[data-block-type="audio"]');
+    await shot('02d-audio-block');
+  }
+}
+
 /** 在左侧结构树里按区块类型（.tree-meta 里的 type）选中一行。 */
 async function selectTreeRow(type) {
   return evaljs(`(() => {
@@ -850,6 +1164,12 @@ async function runBuilderChecks() {
     await check('BUTTON', '按钮区块验收未中断', false, err instanceof Error ? err.message : String(err));
   }
   await shot('02-button-added');
+
+  try {
+    await runUtilityChecks();
+  } catch (err) {
+    await check('UTILITY', '工具型区块验收未中断', false, err instanceof Error ? err.message : String(err));
+  }
 
   console.log('\n=== C. 负向断言：组件库里没有「思维导图」（已迁到文章写作） ===');
   const paletteItems = await evaljs(`(() => {
@@ -1076,7 +1396,7 @@ function flattenBlocks(blocks, out = []) {
 /* ------------------------------------------------------------------ */
 
 function printSummary() {
-  const sections = ['SETUP', 'BUILDER', 'BUTTON', 'PALETTE', 'APPEARANCE', 'CONFIG', 'PERSIST', 'RUN'];
+  const sections = ['SETUP', 'BUILDER', 'BUTTON', 'UTILITY', 'PALETTE', 'APPEARANCE', 'CONFIG', 'PERSIST', 'RUN'];
   console.log('\n================ 汇总 ================');
   for (const section of sections) {
     const items = results.filter((item) => item.section === section);

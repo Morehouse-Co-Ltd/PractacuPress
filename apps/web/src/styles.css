@@ -8483,3 +8483,112 @@ button.theme-bundle-card {
   .pp-media-text-cta { transition: none; }
   .pp-testimonial.is-carousel { scroll-behavior: auto; }
 }
+
+/* =========================================================
+   工具型区块：对比表 / 倒计时 / 音频（2026-11-03）
+   ---------------------------------------------------------
+   三块都只吃主题令牌，纸白与夜航共用同一份类名。
+   对比表窄屏横滑；倒计时数字等宽；音频播放器铺满内容宽。
+   ========================================================= */
+
+/* ---------- 对比表 ---------- */
+.pp-comparison-heading,
+.pp-countdown-title {
+  margin: 0 0 16px;
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 500;
+  color: var(--ink);
+}
+/* 窄屏不折叠成卡片：横向滚动保住「左右两列」的对位关系。 */
+.pp-comparison-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.pp-comparison-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.pp-comparison-table {
+  width: 100%;
+  /* 低于这个宽度就滚动，而不是把两列挤成一列字。 */
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.pp-comparison-table th,
+.pp-comparison-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.pp-comparison-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+.pp-comparison-table tbody th {
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.pp-comparison-table tbody tr:last-child th,
+.pp-comparison-table tbody tr:last-child td { border-bottom: none; }
+
+/* ---------- 倒计时 ---------- */
+.pp-countdown { display: flex; flex-direction: column; gap: 4px; }
+.pp-countdown-clock { display: flex; flex-wrap: wrap; gap: 12px; }
+.pp-countdown-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 68px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+.pp-countdown-value {
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ink);
+  /* 等宽数字：秒跳动时格子不跟着抖。 */
+  font-variant-numeric: tabular-nums;
+}
+.pp-countdown-label { font-size: 11px; color: var(--muted); }
+.pp-countdown-expired {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* ---------- 音频 ---------- */
+.pp-audio { display: flex; flex-direction: column; gap: 12px; }
+.pp-audio-head { display: flex; align-items: center; gap: 12px; }
+.pp-audio-cover {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+}
+.pp-audio-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pp-audio-title { font-weight: 600; color: var(--ink); }
+.pp-audio-artist { font-size: 12px; color: var(--muted); }
+.pp-audio-player { width: 100%; max-width: 520px; }
+
+@media (max-width: 767px) {
+  .pp-countdown-clock { gap: 8px; }
+  .pp-countdown-unit { min-width: 56px; padding: 8px 10px; }
+  .pp-audio-player { max-width: 100%; }
+}
+

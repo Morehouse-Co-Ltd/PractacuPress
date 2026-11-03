@@ -1413,6 +1413,77 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
       { key: 'cta_link', label: t('按钮链接'), type: 'text' },
     ],
   },
+
+  /* ---------------- 工具型（P2 对比表 / 倒计时 / 音频） ---------------- */
+  {
+    type: 'comparison',
+    name: t('对比表'),
+    description: t('一张对比表：一列是项目，另外两列是两个方案；窄屏左右滑动看全。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', left_label: '', right_label: '', rows: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      { key: 'left_label', label: t('左栏表头'), type: 'text', hint: t('两个表头都留空就不画表头行。') },
+      { key: 'right_label', label: t('右栏表头'), type: 'text' },
+      {
+        key: 'rows',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('行'),
+        maxItems: 12,
+        hint: t('最多 12 行。三列全空的行会自动跳过。'),
+        itemSchema: [
+          { key: 'label', label: t('项目'), type: 'text' },
+          { key: 'left', label: t('左栏'), type: 'text' },
+          { key: 'right', label: t('右栏'), type: 'text' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'countdown',
+    name: t('倒计时'),
+    description: t('距离某个时间还有多久，按天 / 小时 / 分 / 秒排开；到点后显示结束文案。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { title: '', target: '', expired_text: '', show_seconds: true },
+    schema: [
+      { key: 'title', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'target',
+        label: t('目标日期'),
+        type: 'text',
+        hint: t('填 2026-12-31 这样的日期（按访客本地零点算），或 2026-12-31T20:00:00+08:00 这样的完整时间。'),
+      },
+      { key: 'show_seconds', label: t('显示秒'), type: 'toggle' },
+      {
+        key: 'expired_text',
+        label: t('结束后的文案'),
+        type: 'text',
+        hint: t('留空时显示「已结束」。'),
+      },
+    ],
+  },
+  {
+    type: 'audio',
+    name: t('音频'),
+    description: t('原生音频播放器，带标题、作者与封面；不自动播放。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { src: '', title: '', artist: '', cover: '' },
+    schema: [
+      {
+        key: 'src',
+        label: t('音频地址'),
+        type: 'media',
+        hint: t('可以从媒体库选，也可以填外部音频地址；没填就不显示播放器。'),
+      },
+      { key: 'title', label: t('标题'), type: 'text' },
+      { key: 'artist', label: t('作者'), type: 'text' },
+      { key: 'cover', label: t('封面'), type: 'media', hint: t('可留空；只作装饰，不参与读屏。') },
+    ],
+  },
 ];
 
 /**

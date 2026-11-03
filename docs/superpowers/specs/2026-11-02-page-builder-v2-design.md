@@ -473,3 +473,78 @@ v1 三端编排自动折算成 `at`；检查器的「已覆盖 / 恢复继承」
 
 **刻意留到 P2**：`anchor` 与 `anchor-nav`、间距标尺的档位按钮、
 `richtext` / `page` / `taxonomy` / `icon` / `token-color` 五种 schema 类型。
+
+## 14. P2 实现记录（2026-11-03）
+
+5 个任务，从 `841c6df`（P2 计划）到本任务的收尾提交。模块形状在 Task 2 定下后三个
+任务完全同构，所以每个任务都是「数据侧只加定义 → 渲染侧只加一个 `*_RENDERERS`
+映射文件 → CSS 追加一段 → i18n 一个片段 → 一份注册表测试」，没有一处需要改编辑器
+代码：属性面板全部由 schema 驱动。
+
+### 14.1 组件清单（13 个 + 1 种 schema 类型）
+
+| 任务 | 交付 | 渲染器文件 |
+| --- | --- | --- |
+| Task 1 | `richtext` schema 类型（多行 Markdown 编辑 + 预览） | — |
+| Task 2 | `feature-grid` / `card-grid` / `steps` | `MarketingBlocks.tsx` |
+| Task 3 | `team` / `logo-wall` / `gallery` | `MediaGalleryBlocks.tsx` |
+| Task 4 | `pricing` / `faq` / `testimonial` / `media-text` | `ConversionBlocks.tsx` |
+| Task 5 | `comparison` / `countdown` / `audio` | `UtilityBlocks.tsx` |
+
+三条贯穿全阶段的硬规则：
+
+1. 用户填的地址一律先过 `safeUrl()`（只放行 `http(s)` 与 `/` 开头的站内路径）；
+   外链补 `target="_blank"` + `rel="noreferrer noopener"`；不过白名单的按钮降级成
+   `<span aria-disabled>`，不留一个点了没反应的假链接；
+2. 组件自身的文案全部 `t()` 包裹并补英文条目；渲染器里不写第二套 Markdown / HTML
+   清洗链路（`richtext` 与 `text` 区块共用 `sanitizeHtml(renderMarkdown(...))`）；
+3. 面板上的条数上限在渲染时再截一次，旧配置超编不会把版面撑破。
+
+### 14.2 验证数字（apps/web）
+
+| 检查 | 结果 |
+| --- | --- |
+| `npx vitest run` | **66 文件 / 829 测试通过**（P1 收尾 59 / 671；P2 起点实测 65 / 792） |
+| `npm run typecheck` | 0 错误 |
+| `npm run build` | 成功（`tsc --noEmit && vite build`，338 模块） |
+| `node scripts/e2e-builder-blocks.mjs` | **PASS 49 / FAIL 0**（此前 37），10 张截图在 `apps/web/.tmp/shots-builder/` |
+| i18n 覆盖率 | `npm run i18n:audit` 96.3%（包裹 5044 / 待迁移 193）；`coverage.test.ts` 3/3 绿 |
+
+### 14.3 体积增量（对比 P1 收尾产物）
+
+P1 收尾的构建产物（`dist/assets`，2026-11-03 11:02，逐字节核对 = 记录的
+**1,794,500 字节 raw**）留档在 `apps/web/.tmp/dist-pre-p2/`，与本轮产物同法量（每个文件
+`zlib.gzipSync` level 9 后求和）：
+
+| 口径 | P1 收尾 | P2 收尾 | 增量 |
+| --- | --- | --- | --- |
+| assets raw | 1,794,500 B | 1,841,330 B | **+46,830 B（+45.7 KiB）** |
+| assets gzip | 544,062 B | 555,842 B | **+11,780 B（+11.5 KiB）** |
+| 其中 CSS（raw） | 214,529 B | 227,999 B | +13,470 B |
+| 其中主 JS（raw） | 1,270,692 B | 1,303,277 B | +32,585 B |
+
+gzip 增量 **+11.5 KiB**，在 §7 的 25 KB 预算内（规格原估算「14 个组件 raw ≈ +50 KB、
+gzip ≈ +15 KB」，实测更低）。注意：工作树是多个会话共用的，CSS 的那 13 KB 里含别的
+会话未提交的样式段（骨架屏、文章配图等），所以这个数字是 P2 增量的**上界**；
+`index.js` 的 32 KB 同理含并发会话的代码。
+
+### 14.4 未做的与已知取舍
+
+- **`anchor-nav` 顺延 P3**：它依赖 `anchor` 的编辑入口，而那是 P1 刻意留下的（§13）。
+  本轮 13 个组件不含它，规格 §6 的 14 个里少了这一个，已在此登记。
+- **组件级懒加载不做**：14 个组件走静态 import，体积预算已覆盖；拆包会让属性面板
+  首帧闪空。
+- `testimonial` 的横滑是纯 CSS `scroll-snap`，**没有分页圆点**：要跟随高亮就得挂
+  `scroll` 监听并引状态，为一个装饰点不值得。
+- `countdown` 的 `YYYY-MM-DD` 按**访客本地零点**解释（`new Date('2026-12-31')` 是 UTC
+  零点，东八区作者会发现自己写的日期早八点就结束）；认不出的日期（含 `2026-02-31`
+  这类不存在的日期）一律按「已结束」显示，不猜。计时用 `role="timer"`（`aria-live`
+  默认关闭），否则读屏每秒念一遍；首帧画 `--` 占位，不闪 `NaN`。
+- `audio` **不自动播放**（不写 `autoPlay`）、`preload="metadata"` 只取时长；没有可
+  播放的地址时整块不画——`<audio>` 没 `src` 只会得到一个灰掉的空播放器。
+- `comparison` 窄屏**横滑而不折叠**：折叠成卡片会丢掉「左右两列」的对位关系，而对
+  比表全部价值就在对位；容器可聚焦，键盘能横向翻看。两个表头都留空时不画表头行。
+- `<details>` 的展开状态属于浏览器：`faq` 的 `open_first` 只控初始 `open`，作者手动
+  展开后若发生重渲染，第一条会回到 `open_first` 的值（换受控状态要多一份与 DOM 争抢
+  的状态机，不值得）。
+- `pricing` 没有「列数」属性（`auto-fit` 自适应），与 Task 2 的网格区块刻意不同。

@@ -417,6 +417,38 @@ const fragment: Dictionary = {
   左侧: 'Left',
   右侧: 'Right',
   '窄屏一律图在上、文在下。': 'On narrow screens the image always sits above the text.',
+
+  // ---- 2026-11-03 工具型区块（对比表 / 倒计时 / 音频） ----
+  对比表: 'Comparison table',
+  '一张对比表：一列是项目，另外两列是两个方案；窄屏左右滑动看全。':
+    'A comparison table: one column of items and two columns for the options being compared; swipe sideways on narrow screens to see it all.',
+  左栏表头: 'Left column heading',
+  '两个表头都留空就不画表头行。': 'Leave both headings empty to hide the header row.',
+  右栏表头: 'Right column heading',
+  行: 'Row',
+  '最多 12 行。三列全空的行会自动跳过。':
+    'Up to 12 rows. Rows where all three cells are empty are skipped.',
+  项目: 'Item',
+  左栏: 'Left column',
+  右栏: 'Right column',
+  倒计时: 'Countdown',
+  '距离某个时间还有多久，按天 / 小时 / 分 / 秒排开；到点后显示结束文案。':
+    'How long until a point in time, split into days, hours, minutes and seconds; once it passes, the closing text is shown.',
+  目标日期: 'Target date',
+  '填 2026-12-31 这样的日期（按访客本地零点算），或 2026-12-31T20:00:00+08:00 这样的完整时间。':
+    'Write a date such as 2026-12-31 (counted from local midnight), or a full timestamp such as 2026-12-31T20:00:00+08:00.',
+  显示秒: 'Show seconds',
+  结束后的文案: 'Text after it ends',
+  '留空时显示「已结束」。': 'Leave empty to show “Finished”.',
+  音频: 'Audio',
+  '原生音频播放器，带标题、作者与封面；不自动播放。':
+    'A native audio player with title, artist and cover art; it never autoplays.',
+  音频地址: 'Audio URL',
+  '可以从媒体库选，也可以填外部音频地址；没填就不显示播放器。':
+    'Pick one from the media library or paste an external audio URL; leave it empty to show no player.',
+  作者: 'Artist',
+  封面: 'Cover image',
+  '可留空；只作装饰，不参与读屏。': 'Optional; purely decorative and hidden from screen readers.',
 };
 
 export default fragment;
