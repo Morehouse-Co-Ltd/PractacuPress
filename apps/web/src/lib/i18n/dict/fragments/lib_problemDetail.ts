@@ -28,6 +28,17 @@ const fragment: Dictionary = {
   '站点设计太大了，请删减一些区块后再保存。':
     'The site design is too large; remove some blocks and save again.',
   '站点设计格式不正确。': 'The site design is not in a valid format.',
+  '摘要太长，请精简后再提交。': 'The summary is too long; shorten it and try again.',
+  '请填写正文。': 'Enter the body text.',
+  '正文太长，请精简后再提交。': 'The body is too long; shorten it and try again.',
+  '请至少填写一个标签。': 'Add at least one tag.',
+  '标签太多，请删减一些。': 'Too many tags; remove some.',
+  '标签格式不正确，请检查是否含有不允许的字符。': 'A tag is not in a valid format; check for disallowed characters.',
+  '缺少要操作的对象，请刷新页面后重试。': 'The item to act on is missing; refresh the page and try again.',
+  '操作对象的类型无法识别。': 'The type of the item to act on is not recognised.',
+  '不能对自己执行这个操作。': 'You cannot do this to yourself.',
+  '回复层级太深了，请直接回复上一层。': 'The reply is nested too deeply; reply to the comment above instead.',
+  '颜色格式不正确，请使用 #rrggbb 这样的写法。': 'That colour is not valid; use a value such as #rrggbb.',
 };
 
 export default fragment;

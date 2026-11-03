@@ -102,6 +102,34 @@ function messageFor(detail: ProblemDetail, t: (key: string) => string): string |
     case 'document:malformed':
       return t('站点设计格式不正确。');
 
+    case 'summary:too_long':
+      return t('摘要太长，请精简后再提交。');
+
+    case 'body:required':
+      return t('请填写正文。');
+    case 'body:too_long':
+      return t('正文太长，请精简后再提交。');
+
+    case 'tags:required':
+      return t('请至少填写一个标签。');
+    case 'tags:too_long':
+      return t('标签太多，请删减一些。');
+    case 'tags:malformed':
+      return t('标签格式不正确，请检查是否含有不允许的字符。');
+
+    case 'target:required':
+      return t('缺少要操作的对象，请刷新页面后重试。');
+    case 'target:unknown':
+      return t('操作对象的类型无法识别。');
+    case 'target:unsupported':
+      return t('不能对自己执行这个操作。');
+
+    case 'depth:out_of_range':
+      return t('回复层级太深了，请直接回复上一层。');
+
+    case 'color:malformed':
+      return t('颜色格式不正确，请使用 #rrggbb 这样的写法。');
+
     default:
       return undefined;
   }
@@ -143,4 +171,15 @@ export const KNOWN_DETAILS: ProblemDetail[] = [
   { field: 'document', rule: 'required' },
   { field: 'document', rule: 'too_large' },
   { field: 'document', rule: 'malformed' },
+  { field: 'summary', rule: 'too_long' },
+  { field: 'body', rule: 'required' },
+  { field: 'body', rule: 'too_long' },
+  { field: 'tags', rule: 'required' },
+  { field: 'tags', rule: 'too_long' },
+  { field: 'tags', rule: 'malformed' },
+  { field: 'target', rule: 'required' },
+  { field: 'target', rule: 'unknown' },
+  { field: 'target', rule: 'unsupported' },
+  { field: 'depth', rule: 'out_of_range' },
+  { field: 'color', rule: 'malformed' },
 ];
