@@ -1246,10 +1246,15 @@ export function gridTemplate(block: BlockInstance): { columns: number; gap: numb
 }
 
 /**
- * 子区块在某一设备下的占位与偏移；缺省满宽、无偏移。
+ * 子区块在某一档下**作者写了什么**；缺省满宽、无偏移。
  *
- * 只按断点挑一档，**不**管容器有几栏——与栏数的关系交给 `gridPlacements`，
- * 因为同一个区块在不同栏数的容器里落位不同，"夹到栏数内"是容器的事。
+ * 这里只做取值：给定档位，读出作者为这一档写的 span/offset（没写就继承 base）。
+ * 它**不**判断此刻是哪一档——"哪个档位生效"在 `styles.css` 的媒体查询里，
+ * 和 `at` 覆盖层看的是同一个视口宽度。所以这个函数对三档各调一次，三个值都写进
+ * 变量，谁赢由浏览器按视口决定，JS 里没有第二处阈值判断。
+ *
+ * 也不管容器有几栏——与栏数的关系交给 `gridPlacements`，因为同一个区块在不同
+ * 栏数的容器里落位不同，"夹到栏数内"是容器的事。
  */
 export function spanFor(
   block: BlockInstance,
@@ -1285,7 +1290,9 @@ export interface GridPlacements {
  * 所以这里逐档算 `offset ≤ columns - span`，尺寸档也一起按栏数收窄。
  *
  * 三档一次算完，是因为响应式那一半在 CSS 里：渲染器把三档全写进自定义属性，
- * 由 `styles.css` 的容器查询决定谁生效，改宽度不需要 JS 重算。
+ * 由 `styles.css` 的媒体查询决定谁生效（阈值 768 / 1024，与 `builderDeviceForWidth`
+ * 同一张断点表）。改宽度不需要 JS 重算，也不会出现"栅格以为自己是手机、覆盖层
+ * 以为自己是桌面"的两种设备定义。
  */
 export function gridPlacements(block: BlockInstance, columns: number): GridPlacements {
   const cols = clampInt(columns, 1, GRID_MAX_COLUMNS, GRID_MAX_COLUMNS);
@@ -1306,9 +1313,10 @@ export function gridPlacements(block: BlockInstance, columns: number): GridPlace
 /**
  * 一格的 CSS 自定义属性。
  *
- * 只写变量、不写 `grid-column`：三档规则在 `styles.css` 里，用容器查询切换
- * `--pp-col-start` / `--pp-col-span` 指向哪一档。这样预览 iframe 改宽度时
- * 浏览器自己重排（媒体查询看的是外层窗口，在 iframe 里永远不触发）。
+ * 只写变量、不写 `grid-column`：三档规则在 `styles.css` 里，用媒体查询按视口宽度
+ * 切换 `--pp-col-start` / `--pp-col-span` 指向哪一档。预览 iframe 的宽度就是它自己的
+ * 视口，所以作者切设备档时媒体查询会跟着重排；"哪一档生效"因此只有 CSS 一个来源，
+ * 与 `at` 覆盖层取的判据一致。
  */
 export function gridCellVars(block: BlockInstance, columns: number): Record<string, string> {
   const tiers = gridPlacements(block, columns);
