@@ -6050,6 +6050,50 @@ kbd {
 .pp-column { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
 .pp-column > .pp-block { margin: 0; }
 
+/*
+ * 12 栏栅格。
+ *
+ * 断点用**容器查询**而不是媒体查询：编排器的预览跑在 iframe 里，媒体查询看的是
+ * 外层窗口的宽度，预览切到手机档时 iframe 变窄了、媒体查询却纹丝不动。容器查询
+ * 量的是栅格自身的行内尺寸，改 iframe 宽度就重排。
+ *
+ * 渲染器只往单元格上写三档自定义属性（--pp-span-base|md|sm、--pp-offset-base|md|sm），
+ * 哪一档生效由下面三条规则决定：base → 平板 → 手机，后者覆盖前者。
+ * 阈值与 lib/layout.ts 的唯一断点表对齐（1024 / 768），测试会盯着这两头。
+ */
+.pp-grid {
+  display: grid;
+  align-items: start;
+  container-type: inline-size;
+  container-name: pp-grid;
+}
+.pp-grid-cell {
+  --pp-col-start: calc(var(--pp-offset-base) + 1);
+  --pp-col-span: var(--pp-span-base);
+  min-width: 0;
+  /* 单元格里的区块不能被自己的列宽撑破：窄格里长单词、长链接一律折行。 */
+  overflow-wrap: anywhere;
+  grid-column-start: var(--pp-col-start);
+  grid-column-end: span var(--pp-col-span);
+}
+.pp-grid-cell > .pp-block { margin: 0; }
+.pp-grid-cell[data-pp-align='center'] { justify-self: center; }
+.pp-grid-cell[data-pp-align='right'] { justify-self: end; }
+.pp-grid-cell[data-pp-align='left'] { justify-self: start; }
+
+@container pp-grid (max-width: 1023px) {
+  .pp-grid-cell {
+    --pp-col-start: calc(var(--pp-offset-md) + 1);
+    --pp-col-span: var(--pp-span-md);
+  }
+}
+@container pp-grid (max-width: 767px) {
+  .pp-grid-cell {
+    --pp-col-start: calc(var(--pp-offset-sm) + 1);
+    --pp-col-span: var(--pp-span-sm);
+  }
+}
+
 .pp-text-block { width: 100%; }
 .pp-text-eyebrow {
   margin: 0 0 8px;

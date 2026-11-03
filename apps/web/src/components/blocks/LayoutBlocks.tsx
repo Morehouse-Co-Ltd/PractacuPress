@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { BlockInstance } from '../../types';
-import { blockProp } from '../../lib/blocks';
+import { blockProp, gridCellVars, gridTemplate } from '../../lib/blocks';
 import { columnCount } from '../../lib/blockTree';
 
 export function ContainerBlock({ children }: { children: ReactNode }) {
@@ -34,6 +34,46 @@ export function ColumnsBlock({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * 12 栏栅格：子区块按 span / offset 落位。
+ *
+ * 单元格里只写三档自定义属性（`--pp-span-base|md|sm`、`--pp-offset-base|md|sm`），
+ * 具体哪一档生效由 `styles.css` 的 `@container` 规则决定——预览 iframe 改宽度时
+ * 浏览器自己重排，渲染器不参与，`device` 也就没有用武之地（媒体查询看的是外层
+ * 窗口宽度，在 iframe 里永远不会随预览切换）。
+ *
+ * 三个档位的取值与「offset + span 不超过栏数」的夹取都在 `gridCellVars` 里算好，
+ * 这里只负责把它们放到正确的元素上。
+ */
+export function GridBlock({
+  block,
+  renderChild,
+}: {
+  block: BlockInstance;
+  renderChild: (child: BlockInstance) => ReactNode;
+}) {
+  const { columns, gap } = gridTemplate(block);
+  const children = (block.children ?? []).filter((child) => !child.hidden);
+  return (
+    <div
+      className="pp-grid"
+      data-pp-grid={columns}
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap }}
+    >
+      {children.map((child) => (
+        <div
+          key={child.id}
+          className="pp-grid-cell"
+          data-pp-align={child.align}
+          style={gridCellVars(child, columns) as CSSProperties}
+        >
+          {renderChild(child)}
+        </div>
+      ))}
     </div>
   );
 }

@@ -289,6 +289,47 @@ const fragment: Dictionary = {
   左右等宽: 'Equal columns',
   '作用域 CSS': 'Scoped CSS',
   作者卡: 'Author card',
+
+  // ---- 2026-11-01 按钮 ----
+  按钮: 'Button',
+  '一组带样式的行动按钮：站内跳转、外部链接、对齐与尺寸都能改。':
+    'A group of styled call-to-action buttons with editable links, alignment and size.',
+  实心: 'Solid',
+  描边: 'Outline',
+  幽灵: 'Ghost',
+  尺寸: 'Size',
+  小: 'Small',
+  中: 'Medium',
+  大: 'Large',
+  '外部链接在新窗口打开': 'Open external links in a new tab',
+  '最多 4 个。链接可填 http(s) 地址或以 / 开头的站内路径；留空则只显示样式、不可点击。':
+    'Up to 4 buttons. Links may be http(s) URLs or absolute site paths starting with /; leave the link empty to show an unclickable style only.',
+
+  // ---- 2026-11-02 文章内容占位符 ----
+  文章内容: 'Article content',
+  '文章正文的占位符：在文章页渲染真实正文，其它页面只显示占位提示。':
+    'A placeholder for the article body: on article pages it renders the real text, on other pages it only shows a placeholder hint.',
+  显示目录: 'Show table of contents',
+  '目录来自正文里的二级 / 三级标题；「外观 → 目录」已经打开时不会再重复一遍。':
+    'The table of contents comes from the h2/h3 headings in the body; when “Appearance → Table of contents” is already on, it is not repeated.',
+
+  // ---- 2026-11-03 栅格与分节 ----
+  栅格: 'Grid',
+  '12 栏栅格容器：子区块可以占 1–12 栏、左右偏移，栏距走间距标尺。':
+    'A 12-column grid: children can span 1–12 columns and sit at a column offset, with the gap following the spacing scale.',
+  栏距: 'Column gap',
+  '0–9，对应 0–96px 的间距标尺。': '0–9, mapping to a 0–96px spacing scale.',
+  分节: 'Section',
+  '一整段版面：可限宽、可设上下留白、可加底色与分割线。':
+    'A whole band of the page: constrained width, top and bottom padding, background colour and dividers.',
+  内容宽度: 'Content width',
+  '窄（640）': 'Narrow (640)',
+  '常规（960）': 'Regular (960)',
+  '宽（1200）': 'Wide (1200)',
+  满宽: 'Full width',
+  上下留白: 'Vertical padding',
+  底色: 'Background colour',
+  上下分割线: 'Top and bottom divider',
 };
 
 export default fragment;

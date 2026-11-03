@@ -10,7 +10,7 @@ import type {
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 import { IMAGE_RADIUS_OPTIONS } from './imageRadius';
-import { BREAKPOINT_LG, BREAKPOINT_MD } from './layout';
+import { BREAKPOINT_LG, BREAKPOINT_MD, SPACING_SCALE, spacingPx } from './layout';
 
 /**
  * 无代码区块注册表（数据侧）。
@@ -606,6 +606,58 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     schema: [],
   },
   {
+    type: 'grid',
+    name: t('栅格'),
+    description: t('12 栏栅格容器：子区块可以占 1–12 栏、左右偏移，栏距走间距标尺。'),
+    group: 'shared',
+    variants: ['classic', 'bento'],
+    defaults: { columns: 12, gap: 4 },
+    schema: [
+      { key: 'columns', label: t('栏数'), type: 'number', min: 1, max: 12, step: 1 },
+      {
+        key: 'gap',
+        label: t('栏距'),
+        type: 'number',
+        min: 0,
+        max: 9,
+        step: 1,
+        hint: t('0–9，对应 0–96px 的间距标尺。'),
+      },
+    ],
+  },
+  {
+    type: 'section',
+    name: t('分节'),
+    description: t('一整段版面：可限宽、可设上下留白、可加底色与分割线。'),
+    group: 'shared',
+    variants: ['classic', 'bento'],
+    defaults: { max_width: 'normal', padding_y: 5, background: '', divider: false },
+    schema: [
+      {
+        key: 'max_width',
+        label: t('内容宽度'),
+        type: 'select',
+        options: [
+          { value: 'narrow', label: t('窄（640）') },
+          { value: 'normal', label: t('常规（960）') },
+          { value: 'wide', label: t('宽（1200）') },
+          { value: 'full', label: t('满宽') },
+        ],
+      },
+      {
+        key: 'padding_y',
+        label: t('上下留白'),
+        type: 'number',
+        min: 0,
+        max: 9,
+        step: 1,
+        hint: t('0–9，对应 0–96px 的间距标尺。'),
+      },
+      { key: 'background', label: t('底色'), type: 'color' },
+      { key: 'divider', label: t('上下分割线'), type: 'toggle' },
+    ],
+  },
+  {
     type: 'text',
     name: t('文本'),
     description: t('眉题、标题、正文与局部 CSS。'),
@@ -1162,3 +1214,109 @@ export function blockItems(block: BlockInstance, key: string): Record<string, st
 export function availableBlocks(variant: LayoutVariant): BlockDefinition[] {
   return BLOCK_DEFS.filter((item) => item.variants.includes(variant));
 }
+
+/* ---------------- 12 栏栅格（grid） ---------------- */
+
+/** 栅格容器的栏数上限；与 `BlockSpan` 的 1–12 是同一套数。 */
+export const GRID_MAX_COLUMNS = 12;
+
+/** 栏距的默认档位下标（4 → 16px），与 grid 的 `defaults.gap` 一致。 */
+const GRID_DEFAULT_GAP_INDEX = 4;
+
+/** 取一个整数并夹到区间内；非数字回落到 fallback。 */
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof value === 'number' ? Math.round(value) : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * grid 容器的栏数与间距（px）。
+ *
+ * 纯函数：渲染器和测试共用一份，栏数与档位的夹取规则不会两处各写一遍。
+ *
+ * 栏数是「夹」：0 → 1、99 → 12，用户输入一个离谱的栏数仍然能得到一个合法容器。
+ * 间距档位是「回落」：越界（99）或非整数档位一律当作没设，回到默认档 4 → 16px。
+ * 两者不同是因为把 99 夹到 9 会静默变成 96px 的巨缝，比回到默认更不像用户的本意。
+ */
+export function gridTemplate(block: BlockInstance): { columns: number; gap: number } {
+  const columns = clampInt(block.props.columns, 1, GRID_MAX_COLUMNS, GRID_MAX_COLUMNS);
+  const gap = spacingPx(block.props.gap) ?? SPACING_SCALE[GRID_DEFAULT_GAP_INDEX];
+  return { columns, gap };
+}
+
+/**
+ * 子区块在某一设备下的占位与偏移；缺省满宽、无偏移。
+ *
+ * 只按断点挑一档，**不**管容器有几栏——与栏数的关系交给 `gridPlacements`，
+ * 因为同一个区块在不同栏数的容器里落位不同，"夹到栏数内"是容器的事。
+ */
+export function spanFor(
+  block: BlockInstance,
+  device: BuilderDevice,
+): { span: number; offset: number } {
+  const pick = (
+    value: { base?: number; md?: number; sm?: number } | undefined,
+    fallback: number,
+  ) => {
+    if (!value) return fallback;
+    if (device === 'tablet' && value.md !== undefined) return value.md;
+    if (device === 'mobile' && value.sm !== undefined) return value.sm;
+    return value.base ?? fallback;
+  };
+  return {
+    span: clampInt(pick(block.span, GRID_MAX_COLUMNS), 1, GRID_MAX_COLUMNS, GRID_MAX_COLUMNS),
+    offset: clampInt(pick(block.offset, 0), 0, GRID_MAX_COLUMNS - 1, 0),
+  };
+}
+
+/** 一格的三档落位；键名与 `BlockSpan` 的字段、CSS 变量的后缀一致。 */
+export interface GridPlacements {
+  base: { span: number; offset: number };
+  md: { span: number; offset: number };
+  sm: { span: number; offset: number };
+}
+
+/**
+ * 一格在 `columns` 栏容器里的三档落位（桌面 / 平板 / 手机）。
+ *
+ * 偏移必须夹到「最后一栏放得下」的位置：`grid-column: 9 / span 12` 在 12 栏
+ * 容器里会顶出第 13 条隐式栏，整行宽度被撑破、后面的兄弟格全被挤下去。
+ * 所以这里逐档算 `offset ≤ columns - span`，尺寸档也一起按栏数收窄。
+ *
+ * 三档一次算完，是因为响应式那一半在 CSS 里：渲染器把三档全写进自定义属性，
+ * 由 `styles.css` 的容器查询决定谁生效，改宽度不需要 JS 重算。
+ */
+export function gridPlacements(block: BlockInstance, columns: number): GridPlacements {
+  const cols = clampInt(columns, 1, GRID_MAX_COLUMNS, GRID_MAX_COLUMNS);
+  const fit = (span: number, offset: number) => {
+    const width = Math.min(cols, span);
+    return { span: width, offset: Math.min(offset, cols - width) };
+  };
+  const base = spanFor(block, 'desktop');
+  const md = spanFor(block, 'tablet');
+  const sm = spanFor(block, 'mobile');
+  return {
+    base: fit(base.span, base.offset),
+    md: fit(md.span, md.offset),
+    sm: fit(sm.span, sm.offset),
+  };
+}
+
+/**
+ * 一格的 CSS 自定义属性。
+ *
+ * 只写变量、不写 `grid-column`：三档规则在 `styles.css` 里，用容器查询切换
+ * `--pp-col-start` / `--pp-col-span` 指向哪一档。这样预览 iframe 改宽度时
+ * 浏览器自己重排（媒体查询看的是外层窗口，在 iframe 里永远不触发）。
+ */
+export function gridCellVars(block: BlockInstance, columns: number): Record<string, string> {
+  const tiers = gridPlacements(block, columns);
+  const vars: Record<string, string> = {};
+  for (const tier of ['base', 'md', 'sm'] as const) {
+    vars[`--pp-span-${tier}`] = String(tiers[tier].span);
+    vars[`--pp-offset-${tier}`] = String(tiers[tier].offset);
+  }
+  return vars;
+}
+

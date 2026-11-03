@@ -31,13 +31,26 @@ import { Badge, Button } from '../ui';
 const MIME_BLOCK = 'application/x-pp-block';
 const MIME_NEW = 'application/x-pp-new';
 
+/**
+ * 这一行下面还挂不挂子区块。
+ *
+ * 分栏按栏数分组，栅格与容器只有一个「子组件」组，其余类型只有在已经有子区块时
+ * 才显示（旧配置里嵌套过就算数）。`grid` 必须在这里登记：空栅格在树里若是叶子，
+ * 就没有可以投放的容器区，只能靠"拖到行上"这一条隐藏路径。
+ */
+function childHostColumns(block: BlockInstance): number {
+  if (block.type === 'columns') return columnCount(block);
+  if (block.type === 'grid') return 1;
+  return block.type === 'container' || (block.children?.length ?? 0) > 0 ? 1 : 0;
+}
+
 interface AddTarget {
   parentId: string | null;
   column?: number;
 }
 
 function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' {
-  if (type === 'columns' || type === 'text') return 'layout';
+  if (type === 'columns' || type === 'grid' || type === 'section' || type === 'text') return 'layout';
   if (type === 'image' || type === 'video' || type === 'website' || type === 'slideshow') return 'media';
   if (
     type === 'stats' ||
@@ -205,7 +218,8 @@ export function BlockTreeEditor({
   };
 
   const handlePaletteAdd = (def: BlockDefinition) => {
-    if (selected?.block.type === 'columns') {
+    // 选中分栏或栅格时，从组件库点一个就加进去——和「拖到栏里」等价。
+    if (selected?.block.type === 'columns' || selected?.block.type === 'grid') {
       addChild(selected.block.id, 1, def.type);
       return;
     }
@@ -238,13 +252,7 @@ export function BlockTreeEditor({
     <div className="tree-rows">
       {list.map((block, index) => {
         const isSelected = block.id === selectedId;
-        const isColumns = block.type === 'columns';
-        const hasChildren = (block.children?.length ?? 0) > 0;
-        const cols = isColumns
-          ? columnCount(block)
-          : block.type === 'container' || hasChildren
-            ? 1
-            : 0;
+        const cols = childHostColumns(block);
         const childCount = block.children?.length ?? 0;
         const isCollapsed = collapsed.has(block.id);
         return (

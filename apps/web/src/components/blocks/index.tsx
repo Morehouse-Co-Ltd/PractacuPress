@@ -35,7 +35,7 @@ import { BlockSkeleton } from './BlockSkeleton';
 import { CLASSIC_RENDERERS } from './Classic';
 import { NIGHT_RENDERERS } from './Nightflight';
 import { CONTENT_RENDERERS } from './ContentBlocks';
-import { ColumnsBlock, ContainerBlock } from './LayoutBlocks';
+import { ColumnsBlock, ContainerBlock, GridBlock } from './LayoutBlocks';
 import { MEDIA_RENDERERS } from './MediaBlocks';
 import { DATA_RENDERERS } from './DataBlocks';
 import { ENGAGE_RENDERERS } from './EngageBlocks';
@@ -114,13 +114,15 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
   const Renderer = RENDERERS[displayBlock.type];
   const isColumns = displayBlock.type === 'columns';
   const isContainer = displayBlock.type === 'container';
+  // 栅格和分栏一样，自己负责递归子区块（见下面的 GridBlock 分支）。
+  const isGrid = displayBlock.type === 'grid';
   const anim = displayBlock.animation && displayBlock.animation !== 'none' ? displayBlock.animation : '';
   // 子区块服从与根级区块同一条规则：设备、角色、时间窗。没有 provider 时
   // visibility 为 null，只按 hidden 过滤（编排器预览要看全）。
   const visibleChildren = (displayBlock.children ?? []).filter(
     (child) => !child.hidden && (!visibility || isVisibleAt(child, visibility)),
   );
-  const hasNestedLayer = !isColumns && !isContainer && visibleChildren.length > 0;
+  const hasNestedLayer = !isColumns && !isContainer && !isGrid && visibleChildren.length > 0;
   // 骨架模式 + 内容还在加载 + 该区块依赖 FeedContext：外壳保留，内部只画骨架。
   // 未登记的类型（标题/文本/按钮/hero 等）照常渲染，不会把能立刻显示的内容藏起来。
   const skeletonShape = motion && feed.loading ? BLOCK_SKELETON_SHAPES[displayBlock.type] : undefined;
@@ -165,6 +167,13 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
             <BlockView key={child.id} block={child} />
           ))}
         </ContainerBlock>
+      ) : isGrid ? (
+        // 子区块已经过 hidden / 条件显示的过滤，连同过滤结果一起交给栅格：
+        // 栅格自己不认得设备与角色，只负责落位。
+        <GridBlock
+          block={{ ...displayBlock, children: visibleChildren }}
+          renderChild={(child) => <BlockView key={child.id} block={child} />}
+        />
       ) : Renderer ? (
         <Renderer block={displayBlock} />
       ) : null}
