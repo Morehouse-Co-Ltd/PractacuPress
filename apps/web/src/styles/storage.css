@@ -1,0 +1,228 @@
+/* ---------- 储存策略页（apps/web/src/pages/admin/Storage.tsx） ---------- */
+/*
+ * 只补后台「储存策略」页自己的结构：策略卡片、用途分配网格与右侧摘要。
+ * 其余排版（panel / form-grid / mini-list / danger-zone 等）沿用全局样式，
+ * 颜色一律走主题令牌，深浅色主题都会自动跟随。
+ */
+
+/* ---------------- 面板头部的徽标 + 新建按钮 ---------------- */
+
+.storage-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ---------------- 策略卡片列表 ---------------- */
+
+.storage-strategy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.storage-strategy {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.storage-strategy:hover {
+  border-color: var(--line-strong);
+}
+
+/* 被最多用途引用的那套会写成全局变量，用强调色标出来。 */
+.storage-strategy.is-global {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.storage-strategy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink-soft);
+}
+
+.storage-strategy-icon.is-cloud {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.storage-strategy-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-strategy-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.storage-strategy-title strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.storage-strategy-path {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  word-break: break-all;
+}
+
+.storage-strategy-usage {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.storage-strategy-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+/* ---------------- 用途分配网格 ---------------- */
+
+.storage-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.storage-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.storage-scope-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.storage-scope-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink-soft);
+}
+
+.storage-scope-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-scope-body strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.storage-scope-body p {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+/* 选择器上方的留白由 .field 自己给，这里只保证网格底部对齐。 */
+.storage-scope .field {
+  margin-top: auto;
+}
+
+/* 用途分配下方的一组说明（警告 + 规则说明），彼此留出间距。 */
+.storage-callouts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------------- 部署片段里的密钥输入 ---------------- */
+
+.storage-secret {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+/* ---------------- 右侧「当前配置」摘要 ---------------- */
+
+.storage-side-strategies {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+
+.storage-side-strategy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.storage-side-strategy-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.storage-side-strategy-meta {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+/* ---------------- 窄屏：用途分配改为单列 ---------------- */
+
+@media (max-width: 720px) {
+  .storage-scope-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .storage-strategy {
+    flex-wrap: wrap;
+  }
+
+  .storage-strategy-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

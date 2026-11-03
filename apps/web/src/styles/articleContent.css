@@ -1,0 +1,81 @@
+/* ---------- 文章内容占位符（components/blocks/ArticleBlocks.tsx） ---------- */
+/*
+ * 类名统一 pp-article- 前缀，只服务于「文章内容」这个特殊组件：
+ * - .pp-article-content：文章页里真实的正文容器，内部仍然用全局 .article-body，
+ *   所以目录、代码复制、图表水合等既有工具不用改；
+ * - .pp-article-placeholder：非文章页（首页、自定义页、编排预览）的虚线占位卡；
+ * - .is-preview：页面编排器的 iframe 预览，叠加一圈虚线描边与角标，
+ *   让站长一眼看出这是占位符（描边不拦截鼠标，编排里的点击、拖拽照常工作）。
+ */
+
+.pp-article-content {
+  position: relative;
+}
+
+/* .article-body 自带 46px 上边距；外层 .article-extra-blocks 已经有间距了。 */
+.pp-article-content > .article-body {
+  margin-top: 0;
+}
+
+/* 区块自带目录时，目录与正文之间留一点呼吸。 */
+.pp-article-content > .article-toc + .article-body {
+  margin-top: 28px;
+}
+
+.pp-article-placeholder {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 36px 26px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  text-align: center;
+}
+
+.pp-article-placeholder-title {
+  font-family: var(--serif);
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+
+.pp-article-placeholder-note {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+/* 编排预览：虚线描边 + 右上角角标，都不吃鼠标事件。 */
+.pp-article-content.is-preview::after,
+.pp-article-placeholder.is-preview::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 62%, transparent);
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pp-article-placeholder.is-preview {
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-subtle));
+}
+
+.pp-article-badge {
+  position: absolute;
+  top: -10px;
+  right: 12px;
+  z-index: 3;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  line-height: 1.7;
+  pointer-events: none;
+  user-select: none;
+}
