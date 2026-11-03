@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // ScanStatus is the state of a stored object.
@@ -122,6 +124,10 @@ var allowedAttachmentTypes = map[string]struct{}{
 type Actor struct {
 	UserID string
 	SiteID string
+	// Role is the caller's role in SiteID, taken from the live membership by the
+	// transport. It decides whether the caller may see every asset of the site
+	// (editor and above) or only their own (member).
+	Role site.Role
 }
 
 // UploadRequest is the first phase: declare what will be uploaded.
@@ -238,6 +244,9 @@ func (a Asset) Referenceable() bool { return a.ScanStatus == ScanClean }
 type AssetFilter struct {
 	Purpose    Purpose
 	ScanStatus ScanStatus
+	// OwnerID narrows the listing to one uploader. The service sets it from the
+	// actor for callers below editor, so a member sees only their own library.
+	OwnerID string
 }
 
 // Validate reports whether every declared filter value is one this build knows.
