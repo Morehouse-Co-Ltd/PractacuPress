@@ -46,6 +46,7 @@ import { MEDIA_GALLERY_RENDERERS } from './MediaGalleryBlocks';
 import { CONVERSION_RENDERERS } from './ConversionBlocks';
 import { UTILITY_RENDERERS } from './UtilityBlocks';
 import { QUERY_RENDERERS } from './QueryBlocks';
+import { FORM_RENDERERS } from './FormBlocks';
 import { ANCHOR_RENDERERS } from './AnchorNav';
 import { AnchorScopeProvider, useAnchorScope } from './AnchorScope';
 import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
@@ -78,6 +79,7 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...CONVERSION_RENDERERS,
   ...UTILITY_RENDERERS,
   ...QUERY_RENDERERS,
+  ...FORM_RENDERERS,
   ...ANCHOR_RENDERERS,
 };
 

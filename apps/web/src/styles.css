@@ -8659,3 +8659,68 @@ button.theme-bundle-card {
   .pp-block[id] { scroll-margin-top: 64px; }
 }
 
+/* ---------- P3 · 联系表单（contact-form） ---------- */
+
+/*
+ * 表单本身只有两层：外壳（标题 + 说明）与字段。控件沿用全局的 `input` / `textarea`
+ * 样式，这里只补「上下排列、标签在上、间距一致」这三件事。
+ */
+.pp-contact { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pp-contact-heading {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.pp-contact-intro { color: var(--ink-soft); font-size: 14px; line-height: 1.7; }
+.pp-contact-intro > :first-child { margin-top: 0; }
+.pp-contact-intro > :last-child { margin-bottom: 0; }
+
+.pp-contact-form { display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
+.pp-contact-field { display: flex; flex-direction: column; gap: 6px; }
+.pp-contact-field > span { font-size: 13px; color: var(--ink-soft); letter-spacing: 0.02em; }
+.pp-contact-field input,
+.pp-contact-field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.pp-contact-field textarea { resize: vertical; min-height: 120px; }
+.pp-contact-field input:focus-visible,
+.pp-contact-field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/*
+ * 蜜罐：真读者看不见也点不到。
+ *
+ * 用 `position: absolute; left: -9999px` 而不是 `display: none`：后者会让多数机器人
+ * 直接跳过这个字段，蜜罐就白放了；挪出视口既不影响读屏（另有 aria-hidden），也仍然
+ * 「看起来可以填」。
+ */
+.pp-contact-honeypot {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.pp-contact-submit { align-self: flex-start; }
+.pp-contact-error { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.6; }
+.pp-contact-success { margin: 0; color: var(--accent); font-size: 13px; line-height: 1.6; }
+.pp-contact-demo-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+@media (max-width: 767px) {
+  .pp-contact-form { max-width: 100%; }
+}
+

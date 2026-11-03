@@ -175,6 +175,18 @@ func run() error {
 		return fmt.Errorf("build notification service: %w", err)
 	}
 
+	// The public contact form reuses that pipeline instead of adding a table: one inbox
+	// row per active site administrator, and the reader's message is stored nowhere else.
+	// The 60 second floor is in-process, so a multi-instance deployment relies on the
+	// engine's rate limiter for the fleet-wide bound (see internal/site/contact.go).
+	contactService, err := site.NewContactService(site.ContactConfig{
+		Repository: sitestore.New(handle.Client),
+		Notifier:   notificationService,
+	})
+	if err != nil {
+		return fmt.Errorf("build contact service: %w", err)
+	}
+
 	contentService, err := content.NewService(content.ServiceConfig{
 		Repository: contentstore.New(handle.Client),
 		Sanitizer:  securitySanitizer{client: securityClient},
@@ -217,6 +229,7 @@ func run() error {
 				return middleware.SiteFrom(c)
 			},
 			RequestID: middleware.RequestIDFrom,
+			Contact:   contactService,
 		}),
 		WS: ws.NewHandler(tickets, hub, ws.HandlerConfig{
 			Principal: func(c *gin.Context) (string, string, bool) {

@@ -32,6 +32,7 @@ import type {
 import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
 import { ApiError, fallbackProblem, uuid } from './api';
 import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
+import type { ContactPayload } from './contactForm';
 import { canReview, ROLE_RANK, slugify } from './format';
 import { renderSource } from './markdown';
 import {
@@ -1185,6 +1186,16 @@ export class DemoBackend {
       this.persist();
     }
     return item;
+  }
+
+  /**
+   * 联系表单。
+   *
+   * 演示模式不该碰网络：渲染器在演示模式下直接进入成功态，**根本不会调用这里**。
+   * 这个方法只是接口的完整实现，返回成功即可——演示数据里没有站长信箱可写。
+   */
+  async contactSite(_siteId: string, _input: ContactPayload): Promise<void> {
+    await wait(120);
   }
 
   async markAllNotificationsRead(): Promise<number> {

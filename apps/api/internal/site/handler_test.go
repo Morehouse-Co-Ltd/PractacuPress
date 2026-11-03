@@ -16,7 +16,9 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/notificationstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
+	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
@@ -79,6 +81,16 @@ func newHarnessWithVisibility(t *testing.T, visibility site.VisibilityMode) *har
 		Principal: middleware.PrincipalFrom,
 	})
 
+	// The contact form goes through the real notification store: the endpoint's whole
+	// job is to write one inbox row per administrator, so a fake would test nothing.
+	notificationService, err := notifications.NewService(notificationstore.New(handle.Client))
+	require.NoError(t, err)
+	contactService, err := site.NewContactService(site.ContactConfig{
+		Repository: sitestore.New(handle.Client),
+		Notifier:   notificationService,
+	})
+	require.NoError(t, err)
+
 	siteHandler := site.NewHandler(siteService, site.HandlerConfig{
 		Principal: func(c *gin.Context) (string, string, bool) {
 			principal, ok := middleware.PrincipalFrom(c)
@@ -86,6 +98,7 @@ func newHarnessWithVisibility(t *testing.T, visibility site.VisibilityMode) *har
 		},
 		Site:      middleware.SiteFrom,
 		RequestID: middleware.RequestIDFrom,
+		Contact:   contactService,
 	})
 
 	router := ginrouter.New(ginrouter.Dependencies{

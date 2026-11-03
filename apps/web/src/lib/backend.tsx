@@ -39,6 +39,7 @@ import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics
 import { accessController, AccessBlockedError, isPreviewFrame, readAccess } from './access';
 import { HttpBackend } from './api';
 import type { SiteCustomizationSaved, SiteCustomizationSnapshot, ContentListOptions } from './api';
+import type { ContactPayload } from './contactForm';
 import { DemoBackend } from './demo';
 import { useT } from './i18n';
 import { configurePerformance, readPerformance } from './performance';
@@ -170,6 +171,13 @@ export interface Backend {
   notifications(): Promise<{ items: Notification[]; unread: number }>;
   markNotificationRead(id: string): Promise<Notification>;
   markAllNotificationsRead(): Promise<number>;
+  /**
+   * 联系表单：匿名提交一次留言。
+   *
+   * 服务端把它变成站长信箱里的一条通知，除此之外不存任何东西。演示模式不发请求
+   * （渲染器直接进入成功态），这里只是为了接口完整。
+   */
+  contactSite(siteId: string, input: ContactPayload): Promise<void>;
   /** 记录一次站点访问；真实后端落库，演示模式由本地分析记录。 */
   recordVisit(input: {
     path: string;

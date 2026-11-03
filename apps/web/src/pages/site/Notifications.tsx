@@ -83,6 +83,21 @@ function describe(item: Notification, t: Translator): { icon: IconName; node: Re
           </>
         ),
       };
+    case 'contact.created':
+      // 联系表单：主题与正文都由服务端拼好，这里原样当文本渲染。
+      return {
+        icon: 'mail',
+        node: (
+          <>
+            <strong>{item.payload.subject ?? t('站点来信')}</strong>
+            {item.payload.message ? (
+              <span className="muted">
+                {t('：{excerpt}', { excerpt: item.payload.message })}
+              </span>
+            ) : null}
+          </>
+        ),
+      };
     default:
       return { icon: 'bell', node: <>{item.type}</> };
   }

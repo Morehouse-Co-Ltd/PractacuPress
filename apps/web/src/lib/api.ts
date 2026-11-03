@@ -31,6 +31,7 @@ import type {
   Upload,
 } from '../types';
 import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
+import type { ContactPayload } from './contactForm';
 import { t } from './i18n';
 import { currentPerformance } from './performance';
 import { RequestCache } from './requestCache';
@@ -787,6 +788,18 @@ export class HttpBackend {
     surface: VisitSurface;
   }): Promise<void> {
     await this.request<void>('/analytics/visits', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /**
+   * 联系表单：匿名提交一次留言。
+   *
+   * 服务端答 202（或 429 冷却），没有返回体内容值得读，所以这里不解析。
+   */
+  async contactSite(siteId: string, input: ContactPayload): Promise<void> {
+    await this.request<{ status?: string }>(`/sites/${siteId}/contact`, {
       method: 'POST',
       body: JSON.stringify(input),
     });

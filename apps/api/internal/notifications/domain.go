@@ -17,17 +17,20 @@ type Type string
 
 // Supported notification types.
 const (
-	TypeComment      Type = "comment.created"
-	TypeReaction     Type = "reaction.created"
-	TypeFollow       Type = "follow.created"
-	TypeMessage      Type = "message.created"
-	TypeModeration   Type = "moderation.updated"
+	TypeComment    Type = "comment.created"
+	TypeReaction   Type = "reaction.created"
+	TypeFollow     Type = "follow.created"
+	TypeMessage    Type = "message.created"
+	TypeModeration Type = "moderation.updated"
+	// TypeContact is the public contact form: an anonymous visitor's message to the
+	// site administrators. It has no actor and no subject row.
+	TypeContact Type = "contact.created"
 )
 
 // Valid reports whether the type is defined.
 func (t Type) Valid() bool {
 	switch t {
-	case TypeComment, TypeReaction, TypeFollow, TypeMessage, TypeModeration:
+	case TypeComment, TypeReaction, TypeFollow, TypeMessage, TypeModeration, TypeContact:
 		return true
 	default:
 		return false
@@ -107,11 +110,22 @@ func Validate(in NewInput) (NewInput, error) {
 		if len(key) > 40 {
 			return NewInput{}, fmt.Errorf("%w: payload key is too long", ErrInvalidInput)
 		}
-		if len(value) > MaxPayloadValueLength {
+		if len(value) > payloadValueLimit(in.Type, key) {
 			return NewInput{}, fmt.Errorf("%w: payload value is too long", ErrInvalidInput)
 		}
 	}
 	return in, nil
+}
+
+// payloadValueLimit is the byte ceiling of one payload value.
+//
+// Every type uses MaxPayloadValueLength; the contact form is the single exception, and
+// only for the key that carries the reader's message (see contact.go for why).
+func payloadValueLimit(t Type, key string) int {
+	if t == TypeContact && key == "message" {
+		return maxContactMessageBytes
+	}
+	return MaxPayloadValueLength
 }
 
 // CanMarkRead reports whether the actor may change read state.

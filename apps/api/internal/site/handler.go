@@ -38,6 +38,10 @@ type HandlerConfig struct {
 	// Site exposes the resolved site so public reads can honour its visibility mode.
 	Site      SiteFunc
 	RequestID RequestIDFunc
+	// Contact delivers contact form submissions to the site's administrators. When it
+	// is nil the route still exists (the contract documents it) but answers 500: a
+	// deployment that never wired a notifier must not silently swallow messages.
+	Contact *ContactService
 }
 
 // Handler exposes site administration over HTTP.
@@ -46,6 +50,7 @@ type Handler struct {
 	principal PrincipalFunc
 	site      SiteFunc
 	requestID RequestIDFunc
+	contact   *ContactService
 }
 
 // NewHandler builds a Handler.
@@ -62,7 +67,13 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 	if requestID == nil {
 		requestID = func(*gin.Context) string { return "" }
 	}
-	return &Handler{service: service, principal: principal, site: siteOf, requestID: requestID}
+	return &Handler{
+		service:   service,
+		principal: principal,
+		site:      siteOf,
+		requestID: requestID,
+		contact:   cfg.Contact,
+	}
 }
 
 // Routes mounts the site endpoints under /api/v1.
@@ -75,6 +86,11 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFun
 	// site, so it is readable without a session. Writing it is site management and stays
 	// behind the guard.
 	r.GET("/sites/:siteID/customization", optionalAuth, h.GetCustomization)
+
+	// The contact form is for readers, who by definition have no account: it is mounted
+	// with the same optional authentication as the design document, and the handler
+	// carries the anti-abuse layers (engine rate limit, honeypot, per-visitor cooldown).
+	r.POST("/sites/:siteID/contact", optionalAuth, h.ContactMessage)
 
 	group := r.Group("/sites", requireAuth)
 	group.GET("/:siteID", h.GetSite)

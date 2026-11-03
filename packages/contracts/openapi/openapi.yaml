@@ -611,6 +611,51 @@ paths:
         '403':
           $ref: '#/components/responses/PermissionDenied'
 
+  /sites/{siteID}/contact:
+    post:
+      tags: [sites]
+      summary: Send a message from the contact form
+      description: |
+        Anonymous write: the reader who wants to write to the site owner is exactly the
+        person who has no account. The message is delivered as one in-app notification
+        to every active administrator of the site; it is not stored anywhere else, and a
+        site with no administrator answers `202` and delivers nothing.
+
+        The body is bounded: `name` (optional, 80 bytes), `email` (optional, 200 bytes,
+        must contain `@`) and `message` (required, 2000 characters). The text is stored
+        and rendered as plain text and is never interpreted as markup or HTML.
+
+        Anti abuse, in the order the server applies it: `website` is a honeypot field the
+        browser keeps hidden — a non-empty value answers `202` and delivers nothing, so
+        a bot cannot tell it was caught; then validation (`400`); then a 60 second
+        per-visitor cooldown (`429`), which is held in process and therefore per instance
+        — a multi-instance deployment relies on the gateway rate limiter for the fleet
+        wide bound. Rejected submissions do not consume the cooldown.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactMessageInput' }
+      responses:
+        '202':
+          description: |
+            Accepted. Also the answer to a submission that tripped the honeypot: the
+            response deliberately does not reveal whether anything was delivered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContactMessageAccepted' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   /sites/{siteID}/customization:
     get:
       tags: [sites]
@@ -1918,6 +1963,11 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: Too many requests, either from the engine's limiter or from this endpoint's cooldown
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
     Problem:
@@ -2355,6 +2405,45 @@ components:
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
         description: { type: string, maxLength: 500 }
         color: { type: string, description: '#rrggbb; send an empty string to clear.' }
+
+    ContactMessageInput:
+      type: object
+      description: |
+        One anonymous message from the contact form block. `name` and `email` are
+        optional because the block can hide either field; the server therefore never
+        requires them, and an empty value is simply left out of the notification.
+      required: [message]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          description: Display name of the sender, bounded in UTF-8 bytes.
+        email:
+          type: string
+          maxLength: 200
+          description: |
+            Reply address, bounded in UTF-8 bytes. The only rule is that it contains an
+            `@`; the server does not try to prove deliverability.
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: |
+            The message itself, at most 2000 characters. Stored and rendered as plain
+            text: it is never interpreted as HTML.
+        website:
+          type: string
+          description: |
+            Honeypot. The rendered form keeps this field hidden, so a real visitor leaves
+            it empty. Any non-empty value answers `202` and delivers nothing.
+
+    ContactMessageAccepted:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: accepted
 
     SiteCustomization:
       type: object

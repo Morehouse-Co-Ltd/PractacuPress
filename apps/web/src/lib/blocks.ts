@@ -1574,6 +1574,53 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
       { key: 'show_meta', label: t('显示日期'), type: 'toggle' },
     ],
   },
+
+  /* ---------------- 联系表单（P3 表单） ---------------- */
+  /*
+   * 只做**联系表单**，不做订阅名单：订阅需要订阅者表、退订、导出与合规声明，是另一个
+   * 议题。读者写一句话，服务端把它变成站长信箱里的一条通知，除此之外不留任何数据。
+   *
+   * 两个开关决定显示哪些字段；藏起来的字段既不校验也不提交（见 `lib/contactForm.ts`）。
+   * 表单自带蜜罐与 60 秒冷却，编辑面板不需要为此加任何选项。
+   */
+  {
+    type: 'contact-form',
+    name: t('联系表单'),
+    description: t('读者给站长留言，提交后变成站内通知；带蜜罐与 60 秒冷却，不留存数据。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: {
+      heading: '',
+      intro: '',
+      submit_label: '',
+      success_text: '',
+      show_name: true,
+      show_email: true,
+    },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'intro',
+        label: t('说明'),
+        type: 'richtext',
+        hint: t('显示在表单上方的 Markdown 说明，可留空。'),
+      },
+      {
+        key: 'submit_label',
+        label: t('按钮文案'),
+        type: 'text',
+        hint: t('留空时显示「发送」。'),
+      },
+      {
+        key: 'success_text',
+        label: t('成功文案'),
+        type: 'text',
+        hint: t('发送成功后显示；留空时用默认文案。'),
+      },
+      { key: 'show_name', label: t('显示姓名'), type: 'toggle', hint: t('关掉后不要求留名，也不提交姓名。') },
+      { key: 'show_email', label: t('显示邮箱'), type: 'toggle', hint: t('关掉后不收邮箱，站长无法回信。') },
+    ],
+  },
 ];
 
 /**

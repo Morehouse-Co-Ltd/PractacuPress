@@ -12,6 +12,8 @@ const fragment: Dictionary = {
   发来一条私信: 'sent you a message',
   你的内容: 'your content',
   '：{excerpt}': ': {excerpt}',
+  // 联系表单逐条通知：主题由服务端拼成「站点来信：<name>」，这里是没带名字时的兜底。
+  站点来信: 'Message from the site',
 
   // ---- 页头 ----
   '评论、点赞、关注与审核结果。只有你自己的通知会被返回；未读数每 45 秒轮询一次。':
