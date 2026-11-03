@@ -29,6 +29,29 @@ interface AuthValue extends SessionState {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+/**
+ * 匿名访客的站点标识来自启动探测（`config.visitor_site_name`）。
+ *
+ * 真实的 Site 对象要登录之后才拿得到，但页头品牌、SEO 站点名与 404 文案在访客视角
+ * 也需要真实站点名，否则站点设计加载了、品牌名却还是默认值。
+ */
+function visitorSiteOf(config: WebConfig): Site | null {
+  if (!config.visitor || !config.site_id) return null;
+  return {
+    id: config.site_id,
+    slug: '',
+    name: config.visitor_site_name?.trim() || 'Practacu Press',
+    domain: '',
+    visibility_mode: 'public',
+    publish_mode: 'review',
+    disabled: false,
+    // O-3：访客引导从 setup/status 拿到注册开关；缺省表示旧后端，按开放处理。
+    ...(typeof config.visitor_registration_open === 'boolean'
+      ? { registration_open: config.visitor_registration_open }
+      : {}),
+  };
+}
+
 export function AuthProvider({
   config,
   backend,
@@ -41,11 +64,12 @@ export function AuthProvider({
   children: ReactNode;
 }) {
   const t = useT();
+  const visitorSite = useMemo(() => visitorSiteOf(config), [config]);
   const [state, setState] = useState<SessionState>({
     status: 'loading',
     session: null,
     me: null,
-    site: null,
+    site: visitorSite,
   });
   const [unread, setUnread] = useState(0);
   const aliveRef = useRef(true);
@@ -73,17 +97,17 @@ export function AuthProvider({
 
   useEffect(() => {
     const onExpired = () => {
-      setState({ status: 'anonymous', session: null, me: null, site: null });
+      setState({ status: 'anonymous', session: null, me: null, site: visitorSite });
       setUnread(0);
     };
     window.addEventListener('pp:session-expired', onExpired);
     return () => window.removeEventListener('pp:session-expired', onExpired);
-  }, []);
+  }, [visitorSite]);
 
   useEffect(() => {
     aliveRef.current = true;
     let cancelled = false;
-    setState({ status: 'loading', session: null, me: null, site: null });
+    setState({ status: 'loading', session: null, me: null, site: visitorSite });
     (async () => {
       try {
         const session = await backend.refresh();
@@ -93,14 +117,14 @@ export function AuthProvider({
         setState({ status: 'ready', session, me, site });
       } catch {
         if (cancelled) return;
-        setState({ status: 'anonymous', session: null, me: null, site: null });
+        setState({ status: 'anonymous', session: null, me: null, site: visitorSite });
       }
     })();
     return () => {
       cancelled = true;
       aliveRef.current = false;
     };
-  }, [backend, loadSite]);
+  }, [backend, loadSite, visitorSite]);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -131,17 +155,17 @@ export function AuthProvider({
 
   const logout = useCallback(async () => {
     await backend.logout();
-    setState({ status: 'anonymous', session: null, me: null, site: null });
+    setState({ status: 'anonymous', session: null, me: null, site: visitorSite });
     setUnread(0);
-  }, [backend]);
+  }, [backend, visitorSite]);
 
   const reload = useCallback(async () => {
     if (!state.session) {
-      setState({ status: 'anonymous', session: null, me: null, site: null });
+      setState({ status: 'anonymous', session: null, me: null, site: visitorSite });
       return;
     }
     await hydrate(state.session);
-  }, [hydrate, state.session]);
+  }, [hydrate, state.session, visitorSite]);
 
   const applySite = useCallback((site: Site) => {
     setState((prev) => ({ ...prev, site }));

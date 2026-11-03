@@ -18,6 +18,8 @@ import {
 import { Badge, Button, Callout, Field, Input, Modal, Select, Textarea } from './ui';
 import { Icon } from './Icon';
 import type { EditorCommands, EditorDialogKind } from './RichTextEditor';
+import type { DiagramSpec } from '../lib/diagramSpec';
+import { DiagramDialog } from './DiagramDialog';
 
 /**
  * 富文本工具栏。
@@ -27,7 +29,7 @@ import type { EditorCommands, EditorDialogKind } from './RichTextEditor';
  * 插入位置就丢了。
  */
 
-type Dialog = 'image' | 'video' | 'embed' | 'table' | 'columns' | 'icon' | 'gallery' | 'formula' | null;
+type Dialog = 'image' | 'video' | 'embed' | 'table' | 'columns' | 'icon' | 'gallery' | 'formula' | 'diagram' | null;
 
 export function EditorToolbar({
   commands,
@@ -50,6 +52,9 @@ export function EditorToolbar({
   const [linkCover, setLinkCover] = useState('');
   const [formulaMode, setFormulaMode] = useState<'inline' | 'block'>('inline');
   const [formulaSource, setFormulaSource] = useState('');
+  /** 「编辑图表」回填的规格；插入时用 replace 整块替换，而不是再插一块。 */
+  const [diagramInitial, setDiagramInitial] = useState<DiagramSpec | null>(null);
+  const diagramReplace = useRef<((html: string) => void) | null>(null);
 
   const open = (kind: Exclude<Dialog, null>) => {
     commands.saveSelection();
@@ -73,6 +78,15 @@ export function EditorToolbar({
     setDialog('formula');
   };
 
+  /** 打开图表弹窗：光标在已有图表块内时回填规格，插入时整块替换。 */
+  const openDiagram = () => {
+    commands.saveSelection();
+    const target = commands.diagramTarget();
+    diagramReplace.current = target?.replace ?? null;
+    setDiagramInitial(target?.spec ?? null);
+    setDialog('diagram');
+  };
+
   /** 斜杠面板统一的弹窗入口：把 kind 分发给现有的各个弹窗。 */
   const openDialog = (kind: EditorDialogKind) => {
     if (disabled) return;
@@ -82,6 +96,10 @@ export function EditorToolbar({
     }
     if (kind === 'link') {
       openLink();
+      return;
+    }
+    if (kind === 'diagram') {
+      openDiagram();
       return;
     }
     open(kind);
@@ -359,6 +377,16 @@ export function EditorToolbar({
           >
             <span className="tool-glyph">∑</span>
           </button>
+          <button
+            type="button"
+            className="tool-btn"
+            disabled={disabled}
+            title={t('图表（思维导图 / 逻辑图 / 统计图 / 鱼骨图）')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openDiagram}
+          >
+            <Icon name="chart" size={15} />
+          </button>
         </div>
 
         <span className="tool-sep" />
@@ -479,6 +507,23 @@ export function EditorToolbar({
           commands.formula(formulaSource, formulaMode === 'block');
           setDialog(null);
           setFormulaSource('');
+        }}
+      />
+
+      <DiagramDialog
+        open={dialog === 'diagram'}
+        initial={diagramInitial}
+        onClose={() => {
+          setDialog(null);
+          diagramReplace.current = null;
+        }}
+        onInsert={(html) => {
+          const replace = diagramReplace.current;
+          diagramReplace.current = null;
+          setDiagramInitial(null);
+          setDialog(null);
+          if (replace) replace(html);
+          else commands.insert(html);
         }}
       />
     </div>

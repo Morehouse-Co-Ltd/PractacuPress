@@ -226,7 +226,6 @@ export function VerificationPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('当前状态')}</h3>
-                <p>{t('保存后才在前台生效。')}</p>
               </div>
             </div>
             <div className="panel-body">

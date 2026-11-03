@@ -208,7 +208,6 @@ export function PermissionsPage() {
           <div className="panel-head">
             <div>
               <h3>{t('分组说明')}</h3>
-              <p>{t('从游客到最高管理员，五组覆盖前台的每一种身份。')}</p>
             </div>
           </div>
           <div className="panel-body" style={{ paddingTop: 6 }}>

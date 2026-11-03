@@ -152,6 +152,8 @@ const fragment: Dictionary = {
   导入: 'Import',
   '导入会覆盖当前的外观、页面与扩展；账户与内容不受影响。':
     'Importing overwrites the current appearance, pages, and extensions; accounts and content are unaffected.',
+  '导入会写入服务端并影响所有访客：当前的外观、页面与扩展会被替换；账户与内容不受影响。':
+    'Importing writes to the server and affects every visitor: the current appearance, pages, and extensions are replaced; accounts and content are unaffected.',
 
   恢复默认站点设置: 'Restore default site settings',
   '可以只重置品牌文案、首页/页面编排、加载动画、性能、访问限制或域名绑定。':
@@ -163,6 +165,10 @@ const fragment: Dictionary = {
   '导入这份配置？': 'Import this configuration?',
   '当前外观、页面与扩展会被文件里的内容替换。':
     'The current appearance, pages, and extensions will be replaced with the contents of the file.',
+  '当前外观、页面与扩展会被文件里的内容替换，并立即同步到服务端、对所有访客生效。':
+    'The current appearance, pages, and extensions will be replaced with the contents of the file and synced to the server, taking effect for every visitor.',
+  '设计包里的自定义 CSS 与自定义代码区块会随站点分发给每个访客，请只导入可信来源的配置。':
+    'Custom CSS and custom code blocks in the design package are distributed to every visitor, so only import configurations from sources you trust.',
   替换并保存: 'Replace and save',
   '这是一次整体替换：导入文件里的页面列表会覆盖本地页面。请确认已经导出备份。':
     'This is a full replacement: the page list in the file overwrites the local pages. Make sure you have exported a backup.',

@@ -4,7 +4,7 @@ import type { BlockInstance, Content, TileSpan } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useFeed, countWords } from './FeedContext';
 import { readingTime, timeAgo } from '../../lib/format';
-import { Avatar, EmptyState, Skeleton } from '../ui';
+import { Avatar, EmptyState, Skeleton, SkeletonPanel } from '../ui';
 import { Icon } from '../Icon';
 import { ContentCover } from '../Cover';
 import { blockItems, blockProp } from '../../lib/blocks';
@@ -110,7 +110,7 @@ function HeroPopular({ heading, limit, cover }: { heading: string; limit: number
       ) : null}
 
       {loading ? (
-        <Skeleton lines={3} />
+        <SkeletonPanel lines={4} />
       ) : rows.length ? (
         <ol className="nf-popular-list">
           {rows.map(({ item, views }, index) => (

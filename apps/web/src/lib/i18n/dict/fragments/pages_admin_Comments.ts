@@ -10,8 +10,8 @@ const fragment: Dictionary = {
 
   // ---- 评论设置 ----
   '评论设置': 'Comment settings',
-  '立即生效，保存在本地安装配置；真实后端上线后应改为服务端站点策略。':
-    'Applied immediately and stored in the local install configuration; once a real backend is live this should become a server-side site policy.',
+  '立即生效，保存在本地安装配置。':
+    'Applied immediately and stored in the local install configuration.',
   '已开启': 'On',
   '已关闭': 'Off',
   '允许评论': 'Allow comments',

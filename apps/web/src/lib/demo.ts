@@ -24,6 +24,8 @@ import type {
   Role,
   Session,
   Site,
+  SiteDomainVerification,
+  SiteDomainVerificationResult,
   TaxonomySettings,
   TaxonomyTerm,
   TaxonomyTermInput,
@@ -99,6 +101,8 @@ export interface DemoConfigureInput {
     description: string;
     visibility_mode: Site['visibility_mode'];
     publish_mode: Site['publish_mode'];
+    /** O-3：演示模式同样支持"关闭注册"，缺省按开放处理。 */
+    registration_open?: boolean;
   };
 }
 
@@ -312,6 +316,9 @@ export class DemoBackend {
 
   async register(input: { email: string; password: string; display_name: string }): Promise<Session> {
     await wait();
+    if (this.state.site.registration_open === false) {
+      this.fail(403, 'permission_denied', '本站暂未开放注册。', { reason: 'registration_closed' });
+    }
     const email = input.email.trim().toLowerCase();
     if (this.state.users.some((u) => u.email.toLowerCase() === email)) {
       this.fail(409, 'conflict', '该邮箱已经注册。');
@@ -442,7 +449,8 @@ export class DemoBackend {
   async site(siteId: string): Promise<Site> {
     await wait(60);
     if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
-    return { ...this.state.site };
+    // 早期演示数据没有 registration_open：按开放处理，避免升级后意外关注册。
+    return { ...this.state.site, registration_open: this.state.site.registration_open !== false };
   }
 
   async updateSite(
@@ -453,6 +461,7 @@ export class DemoBackend {
       visibility_mode: Site['visibility_mode'];
       publish_mode: Site['publish_mode'];
       domain: string;
+      registration_open: boolean;
     }>,
   ): Promise<void> {
     await wait();
@@ -467,13 +476,57 @@ export class DemoBackend {
     if (patch.description !== undefined) this.state.site.description = patch.description.slice(0, 2000);
     if (patch.visibility_mode) this.state.site.visibility_mode = patch.visibility_mode;
     if (patch.publish_mode) this.state.site.publish_mode = patch.publish_mode;
+    if (patch.registration_open !== undefined) {
+      this.state.site.registration_open = patch.registration_open;
+    }
     if (patch.domain !== undefined) this.state.site.domain = patch.domain.trim();
     this.log('修改站点设置', this.state.site.name);
     this.persist();
   }
 
   async setSiteDomain(siteId: string, domain: string): Promise<void> {
-    await this.updateSite(siteId, { domain: domain.trim().toLowerCase() });
+    const next = domain.trim().toLowerCase();
+    const changed = next !== this.state.site.domain;
+    await this.updateSite(siteId, { domain: next });
+    if (changed) {
+      // 改域名相当于换绑：演示模式也要走一遍「待验证 → 立即验证」。
+      this.state.domain_verified = false;
+      this.persist();
+    }
+  }
+
+  /** V-12：演示后端用确定性 token 模拟 TXT 验证，改域名后进入待验证。 */
+  async siteDomain(siteId: string): Promise<SiteDomainVerification> {
+    await wait(60);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const domain = this.state.site.domain;
+    if (!domain) {
+      return { domain: '', verified: false, verification_token: '', record_name: '', record_type: 'TXT' };
+    }
+    return {
+      domain,
+      // 早期演示数据没有验证状态：按已验证处理；只有明确 false 才算待验证。
+      verified: this.state.domain_verified !== false,
+      verification_token: `pp_verify_${domain.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`,
+      record_name: `_practacu-verify.${domain}`,
+      record_type: 'TXT',
+    };
+  }
+
+  async verifySiteDomain(siteId: string): Promise<SiteDomainVerificationResult> {
+    await wait(240);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const domain = this.state.site.domain;
+    if (!domain) {
+      this.fail(400, 'validation_failed', '请先填写主域名。', { reason: 'validation_failed' });
+    }
+    // 演示模式没有真实 DNS：直接当作 TXT 记录已生效。
+    this.state.domain_verified = true;
+    this.log('验证主域名', domain);
+    this.persist();
+    return { verified: true, domain };
   }
 
   async members(): Promise<Member[]> {

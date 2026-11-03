@@ -579,7 +579,7 @@ export function AppearancePage() {
                 />
               </div>
               <p className="tiny faint mt-12">
-                {t('导入会覆盖当前的外观、页面与扩展；账户与内容不受影响。')}
+                {t('导入会写入服务端并影响所有访客：当前的外观、页面与扩展会被替换；账户与内容不受影响。')}
               </p>
             </div>
           </section>
@@ -600,7 +600,7 @@ export function AppearancePage() {
       <Modal
         open={!!pendingImport}
         title={t('导入这份配置？')}
-        description={t('当前外观、页面与扩展会被文件里的内容替换。')}
+        description={t('当前外观、页面与扩展会被文件里的内容替换，并立即同步到服务端、对所有访客生效。')}
         onClose={() => setPendingImport(null)}
         footer={
           <>
@@ -613,6 +613,8 @@ export function AppearancePage() {
       >
         <Callout tone="warn" icon="alert">
           {t('这是一次整体替换：导入文件里的页面列表会覆盖本地页面。请确认已经导出备份。')}
+          <br />
+          {t('设计包里的自定义 CSS 与自定义代码区块会随站点分发给每个访客，请只导入可信来源的配置。')}
         </Callout>
       </Modal>
 

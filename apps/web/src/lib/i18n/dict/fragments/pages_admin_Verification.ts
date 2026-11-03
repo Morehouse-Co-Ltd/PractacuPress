@@ -67,7 +67,6 @@ const fragment: Dictionary = {
     'Keys are never written to localStorage; this snippet is only meant to be pasted into the server environment variables.',
 
   当前状态: 'Current status',
-  '保存后才在前台生效。': 'It applies on the site only after saving.',
   已填写: 'Provided',
   未填写: 'Not provided',
   保护场景: 'Protected scenarios',

@@ -96,15 +96,25 @@ export function timeAgo(iso?: string): string {
   return t('{count} 年前', { count: Math.floor(months / 12) });
 }
 
+/**
+ * 文章图表存的是 `pp-diagram` 围栏 + JSON 规格，不是正文。
+ * 字数与摘要都不要把这段 JSON 当成文字，先把整块去掉。
+ */
+const DIAGRAM_BLOCK = /<pre><code[^>]*language-pp-diagram[^>]*>[\s\S]*?<\/code><\/pre>/gi;
+
+function withoutDiagramBlocks(html: string): string {
+  return html.replace(DIAGRAM_BLOCK, ' ');
+}
+
 export function readingTime(html: string): number {
-  const text = html.replace(/<[^>]+>/g, '');
+  const text = withoutDiagramBlocks(html).replace(/<[^>]+>/g, '');
   const cjk = (text.match(/[\u4e00-\u9fa5]/g) ?? []).length;
   const words = text.replace(/[\u4e00-\u9fa5]/g, ' ').split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(cjk / 400 + words / 220));
 }
 
 export function excerpt(html: string, max = 120): string {
-  const text = html
+  const text = withoutDiagramBlocks(html)
     .replace(/<[^>]+>/g, ' ')
     .replace(/&[a-z]+;/gi, ' ')
     .replace(/\s+/g, ' ')

@@ -32,6 +32,8 @@ const fragment: Dictionary = {
   图集: 'Gallery',
   提示框: 'Callout',
   数学公式: 'Math formula',
+  '图表（思维导图 / 逻辑图 / 统计图 / 鱼骨图）':
+    'Diagram (mind map / logic chart / statistical chart / fishbone)',
   撤销: 'Undo',
   '撤销（⌘/Ctrl+Z）': 'Undo (⌘/Ctrl+Z)',
   重做: 'Redo',

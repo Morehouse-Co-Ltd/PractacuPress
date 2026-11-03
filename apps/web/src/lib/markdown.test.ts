@@ -275,3 +275,107 @@ describe('sanitizeHtml URL allowlist', () => {
     expect(html).toContain('class="language-ts"');
   });
 });
+
+// V-20：定制化 text 区块的 HTML 走 dangerouslySetInnerHTML，客户端清洗器必须自己
+// 堵住命名访问（DOM clobbering）。`<img name="getElementById">` 一旦留下来，根组件
+// 读主题样式的副作用就会抛错、整棵树卸载（全站白屏，持久 DoS）。
+describe('sanitizeHtml DOM clobbering', () => {
+  it('drops id and name attributes that would shadow document APIs', () => {
+    const html = sanitizeHtml(
+      '<p>欢迎</p><img name="getElementById" src="https://cdn.example/x.png" />' +
+        '<a id="pp-theme" href="https://example.com">x</a>' +
+        '<img NAME="cookie" src="https://cdn.example/y.png" />' +
+        '<div id="pp-theme"><span name="parent">x</span></div>',
+    );
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(doc.querySelector('[id], [name]')).toBeNull();
+    expect(html).not.toContain('getElementById');
+    expect(html).not.toContain('pp-theme');
+    // 正常属性仍然保留：清洗不是整段丢弃。
+    expect(html).toContain('src="https://cdn.example/x.png"');
+    expect(html).toContain('href="https://example.com"');
+  });
+
+  it('drops the other named-access attributes (is / form / for)', () => {
+    const html = sanitizeHtml(
+      '<p is="pp-widget" form="f1" for="x">x</p><label for="name">y</label>',
+    );
+
+    expect(html).not.toContain('is=');
+    expect(html).not.toContain('form=');
+    expect(html).not.toContain('for=');
+  });
+
+  it('keeps class, data-* and other ordinary attributes', () => {
+    const html = sanitizeHtml(
+      '<p class="lead" data-block-id="b1" id="drop" name="drop" title="t">x</p>',
+    );
+
+    expect(html).toContain('class="lead"');
+    expect(html).toContain('data-block-id="b1"');
+    expect(html).toContain('title="t"');
+    expect(html).not.toContain('id="drop"');
+    expect(html).not.toContain('name="drop"');
+  });
+
+  it('cannot shadow document.getElementById once inserted into the page', () => {
+    const host = document.createElement('div');
+    host.innerHTML = sanitizeHtml('<p>欢迎</p><img name="getElementById" src=x />');
+    document.body.appendChild(host);
+    try {
+      // 清洗后的内容插进真实文档树后，document API 必须仍是可调用的函数。
+      expect(typeof document.getElementById).toBe('function');
+      expect(document.getElementById('pp-theme')).toBeNull();
+      expect(document.querySelector('[name="getElementById"]')).toBeNull();
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('is idempotent when named-access attributes were present', () => {
+    const once = sanitizeHtml('<p id="pp-theme" name="fetch">x</p><img name="getElementById" src=x />');
+
+    expect(sanitizeHtml(once)).toBe(once);
+  });
+});
+
+// V-21：定制化 text 区块里的外链新标签页会拿到 window.opener，可反向把本站导航到
+// 钓鱼页。服务端 ammonia 会补 rel，客户端清洗器要与它对齐。
+describe('sanitizeHtml target=_blank rel', () => {
+  const linkOf = (html: string) =>
+    new DOMParser().parseFromString(html, 'text/html').querySelector('a');
+
+  it('forces rel=noopener noreferrer on a new-tab link', () => {
+    const link = linkOf(sanitizeHtml('<p><a href="https://example.com/next" target="_blank">继续</a></p>'));
+
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('overrides a content supplied rel and normalises the target', () => {
+    const link = linkOf(
+      sanitizeHtml('<a href="https://example.com" target="  _BLANK " rel="opener">x</a>'),
+    );
+
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('leaves same-tab and internal links alone', () => {
+    const html = sanitizeHtml(
+      '<a href="https://example.com" target="_self" rel="nofollow">x</a>' +
+        '<a href="/posts/hello">y</a>',
+    );
+    const links = new DOMParser().parseFromString(html, 'text/html').querySelectorAll('a');
+
+    expect(links[0]?.getAttribute('target')).toBe('_self');
+    expect(links[0]?.getAttribute('rel')).toBe('nofollow');
+    expect(links[1]?.getAttribute('rel')).toBeNull();
+  });
+
+  it('is idempotent once rel was added', () => {
+    const once = sanitizeHtml('<a href="https://example.com" target="_blank">x</a>');
+
+    expect(sanitizeHtml(once)).toBe(once);
+  });
+});

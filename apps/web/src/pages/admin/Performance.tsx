@@ -388,7 +388,6 @@ export function PerformancePage() {
             <div className="panel-head">
               <div>
                 <h3>{t('当前效果')}</h3>
-                <p>{t('保存后立即反映到前台。')}</p>
               </div>
             </div>
             <div className="panel-body">
@@ -434,23 +433,6 @@ export function PerformancePage() {
                   {t('加载动画')}
                 </Link>
               </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('部署顺序')}</h3>
-                <p>{t('从影响最大的开始。')}</p>
-              </div>
-            </div>
-            <div className="panel-body">
-              <ol className="perf-steps">
-                <li>{t('先在「访问限制」打开每 IP 请求限制，挡住异常流量。')}</li>
-                <li>{t('调小首屏读取并开启请求去重，减少 API 与数据库压力。')}</li>
-                <li>{t('部署 Nginx 压缩与静态缓存，减少带宽与响应时间。')}</li>
-                <li>{t('最后按服务器规格调整 HTTP 超时与数据库连接池。')}</li>
-              </ol>
             </div>
           </section>
 

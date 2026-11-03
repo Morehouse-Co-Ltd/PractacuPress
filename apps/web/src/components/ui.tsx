@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -184,6 +185,77 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
     <div className="skeleton" aria-hidden>
       {Array.from({ length: lines }, (_, i) => (
         <span key={i} style={{ width: `${92 - i * 9}%` }} />
+      ))}
+    </div>
+  );
+}
+
+/** 单行骨架。 */
+export function SkeletonLine({ width = '100%' }: { width?: string }) {
+  return <span className="pp-skel-line" style={{ width }} aria-hidden />;
+}
+
+/** 卡片骨架：一块封面 + 若干文字行，用于网格与大卡。 */
+export function SkeletonCard({
+  lines = 3,
+  media = true,
+}: {
+  lines?: number;
+  media?: boolean;
+}) {
+  return (
+    <div className="pp-skel-card" aria-hidden>
+      {media ? <span className="pp-skel-media" /> : null}
+      <span className="pp-skel-card-body">
+        {Array.from({ length: lines }, (_, i) => (
+          <span key={i} className="pp-skel-line" style={{ width: `${94 - i * 14}%` }} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/** 列表行骨架：日期列 + 标题/摘要，用于归档与列表。 */
+export function SkeletonRow() {
+  return (
+    <div className="pp-skel-row" aria-hidden>
+      <span className="pp-skel-line pp-skel-date" />
+      <span className="pp-skel-row-body">
+        <span className="pp-skel-line" style={{ width: '44%' }} />
+        <span className="pp-skel-line" style={{ width: '82%' }} />
+      </span>
+    </div>
+  );
+}
+
+/** 侧栏 / 小卡骨架：一个标题行 + 若干短行。 */
+export function SkeletonPanel({ lines = 3 }: { lines?: number }) {
+  return (
+    <div className="pp-skel-panel" aria-hidden>
+      <span className="pp-skel-line" style={{ width: '52%' }} />
+      {Array.from({ length: lines }, (_, i) => (
+        <span key={i} className="pp-skel-line" style={{ width: `${88 - i * 16}%` }} />
+      ))}
+    </div>
+  );
+}
+
+/** 卡片网格骨架；列数由区块属性决定。 */
+export function SkeletonGrid({
+  columns = 2,
+  count = 4,
+}: {
+  columns?: number;
+  count?: number;
+}) {
+  return (
+    <div
+      className="pp-skel-grid"
+      style={{ '--pp-skel-columns': columns } as CSSProperties}
+      aria-hidden
+    >
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonCard key={i} />
       ))}
     </div>
   );

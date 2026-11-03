@@ -7,6 +7,7 @@ import { useAsync, useTitle } from '../../lib/hooks';
 import { ApiError } from '../../lib/api';
 import { PUBLISH_LABEL, VISIBILITY_LABEL } from '../../lib/format';
 import { isPersonalSite } from '../../lib/site';
+import { isRegistrationClosedError, registrationOpen } from '../../lib/registration';
 import {
   AUTH_PROVIDER_IDS,
   PROVIDER_BY_ID,
@@ -27,6 +28,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const t = useT();
   const { login, providerLogin, register, site, status, config } = useAuth();
   const personal = isPersonalSite(config);
+  // O-3：站长可以在站点设置里关闭自助注册；服务端拒绝时（403 registration_closed）
+  // 与提前知道关闭时（Site.registration_open / 访客引导）都走同一张关闭提示卡。
+  const registrationClosed = !personal && !registrationOpen(site);
   const backend = useBackend();
   const demo = isDemo(backend) ? backend : null;
   const navigate = useNavigate();
@@ -54,7 +58,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       ? personal
         ? t('管理员登录')
         : t('登录')
-      : personal
+      : personal || registrationClosed
         ? t('注册已关闭')
         : t('创建账户'),
   );
@@ -70,25 +74,30 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  if (mode === 'register' && personal) {
+  if (mode === 'register' && (personal || registrationClosed)) {
     return (
       <div className="auth-page">
         <div className="auth-main">
           <div className="auth-card">
             <p className="eyebrow">Closed</p>
-            <h1>{t('这里不开放注册。')}</h1>
+            <h1>{personal ? t('这里不开放注册。') : t('本站暂未开放注册')}</h1>
             <p className="auth-lede">
-              {t(
-                '{site} 是个人博客，不开放自助注册。账户由站长在后台「用户管理」里创建； 已经有账户的成员可以直接登录。',
-                { site: site?.name ?? t('本站') },
-              )}
+              {personal
+                ? t(
+                    '{site} 是个人博客，不开放自助注册。账户由站长在后台「用户管理」里创建； 已经有账户的成员可以直接登录。',
+                    { site: site?.name ?? t('本站') },
+                  )
+                : t(
+                    '{site} 暂时关闭了自助注册。已经注册的成员可以直接登录；需要账户请联系站长开通。',
+                    { site: site?.name ?? t('本站') },
+                  )}
             </p>
             <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
               <Link to="/" className="btn btn-primary btn-md">
                 {t('回到首页')}
               </Link>
               <Link to="/login" className="btn btn-secondary btn-md">
-                {t('管理员登录')}
+                {personal ? t('管理员登录') : t('登录')}
               </Link>
               {canReset ? (
                 <Link to="/forgot-password" className="btn btn-ghost btn-md">
@@ -97,9 +106,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               ) : null}
             </div>
             <p className="tiny faint mt-16">
-              {t(
-                '访客无需账户即可阅读全部已发布内容。如果刚完成安装，请使用安装时填写的管理员邮箱进入后台。',
-              )}
+              {personal
+                ? t(
+                    '访客无需账户即可阅读全部已发布内容。如果刚完成安装，请使用安装时填写的管理员邮箱进入后台。',
+                  )
+                : t('访客无需账户即可阅读全部已发布内容。注册开放时间由站长决定。')}
             </p>
           </div>
         </div>
@@ -108,7 +119,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <p className="auth-quote">{t('“一个人写，一个人读，也是一种出版。”')}</p>
           <div className="auth-aside-meta">
             <span>{site ? VISIBILITY_LABEL[site.visibility_mode] : t('公开浏览')}</span>
-            <span>{t('个人博客')}</span>
+            <span>{personal ? t('个人博客') : t('社区站点')}</span>
             <span>Ed25519 · HttpOnly Cookie</span>
           </div>
         </aside>
@@ -152,15 +163,20 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       }
       navigate(next, { replace: true });
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.code === 'unauthenticated'
-            ? t('邮箱或密码不正确。')
-            : err.message
-          : err instanceof Error
-            ? err.message
-            : t('请求失败。'),
-      );
+      if (mode === 'register' && isRegistrationClosedError(err)) {
+        // O-3：服务端关闭注册时给访客一条可读提示，而不是 403 problem 原文。
+        setError(t('本站暂未开放注册。'));
+      } else {
+        setError(
+          err instanceof ApiError
+            ? err.code === 'unauthenticated'
+              ? t('邮箱或密码不正确。')
+              : err.message
+            : err instanceof Error
+              ? err.message
+              : t('请求失败。'),
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -397,12 +413,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           ) : (
             <p className="auth-switch">
               {mode === 'login' ? (
-                <>
-                  {t('还没有账户？')}{' '}
-                  <Link to={`/register?next=${encodeURIComponent(next)}`} className="text-link">
-                    {t('创建一个')}
-                  </Link>
-                </>
+                registrationClosed ? null : (
+                  <>
+                    {t('还没有账户？')}{' '}
+                    <Link to={`/register?next=${encodeURIComponent(next)}`} className="text-link">
+                      {t('创建一个')}
+                    </Link>
+                  </>
+                )
               ) : (
                 <>
                   {t('已经有账户？')}{' '}

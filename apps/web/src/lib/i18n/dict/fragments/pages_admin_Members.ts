@@ -123,7 +123,6 @@ const fragment: Dictionary = {
   '正在载入用户': 'Loading users',
   '个人博客的用户规则': 'User rules on a personal blog',
   '四种用户组能做什么': 'What each of the four groups can do',
-  '权限由服务端执行，界面只负责表达。': 'Permissions are enforced by the server; the interface only reflects them.',
   '登录': 'Sign-in',
   '所有账户都能登录，前台不再提供注册入口。新账户由站长在上方创建。':
     'Every account can sign in, and the public site no longer offers sign-up. The site owner creates new accounts above.',

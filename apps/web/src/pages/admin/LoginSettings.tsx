@@ -94,7 +94,6 @@ export function LoginSettingsPage() {
               </span>
               <div>
                 <strong>{meta.name}</strong>
-                <p>{auth[id].enabled ? t('已配置，登录页会显示入口。') : t('未启用。')}</p>
               </div>
               <Badge tone={auth[id].enabled ? 'accent' : 'muted'}>
                 {auth[id].enabled ? t('已启用') : t('关闭')}
@@ -110,7 +109,6 @@ export function LoginSettingsPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('邮箱与密码')}</h3>
-                <p>{t('始终可用；注册、登录与找回密码都依赖它。')}</p>
               </div>
               <Badge tone="ok" dot>
                 Ed25519 · HttpOnly Cookie

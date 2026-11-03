@@ -52,6 +52,8 @@ export function SiteChrome() {
   const backend = useBackend();
   const demo = isDemo(backend);
   const personal = isPersonalSite(config);
+  // O-3：站点关闭自助注册时不再显示注册入口；服务端仍会拒绝注册请求。
+  const registrationClosed = site?.registration_open === false;
   const adminAccess =
     can('moderate_content') || can('manage_member') || can('manage_site') || can('view_log');
   const layout = customization.layout;
@@ -374,9 +376,11 @@ export function SiteChrome() {
                   <Link to="/login" className="btn btn-ghost btn-sm">
                     {t('登录')}
                   </Link>
-                  <Link to="/register" className="btn btn-primary btn-sm">
-                    {t('开始使用')}
-                  </Link>
+                  {registrationClosed ? null : (
+                    <Link to="/register" className="btn btn-primary btn-sm">
+                      {t('开始使用')}
+                    </Link>
+                  )}
                 </>
               )
             ) : (
@@ -478,7 +482,7 @@ export function SiteChrome() {
               ) : (
                 <>
                   <Link to="/login">{t('登录')}</Link>
-                  <Link to="/register">{t('注册')}</Link>
+                  {registrationClosed ? null : <Link to="/register">{t('注册')}</Link>}
                 </>
               )}
             </div>

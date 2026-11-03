@@ -178,7 +178,7 @@ export function CommentsPage() {
           <div className="panel-head">
             <div>
               <h3>{t('评论设置')}</h3>
-              <p>{t('立即生效，保存在本地安装配置；真实后端上线后应改为服务端站点策略。')}</p>
+              <p>{t('立即生效，保存在本地安装配置。')}</p>
             </div>
             <Badge tone={comments.enabled ? 'ok' : 'muted'}>{comments.enabled ? t('已开启') : t('已关闭')}</Badge>
           </div>

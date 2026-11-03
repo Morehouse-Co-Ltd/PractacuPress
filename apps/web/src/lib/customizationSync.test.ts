@@ -252,6 +252,38 @@ describe('scheduleCustomizationSave', () => {
     handle.dispose();
   });
 
+  it('写回前剔掉旧缓存里的高危自定义 CSS，其余字段保持原样', async () => {
+    const raw = {
+      layout: { brand_sub: '原始' },
+      custom_css: 'body { color: #222; }\n@import url("https://evil.example/x.css");',
+      future_field: { keep: true },
+    };
+    const storage = makeStorage(
+      makeConfig({ customization: raw as unknown as SiteCustomization }),
+    );
+    const put = vi.fn<Put>(async () => ({ revision: 3, updated_at: 't' }));
+    const handle = scheduleCustomizationSave({
+      read: storage.read,
+      api: fakeApi({ siteCustomization: vi.fn<Get>(async () => null), saveSiteCustomization: put }),
+      siteId: 'site_1',
+      revisions: createRevisionStore(),
+      logger: makeLogger().logger,
+      window: null,
+      document: null,
+    });
+
+    handle();
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+    await handle.flush();
+
+    const payload = put.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload).not.toBe(raw);
+    expect(String(payload.custom_css)).toContain('color: #222');
+    expect(String(payload.custom_css)).not.toContain('@import');
+    expect(payload.future_field).toEqual({ keep: true });
+    handle.dispose();
+  });
+
   it('409 后采用服务端 revision 重试一次', async () => {
     const raw = { custom_css: '冲突前的内容' };
     const storage = makeStorage(

@@ -2,36 +2,75 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`apps/web/src/pages/admin/Storage.tsx` */
 const fragment: Dictionary = {
-  '存储策略': 'Storage strategy',
+  // ---- 页头与通用 ----
+  '储存策略': 'Storage strategies',
   '保存只是写配置，部署才算切换': 'Saving only writes config; deploying is what switches',
   '站点管理员': 'Site admin',
   '媒体库': 'Media library',
-  '存储策略已保存': 'Storage strategy saved',
-  '已恢复默认存储策略': 'Default storage strategy restored',
+  '保存修改': 'Save changes',
   '放弃未保存的修改': 'Discard unsaved changes',
   '没有未保存的修改': 'No unsaved changes',
-  '恢复默认': 'Restore defaults',
-  '恢复默认存储策略': 'Restore the default storage strategy',
   '打开媒体库': 'Open media library',
   '性能优化': 'Performance',
+  '编辑': 'Edit',
+  '删除': 'Delete',
+  '取消': 'Cancel',
+  '名称': 'Name',
+  '类型': 'Type',
+  '全局': 'Global',
 
-  '本地存储': 'Local storage',
+  // ---- 类型 / 用途 ----
+  '本地储存': 'Local storage',
   '云对象存储': 'Cloud object storage',
-  '本地磁盘': 'Local disk',
-  '沿用全局': 'Use global setting',
   '文章媒体': 'Article media',
   '站点图片': 'Site images',
   '用户头像': 'User avatars',
-  '用户数据 / 附件': 'User data / attachments',
-  '用户数据/附件': 'User data/attachments',
-  '全部沿用全局': 'All use the global setting',
-  '仅本次': 'This session only',
-  '只在本页内存里保留': 'Kept in this page’s memory only',
-  '未填写桶': 'No bucket set',
-  'AWS 默认': 'AWS default',
-  'Access Key 已保存': 'Access Key saved',
-  '未填写（实例角色）': 'Not set (instance role)',
-  '由桶策略 / CDN 决定': 'Set by the bucket policy / CDN',
+  '用户数据与附件': 'User data and attachments',
+
+  '决定上传的图片与附件写到哪里：先建一套或几套储存策略（本地目录或 S3 兼容的云对象存储），':
+    'Decides where uploaded images and attachments are written: first create one or more storage strategies (a local directory, or any S3-compatible cloud object storage),',
+  '再让每个用途各选一套。浏览器只能保存部署意图，真正生效要靠服务器上的':
+    'then point each scope at one of them. The browser can only record the deployment intent; what actually takes effect depends on the server’s',
+  '与重启 API。': 'and on an API restart.',
+  '本页只写入这台电脑的本地安装配置，并把选择翻译成可粘贴的 API':
+    'This page only writes the local install config on this computer and turns the choice into a paste-ready API',
+  '片段；服务器需要把片段写进': 'snippet; the server needs that snippet in its',
+  '并重启 API 才生效。演示模式与真实后端行为一致：':
+    'and the API restarted before it takes effect. Demo mode behaves like a real backend:',
+  '都可以保存与生成片段，但演示模式没有真正的服务端进程可重启。':
+    'both can save and generate the snippet, but demo mode has no real server process to restart.',
+
+  // ---- 储存策略列表 ----
+  '每套策略就是一个存储目标；被最多用途使用的那套会写成 .env 的全局 STORAGE_DRIVER，':
+    'Each strategy is one storage target; the one used by the most scopes becomes the global STORAGE_DRIVER in .env,',
+  '其余用途只写自己的覆盖变量。': 'and every other scope only writes its own override variables.',
+  '{count} 套': { one: '1 strategy', other: '{count} strategies' },
+  '新建储存策略': 'New storage strategy',
+  '用于：{scopes}': 'Used by: {scopes}',
+  '暂时没有用途使用这套策略': 'No scope uses this strategy yet',
+  'Endpoint：{value}': 'Endpoint: {value}',
+  '至少保留一套、最多 {max} 套：只有一套时删除按钮不可用，达到上限时不能再新建。删除被用途引用的策略时，那些用途会回落到第一套。':
+    'At least one strategy and at most {max}: with only one left, delete is disabled, and at the limit no new strategy can be created. Deleting a strategy that scopes use makes those scopes fall back to the first strategy.',
+  '最多只能有 {max} 套储存策略': 'At most {max} storage strategies are allowed',
+  '先删掉一套不再使用的策略，再新建。': 'Delete a strategy you no longer use, then create a new one.',
+
+  // ---- 用途分配 ----
+  '用途分配': 'Scope assignment',
+  '四个用途各自从已有策略里选一套：图片可以放图床，附件可以继续留在本地。':
+    'Each of the four scopes picks one existing strategy: images can live on a CDN bucket while attachments stay local.',
+  '{count} 套在用': { one: '1 in use', other: '{count} in use' },
+  '位置：{path}': 'Location: {path}',
+  '有用途指向云策略，但全局策略还是本地储存':
+    'A scope points at a cloud strategy, but the global strategy is still local storage',
+  '片段里不会生成 STORAGE_S3_* 凭据，服务器需要另行提供 endpoint、区域与 Access Key。':
+    'The snippet will not emit STORAGE_S3_* credentials; the server has to provide the endpoint, region, and Access Key another way.',
+  '把云策略分配给更多用途，它就会自动成为全局策略。':
+    'Assign the cloud strategy to more scopes and it becomes the global strategy automatically.',
+  '全局策略由用途数量决定': 'The global strategy is decided by how many scopes use it',
+  '被最多用途使用的那套写成全局 STORAGE_DRIVER 与 STORAGE_S3_*；数量并列时取列表里靠前的一套。':
+    'The strategy used by the most scopes becomes STORAGE_DRIVER and STORAGE_S3_*; on a tie, the one earlier in the list wins.',
+  '其余用途只写自己的 STORAGE_<用途>_* 覆盖，缺省位置由服务器按全局目录推出来。':
+    'Every other scope only writes its own STORAGE_<SCOPE>_* override, and the server derives missing paths from the global directory.',
 
   '文章与帖子里插入的图片、封面等；正文本身不在媒体存储里。':
     'Images, cover art, and similar files inserted into articles and posts; the body text itself is not kept in media storage.',
@@ -42,116 +81,7 @@ const fragment: Dictionary = {
   '用户上传的附件与私有数据，通常需要鉴权后才能访问。':
     'Attachments and private data uploaded by users, which usually need authentication to reach.',
 
-  '留空时由服务器使用「全局目录 / 用途名」（约 {dir}/content 等）；建议显式填写。':
-    'When empty the server uses “global directory / scope name” (about {dir}/content and so on); filling it in explicitly is recommended.',
-  '云端存储需要桶名': 'Cloud storage needs a bucket name',
-  'STORAGE_S3_BUCKET 在 STORAGE_DRIVER=s3 时是必填项，API 启动会直接拒绝这组环境变量。':
-    'STORAGE_S3_BUCKET is required when STORAGE_DRIVER=s3; the API refuses these environment variables at startup.',
-  'Endpoint 格式不对': 'Endpoint format is invalid',
-  'Endpoint {error}': 'Endpoint {error}',
-  '公开访问地址格式不对': 'Public base URL format is invalid',
-  '公开访问地址{error}': 'Public base URL {error}',
-  '{scope}缺少桶名': '{scope} is missing a bucket name',
-  '选择了云对象存储后必须填写桶名（STORAGE_{scope}_S3_BUCKET），否则这组分用途变量无法部署。':
-    'Once cloud object storage is selected, the bucket name is required (STORAGE_{scope}_S3_BUCKET); without it these per-scope variables cannot be deployed.',
-  '选择已写入这台电脑的本地安装配置；把下方片段写进服务器 .env 并重启 API 之后，新的上传才会写到目标位置。':
-    'The choice is written to the local install config on this computer; only after you put the snippet below into the server .env and restart the API will new uploads go to the new location.',
-  '回到本地 ./data/media，所有用途都沿用全局；不会删除任何文件，也不会修改服务器的 .env。':
-    'Back to local ./data/media with every scope on the global setting; no files are deleted and the server .env is untouched.',
-  '回到本地 ./data/media 且所有用途沿用全局；不会删除文件，也不会修改服务器的 .env。':
-    'Back to local ./data/media with every scope on the global setting; no files are deleted and the server .env is untouched.',
-
-  '决定上传的图片与附件写到哪里：这台服务器的本地目录，或任何 S3 兼容的云对象存储。':
-    'Decides where uploaded images and attachments are written: a local directory on this server, or any S3-compatible cloud object storage.',
-  '全局设置之外，还可以按用途单独覆盖。浏览器只能保存部署意图，真正生效要靠服务器上的':
-    'Beyond the global setting, each scope can be overridden. The browser can only record the deployment intent; what actually takes effect depends on the server’s',
-  '与重启 API。': 'and on an API restart.',
-  '本页只写入这台电脑的本地安装配置，并把选择翻译成可粘贴的 API':
-    'This page only writes the local install config on this computer and turns the choice into a paste-ready API',
-  '片段；服务器需要把片段写进': 'snippet; the server needs that snippet in its',
-  '并重启 API 才生效。演示模式与真实后端行为一致：':
-    'and the API restarted before it takes effect. Demo mode behaves like a real backend:',
-  '都可以保存与生成片段，但演示模式没有真正的服务端进程可重启。':
-    'both can save and generate the snippet, but demo mode has no real server process to restart.',
-
-  '全局存储位置': 'Global storage location',
-  '分用途没有单独覆盖时，所有上传都沿用这里。':
-    'When a scope has no override of its own, every upload uses this.',
-  '本地目录': 'Local directory',
-  '相对路径基于 API 进程的工作目录；Windows 一键包默认在 exe 同目录的 data/media。备份或迁移只需拷贝这个目录。':
-    'Relative paths resolve against the API process working directory; the Windows bundle defaults to data/media next to the exe. A backup or migration is just a copy of this directory.',
-  '适合单机与 Windows 一键包': 'A good fit for a single machine and the Windows bundle',
-  '本地存储没有额外的网络依赖，读取最快；但多实例部署时每台机器的磁盘各自独立，':
-    'Local storage adds no network dependency and reads fastest; but with multiple instances each machine has its own disk,',
-  '上传的文件在另一台机器上「看不到」。多实例请改用云对象存储，或自行挂载共享存储。':
-    'so uploaded files are not visible on another machine. With multiple instances, switch to cloud object storage or mount shared storage yourself.',
-  '桶名（Bucket）': 'Bucket name',
-  's3 模式下必填；服务端启动时会尝试创建缺失的桶。':
-    'Required in s3 mode; the server tries to create missing buckets at startup.',
-  '区域（Region）': 'Region',
-  'AWS 填实际区域，例如 ap-southeast-1；MinIO 等也要求一个值，通常保持 us-east-1。':
-    'For AWS use the real region, for example ap-southeast-1; MinIO and similar also need a value, usually us-east-1.',
-  'AWS 留空；MinIO 填 http://127.0.0.1:9000，阿里云 OSS / 腾讯云 COS 填各自 S3 兼容地址。':
-    'Leave it empty for AWS; use http://127.0.0.1:9000 for MinIO, and the S3-compatible address for Alibaba Cloud OSS or Tencent Cloud COS.',
-  '对象前缀': 'Object prefix',
-  '同一个桶放多个站点时用来隔离对象键，例如 practacu/；留空写在桶根。':
-    'Separates object keys when several sites share one bucket, for example practacu/; leave it empty to write at the bucket root.',
-  '可以保存在本地安装配置里；建议使用只允许该桶读写的子账号。':
-    'It can be stored in the local install config; prefer a sub-account that may only read and write this bucket.',
-  '只用于生成 .env 片段，不写入浏览器配置，保存后也不会回显；所有分用途共享这一份凭据。':
-    'Used only to generate the .env snippet. It is not written to the browser config and is not shown again after saving; all scopes share this one credential.',
-  '公开访问地址（可选）': 'Public base URL (optional)',
-  '仅用于记录与排查，API 不读取这个值；公开读权限、CDN 与防盗链由桶策略决定。':
-    'Recorded for reference and troubleshooting only; the API never reads it. Public read access, CDN, and hotlink protection come from the bucket policy.',
-  '公开访问与防盗链由桶策略或 CDN 决定':
-    'Public access and hotlink protection come from the bucket policy or CDN',
-  '对象存储默认是私有的。需要前台直接引用图片时，要么给桶开只读策略，要么在桶前面':
-    'Object storage is private by default. To reference images directly from the site, either give the bucket a read-only policy or put',
-  '挂 CDN / 自定义域名；本页与 API 都不会替你放开权限。MinIO、阿里云 OSS、腾讯云':
-    'a CDN / custom domain in front of it; neither this page nor the API will open up permissions for you. MinIO, Alibaba Cloud OSS, Tencent',
-  'COS 等都可以用 S3 兼容模式，只是 endpoint 不同；AWS S3 的 endpoint 留空即可。':
-    'COS and similar services all work in S3-compatible mode with only the endpoint differing; for AWS S3 just leave the endpoint empty.',
-
-  '分用途存储': 'Storage by scope',
-  '文章媒体、站点图片、头像与用户数据可以单独覆盖全局设置；选择「沿用全局」的用途':
-    'Article media, site images, avatars, and user data can override the global setting individually; scopes set to use the global setting',
-  '不会生成任何变量。': 'generate no variables at all.',
-  '{count} 个覆盖': { one: '1 override', other: '{count} overrides' },
-  '必填；endpoint、区域与凭据沿用上面的全局 S3 设置。':
-    'Required; the endpoint, region, and credentials come from the global S3 settings above.',
-  '留空写在桶根；建议按用途分开，例如 practacu/content。':
-    'Leave it empty to write at the bucket root; keeping scopes apart is recommended, for example practacu/content.',
-  '沿用上面的全局{driver}{path}。': 'Follows the global {driver}{path} above.',
-  '分用途的 S3 覆盖需要服务器有 S3 凭据':
-    'Scope-level S3 overrides need S3 credentials on the server',
-  '当前全局是本地存储，片段里不会生成':
-    'Global storage is local right now, so the snippet will not emit',
-  '等全局凭据；分用途的 S3 覆盖会沿用': 'or other global credentials; scope-level S3 overrides reuse',
-  '这些值，请确认服务器已经通过 .env 或实例角色另行提供。':
-    'those values, so make sure the server provides them another way, through .env or an instance role.',
-  '分用途的 S3 只更换桶与前缀': 'A scope-level S3 override only swaps the bucket and prefix',
-  '分用途覆盖沿用全局的 endpoint、区域与凭据；切换用途的存储同样不会搬运已有文件，':
-    'Scope overrides reuse the global endpoint, region, and credentials; switching a scope’s storage also never moves existing files,',
-  '需要自己把旧目录或旧桶里的对象同步到新位置。':
-    'so you need to sync the objects from the old directory or bucket to the new location yourself.',
-
-  '文章与帖子正文': 'Article and post body text',
-  '正文不是媒体文件，不在本页的存储范围内。':
-    'Body text is not a media file and is outside the storage scope of this page.',
-  '只读 · 存数据库': 'Read-only · stored in the database',
-  '正文存关系数据库：SQLite / MySQL / Postgres':
-    'Body text lives in a relational database: SQLite / MySQL / Postgres',
-  '标题、Markdown / 富文本正文、分类、评论与成员资料保存在服务端数据库，由':
-    'Titles, Markdown / rich-text bodies, categories, comments, and member profiles live in the server database, controlled by',
-  '决定；本页的本地目录与 S3 桶只存上传的图片、头像与附件。换数据库需要改服务端环境变量':
-    '; the local directory and S3 bucket on this page only store uploaded images, avatars, and attachments. Changing the database means editing the server environment variables',
-  '并迁移数据，后台没有对应开关。':
-    'and migrating the data; the dashboard has no switch for it.',
-  '正文与元数据': 'Body text and metadata',
-  '数据库（不在本页）': 'Database (not on this page)',
-  '图片 / 头像 / 附件': 'Images / avatars / attachments',
-  '本页的存储目标': 'The storage targets of this page',
-
+  // ---- 上传体积提示 ----
   '上传体积提示': 'Upload size hint',
   '只用于前端提示，不会改变服务端上限。':
     'A front-end hint only; it does not change the server-side limit.',
@@ -165,10 +95,16 @@ const fragment: Dictionary = {
   '请求体上限，否则请求会被更早的一层拒绝。':
     'request body limits of the API and the security service to match the server, otherwise the request is rejected by an earlier layer.',
 
+  // ---- 部署片段 ----
   '部署片段': 'Deployment snippet',
-  '按已保存的设置生成；inherit 的用途不写变量，密钥只来自上面的输入框。':
-    'Generated from the saved settings; scopes set to inherit emit no variables, and the secret only comes from the field above.',
+  '按已保存的策略生成；指向全局策略的用途不写变量，密钥只来自下面的输入框。':
+    'Generated from the saved strategies; scopes pointing at the global strategy emit no variables, and the secret only comes from the field below.',
   '复制 .env': 'Copy .env',
+  'Secret Key（仅本次）': 'Secret Key (this session only)',
+  '仅本次': 'This session only',
+  '只在本页内存里保留': 'Kept in this page’s memory only',
+  '只用于生成 .env 片段，不写入浏览器配置，保存后也不会回显；服务器只有一套 STORAGE_S3_SECRET_KEY，所有云策略共用它。':
+    'Used only to generate the .env snippet. It is not written to the browser config and is not shown again after saving; the server has a single STORAGE_S3_SECRET_KEY that every cloud strategy shares.',
   '保存不会让服务器立刻换存储': 'Saving does not switch storage on the server right away',
   '把片段写进 API 的': 'Put the snippet into the API’s',
   '（或启动器环境变量）并重启后才会生效。':
@@ -178,31 +114,105 @@ const fragment: Dictionary = {
   '需要自己用 rclone / aws s3 sync 之类同步，或继续保留旧路径。':
     'so sync them with something like rclone / aws s3 sync, or keep the old paths.',
 
+  // ---- 右侧「当前配置」 ----
   '当前配置': 'Current configuration',
-  '保存后立即写入本地安装配置。':
-    'Written to the local install config as soon as you save.',
-  '驱动': 'Driver',
-  '位置': 'Location',
-  '凭据': 'Credentials',
-  '公开访问': 'Public access',
-  '分用途覆盖': 'Scope overrides',
-  '{count} 个用途': { one: '1 scope', other: '{count} scopes' },
+  '策略数量': 'Strategy count',
   '上传提示': 'Upload hint',
 
+  // ---- 右侧「切换存储的顺序」与 danger zone ----
   '切换存储的顺序': 'Order for switching storage',
   '先备份，再切换。': 'Back up first, then switch.',
   '备份本地 data/media 目录，或记下旧桶名与前缀。':
     'Back up the local data/media directory, or note the old bucket name and prefix.',
-  '在本页保存新的存储策略，复制 .env 片段。':
-    'Save the new storage strategy on this page and copy the .env snippet.',
+  '新建或编辑目标储存策略，再把要迁移的用途分配过去。':
+    'Create or edit the target storage strategy, then assign the scopes to it.',
+  '保存修改，复制下方的 .env 片段。':
+    'Save the changes and copy the .env snippet below.',
   '把片段写进服务器 .env，重启 API（不是刷新后台）。':
     'Write the snippet into the server .env and restart the API (not just refresh the dashboard).',
-  '分用途覆盖的 S3 只换桶与前缀，凭据仍用全局 STORAGE_S3_*。':
-    'A scope-level S3 override only swaps the bucket and prefix; credentials still come from the global STORAGE_S3_*.',
   '上传图片验证；必要时用 rclone 迁移已有文件。':
     'Upload an image to verify; migrate existing files with rclone if needed.',
   '确认前台图片正常后，再清理旧目录或旧桶。':
     'Once images on the site look right, clean up the old directory or bucket.',
+  '恢复默认储存策略': 'Restore the default storage strategies',
+  '回到一套「本地储存」（./data/media），四个用途都指向它；不会删除文件，也不会修改服务器的 .env。':
+    'Back to a single “Local storage” strategy (./data/media) that all four scopes point at; no files are deleted and the server .env is untouched.',
+  '恢复默认': 'Restore defaults',
+
+  // ---- 新建 / 编辑弹窗 ----
+  '编辑储存策略': 'Edit storage strategy',
+  '策略名会出现在用途分配与 .env 片段注释里；密钥不在这个弹窗保存。':
+    'The strategy name shows up in scope assignment and in the .env snippet comments; the secret is not saved from this dialog.',
+  '保存这套策略': 'Save this strategy',
+  '添加这套策略': 'Add this strategy',
+  '必填且不能与已有策略重名，最多 {max} 个字符。':
+    'Required and must differ from every existing strategy; at most {max} characters.',
+  '例如：图床 COS': 'For example: image CDN bucket',
+  '本地储存写这台服务器的磁盘；云对象存储需要兼容 S3 接口。':
+    'Local storage writes to this server’s disk; cloud object storage must speak the S3-compatible API.',
+  '本地目录': 'Local directory',
+  '相对路径基于 API 进程的工作目录；Windows 一键包默认在 exe 同目录的 data/media。备份或迁移只需拷贝这个目录。':
+    'Relative paths resolve against the API process working directory; the Windows bundle defaults to data/media next to the exe. A backup or migration is just a copy of this directory.',
+  '桶名（Bucket）': 'Bucket name',
+  '云策略必填；服务端启动时会尝试创建缺失的桶。':
+    'Required for a cloud strategy; the server tries to create missing buckets at startup.',
+  '对象前缀': 'Object prefix',
+  '同一个桶放多个站点时用来隔离对象键，例如 practacu/；留空写在桶根。':
+    'Separates object keys when several sites share one bucket, for example practacu/; leave it empty to write at the bucket root.',
+  'AWS 留空；MinIO 填 http://127.0.0.1:9000，阿里云 OSS / 腾讯云 COS 填各自 S3 兼容地址。':
+    'Leave it empty for AWS; use http://127.0.0.1:9000 for MinIO, and the S3-compatible address for Alibaba Cloud OSS or Tencent Cloud COS.',
+  '区域（Region）': 'Region',
+  'AWS 填实际区域，例如 ap-southeast-1；MinIO 等也要求一个值，通常保持 us-east-1。':
+    'For AWS use the real region, for example ap-southeast-1; MinIO and similar also need a value, usually us-east-1.',
+  '可以保存在本地安装配置里；建议使用只允许该桶读写的子账号。':
+    'It can be stored in the local install config; prefer a sub-account that may only read and write this bucket.',
+  '公开访问地址（可选）': 'Public base URL (optional)',
+  '仅用于记录与排查，API 不读取这个值；公开读权限、CDN 与防盗链由桶策略决定。':
+    'Recorded for reference and troubleshooting only; the API never reads it. Public read access, CDN, and hotlink protection come from the bucket policy.',
+  '公开访问与防盗链由桶策略或 CDN 决定':
+    'Public access and hotlink protection come from the bucket policy or CDN',
+  '对象存储默认是私有的；需要前台直接引用图片时，要么给桶开只读策略，要么在桶前面挂 CDN / 自定义域名。':
+    'Object storage is private by default; to reference images directly from the site, either give the bucket a read-only policy or put a CDN / custom domain in front of it.',
+  'Secret Key 不在这里填写：它只留在页面内存里，只用于生成 .env 片段。':
+    'The Secret Key is not entered here: it stays in page memory only, solely to generate the .env snippet.',
+
+  // ---- 删除弹窗与保存提示 ----
+  '删除储存策略': 'Delete storage strategy',
+  '确定删除「{name}」吗？': 'Delete “{name}”?',
+  '有用途正在使用这套策略': 'A scope is using this strategy',
+  '删除后这些用途会回落到第一套策略「{name}」：':
+    'After deleting, these scopes fall back to the first strategy “{name}”:',
+  '没有用途在使用这套策略，删除不会改变上传位置。':
+    'No scope uses this strategy, so deleting it does not change any upload location.',
+  '删除只改这台电脑的配置，不会删除任何文件，也不会修改服务器的 .env；已经上传的文件仍留在原位置。':
+    'Deleting only changes the config on this computer: no files are removed and the server .env is untouched; already-uploaded files stay where they are.',
+  '已删除储存策略「{name}」': 'Deleted storage strategy “{name}”',
+  '引用它的用途已经回落到第一套策略，点「保存修改」后生效；不会删除任何文件。':
+    'The scopes that used it fell back to the first strategy, taking effect after “Save changes”; no files were deleted.',
+  '已更新储存策略': 'Storage strategies updated',
+  '点右上角「保存修改」写入这台电脑的本地安装配置；部署片段也会随之更新。':
+    'Click “Save changes” in the top right to write it to this computer’s local install config; the deployment snippet updates too.',
+
+  // ---- 校验与保存 ----
+  '名称不能为空。': 'The name cannot be empty.',
+  '名称最多 {max} 个字符。': 'The name can be at most {max} characters.',
+  '已经有一套同名策略了。': 'A strategy with this name already exists.',
+  '云对象存储必须有桶名。': 'Cloud object storage needs a bucket name.',
+  '这套储存策略还不能保存': 'This storage strategy cannot be saved yet',
+  '请先修正弹窗里标红的字段。': 'Fix the highlighted fields in the dialog first.',
+  '云策略「{name}」缺少桶名': 'Cloud strategy “{name}” is missing a bucket name',
+  'STORAGE_DRIVER=s3 时桶名必填，API 启动会直接拒绝这组环境变量。':
+    'STORAGE_S3_BUCKET is required when STORAGE_DRIVER=s3; the API refuses these environment variables at startup.',
+  'Endpoint 格式不对': 'Endpoint format is invalid',
+  '策略「{name}」的 Endpoint {error}': 'Endpoint of strategy “{name}”: {error}',
+  '公开访问地址格式不对': 'Public base URL format is invalid',
+  '策略「{name}」的公开访问地址{error}': 'Public base URL of strategy “{name}”: {error}',
+  '储存策略已保存': 'Storage strategies saved',
+  '已写入这台电脑的本地安装配置；把下方片段写进服务器 .env 并重启 API 之后，新的上传才会写到目标位置。':
+    'Written to the local install config on this computer; only after you put the snippet below into the server .env and restart the API will new uploads go to the new location.',
+  '已恢复默认储存策略': 'Default storage strategies restored',
+  '回到一套「本地储存」（./data/media），四个用途都指向它；不会删除任何文件，也不会修改服务器的 .env。':
+    'Back to a single “Local storage” strategy (./data/media) that all four scopes point at; no files are deleted and the server .env is untouched.',
 };
 
 export default fragment;

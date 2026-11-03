@@ -25,14 +25,15 @@ import {
 import { Icon } from '../../components/Icon';
 import { ContentCover } from '../../components/Cover';
 import { FeedProvider } from '../../components/blocks/FeedContext';
+import { ArticleProvider } from '../../components/blocks/ArticleContext';
 import { ScreenRenderer } from '../../components/blocks';
-import { screenHasBlocks } from '../../lib/blocks';
+import { hasArticleContent, screenHasBlocks } from '../../lib/blocks';
 import { useCustomization } from '../../lib/customize';
 import { useCoverHidden } from '../../lib/covers';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { usePermissions } from '../../lib/usePermissions';
 import { copyText } from '../../lib/clipboard';
-import { ArticleToc, useArticleToc, useCodeCopy } from '../../components/ArticleTools';
+import { ArticleToc, useArticleDiagrams, useArticleToc, useCodeCopy } from '../../components/ArticleTools';
 import { useToast } from '../../lib/toast';
 import { useSeo, articleJsonLd, breadcrumbJsonLd } from '../../lib/seo';
 import { firstImage } from '../../lib/markdown';
@@ -199,6 +200,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   const { customization } = useCustomization();
   // 文章页附加区块：在正文与评论区之间渲染，由「页面编排 → 文章页」维护。
   const articleLayout = customization.article ?? { blocks: [] };
+  // 编排里放了「文章内容」占位符时，整份编排挪到正文的位置，由占位符渲染正文；
+  // 否则保持旧行为：正文照旧，编排区块排在评论区之后。
+  const layoutOwnsBody = hasArticleContent(articleLayout);
   const { taxonomy } = useTaxonomy();
   const { can } = usePermissions();
   const commentSettings = customization.comments;
@@ -253,6 +257,8 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       : [],
   });
   const toc = useArticleToc(item?.rendered_html);
+  // 先水合图表、再挂代码复制按钮：图表块水合后不是 pre，不会多出一个复制按钮。
+  useArticleDiagrams(item?.rendered_html);
   useCodeCopy(extensions.code_copy, item?.rendered_html);
 
   const comments = useAsync(() => backend.comments(kind, id), [backend, kind, id]);
@@ -445,6 +451,10 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
   const url = `/${kind === 'article' ? 'a' : 'p'}/${item.id}`;
   const isUnpublished = item.status !== 'published';
+  // 分类名同时用于文章头的分类标记与「显示什么数据」里的「分类」。
+  const articleCategory = item.category_id
+    ? taxonomy.categories.find((term) => term.id === item.category_id)
+    : undefined;
 
   return (
     <>
@@ -492,14 +502,11 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             </div>
             {item.category_id || item.tags?.length ? (
               <div className="article-taxonomy">
-                {(() => {
-                  const category = taxonomy.categories.find((term) => term.id === item.category_id);
-                  return category ? (
-                    <span className="article-cat" style={{ '--pp-cat-color': category.color } as CSSProperties}>
-                      {category.name}
-                    </span>
-                  ) : null;
-                })()}
+                {articleCategory ? (
+                  <span className="article-cat" style={{ '--pp-cat-color': articleCategory.color } as CSSProperties}>
+                    {articleCategory.name}
+                  </span>
+                ) : null}
                 {(item.tags ?? []).map((tag) => (
                   <span key={tag} className="article-tag">
                     #{tag}
@@ -517,11 +524,32 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
           {extensions.toc ? <ArticleToc items={toc} /> : null}
 
-          <div
-            className="article-body"
-            // 契约规定：只渲染服务端清洗后产生的 rendered_html。
-            dangerouslySetInnerHTML={{ __html: item.rendered_html }}
-          />
+          {layoutOwnsBody ? (
+            // 正文由编排里的「文章内容」占位符渲染：整份编排放在正文原来的位置，
+            // 文章头、封面、底部操作条、作者卡与评论区的位置不变。
+            <div className="article-extra-blocks">
+              <ArticleProvider
+                article={item}
+                kind={kind}
+                url={url}
+                categoryName={articleCategory?.name}
+              >
+                <FeedProvider>
+                  <ScreenRenderer
+                    layout={articleLayout}
+                    variant={customization.layout.variant}
+                    scope={{ type: 'page', id: item.id, title: item.title }}
+                  />
+                </FeedProvider>
+              </ArticleProvider>
+            </div>
+          ) : (
+            <div
+              className="article-body"
+              // 契约规定：只渲染服务端清洗后产生的 rendered_html。
+              dangerouslySetInnerHTML={{ __html: item.rendered_html }}
+            />
+          )}
 
           <div className="article-foot">
             <div className="reaction-row">
@@ -702,7 +730,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
           </section>
         </article>
 
-        {screenHasBlocks(articleLayout) ? (
+        {!layoutOwnsBody && screenHasBlocks(articleLayout) ? (
           <section className="article-extra-blocks">
             <FeedProvider>
               <ScreenRenderer layout={articleLayout} variant={customization.layout.variant} />

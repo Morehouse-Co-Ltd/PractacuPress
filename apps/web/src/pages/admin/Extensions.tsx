@@ -1,12 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { CustomExtension, ExtensionId, ExtensionPageScope } from '../../types';
+import type { CustomExtension, ExtensionId } from '../../types';
 import {
   EXTENSIONS,
-  EXTENSION_LIMITS,
-  EXTENSION_PAGE_SCOPES,
-  EXTENSION_PERMISSIONS,
-  EXTENSION_SLOTS,
   MAX_CUSTOM_EXTENSIONS,
   useCustomization,
 } from '../../lib/customize';
@@ -19,9 +15,7 @@ import {
   pageScopeLabel,
   parseExtensionFile,
   permissionLabel,
-  PERMISSION_HINTS,
   slotLabel,
-  type ExtensionPageKind,
 } from '../../lib/extensions';
 import {
   EXTENSION_TEMPLATES,
@@ -31,9 +25,8 @@ import {
 import { useT } from '../../lib/i18n';
 import { useTitle } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { Badge, Button, Callout, EmptyState, Field, Input, Modal, Select, Tabs, Textarea } from '../../components/ui';
+import { Badge, Button, Callout, EmptyState, Modal, Tabs, Textarea } from '../../components/ui';
 import { Icon, type IconName } from '../../components/Icon';
-import { ExtensionHost } from '../../components/ExtensionHost';
 import { RoleGate } from '../../components/Guards';
 
 const EXT_ICON: Record<ExtensionId, IconName> = {
@@ -45,55 +38,7 @@ const EXT_ICON: Record<ExtensionId, IconName> = {
   back_to_top: 'arrow-up',
 };
 
-type ExtensionTab = 'builtin' | 'mine' | 'studio';
-
-/** 把草稿收敛成合法清单：名称必填，其余字段走 createExtension 的上限与去重。 */
-function buildDraft(draft: CustomExtension): CustomExtension {
-  return createExtension({ ...draft, name: draft.name.trim() || '未命名扩展' });
-}
-
-function toggleItem<T>(list: T[], value: T): T[] {
-  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
-}
-
-/** 工坊里的代码编辑框：等宽字体 + 字符计数，超限只提示，保存时再截断。 */
-function CodeEditor({
-  label,
-  hint,
-  value,
-  max,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: string;
-  max: number;
-  onChange: (value: string) => void;
-}) {
-  const t = useT();
-  const over = value.length > max;
-  return (
-    <div className={`ppe-code${over ? ' is-over' : ''}`}>
-      <div className="ppe-code-head">
-        <span className="ppe-code-label">
-          {label}
-          <span className="ppe-code-hint">{hint}</span>
-        </span>
-        <span className={`ppe-char-count${over ? ' is-over' : ''}`}>
-          {value.length.toLocaleString('zh-CN')} / {max.toLocaleString('zh-CN')}
-          {over ? t(' · 超出上限，保存时会截断') : ''}
-        </span>
-      </div>
-      <textarea
-        className="ppe-code-area"
-        value={value}
-        spellCheck={false}
-        aria-label={label}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
-  );
-}
+type ExtensionTab = 'builtin' | 'mine';
 
 export function ExtensionsPage() {
   const t = useT();
@@ -139,7 +84,6 @@ export function ExtensionsPage() {
   const confirmDelete = () => {
     if (!deleteTarget) return;
     setCustomExtensions(extensions.filter((item) => item.id !== deleteTarget.id));
-    if (editingId === deleteTarget.id) resetToTemplate(EXTENSION_TEMPLATES[0].id);
     toast.push('ok', t('扩展已删除'), deleteTarget.name);
     setDeleteTarget(null);
   };
@@ -263,128 +207,6 @@ export function ExtensionsPage() {
     importExtensions([{ ...createExtensionFromTemplate(template), enabled: true }]);
   };
 
-  /* ---------------- 扩展工坊 ---------------- */
-
-  const [draft, setDraft] = useState<CustomExtension>(() =>
-    createExtensionFromTemplate(EXTENSION_TEMPLATES[0]),
-  );
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [templateId, setTemplateId] = useState('');
-  const [previewDraft, setPreviewDraft] = useState(draft);
-
-  // 预览防抖：连续输入时不必每个按键都重载 iframe。
-  useEffect(() => {
-    const timer = window.setTimeout(() => setPreviewDraft(draft), 420);
-    return () => window.clearTimeout(timer);
-  }, [draft]);
-
-  const applyTemplate = (templateIdValue: string) => {
-    setTemplateId('');
-    const template = extensionTemplateById(templateIdValue);
-    if (!template) return;
-    setDraft((prev) => ({
-      ...prev,
-      name: template.name,
-      version: prev.version || '1.0.0',
-      author: prev.author || 'Practacu Press',
-      description: template.description,
-      icon: template.icon,
-      slots: [...template.slots],
-      pages: [...template.pages],
-      permissions: [...template.permissions],
-      html: template.html,
-      css: template.css,
-      js: template.js,
-    }));
-    toast.push('info', t('已插入示例模板'), template.name);
-  };
-
-  const resetToTemplate = (templateIdValue: string) => {
-    const template = extensionTemplateById(templateIdValue) ?? EXTENSION_TEMPLATES[0];
-    const next = createExtensionFromTemplate(template);
-    setDraft(next);
-    setPreviewDraft(next);
-    setEditingId(null);
-    setTemplateId('');
-    setTab('studio');
-  };
-
-  const startNew = () => {
-    resetToTemplate(EXTENSION_TEMPLATES[0].id);
-    toast.push('info', t('已载入示例模板'), t('可以直接保存为新的扩展，或换成别的模板。'));
-  };
-
-  const openInStudio = (extension: CustomExtension) => {
-    setDraft(extension);
-    setPreviewDraft(extension);
-    setEditingId(extension.id);
-    setTemplateId('');
-    setTab('studio');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const saveDraft = () => {
-    const name = draft.name.trim();
-    if (!name) {
-      toast.push('error', t('请先填写扩展名称'));
-      return;
-    }
-    const built = buildDraft({ ...draft, name });
-    const index = extensions.findIndex((item) => item.id === built.id);
-    if (index < 0 && extensions.length >= MAX_CUSTOM_EXTENSIONS) {
-      toast.push(
-        'error',
-        t('扩展数量已达上限'),
-        t('最多 {count} 个，请先删除不用的扩展。', { count: MAX_CUSTOM_EXTENSIONS }),
-      );
-      return;
-    }
-    const next = index >= 0 ? extensions.map((item) => (item.id === built.id ? built : item)) : [...extensions, built];
-    setCustomExtensions(next);
-    setDraft(built);
-    setEditingId(built.id);
-    const truncated =
-      built.html.length !== draft.html.length ||
-      built.css.length !== draft.css.length ||
-      built.js.length !== draft.js.length;
-    toast.push(
-      'ok',
-      index >= 0 ? t('扩展已更新') : t('已保存为我的扩展'),
-      truncated
-        ? t('内容超出上限，已按限制截断。')
-        : built.enabled
-          ? ''
-          : t('默认未启用，可在「我的扩展」打开开关。'),
-    );
-  };
-
-  const exportDraft = () => {
-    const built = buildDraft(draft);
-    downloadJson(extensionFileName(built), buildExtensionFile(built));
-    toast.push('ok', t('已导出草稿清单'), extensionFileName(built));
-  };
-
-  const previewPage: ExtensionPageKind =
-    previewDraft.pages.includes('all') || previewDraft.pages.includes('article')
-      ? 'article'
-      : previewDraft.pages.includes('home')
-        ? 'home'
-        : previewDraft.pages.includes('search')
-          ? 'search'
-          : 'list';
-
-  const previewContext = {
-    theme: {
-      background: customization.theme.background,
-      ink: customization.theme.ink,
-      accent: customization.theme.accent,
-      font: customization.theme.heading_font,
-    },
-    page: previewPage,
-    title: t('一篇文章的标题'),
-    extensionId: previewDraft.id,
-  };
-
   /* ---------------- 渲染 ---------------- */
 
   return (
@@ -405,9 +227,6 @@ export function ExtensionsPage() {
           <Badge tone={extensions.length ? 'accent' : 'muted'}>
             {t('我的扩展 {count}', { count: extensions.length })}
           </Badge>
-          <Button variant="secondary" size="sm" icon="plus" onClick={startNew}>
-            {t('新建扩展')}
-          </Button>
         </div>
       </div>
 
@@ -417,7 +236,6 @@ export function ExtensionsPage() {
         items={[
           { key: 'builtin', label: t('内置扩展'), count: builtinCount },
           { key: 'mine', label: t('我的扩展'), count: extensions.length },
-          { key: 'studio', label: t('扩展工坊') },
         ]}
       />
 
@@ -512,7 +330,6 @@ export function ExtensionsPage() {
                     <Icon name="upload" size={18} />
                   </span>
                   <strong>{t('从文件导入')}</strong>
-                  <p>{t('选择导出的 `.ppext.json` 或 `.json` 清单文件。')}</p>
                   <input
                     ref={fileRef}
                     type="file"
@@ -622,9 +439,6 @@ export function ExtensionsPage() {
                       <span />
                     </button>
                     <div className="ppe-card-actions">
-                      <Button variant="ghost" size="sm" icon="edit" onClick={() => openInStudio(extension)}>
-                        {t('编辑')}
-                      </Button>
                       <Button variant="ghost" size="sm" icon="copy" onClick={() => duplicateExtension(extension)}>
                         {t('复制')}
                       </Button>
@@ -651,246 +465,18 @@ export function ExtensionsPage() {
                 icon="sparkle"
                 title={t('还没有创作者扩展')}
                 body={t(
-                  '可以从示例开始，或者导入别人做好的清单。扩展保存后默认不启用，确认没问题再打开开关。',
+                  '可以从示例开始，或者导入别人做好的清单；导入后在卡片上启用、导出或删除。',
                 )}
                 action={
                   <div className="row gap-8" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
                     <Button variant="primary" size="sm" icon="sparkle" onClick={importSamples}>
                       {t('导入示例扩展（{count} 个）', { count: EXTENSION_TEMPLATES.length })}
                     </Button>
-                    <Button variant="secondary" size="sm" icon="plus" onClick={startNew}>
-                      {t('去工坊做一个')}
-                    </Button>
                   </div>
                 }
               />
             </div>
           )}
-        </div>
-      ) : null}
-
-      {tab === 'studio' ? (
-        <div className="mt-20">
-          <div className="ppe-studio-bar">
-            <div>
-              <strong>
-                {editingId
-                  ? t('编辑：{name}', { name: draft.name || t('未命名扩展') })
-                  : t('新扩展')}
-              </strong>
-              <span className="tiny faint">
-                {editingId
-                  ? t('保存会覆盖「我的扩展」里的同一条清单。')
-                  : t('保存后会出现在「我的扩展」，默认不启用。')}
-              </span>
-            </div>
-            <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
-              <div className="ppe-template-select">
-                <Select
-                  value={templateId}
-                  onChange={(event) => applyTemplate(event.target.value)}
-                  aria-label={t('插入示例模板')}
-                >
-                  <option value="">{t('插入示例模板…')}</option>
-                  {EXTENSION_TEMPLATES.map((template) => (
-                    <option key={template.id} value={template.id}>{template.name}</option>
-                  ))}
-                </Select>
-              </div>
-              <Button variant="ghost" size="sm" icon="refresh" onClick={() => resetToTemplate(EXTENSION_TEMPLATES[0].id)}>
-                {t('重置为示例')}
-              </Button>
-              <Button variant="secondary" size="sm" icon="download" onClick={exportDraft}>
-                {t('导出')}
-              </Button>
-              <Button variant="primary" size="sm" icon="check" onClick={saveDraft}>
-                {editingId ? t('更新') : t('保存为我的扩展')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="ppe-studio">
-            <section className="panel ppe-studio-form">
-              <div className="panel-head">
-                <div>
-                  <h3>{t('扩展清单')}</h3>
-                  <p>{t('清单决定它出现在哪里、能做什么；内容与脚本在右侧沙箱里实时预览。')}</p>
-                </div>
-              </div>
-              <div className="panel-body ppe-form-stack">
-                <Field label={t('名称')} hint={t('最多 {count} 个字符。', { count: EXTENSION_LIMITS.name })}>
-                  <Input
-                    value={draft.name}
-                    maxLength={EXTENSION_LIMITS.name}
-                    placeholder={t('例如：文末作者卡')}
-                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                  />
-                </Field>
-                <div className="form-grid">
-                  <Field label={t('版本')} hint={t('自由填写，例如 1.0.0。')}>
-                    <Input
-                      value={draft.version}
-                      maxLength={EXTENSION_LIMITS.version}
-                      onChange={(event) => setDraft({ ...draft, version: event.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('作者')}>
-                    <Input
-                      value={draft.author}
-                      maxLength={EXTENSION_LIMITS.author}
-                      placeholder={t('署名')}
-                      onChange={(event) => setDraft({ ...draft, author: event.target.value })}
-                    />
-                  </Field>
-                </div>
-                <div className="form-grid">
-                  <Field label={t('图标')} hint={t('显示在卡片左侧的单字；留空取名称首字。')}>
-                    <Input
-                      value={draft.icon ?? ''}
-                      maxLength={4}
-                      placeholder={t('例：作')}
-                      onChange={(event) => setDraft({ ...draft, icon: event.target.value })}
-                    />
-                  </Field>
-                  <Field label={t('说明')}>
-                    <Input
-                      value={draft.description}
-                      maxLength={EXTENSION_LIMITS.description}
-                      placeholder={t('一句话说明这个扩展做什么')}
-                      onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-                    />
-                  </Field>
-                </div>
-
-                <Field label={t('挂载位置')} hint={t('至少选一个；全部不选会回退到「文章底部」。')}>
-                  <div className="ppe-check-grid">
-                    {EXTENSION_SLOTS.map((slot) => (
-                      <label key={slot} className="checkline">
-                        <input
-                          type="checkbox"
-                          checked={draft.slots.includes(slot)}
-                          onChange={() => setDraft({ ...draft, slots: toggleItem(draft.slots, slot) })}
-                        />
-                        <span>{slotLabel(slot)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </Field>
-
-                <Field
-                  label={t('适用页面')}
-                  hint={t('「全部页面」会忽略其它选项；登录页、自定义页只命中「全部页面」。')}
-                >
-                  <div className="ppe-check-grid">
-                    {EXTENSION_PAGE_SCOPES.map((page) => (
-                      <label key={page} className="checkline">
-                        <input
-                          type="checkbox"
-                          checked={draft.pages.includes(page)}
-                          onChange={() => setDraft({ ...draft, pages: toggleItem(draft.pages, page) })}
-                        />
-                        <span>{pageScopeLabel(page)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </Field>
-
-                <Field label={t('申请权限')} hint={t('没勾选的能力在沙箱桥里会被直接忽略。')}>
-                  <div className="ppe-permission-list">
-                    {EXTENSION_PERMISSIONS.map((permission) => (
-                      <label key={permission} className="checkline ppe-permission-row">
-                        <input
-                          type="checkbox"
-                          checked={draft.permissions.includes(permission)}
-                          onChange={() =>
-                            setDraft({ ...draft, permissions: toggleItem(draft.permissions, permission) })
-                          }
-                        />
-                        <span>
-                          <strong>{permissionLabel(permission)}</strong>
-                          <span className="ppe-permission-hint">{PERMISSION_HINTS[permission]}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </Field>
-              </div>
-            </section>
-
-            <section className="panel ppe-studio-code">
-              <div className="panel-head">
-                <div>
-                  <h3>HTML / CSS / JS</h3>
-                  <p>{t('它们只在这个扩展自己的 iframe 里执行，不接触主站 DOM。')}</p>
-                </div>
-              </div>
-              <div className="panel-body ppe-code-stack">
-                <CodeEditor
-                  label="HTML"
-                  hint={t('放进 iframe 的 body')}
-                  value={draft.html}
-                  max={EXTENSION_LIMITS.html}
-                  onChange={(html) => setDraft({ ...draft, html })}
-                />
-                <CodeEditor
-                  label="CSS"
-                  hint={t('自动注入，可用 --pp-bg / --pp-ink / --pp-accent')}
-                  value={draft.css}
-                  max={EXTENSION_LIMITS.css}
-                  onChange={(css) => setDraft({ ...draft, css })}
-                />
-                <CodeEditor
-                  label="JS"
-                  hint={t('可用 window.PP 桥读取上下文与上报高度')}
-                  value={draft.js}
-                  max={EXTENSION_LIMITS.js}
-                  onChange={(js) => setDraft({ ...draft, js })}
-                />
-              </div>
-            </section>
-
-            <aside className="panel ppe-studio-preview">
-              <div className="panel-head">
-                <div>
-                  <h3>{t('实时预览')}</h3>
-                  <p>{t('与前台相同的 sandbox iframe（allow-scripts，无同源权限）。')}</p>
-                </div>
-                {previewDraft.enabled ? (
-                  <Badge tone="ok">{t('前台启用中')}</Badge>
-                ) : (
-                  <Badge tone="muted">{t('未启用')}</Badge>
-                )}
-              </div>
-              <div className="panel-body">
-                <div
-                  className="ppe-preview-stage"
-                  style={{ background: customization.theme.background, color: customization.theme.ink }}
-                >
-                  <ExtensionHost extension={previewDraft} context={previewContext} preview maxHeight={480} />
-                </div>
-                <p className="tiny faint mt-12">
-                  {t('预览页类型：{page}；标题使用占位内容。扩展未启用时不会出现在前台，但这里始终可以预览。', {
-                    page: pageScopeLabel(previewPage as ExtensionPageScope),
-                  })}
-                </p>
-                <div className="mini-list mt-12">
-                  <div className="mini-row">
-                    <span className="mini-label">{t('槽位')}</span>
-                    <span className="mini-value">
-                      {draft.slots.map(slotLabel).join(t('、')) || t('（未选择）')}
-                    </span>
-                  </div>
-                  <div className="mini-row">
-                    <span className="mini-label">HTML / CSS / JS</span>
-                    <span className="mini-value">
-                      {draft.html.length.toLocaleString('zh-CN')} / {draft.css.length.toLocaleString('zh-CN')} /{' '}
-                      {draft.js.length.toLocaleString('zh-CN')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </aside>
-          </div>
         </div>
       ) : null}
 

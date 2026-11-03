@@ -3,6 +3,7 @@ import type { BlockInstance } from '../../types';
 import { blockItems, blockProp } from '../../lib/blocks';
 import { imageRadiusCss, normalizeImageRadius } from '../../lib/imageRadius';
 import { styleDeclarations } from '../../lib/blockStyles';
+import { safeUrl } from '../../lib/safeUrl';
 import { renderMarkdown, sanitizeHtml } from '../../lib/markdown';
 import { useAuth } from '../../lib/session';
 import { readPerformance } from '../../lib/performance';
@@ -19,14 +20,6 @@ import { useT } from '../../lib/i18n';
 function useLazyMedia(): boolean {
   const { config } = useAuth();
   return readPerformance(config).lazy_media;
-}
-
-function safeUrl(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  const text = value.trim();
-  if (!text) return '';
-  if (/^https?:\/\//i.test(text) || text.startsWith('/')) return text;
-  return '';
 }
 
 function domainOf(url: string): string {

@@ -71,7 +71,7 @@ function clampList<T extends string>(value: unknown, allowed: readonly T[], fall
 }
 
 /**
- * 创建一个扩展清单（工坊「保存」「另存为」共用）。
+ * 创建一个扩展清单（导入、复制与导出共用）。
  *
  * 默认值：id 随机、版本 1.0.0、默认关闭、挂在文章底部、适用全部页面、不申请权限。
  * 传入的 created_at 会被保留，updated_at 始终是当前时间——编辑保存靠它触发 iframe 重载。

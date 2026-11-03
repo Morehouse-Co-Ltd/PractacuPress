@@ -4,7 +4,7 @@ import type { BlockInstance, Content } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useFeed } from './FeedContext';
 import { PUBLISH_LABEL, VISIBILITY_LABEL, formatDate, readingTime, ROLE_LABEL } from '../../lib/format';
-import { Badge, EmptyState, Skeleton, Tabs } from '../ui';
+import { Badge, EmptyState, Skeleton, SkeletonCard, Tabs } from '../ui';
 import { Icon } from '../Icon';
 import { ContentCover } from '../Cover';
 import { isPersonalSite } from '../../lib/site';
@@ -95,7 +95,7 @@ function ClassicHero({ block }: { block: BlockInstance }) {
 
       {loading ? (
         <div className="hero-feature">
-          <Skeleton lines={5} />
+          <SkeletonCard lines={2} />
         </div>
       ) : feature ? (
         <div className="hero-feature">

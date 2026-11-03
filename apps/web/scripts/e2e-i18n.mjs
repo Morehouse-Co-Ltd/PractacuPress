@@ -6,9 +6,9 @@
  * 1. 全新安装：引导默认简体中文；
  * 2. 引导右上角切到 English：`<html lang>`、主导文案与整页中文一起切换；
  * 3. 切回简体中文：完全复原（中文零回归）；
- * 4. 演示站点 + 后台「站点设置 → 站点语言」切到 English：整页立即变英文；
- * 5. 刷新后语言保持（写进了站点设计，不是一次性的界面状态）；
- * 6. 再切回中文：后台恢复中文。
+ * 4. 后台「站点设置」不再提供语言切换：站点语言只在安装引导里决定；
+ * 5. 站点语言为 English 时后台整页英文（侧边栏与页头零中文）；
+ * 6. 站点语言回到简体中文时后台复原（中文零回归）。
  *
  * 前置：cd apps/web && npm run build && node scripts/serve.mjs --port 8099
  * 运行：cd apps/web && node scripts/e2e-i18n.mjs
@@ -230,7 +230,7 @@ try {
   check('切回中文后 <html lang> 复原', backLang === 'zh-CN', `lang=${backLang}`);
   check('切回中文后文案逐字复原', backZh === true);
 
-  /* ---------- 4. 后台「站点设置」里切换语言 ---------- */
+  /* ---------- 4. 后台「站点设置」不再有语言切换 ---------- */
   await seedConfig('zh-CN');
   await goto(BASE + '/admin/settings', 2200);
 
@@ -238,28 +238,24 @@ try {
   check('演示站点后台默认中文', adminZhLang === 'zh-CN', `lang=${adminZhLang}`);
   const navZh = await evaljs(CJK('.admin-nav'));
   check('中文后台侧边栏是中文', navZh > 5, `${navZh} 字`);
+  const hasLangPanel = await evaljs(HAS_TEXT('站点语言', '.editor-main'));
+  check('后台设置里已经没有站点语言面板', hasLangPanel === false);
 
-  const clickedSiteLang = await evaljs(CLICK_TEXT('English', 'label.option'));
-  check('站点设置里有站点语言选项', clickedSiteLang === true);
-  await sleep(900);
+  /* ---------- 5. 站点语言为 English 时后台整页英文 ---------- */
+  await seedConfig('en');
+  await goto(BASE + '/admin/settings', 2200);
 
   const adminEnLang = await evaljs(LANG);
-  check('站点语言切到 English 后立即生效', adminEnLang === 'en', `lang=${adminEnLang}`);
+  check('站点语言是 English 时后台整页英文', adminEnLang === 'en', `lang=${adminEnLang}`);
   const navEn = await evaljs(CJK('.admin-nav'));
   check('英文后台侧边栏没有中文', navEn === 0, `残留 ${navEn} 字`);
   const pageEn = await evaljs(CJK('.admin-page-head'));
   check('英文后台页头没有中文', pageEn === 0, `残留 ${pageEn} 字`);
   await shot('admin-en');
 
-  /* ---------- 5. 刷新后语言保持 ---------- */
+  /* ---------- 6. 回到简体中文：后台复原 ---------- */
+  await seedConfig('zh-CN');
   await goto(BASE + '/admin/settings', 2200);
-  const persistedLang = await evaljs(LANG);
-  check('刷新后仍是英文（语言写进了站点设计）', persistedLang === 'en', `lang=${persistedLang}`);
-
-  /* ---------- 6. 切回中文 ---------- */
-  const clickedBack = await evaljs(CLICK_TEXT('简体中文', 'label.option'));
-  check('可以切回简体中文', clickedBack === true);
-  await sleep(900);
   const finalLang = await evaljs(LANG);
   const finalNav = await evaljs(CJK('.admin-nav'));
   check('切回中文后 <html lang> 复原', finalLang === 'zh-CN', `lang=${finalLang}`);

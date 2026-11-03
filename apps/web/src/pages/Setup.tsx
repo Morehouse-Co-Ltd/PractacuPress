@@ -1435,7 +1435,7 @@ go run ./apps/api/cmd/server`}</pre>
                         autoComplete="new-password"
                       />
                     </Field>
-                    <Field label={t('字符集 / 时区')} hint={t('所有时间以 UTC 存储，API 以 ISO 8601 返回。')}>
+                    <Field label={t('字符集 / 时区')}>
                       <Input value="utf8mb4 · UTC" readOnly disabled />
                     </Field>
                   </div>
@@ -1792,7 +1792,6 @@ go run ./apps/api/cmd/server`}</pre>
                       </span>
                       <span className="provider-body">
                         <strong>{t('邮箱与密码')}</strong>
-                        <p>{t('Ed25519 JWT + HttpOnly Refresh Cookie + CSRF 双提交。')}</p>
                       </span>
                       <Badge tone="ok" dot>
                         {t('已启用')}

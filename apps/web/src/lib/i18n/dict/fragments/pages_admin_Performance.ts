@@ -107,7 +107,6 @@ const fragment: Dictionary = {
   '复制 API .env': 'Copy API .env',
   '展开 API 与数据库环境变量': 'Show API and database environment variables',
   '当前效果': 'Current effect',
-  '保存后立即反映到前台。': 'Shown on the site as soon as you save.',
   '首页读取': 'Home feed',
   '{count} 条 × 2': '{count} items × 2',
   '请求缓存': 'Request cache',
@@ -123,16 +122,6 @@ const fragment: Dictionary = {
   '驱动默认': 'Driver default',
   '配置请求限制': 'Configure request limits',
   '加载动画': 'Loading animation',
-  '部署顺序': 'Order of deployment',
-  '从影响最大的开始。': 'Start with the biggest win.',
-  '先在「访问限制」打开每 IP 请求限制，挡住异常流量。':
-    'First turn on the per-IP request limit in Access limits to block abnormal traffic.',
-  '调小首屏读取并开启请求去重，减少 API 与数据库压力。':
-    'Lower the first-screen read count and turn on request deduplication to ease API and database pressure.',
-  '部署 Nginx 压缩与静态缓存，减少带宽与响应时间。':
-    'Deploy Nginx compression and static caching to cut bandwidth and response time.',
-  '最后按服务器规格调整 HTTP 超时与数据库连接池。':
-    'Finally tune HTTP timeouts and the database connection pool to match the server.',
   '恢复默认性能设置': 'Restore default performance settings',
   '回到稳妥默认值；不会改变访问限制、域名或加载动画。':
     'Back to safe defaults; access limits, domains, and the loading animation are untouched.',

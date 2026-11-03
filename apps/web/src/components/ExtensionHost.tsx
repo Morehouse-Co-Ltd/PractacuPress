@@ -79,7 +79,7 @@ function writeStorage(extensionId: string, key: string, value: string): void {
 export interface ExtensionHostProps {
   extension: CustomExtension;
   context: ExtensionDocumentContext;
-  /** iframe 高度上限；工坊预览传更小的值。 */
+  /** iframe 高度上限；预览态传更小的值。 */
   maxHeight?: number;
   /** 预览态：额外样式与更紧凑的高度限制。 */
   preview?: boolean;

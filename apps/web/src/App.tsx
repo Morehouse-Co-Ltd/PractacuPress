@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, laz
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import type { WebConfig } from './types';
 import { BackendProvider, createBackend, clearConfig, isDemo, loadConfig, saveConfig, verifyInstall, INSTALL_RESET_KEY } from './lib/backend';
+import { bootstrapVisitorConfig } from './lib/visitorBootstrap';
 import { accessController, isPreviewFrame, readAccess } from './lib/access';
 import { configurePerformance, readPerformance } from './lib/performance';
 import { readCustomization } from './lib/customize';
@@ -59,6 +60,7 @@ import { PagesPage } from './pages/admin/Pages';
 import { PageEditorPage } from './pages/admin/PageEditor';
 import { AppearancePage } from './pages/admin/Appearance';
 import { ThemesPage } from './pages/admin/Themes';
+import { ChooseThemePage } from './pages/admin/ChooseTheme';
 import { ExtensionsPage } from './pages/admin/Extensions';
 import { SeoPage } from './pages/admin/Seo';
 import { CustomPage } from './pages/site/CustomPage';
@@ -71,7 +73,23 @@ const ThemeBuilderPage = lazy(() =>
 
 export default function App() {
   const t = useT();
+  // 一键启动带 ?mode=live：已有真实安装直接进入站点；否则强制走真实环境安装引导。
+  // 这个判定要在初始化访客探测之前算出来：?mode=live 是站长的安装入口，不能被
+  // 匿名访客引导接管。
+  const forceLive =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mode') === 'live';
   const [config, setConfig] = useState<WebConfig | null>(() => loadConfig());
+  /**
+   * O-1 匿名访客引导状态。
+   *
+   * 没有本地安装配置时先探测服务端（`/api/v1/setup/status`）：已安装且已有管理员
+   * 就用服务端站点设计直接渲染站点，只有未安装 / 无管理员才进入 7 步安装引导。
+   * 探测期间渲染加载页，避免已装站点对新访客闪一下安装引导。
+   */
+  const [visitorBoot, setVisitorBoot] = useState<'probing' | 'done'>(() =>
+    loadConfig() || forceLive ? 'done' : 'probing',
+  );
 
   // 页面编排器在父窗口写配置，预览 iframe 通过 storage 事件即时更新，
   // 不需要刷新即可看到主题/区块变化。
@@ -85,9 +103,24 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const forceLive =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('mode') === 'live';
+  // O-1：本地没有安装配置（且不是 ?mode=live 安装回退）时，问一次服务端这台站点
+  // 是否已经装好。探测与设计拉取都在 bootstrapVisitorConfig 里完成，失败返回 null，
+  // 由下面的渲染分支回退到安装引导。
+  useEffect(() => {
+    if (visitorBoot !== 'probing') return;
+    let alive = true;
+    void bootstrapVisitorConfig()
+      .catch(() => null)
+      .then((boot) => {
+        if (!alive) return;
+        if (boot) setConfig(boot.config);
+        setVisitorBoot('done');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [visitorBoot]);
+
   // 一键启动带 ?mode=live：已有真实安装直接进入站点；否则强制走真实环境安装引导。
   const needsLiveSetup =
     forceLive && (!config || config.mode !== 'live' || !config.setup_complete);
@@ -126,7 +159,9 @@ export default function App() {
     setConfig((prev) => {
       if (!prev) return prev;
       const next = { ...prev, ...patch };
-      saveConfig(next);
+      // 匿名访客的配置是探测出来的只读视图：不写回 localStorage，否则浏览器会把
+      // 访客误当成"已安装"，后续刷新会走已安装浏览器的水合与回写路径。
+      if (!next.visitor) saveConfig(next);
       return next;
     });
     // 落在 customization 上的改动才需要回写服务端；防抖会把连续编辑合并成一次 PUT。
@@ -148,9 +183,9 @@ export default function App() {
     configurePerformance(readPerformance(config));
   }, [config]);
 
-  // 站点语言也跟着站点设计走：安装完成、服务端水合、后台切换三条路径都会落到
-  // 这里，所以只需要在 config 变化时同步一次。放 layout effect 是为了在浏览器
-  // 绘制之前就定下语言，避免英文站点闪一帧中文。
+  // 站点语言也跟着站点设计走：安装引导完成、服务端水合两条路径都会落到这里，
+  // 所以只需要在 config 变化时同步一次。放 layout effect 是为了在浏览器绘制之前
+  // 就定下语言，避免英文站点闪一帧中文。
   useLayoutEffect(() => {
     if (!config) return;
     setLocale(readCustomization(config).language);
@@ -169,6 +204,8 @@ export default function App() {
     if (isPreviewFrame()) return;
     const current = loadConfig();
     if (!current || current.mode !== 'live') return;
+    // 匿名访客的只读配置只存在内存里，不是一次安装：不校验、不水合、不回写。
+    if (current.visitor) return;
 
     let alive = true;
     void verifyInstall(current).then((verdict) => {
@@ -231,6 +268,11 @@ export default function App() {
     // installKey 已包含模式与 API 地址；backend / applyConfig 只是随它一起变化，
     // 列出来是为了不让闭包抓到旧实例。
   }, [installKey, backend, applyConfig]);
+
+  // 匿名访客引导还在探测服务端：先显示加载页，等结果再决定渲染站点还是安装引导。
+  if (visitorBoot === 'probing') {
+    return <PageLoading label={t('正在加载站点')} />;
+  }
 
   if (!config || !backend || needsLiveSetup) {
     return (
@@ -317,6 +359,7 @@ export default function App() {
                 <Route path="pages/new" element={<PageEditorPage />} />
                 <Route path="pages/:id" element={<PageEditorPage />} />
                 <Route path="themes" element={<ThemesPage />} />
+                <Route path="themes/choose" element={<ChooseThemePage />} />
                 <Route path="appearance" element={<AppearancePage />} />
                 <Route path="seo" element={<SeoPage />} />
                 <Route

@@ -11,8 +11,8 @@ const fragment: Dictionary = {
   不同设备分割: 'Split by device',
   新窗口: 'New window',
   真实前台预览: 'Live public site preview',
-  '预览就是真实前台。单击区块选中组件，双击区块或左侧结构树里的组件，视角会平滑定位到对应位置。':
-    'The preview is the real public site. Click a block to select its component; double-click a block — or a component in the structure tree on the left — and the view scrolls smoothly to it.',
+  '预览就是真实前台：单击可以直接点链接、按按钮；只有双击组件才会聚焦它，并把右侧属性面板打开。':
+    'The preview is the real public site: a single click follows links and presses buttons as usual; only a double-click focuses a component and opens its properties on the right.',
 };
 
 export default fragment;

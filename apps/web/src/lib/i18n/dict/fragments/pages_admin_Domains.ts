@@ -119,7 +119,6 @@ const fragment: Dictionary = {
   '展开 API 环境变量': 'Show API environment variables',
   '展开证书申请 / 部署步骤': 'Show certificate request / deployment steps',
   绑定概览: 'Binding overview',
-  '当前浏览器是否被允许。': 'Whether this browser is currently allowed.',
   当前域名: 'Current host',
   '{count} 个': { one: '1 domain', other: '{count} domains' },
   不豁免: 'Not exempt',
@@ -146,6 +145,43 @@ const fragment: Dictionary = {
   恢复默认: 'Restore defaults',
   放弃未保存的修改: 'Discard unsaved changes',
   没有未保存的修改: 'No unsaved changes',
+
+  // V-12 主域名 TXT 归属验证
+  待验证: 'Pending verification',
+  已验证: 'Verified',
+  域名待验证: 'Domain pending verification',
+  '验证完成前，公网域名暂不生效，可在本机（localhost）继续完成验证。':
+    'Until verification is complete the public domain stays inactive; you can finish verifying on this machine (localhost).',
+  'DNS 记录类型': 'DNS record type',
+  '在域名 DNS 服务商处添加一条 TXT 记录。':
+    'Add a TXT record at your DNS provider.',
+  记录名: 'Record name',
+  '有的服务商要求只填主机记录（不包含主域名后缀）。':
+    'Some providers want only the host part (without the primary domain suffix).',
+  复制记录名: 'Copy record name',
+  记录值: 'Record value',
+  'TXT 记录的内容；验证通过后可以删除。':
+    'The TXT record contents; it can be removed once verification passes.',
+  复制记录值: 'Copy record value',
+  验证没有通过: 'Verification did not pass',
+  '我已添加，立即验证': 'I added it — verify now',
+  'DNS 记录生效通常需要几分钟；没通过可以稍后再点一次。':
+    'DNS records usually take a few minutes to propagate; try again later if it fails.',
+  主域名已验证: 'Primary domain verified',
+  '公网域名已经生效；如果刚改过 DNS，浏览器可能需要几分钟缓存。':
+    'The public domain is live; if you just changed DNS, browsers may cache the old answer for a few minutes.',
+  '已保存的域名与当前输入不一致：重新保存后会生成新的 TXT 验证记录。':
+    'The saved domain differs from the current input: saving again issues a new TXT verification record.',
+  域名验证成功: 'Domain verified',
+  '公网域名已经生效。': 'The public domain is now live.',
+  '还没有验证通过，请稍后重试。': 'Verification has not passed yet; please try again later.',
+  '还没有查询到 TXT 记录。DNS 生效可能需要几分钟，请稍后重试。':
+    'No TXT record found yet. DNS can take a few minutes to propagate; please try again later.',
+  '域名状态不允许验证，请检查域名格式与保存状态。':
+    'The domain cannot be verified in its current state; check the domain format and whether it was saved.',
+  '验证失败，请稍后重试。': 'Verification failed; please try again later.',
+  '主域名已保存，待完成 TXT 验证；验证完成前公网域名暂不生效，可在本机继续管理。把下方部署片段应用后，域名与 HTTPS 才会真正对外服务。':
+    'The primary domain was saved and is pending TXT verification; until then the public domain stays inactive and you can keep managing the site locally. Apply the deployment snippet below for the domain and HTTPS to actually serve visitors.',
 };
 
 export default fragment;

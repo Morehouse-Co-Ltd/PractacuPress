@@ -37,8 +37,6 @@ const fragment: Dictionary = {
     'Accepts a `.ppext.json` export, a single bare manifest, or an array of manifests; the same id is overwritten and reported.',
   '最多 {count} 个': 'Up to {count}',
   '从文件导入': 'Import from a file',
-  '选择导出的 `.ppext.json` 或 `.json` 清单文件。':
-    'Pick an exported `.ppext.json` or `.json` manifest file.',
   '选择文件': 'Choose a file',
   '粘贴 JSON': 'Paste JSON',
   '{\n  "format": "practacu-extension",\n  "version": 1,\n  "extension": { "name": "我的扩展", ... }\n}':
@@ -83,13 +81,15 @@ const fragment: Dictionary = {
   '还没有创作者扩展': 'No creator extensions yet',
   '可以从示例开始，或者导入别人做好的清单。扩展保存后默认不启用，确认没问题再打开开关。':
     'Start from a sample, or import a manifest someone else made. A saved extension stays off by default; turn it on once you have checked it.',
+  '可以从示例开始，或者导入别人做好的清单；导入后在卡片上启用、导出或删除。':
+    'Start from a sample, or import a manifest someone else made; once imported you can enable, export or delete it from its card.',
   '导入示例扩展（{count} 个）': {
     one: 'Import the sample extension ({count})',
     other: 'Import all sample extensions ({count})',
   },
   '去工坊做一个': 'Build one in the studio',
 
-  // ---- 扩展工坊 ----
+  // ---- 创作者扩展（保留已移除的工坊文案，旧配置/文档仍可能引用） ----
   '编辑：{name}': 'Editing: {name}',
   '未命名扩展': 'Untitled extension',
   '新扩展': 'New extension',

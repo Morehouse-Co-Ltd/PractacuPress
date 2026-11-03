@@ -1,6 +1,6 @@
 import type { SiteCustomization, WebConfig } from '../types';
 import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
-import { readCustomization } from './customize';
+import { readCustomization, sanitizeCustomCss } from './customize';
 
 /**
  * 站点设计的服务端同步。
@@ -273,7 +273,13 @@ export function scheduleCustomizationSave(
   const readRaw = (): Record<string, unknown> | null => {
     const config = options.read();
     const customization = config?.customization;
-    return isPlainObject(customization) ? customization : null;
+    if (!isPlainObject(customization)) return null;
+    // 服务端会拒绝含高危构造的自定义 CSS。旧配置或手改过的本地缓存可能还带着它：
+    // 写回前先用读入时的同一套规则剔掉，免得整份设计反复保存失败、一直停在旧版本。
+    // 干净的样式原样透传（连对象身份都不变），其余字段仍然按原始对象写回。
+    const customCss = sanitizeCustomCss((customization as { custom_css?: unknown }).custom_css);
+    if (customCss === (customization as { custom_css?: unknown }).custom_css) return customization;
+    return { ...customization, custom_css: customCss };
   };
 
   const blockedReason = (status: number) =>

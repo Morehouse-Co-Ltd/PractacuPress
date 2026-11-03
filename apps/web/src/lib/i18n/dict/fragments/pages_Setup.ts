@@ -220,8 +220,6 @@ const fragment: Dictionary = {
   '只用于生成本地配置片段，不会发送到任何地方。':
     'Only used to build the local config snippet; it is never sent anywhere.',
   '字符集 / 时区': 'Charset / time zone',
-  '所有时间以 UTC 存储，API 以 ISO 8601 返回。':
-    'All times are stored in UTC and returned by the API as ISO 8601.',
   '服务端配置片段': 'Server config snippet',
   '复制 .env': 'Copy .env',
   '把这两行写入服务端的': 'Add these two lines to the server',
@@ -300,8 +298,6 @@ const fragment: Dictionary = {
   '邮箱与密码始终可用。手机验证码与第三方登录可以在这里直接选择并填写参数；密钥只写进服务端环境变量，不会保存在浏览器。':
     'Email and password are always available. Phone codes and third-party sign-in can be chosen and configured right here; the keys are written only to server environment variables and never stored in the browser.',
   '邮箱与密码': 'Email and password',
-  'Ed25519 JWT + HttpOnly Refresh Cookie + CSRF 双提交。':
-    'Ed25519 JWT + HttpOnly refresh cookie + CSRF double submit.',
   '已启用': 'Enabled',
   '配置完成后会出现在登录页': 'Configured methods appear on the sign-in page',
   '填写完整的方式会显示在': 'Fully configured methods appear on',

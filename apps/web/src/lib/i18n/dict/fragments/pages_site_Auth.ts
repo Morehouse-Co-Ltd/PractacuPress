@@ -109,6 +109,15 @@ const fragment: Dictionary = {
     'Contract v0.1.0 has no such sign-in endpoint. Once the server implements',
   '后，前端才能把用户交给提供商并接收回调。':
     'the front end can hand the user to the provider and receive the callback.',
+
+  // O-3 注册关闭
+  本站暂未开放注册: 'Registration is not open on this site',
+  '本站暂未开放注册。': 'Registration is not open on this site.',
+  '{site} 暂时关闭了自助注册。已经注册的成员可以直接登录；需要账户请联系站长开通。':
+    '{site} has temporarily closed self-service sign-up. Existing members can sign in directly; contact the site owner to get an account.',
+  社区站点: 'Community site',
+  '访客无需账户即可阅读全部已发布内容。注册开放时间由站长决定。':
+    'Visitors can read all published content without an account. The site owner decides when registration opens.',
 };
 
 export default fragment;

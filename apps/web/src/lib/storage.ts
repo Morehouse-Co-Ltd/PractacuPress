@@ -1,30 +1,33 @@
 import type {
   StorageDriver,
   StorageScope,
-  StorageScopeSettings,
   StorageSettings,
+  StorageStrategy,
   WebConfig,
 } from '../types';
 import { t } from './i18n';
 import { settingInt, settingText } from './settings';
 
 /**
- * 媒体存储策略。
+ * 媒体储存策略。
  *
- * 与「性能优化」「访问限制」同一套模式：浏览器只保存选择，并把选择翻译成
- * 可直接粘贴的 API `.env` 片段。真正的存储由 API 启动时读取的 `STORAGE_*`
- * 环境变量决定，所以切换后必须重启；已上传的文件不会自动搬运。
+ * 模型是一串用户自己维护的命名策略（storage strategy）：每套策略描述一个
+ * 存储目标（本地目录或 S3 兼容的云对象存储），四个用途（文章媒体 / 站点图片 /
+ * 用户头像 / 用户数据与附件）各自挑一套。浏览器只保存选择，并把选择翻译成
+ * 可直接粘贴的 API `.env` 片段；真正的存储由 API 启动时读取的 `STORAGE_*`
+ * 环境变量决定，所以切换后必须重启，已上传的文件不会自动搬运。
  *
- * 全局设置之外，文章媒体 / 站点图片 / 用户头像 / 用户数据可以单独覆盖；
- * 没有覆盖的用途沿用全局。分用途的 S3 覆盖只换桶与前缀，endpoint、区域和
- * 凭据仍来自全局 `STORAGE_S3_*`。
+ * 服务器契约（`apps/api/internal/platform/config/config.go`）只有**一套全局**
+ * `STORAGE_DRIVER` + 一套全局 S3 凭据，外加每个用途可选的
+ * `STORAGE_<SCOPE>_DRIVER|LOCAL_DIR|S3_BUCKET|S3_PREFIX` 覆盖。于是生成片段时
+ * 把「被最多用途使用的策略」当作全局策略（数量并列取数组里靠前的），其余用途
+ * 只写自己的覆盖变量。多套云策略因此共用同一套 endpoint / 区域 / Access Key。
  *
- * 默认值与 `apps/api/internal/platform/config/config.go` 及根目录
- * `.env.example` 保持一致：`STORAGE_DRIVER=local`、`STORAGE_DIR=./data/media`，
- * S3 模式下桶必填，endpoint / prefix 可空（空 endpoint 表示 AWS）。
+ * 默认值与 `config.go` 及根目录 `.env.example` 保持一致：
+ * `STORAGE_DRIVER=local`、`STORAGE_DIR=./data/media`。
  */
 
-/** 有独立存储设置的用途，顺序也用于生成片段与页面卡片。 */
+/** 有独立储存设置的用途，顺序也用于生成片段与页面卡片。 */
 export const STORAGE_SCOPES: readonly StorageScope[] = [
   'content',
   'site',
@@ -32,30 +35,23 @@ export const STORAGE_SCOPES: readonly StorageScope[] = [
   'attachment',
 ];
 
-function inheritScope(): StorageScopeSettings {
-  return { driver: 'inherit', local_dir: '', s3_bucket: '', s3_prefix: '' };
-}
+/** 最多允许保存几套策略；再多的话 .env 片段会难维护。 */
+export const MAX_STRATEGIES = 8;
 
-export const DEFAULT_STORAGE: StorageSettings = {
-  driver: 'local',
-  local_dir: './data/media',
-  // 空 endpoint 表示 AWS；MinIO / OSS / COS 填 S3 兼容地址。
-  s3_endpoint: '',
-  // 与 .env.example 的示例值一致；SDK 在留空时也按 us-east-1 处理。
-  s3_region: 'us-east-1',
-  s3_bucket: '',
-  s3_prefix: '',
-  s3_public_base_url: '',
-  s3_access_key: '',
-  // 与 API 的 25 MiB 附件上限一致；这个值只用于页面提示。
-  max_upload_mb: 25,
-  scopes: {
-    content: inheritScope(),
-    site: inheritScope(),
-    avatar: inheritScope(),
-    attachment: inheritScope(),
-  },
-};
+/** 策略名称的最大长度（字符数，不是字节数）。 */
+export const MAX_STRATEGY_NAME = 40;
+
+/** 本地存储的默认目录；与 API 的 STORAGE_DIR 默认值一致。 */
+export const DEFAULT_LOCAL_DIR = './data/media';
+
+/** S3 SDK 的默认区域；留空时后端也按这个值处理。 */
+export const DEFAULT_S3_REGION = 'us-east-1';
+
+/** 默认策略的稳定 id：旧配置迁移时本地全局也用它。 */
+export const DEFAULT_STRATEGY_ID = 'local';
+
+/** id 只允许小写字母、数字、下划线与连字符，方便直接当环境变量注释的锚点。 */
+const ID_PATTERN = /^[a-z0-9_-]+$/;
 
 function text(value: unknown, fallback: string, max = 300): string {
   return settingText(value, fallback, max).trim();
@@ -75,61 +71,356 @@ function readDriver(value: unknown): StorageDriver {
   return value === 's3' ? 's3' : 'local';
 }
 
-function readScopeDriver(value: unknown): StorageScopeSettings['driver'] {
-  return value === 'local' || value === 's3' ? value : 'inherit';
+/** 用途的默认展示名；也用于把旧配置的分用途覆盖命名成一套策略。 */
+export function scopeLabel(scope: StorageScope): string {
+  switch (scope) {
+    case 'content':
+      return t('文章媒体');
+    case 'site':
+      return t('站点图片');
+    case 'avatar':
+      return t('用户头像');
+    case 'attachment':
+      return t('用户数据与附件');
+  }
 }
 
-/** 把单个用途覆盖收敛成合法形状；未知 driver 一律当「沿用全局」。 */
-export function normalizeScopeSettings(
-  raw: Partial<StorageScopeSettings> | undefined,
-): StorageScopeSettings {
+/** 驱动的展示名：与页面上「类型」切换的文案是同一套。 */
+export function storageDriverLabel(driver: StorageDriver): string {
+  return driver === 's3' ? t('云对象存储') : t('本地储存');
+}
+
+/** 一套空白策略；只用于「新建」弹窗的初始值。 */
+export function emptyStrategy(): StorageStrategy {
   return {
-    driver: readScopeDriver(raw?.driver),
-    local_dir: withoutTrailingSlash(text(raw?.local_dir, '', 300)),
-    s3_bucket: withoutEdgeSlashes(text(raw?.s3_bucket, '', 120)),
-    s3_prefix: withoutEdgeSlashes(text(raw?.s3_prefix, '', 200)),
+    id: '',
+    name: '',
+    driver: 'local',
+    local_dir: DEFAULT_LOCAL_DIR,
+    s3_bucket: '',
+    s3_prefix: '',
+    s3_endpoint: '',
+    s3_region: DEFAULT_S3_REGION,
+    s3_access_key: '',
+    s3_public_base_url: '',
   };
 }
 
-function readScopes(raw: unknown): Record<StorageScope, StorageScopeSettings> {
-  const source =
-    raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const scopes = {} as Record<StorageScope, StorageScopeSettings>;
+/** 默认的那一套「本地储存」。 */
+export function defaultLocalStrategy(): StorageStrategy {
+  return { ...emptyStrategy(), id: DEFAULT_STRATEGY_ID, name: t('本地储存') };
+}
+
+/** 全新安装的默认设置：只有一套「本地储存」，四个用途都指向它。 */
+export function defaultStorage(): StorageSettings {
+  return {
+    strategies: [defaultLocalStrategy()],
+    scopes: {
+      content: DEFAULT_STRATEGY_ID,
+      site: DEFAULT_STRATEGY_ID,
+      avatar: DEFAULT_STRATEGY_ID,
+      attachment: DEFAULT_STRATEGY_ID,
+    },
+    max_upload_mb: 25,
+  };
+}
+
+/** 生成一个没被占用的策略 id。 */
+export function createStrategyId(strategies: StorageStrategy[]): string {
+  const used = new Set(strategies.map((strategy) => strategy.id));
+  let index = 1;
+  let id = `str_${index}`;
+  while (used.has(id)) {
+    index += 1;
+    id = `str_${index}`;
+  }
+  return id;
+}
+
+/** 收敛一个策略 id：小写、非法字符变连字符、空值回退到 `str_<n>`。 */
+function sanitizeId(raw: unknown, index: number): string {
+  const source = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  const slug = source.replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || `str_${index + 1}`;
+}
+
+/**
+ * 把任意来源的单套策略收敛成合法形状。
+ *
+ * `id` 由调用方给定：新建策略时页面用 `createStrategyId()` 生成，迁移旧配置时
+ * 用固定的稳定 id。名称留空时按类型给一个可读的默认名，保证「名称必填」的
+ * 老配置不会变成空行。
+ */
+export function normalizeStrategy(
+  raw: Partial<StorageStrategy> | undefined | null,
+  id: string,
+): StorageStrategy {
+  const source = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const driver = readDriver(source.driver);
+  const name = text(source.name, '', MAX_STRATEGY_NAME);
+  const region = text(source.s3_region, DEFAULT_S3_REGION, 80);
+  return {
+    id: ID_PATTERN.test(id) ? id : sanitizeId(id, 0),
+    name: name || storageDriverLabel(driver),
+    driver,
+    local_dir: withoutTrailingSlash(text(source.local_dir, '', 300)),
+    s3_bucket: withoutEdgeSlashes(text(source.s3_bucket, '', 120)),
+    s3_prefix: withoutEdgeSlashes(text(source.s3_prefix, '', 200)),
+    s3_endpoint: withoutTrailingSlash(text(source.s3_endpoint, '', 300)),
+    s3_region: region || DEFAULT_S3_REGION,
+    s3_access_key: text(source.s3_access_key, '', 200),
+    s3_public_base_url: withoutTrailingSlash(text(source.s3_public_base_url, '', 300)),
+  };
+}
+
+/** id 去重：保序，重复的加 `-2`、`-3` 后缀。 */
+function uniqueIds(strategies: StorageStrategy[]): StorageStrategy[] {
+  const used = new Set<string>();
+  return strategies.map((strategy) => {
+    let id = strategy.id;
+    let index = 2;
+    while (used.has(id)) {
+      id = `${strategy.id}-${index}`;
+      index += 1;
+    }
+    used.add(id);
+    return id === strategy.id ? strategy : { ...strategy, id };
+  });
+}
+
+/** 名称去重：保序，重复的加 ` 2`、` 3` 后缀，并保持长度上限。 */
+function uniqueNames(strategies: StorageStrategy[]): StorageStrategy[] {
+  const used = new Set<string>();
+  return strategies.map((strategy) => {
+    let name = strategy.name;
+    let index = 2;
+    while (used.has(name)) {
+      const suffix = ` ${index}`;
+      name = `${strategy.name.slice(0, Math.max(1, MAX_STRATEGY_NAME - suffix.length)).trimEnd()}${suffix}`;
+      index += 1;
+    }
+    used.add(name);
+    return name === strategy.name ? strategy : { ...strategy, name };
+  });
+}
+
+/** 收尾：id / 名称去重，再按上限截断。截断后由调用方把用途回落到第一套。 */
+function settleStrategies(strategies: StorageStrategy[]): StorageStrategy[] {
+  return uniqueNames(uniqueIds(strategies)).slice(0, MAX_STRATEGIES);
+}
+
+/** 用途指向的策略；id 不存在（数据坏掉）时回落到第一套。 */
+export function findStrategy(
+  settings: StorageSettings,
+  id: string | undefined,
+): StorageStrategy {
+  const strategies = settings.strategies.length
+    ? settings.strategies
+    : defaultStorage().strategies;
+  return strategies.find((strategy) => strategy.id === id) ?? strategies[0];
+}
+
+/** 策略「位置」的简短展示：本地 → 目录，云 → 桶 / 前缀。 */
+export function strategyLocation(strategy: StorageStrategy): string {
+  if (strategy.driver !== 's3') return strategy.local_dir || DEFAULT_LOCAL_DIR;
+  if (!strategy.s3_bucket) return t('未填写桶');
+  return strategy.s3_prefix
+    ? `${strategy.s3_bucket}/${strategy.s3_prefix}`
+    : strategy.s3_bucket;
+}
+
+/** 每个策略被几个用途引用；用于选全局策略与页面徽标。 */
+export function scopeUsageCounts(settings: StorageSettings): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const strategy of settings.strategies) counts[strategy.id] = 0;
   for (const scope of STORAGE_SCOPES) {
-    const value = source[scope];
-    scopes[scope] = normalizeScopeSettings(
-      value && typeof value === 'object'
-        ? (value as Partial<StorageScopeSettings>)
-        : undefined,
+    const id = settings.scopes[scope];
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * 生成 `.env` 片段时的「全局策略」：被最多用途使用的那一套。
+ *
+ * 数量并列时取 `strategies` 数组里靠前的一套；一套都没被引用时取第一套。
+ */
+export function globalStrategyOf(settings: StorageSettings): StorageStrategy {
+  const strategies = settings.strategies.length
+    ? settings.strategies
+    : defaultStorage().strategies;
+  const counts = scopeUsageCounts({
+    ...settings,
+    strategies,
+  });
+  let best = strategies[0];
+  let bestCount = counts[best.id] ?? 0;
+  for (const strategy of strategies.slice(1)) {
+    const count = counts[strategy.id] ?? 0;
+    if (count > bestCount) {
+      best = strategy;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/** 实际被用途引用到的策略（按用途顺序去重）。 */
+export function usedStrategies(settings: StorageSettings): StorageStrategy[] {
+  const seen = new Set<string>();
+  const out: StorageStrategy[] = [];
+  for (const scope of STORAGE_SCOPES) {
+    const strategy = findStrategy(settings, settings.scopes[scope]);
+    if (seen.has(strategy.id)) continue;
+    seen.add(strategy.id);
+    out.push(strategy);
+  }
+  return out;
+}
+
+/** 旧结构里的单个用途覆盖（driver 可能是 inherit）。 */
+interface LegacyScopeSettings {
+  driver: 'inherit' | StorageDriver;
+  local_dir: string;
+  s3_bucket: string;
+  s3_prefix: string;
+}
+
+function readLegacyScope(raw: unknown): LegacyScopeSettings {
+  const source = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const driver =
+    source.driver === 'local' || source.driver === 's3' ? source.driver : 'inherit';
+  return {
+    driver,
+    local_dir: withoutTrailingSlash(text(source.local_dir, '', 300)),
+    s3_bucket: withoutEdgeSlashes(text(source.s3_bucket, '', 120)),
+    s3_prefix: withoutEdgeSlashes(text(source.s3_prefix, '', 200)),
+  };
+}
+
+/**
+ * 把旧结构（全局 driver + 分用途覆盖）迁移成策略列表。
+ *
+ * - 旧的全局设置成为第一套策略：本地 → id `local`、名称「本地储存」；
+ *   云 → id `cloud`、名称「云对象存储」。
+ * - 每个 `inherit` 之外的用途各自成为一套策略（id `scope-<用途>`），并让该用途
+ *   指向它；`inherit` 的用途指向第一套。
+ * - 旧的用途覆盖沿用全局的 endpoint / 区域 / Access Key，这里复制一份方便编辑；
+ *   真正生成的片段仍只写桶与前缀（服务器只有一套云凭据）。
+ */
+function migrateLegacy(source: Record<string, unknown>): StorageSettings {
+  const driver = readDriver(source.driver);
+  const globalStrategy: StorageStrategy = normalizeStrategy(
+    {
+      driver,
+      name: storageDriverLabel(driver),
+      local_dir: text(source.local_dir, DEFAULT_LOCAL_DIR, 300),
+      s3_bucket: text(source.s3_bucket, '', 120),
+      s3_prefix: text(source.s3_prefix, '', 200),
+      s3_endpoint: text(source.s3_endpoint, '', 300),
+      s3_region: text(source.s3_region, DEFAULT_S3_REGION, 80),
+      s3_access_key: text(source.s3_access_key, '', 200),
+      s3_public_base_url: text(source.s3_public_base_url, '', 300),
+    },
+    driver === 's3' ? 'cloud' : DEFAULT_STRATEGY_ID,
+  );
+
+  const strategies: StorageStrategy[] = [globalStrategy];
+  const scopes = {} as Record<StorageScope, string>;
+  const rawScopes = (source.scopes && typeof source.scopes === 'object'
+    ? source.scopes
+    : {}) as Record<string, unknown>;
+
+  for (const scope of STORAGE_SCOPES) {
+    const legacy = readLegacyScope(rawScopes[scope]);
+    if (legacy.driver === 'inherit') {
+      scopes[scope] = globalStrategy.id;
+      continue;
+    }
+    const strategy = normalizeStrategy(
+      {
+        name: t('{scope}专用', { scope: scopeLabel(scope) }),
+        driver: legacy.driver,
+        local_dir: legacy.local_dir,
+        s3_bucket: legacy.s3_bucket,
+        s3_prefix: legacy.s3_prefix,
+        s3_endpoint: globalStrategy.s3_endpoint,
+        s3_region: globalStrategy.s3_region,
+        s3_access_key: globalStrategy.s3_access_key,
+        s3_public_base_url: globalStrategy.s3_public_base_url,
+      },
+      `scope-${scope}`,
     );
+    strategies.push(strategy);
+    scopes[scope] = strategy.id;
+  }
+
+  const settled = settleStrategies(strategies);
+  return {
+    strategies: settled,
+    scopes: fallbackScopeIds(scopes, settled),
+    max_upload_mb: 25,
+  };
+}
+
+/** 用途 id 指向已被截断/淘汰的策略时，回落到第一套。 */
+function fallbackScopeIds(
+  raw: Record<StorageScope, string>,
+  strategies: StorageStrategy[],
+): Record<StorageScope, string> {
+  const first = strategies[0].id;
+  const ids = new Set(strategies.map((strategy) => strategy.id));
+  const scopes = {} as Record<StorageScope, string>;
+  for (const scope of STORAGE_SCOPES) {
+    const id = typeof raw[scope] === 'string' ? raw[scope].trim() : '';
+    scopes[scope] = ids.has(id) ? id : first;
   }
   return scopes;
 }
 
-/** 把任意来源（旧配置、导入 JSON、手写对象）收敛成合法的存储策略。 */
+/**
+ * 把任意来源（旧配置、导入 JSON、手写对象）收敛成合法的储存设置。
+ *
+ * 同时接受两种形状：
+ * - 新结构：`{ strategies, scopes: { content: id, … }, max_upload_mb }`；
+ * - 旧结构：`{ driver, local_dir, s3_*, scopes[scope].driver }`，逐项迁移。
+ *
+ * 空值、坏数组、没有一套可用策略时整体回退到 `defaultStorage()`。
+ */
 export function normalizeStorage(raw: Partial<StorageSettings> | undefined): StorageSettings {
-  const localDir = withoutTrailingSlash(
-    text(raw?.local_dir, DEFAULT_STORAGE.local_dir, 300),
-  );
-  return {
-    driver: readDriver(raw?.driver),
-    local_dir: localDir || DEFAULT_STORAGE.local_dir,
-    s3_endpoint: withoutTrailingSlash(text(raw?.s3_endpoint, '', 300)),
-    s3_region: text(raw?.s3_region, DEFAULT_STORAGE.s3_region, 80),
-    s3_bucket: withoutEdgeSlashes(text(raw?.s3_bucket, '', 120)),
-    // 对象键前缀两侧的斜杠由后端自己处理，这里提前收紧成不含斜杠的写法。
-    s3_prefix: withoutEdgeSlashes(text(raw?.s3_prefix, '', 200)),
-    s3_public_base_url: withoutTrailingSlash(text(raw?.s3_public_base_url, '', 300)),
-    s3_access_key: text(raw?.s3_access_key, '', 200),
-    max_upload_mb: settingInt(
-      raw?.max_upload_mb,
-      DEFAULT_STORAGE.max_upload_mb,
-      1,
-      2048,
-    ),
-    // 旧配置没有 scopes，四个用途全部回到「沿用全局」。
-    scopes: readScopes(raw?.scopes),
-  };
+  const fallback = defaultStorage();
+  const source = (raw && typeof raw === 'object' ? raw : undefined) as
+    | Record<string, unknown>
+    | undefined;
+  if (!source) return fallback;
+
+  const max_upload_mb = settingInt(source.max_upload_mb, fallback.max_upload_mb, 1, 2048);
+
+  if (Array.isArray(source.strategies)) {
+    const strategies: StorageStrategy[] = [];
+    for (const item of source.strategies) {
+      if (strategies.length >= MAX_STRATEGIES) break;
+      if (!item || typeof item !== 'object') continue;
+      const entry = item as Partial<StorageStrategy>;
+      strategies.push(normalizeStrategy(entry, sanitizeId(entry.id, strategies.length)));
+    }
+    const settled = settleStrategies(strategies);
+    if (!settled.length) return { ...fallback, max_upload_mb };
+    return {
+      strategies: settled,
+      scopes: fallbackScopeIds(
+        (source.scopes && typeof source.scopes === 'object'
+          ? source.scopes
+          : {}) as Record<StorageScope, string>,
+        settled,
+      ),
+      max_upload_mb,
+    };
+  }
+
+  // 没有 strategies 数组：一律按旧结构迁移（空对象迁移结果就等于默认值）。
+  const migrated = migrateLegacy(source);
+  return { ...migrated, max_upload_mb };
 }
 
 export function readStorage(config: Pick<WebConfig, 'storage'>): StorageSettings {
@@ -174,11 +465,12 @@ function secretLines(secret: string): string[] {
   ];
 }
 
-function globalEnvLines(settings: StorageSettings, secret: string): string[] {
+/** 全局策略对应的 `STORAGE_*` 变量。 */
+function globalEnvLines(strategy: StorageStrategy, secret: string): string[] {
   const lines: string[] = [];
 
-  if (settings.driver !== 's3') {
-    const localDir = envValue(settings.local_dir) || DEFAULT_STORAGE.local_dir;
+  if (strategy.driver !== 's3') {
+    const localDir = envValue(strategy.local_dir) || DEFAULT_LOCAL_DIR;
     lines.push('STORAGE_DRIVER=local');
     lines.push(`STORAGE_DIR=${localDir}`);
     lines.push('');
@@ -189,53 +481,59 @@ function globalEnvLines(settings: StorageSettings, secret: string): string[] {
 
   lines.push('STORAGE_DRIVER=s3');
   lines.push(
-    `STORAGE_S3_BUCKET=${envValue(settings.s3_bucket) || t('<必填：桶名，例如 practacu-press>')}`,
+    `STORAGE_S3_BUCKET=${envValue(strategy.s3_bucket) || t('<必填：桶名，例如 practacu-press>')}`,
   );
-  lines.push(`STORAGE_S3_REGION=${envValue(settings.s3_region) || 'us-east-1'}`);
+  lines.push(`STORAGE_S3_REGION=${envValue(strategy.s3_region) || DEFAULT_S3_REGION}`);
 
-  if (settings.s3_endpoint.trim()) {
-    lines.push(`STORAGE_S3_ENDPOINT=${envValue(settings.s3_endpoint)}`);
+  if (strategy.s3_endpoint.trim()) {
+    lines.push(`STORAGE_S3_ENDPOINT=${envValue(strategy.s3_endpoint)}`);
   } else {
     lines.push(t('# STORAGE_S3_ENDPOINT=（留空表示 AWS S3；MinIO / OSS / COS 填兼容地址）'));
   }
 
-  if (settings.s3_access_key.trim()) {
-    lines.push(`STORAGE_S3_ACCESS_KEY=${envValue(settings.s3_access_key)}`);
+  if (strategy.s3_access_key.trim()) {
+    lines.push(`STORAGE_S3_ACCESS_KEY=${envValue(strategy.s3_access_key)}`);
   } else {
     lines.push(t('# STORAGE_S3_ACCESS_KEY=（未填写：可使用实例角色或部署环境里的凭据）'));
   }
 
   lines.push(...secretLines(secret));
 
-  if (settings.s3_prefix.trim()) {
-    lines.push(`STORAGE_S3_PREFIX=${envValue(settings.s3_prefix)}`);
+  if (strategy.s3_prefix.trim()) {
+    lines.push(`STORAGE_S3_PREFIX=${envValue(strategy.s3_prefix)}`);
   } else {
     lines.push(t('# STORAGE_S3_PREFIX=（可选：同一桶放多个站点时填前缀，留空写桶根）'));
   }
   return lines;
 }
 
-/** 单个用途覆盖的环境变量；inherit 不写变量。 */
-function scopeEnvLines(scope: StorageScope, value: StorageScopeSettings): string[] {
+/** 单个用途覆盖的环境变量：只写驱动与位置，云凭据永远来自全局。 */
+function scopeEnvLines(scope: StorageScope, strategy: StorageStrategy): string[] {
   const prefix = `STORAGE_${scope.toUpperCase()}`;
-  if (value.driver === 'local') {
-    const localDir = envValue(value.local_dir);
-    return localDir
-      ? [`${prefix}_DRIVER=local`, `${prefix}_LOCAL_DIR=${localDir}`]
-      : [
-          `${prefix}_DRIVER=local`,
-          t('# 目录留空时由服务器使用默认本地目录（通常 ./data/media）'),
-          `${prefix}_LOCAL_DIR=`,
-        ];
-  }
-  if (value.driver !== 's3') return [];
-
   const lines = [
-    `${prefix}_DRIVER=s3`,
-    `${prefix}_S3_BUCKET=${envValue(value.s3_bucket) || t('<必填：桶名>')}`,
+    t('# {scope} → 策略「{name}」（{driver}）', {
+      scope: scope.toUpperCase(),
+      name: strategy.name,
+      driver: storageDriverLabel(strategy.driver),
+    }),
   ];
-  if (envValue(value.s3_prefix)) {
-    lines.push(`${prefix}_S3_PREFIX=${envValue(value.s3_prefix)}`);
+
+  if (strategy.driver === 'local') {
+    const localDir = envValue(strategy.local_dir);
+    lines.push(`${prefix}_DRIVER=local`);
+    if (localDir) {
+      lines.push(`${prefix}_LOCAL_DIR=${localDir}`);
+    } else {
+      lines.push(t('# 目录留空时由服务器使用默认本地目录（通常是全局目录下的用途子目录）'));
+      lines.push(`${prefix}_LOCAL_DIR=`);
+    }
+    return lines;
+  }
+
+  lines.push(`${prefix}_DRIVER=s3`);
+  lines.push(`${prefix}_S3_BUCKET=${envValue(strategy.s3_bucket) || t('<必填：桶名>')}`);
+  if (envValue(strategy.s3_prefix)) {
+    lines.push(`${prefix}_S3_PREFIX=${envValue(strategy.s3_prefix)}`);
   } else {
     lines.push(t('# {prefix}_S3_PREFIX=（可选：留空写在桶根）', { prefix }));
   }
@@ -245,64 +543,88 @@ function scopeEnvLines(scope: StorageScope, value: StorageScopeSettings): string
 /**
  * 生成 API 的 `.env` 片段。
  *
- * 全局部分保持原有变量；随后只给「不是 inherit」的用途写
- * `STORAGE_<SCOPE>_DRIVER` / `_LOCAL_DIR` / `_S3_BUCKET` / `_S3_PREFIX`。
- * inherit 的用途不写任何变量，只留注释说明沿用全局。`s3_public_base_url`
- * 只是记录用的提示，后端没有对应变量，所以不会出现在片段里。
+ * - 全局段来自「被最多用途使用的策略」（并列取数组靠前的一套）；
+ * - 其余每个用途如果指向别的策略，就写自己的
+ *   `STORAGE_<SCOPE>_DRIVER` / `_LOCAL_DIR` / `_S3_BUCKET` / `_S3_PREFIX`；
+ * - 指向全局策略的用途不写变量，只留注释；
+ * - `s3_public_base_url` 只是记录用的提示，后端没有对应变量，所以不会出现在
+ *   片段里；Secret Key 只来自页面输入框，也不会写进浏览器配置。
  */
 export function buildStorageEnvSnippet(
   settings: StorageSettings,
   secret = '',
 ): string {
-  const lines = [
-    t('# 由 Practacu Press「站点设置 → 存储策略」生成'),
+  const normalized = normalizeStorage(settings);
+  const globalStrategy = globalStrategyOf(normalized);
+  const lines: string[] = [
+    t('# 由 Practacu Press「站点设置 → 储存策略」生成'),
     t('# 复制到 API 的 .env 后重启服务才生效；本页不会修改服务器'),
     '',
-    ...globalEnvLines(settings, secret),
+    t('# 全局段：被最多用途使用的策略「{name}」（{driver}）', {
+      name: globalStrategy.name,
+      driver: storageDriverLabel(globalStrategy.driver),
+    }),
+    ...globalEnvLines(globalStrategy, secret),
     '',
-    t('# --- 分用途存储（文章媒体 / 站点图片 / 用户头像 / 用户数据与附件） ---'),
+    t('# --- 用途覆盖（文章媒体 / 站点图片 / 用户头像 / 用户数据与附件） ---'),
   ];
 
-  const scopes = settings.scopes;
-  const overrides = STORAGE_SCOPES.filter((scope) => {
-    const driver = scopes?.[scope]?.driver;
-    return driver === 'local' || driver === 's3';
-  });
+  const overrides = STORAGE_SCOPES.filter(
+    (scope) => normalized.scopes[scope] !== globalStrategy.id,
+  );
 
   if (!overrides.length) {
-    lines.push(t('# 四个用途都沿用全局：没有生成 STORAGE_<SCOPE>_* 变量'));
+    lines.push(
+      t('# 四个用途都使用同一套「{name}」：没有生成 STORAGE_<SCOPE>_* 变量', {
+        name: globalStrategy.name,
+      }),
+    );
   } else {
     for (const scope of overrides) {
       lines.push('');
-      lines.push(...scopeEnvLines(scope, scopes[scope]));
+      lines.push(...scopeEnvLines(scope, findStrategy(normalized, normalized.scopes[scope])));
     }
     const inherited = STORAGE_SCOPES.filter((scope) => !overrides.includes(scope));
     if (inherited.length) {
       lines.push('');
       lines.push(
-        t('# 沿用全局的用途：{scopes}', {
+        t('# 沿用全局策略「{name}」的用途：{scopes}', {
+          name: globalStrategy.name,
           scopes: inherited.map((scope) => scope.toUpperCase()).join(' / '),
         }),
       );
     }
     lines.push('');
-    lines.push(t('# 分用途的 S3 覆盖沿用全局的 endpoint、区域与凭据，只需要桶与前缀'));
-    if (settings.driver !== 's3') {
-      lines.push(
-        t('# 注意：当前全局是本地存储，上面没有 STORAGE_S3_* 凭据；分用途 S3 覆盖需要服务器另行提供 endpoint / 凭据'),
-      );
-    }
+    lines.push(
+      t('# 非全局的云策略只写桶与前缀：endpoint、区域与 Access Key 都取自全局策略'),
+    );
+  }
+
+  const used = usedStrategies(normalized);
+  const cloudStrategies = used.filter((strategy) => strategy.driver === 's3');
+  if (globalStrategy.driver !== 's3' && cloudStrategies.length) {
+    lines.push(
+      t('# 注意：当前全局策略是本地储存，片段里没有 STORAGE_S3_* 凭据；指向云策略的用途需要服务器另行提供 endpoint / 区域 / 凭据'),
+    );
+  }
+  if (cloudStrategies.length > 1) {
+    lines.push(
+      t('# 服务器目前只支持一套云凭据：多套云策略共用同一个 endpoint、区域与 Access Key'),
+    );
   }
 
   lines.push('');
   lines.push(t('# 已有文件不会自动迁移：旧目录 / 旧桶里的对象需要自己同步'));
   lines.push(t('# 公开读权限、CDN 与防盗链由桶策略决定，API 与服务端环境变量都不负责'));
-  if (settings.s3_public_base_url.trim()) {
-    lines.push(
-      t('# 记录用的公开访问前缀（API 不读取）：{url}', {
-        url: envValue(settings.s3_public_base_url),
-      }),
-    );
+  for (const strategy of normalized.strategies) {
+    if (strategy.s3_public_base_url.trim()) {
+      lines.push(
+        t('# 记录用的公开访问地址（API 不读取）：{name} → {url}', {
+          name: strategy.name,
+          url: envValue(strategy.s3_public_base_url),
+        }),
+      );
+    }
   }
   return lines.join('\n');
 }

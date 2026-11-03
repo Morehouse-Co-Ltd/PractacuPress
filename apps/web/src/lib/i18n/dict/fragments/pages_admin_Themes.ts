@@ -222,6 +222,8 @@ const fragment: Dictionary = {
     'A page title appears on the tab as-is; edit it on the page itself instead of maintaining it twice here.',
   '一套主题同时决定配色、排版与页面版式（单栏 / 双栏）。原版与夜航是内置大主题；也可以创建、导入或删除自己的主题，并把页脚与导航 Tab 放在这里统一管理。':
     'A theme decides colours, typography and page layout (single-column / two-column) at once. Default and Night flight are built-in themes; you can also create, import or delete your own, and manage the footer and navigation tabs here.',
+  '套用、创建与导入主题在「选择主题」页；这里继续微调配色、字体、高级令牌与外观功能，并统一管理导航 Tab 与页脚。':
+    'Apply, create and import themes on the “Choose a theme” page; fine-tune colours, type, advanced tokens and appearance features here, and manage the navigation tabs and footer.',
   '创建主题': 'Create theme',
   '导入主题': 'Import theme',
   '获取主题': 'Get themes',

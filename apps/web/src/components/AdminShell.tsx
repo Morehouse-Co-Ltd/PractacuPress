@@ -98,7 +98,8 @@ export function AdminShell() {
 
   const themeItems: NavItem[] = can('manage_site')
     ? ([
-        { to: '/admin/themes', label: t('主题设置'), icon: 'palette' },
+        { to: '/admin/themes/choose', label: t('选择主题'), icon: 'grid' },
+        { to: '/admin/themes', label: t('主题设置'), icon: 'palette', end: true },
         { to: '/admin/appearance', label: t('外观'), icon: 'image' },
         { to: '/admin/extensions', label: t('扩展'), icon: 'grid' },
       ] as NavItem[])
@@ -133,7 +134,7 @@ export function AdminShell() {
         { to: '/admin/verification', label: t('人机验证'), icon: 'lock' },
         { to: '/admin/seo', label: 'SEO', icon: 'search' },
         { to: '/admin/performance', label: t('性能优化'), icon: 'server' },
-        { to: '/admin/storage', label: t('存储策略'), icon: 'database' },
+        { to: '/admin/storage', label: t('储存策略'), icon: 'database' },
       ] as NavItem[])
     : [];
 
@@ -199,6 +200,7 @@ export function AdminShell() {
     { match: /^\/admin\/pages\/new/, title: t('新建页面') },
     { match: /^\/admin\/pages\/[^/]+/, title: t('编辑页面') },
     { match: /^\/admin\/pages/, title: t('页面') },
+    { match: /^\/admin\/themes\/choose/, title: t('选择主题') },
     { match: /^\/admin\/themes/, title: t('主题设置') },
     { match: /^\/admin\/appearance/, title: t('外观') },
     { match: /^\/admin\/loading/, title: t('加载动画') },
@@ -208,7 +210,7 @@ export function AdminShell() {
     { match: /^\/admin\/domains/, title: t('访问与域名') },
     { match: /^\/admin\/verification/, title: t('人机验证') },
     { match: /^\/admin\/performance/, title: t('性能优化') },
-    { match: /^\/admin\/storage/, title: t('存储策略') },
+    { match: /^\/admin\/storage/, title: t('储存策略') },
     { match: /^\/admin\/(members|users)/, title: t('用户管理') },
     { match: /^\/admin\/permissions/, title: t('用户组') },
     { match: /^\/admin\/settings/, title: t('站点设置') },

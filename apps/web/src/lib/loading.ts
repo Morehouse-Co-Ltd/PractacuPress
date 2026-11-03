@@ -6,9 +6,9 @@ import { liveCatalog } from './i18n/live';
 /**
  * 站点加载动画。
  *
- * 预设只决定图形，颜色、背景、尺寸、最短展示时长与附加 CSS 都由站长控制。
- * 加载画面只在前台出现；管理后台、安装向导和页面编排的预览 iframe 不显示，
- * 否则站长每次改一个区块都要等动画走完。
+ * 预设决定两件事：全屏图形，或者页面内的原位骨架。颜色、背景、尺寸、最短展示
+ * 时长与附加 CSS 都由站长控制。加载画面只在前台出现；管理后台、安装向导和页面
+ * 编排的预览 iframe 不显示，否则站长每次改一个区块都要等动画走完。
  */
 
 export const DEFAULT_LOADING: LoadingSettings = {
@@ -32,10 +32,59 @@ const RAW_LOADING_PRESETS: { id: LoadingPreset; name: string; note: string }[] =
   { id: 'pulse', name: t('呼吸'), note: t('方块呼吸，配合品牌首字很稳。') },
   { id: 'bar', name: t('进度条'), note: t('一条来回移动的进度线。') },
   { id: 'orbit', name: t('轨道'), note: t('小点绕环旋转，适合杂志与产品站。') },
+  { id: 'skeleton', name: t('骨架'), note: t('内容区先显示与最终版式同位置的骨架占位。') },
+  { id: 'shimmer', name: t('扫光'), note: t('骨架占位上叠一条横向扫光，加载反馈更明显。') },
+  {
+    id: 'skeleton-shimmer',
+    name: t('骨架 + 扫光'),
+    note: t('骨架呼吸与扫光同时进行，是推荐的配合方式。'),
+  },
 ];
 
 /** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
 export const LOADING_PRESETS = liveCatalog(RAW_LOADING_PRESETS);
+
+/** 原位骨架：不盖全屏遮罩，按内容最终出现的位置画占位。 */
+export const SKELETON_PRESETS: readonly LoadingPreset[] = [
+  'skeleton',
+  'shimmer',
+  'skeleton-shimmer',
+];
+
+const SKELETON_SET = new Set<LoadingPreset>(SKELETON_PRESETS);
+
+export type SkeletonMotion = 'pulse' | 'sweep' | 'both';
+
+export function isSkeletonPreset(preset: LoadingPreset): boolean {
+  return SKELETON_SET.has(preset);
+}
+
+/**
+ * 加载方式三选一：
+ * - off：关闭，或全屏预设但两个显示场景都关了；
+ * - overlay：现有全屏遮罩；
+ * - skeleton：原位骨架，由页面自己的 loading 状态驱动，不看显示场景开关。
+ */
+export function loadingApproach(settings: LoadingSettings): 'off' | 'overlay' | 'skeleton' {
+  if (!settings.enabled) return 'off';
+  if (isSkeletonPreset(settings.preset)) return 'skeleton';
+  return settings.show_on_first_load || settings.show_on_navigation ? 'overlay' : 'off';
+}
+
+/** 骨架动效；非骨架预设返回 null。是否启用由 `loadingApproach` 判断。 */
+export function skeletonMotion(settings: LoadingSettings): SkeletonMotion | null {
+  switch (settings.preset) {
+    case 'skeleton':
+      return 'pulse';
+    case 'shimmer':
+      return 'sweep';
+    case 'skeleton-shimmer':
+      return 'both';
+    default:
+      return null;
+  }
+}
+
 
 const PRESETS = new Set<LoadingPreset>(LOADING_PRESETS.map((item) => item.id));
 

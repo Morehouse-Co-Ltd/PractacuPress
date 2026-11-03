@@ -46,7 +46,6 @@ const fragment: Dictionary = {
   '3 · 完成检查': '3 · Finish the check',
   读取: 'Read',
   存储与限制: 'Storage and limits',
-  '由服务端环境变量决定。': 'Decided by the server environment variables.',
   驱动: 'Driver',
   本地目录: 'Local directory',
   'S3 桶': 'S3 bucket',

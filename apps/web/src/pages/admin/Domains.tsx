@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { DomainSettings } from '../../types';
+import type { DomainSettings, SiteDomainVerification } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import {
@@ -7,6 +7,8 @@ import {
   DEFAULT_DOMAINS,
   domainAllowed,
   domainEntryError,
+  domainVerificationErrorReason,
+  isDomainPendingVerification,
   isIpHost,
   isLocalHost,
   isPublicIp,
@@ -59,8 +61,18 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
   const [primaryText, setPrimaryText] = useState(() => site?.domain || saved.primary);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  /** V-12：主域名归属验证状态；旧后端没有该端点时保持 null，退回原来的展示。 */
+  const [domainCheck, setDomainCheck] = useState<SiteDomainVerification | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
   const access = useMemo(() => readAccess(config), [config]);
   const primary = site?.domain || saved.primary;
+  const primaryDomain = normalizeDomain(primaryText);
+  const domainPending = isDomainPendingVerification(domainCheck, primaryDomain);
+  const domainVerified =
+    !!primaryDomain &&
+    domainCheck?.verified === true &&
+    domainCheck.domain.trim().toLowerCase() === primaryDomain.toLowerCase();
   const host = typeof window === 'undefined' ? '' : window.location.hostname;
   const currentAllowed = domainAllowed(host, saved, primary);
   const localExempt = saved.allow_localhost && isLocalHost(host);
@@ -83,6 +95,61 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
     setPrimaryText(site?.domain || next.primary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey, site?.domain]);
+
+  // V-12：保存域名后服务端进入「待验证」，验证状态（TXT 记录名/值）需要单独读取。
+  // 旧后端没有这个端点：静默降级，页面照旧显示域名输入。
+  const reloadDomainCheck = async (siteId: string): Promise<void> => {
+    try {
+      setDomainCheck(await backend.siteDomain(siteId));
+    } catch {
+      setDomainCheck(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!site) return;
+    let alive = true;
+    void backend
+      .siteDomain(site.id)
+      .then((check) => {
+        if (alive) setDomainCheck(check);
+      })
+      .catch(() => {
+        if (alive) setDomainCheck(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [backend, site?.id]);
+
+  /** 立即验证主域名：成功后刷新状态并提示；失败按 reason 映射成可读文案。 */
+  const runDomainVerify = async () => {
+    if (!site) return;
+    setVerifyError('');
+    setVerifyBusy(true);
+    try {
+      const result = await backend.verifySiteDomain(site.id);
+      await reloadDomainCheck(site.id);
+      if (result.verified) {
+        toast.push('ok', t('域名验证成功'), t('公网域名已经生效。'));
+      } else {
+        setVerifyError(t('还没有验证通过，请稍后重试。'));
+      }
+    } catch (err) {
+      const reason = domainVerificationErrorReason(err);
+      setVerifyError(
+        reason === 'dns_not_found'
+          ? t('还没有查询到 TXT 记录。DNS 生效可能需要几分钟，请稍后重试。')
+          : reason === 'validation_failed'
+            ? t('域名状态不允许验证，请检查域名格式与保存状态。')
+            : err instanceof Error
+              ? err.message
+              : t('验证失败，请稍后重试。'),
+      );
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
 
   const save = async () => {
     const aliasLines = linesOf(aliasText);
@@ -120,6 +187,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
       if (normalizedPrimary !== primary && site) {
         await backend.setSiteDomain(site.id, normalizedPrimary);
         applySite({ ...site, domain: normalizedPrimary });
+        setVerifyError('');
+        // 保存后进入「待验证」：刷新 TXT 记录信息，让站长能直接完成验证。
+        await reloadDomainCheck(site.id);
       }
       const next = readDomains({
         domains: {
@@ -141,7 +211,9 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
         'ok',
         t('访问与域名已保存'),
         normalizedPrimary
-          ? t('主域名已写入站点配置；把下方片段部署后，域名与 HTTPS 才会真正生效。')
+          ? t(
+              '主域名已保存，待完成 TXT 验证；验证完成前公网域名暂不生效，可在本机继续管理。把下方部署片段应用后，域名与 HTTPS 才会真正对外服务。',
+            )
           : t('未设置主域名：生产环境将只允许公网 IP 直连（本机 localhost 例外）。'),
       );
       if (me) {
@@ -219,8 +291,18 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                 <h3>{t('主域名')}</h3>
                 <p>{t('保存后会直接写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。')}</p>
               </div>
-              <Badge tone={primaryText.trim() ? 'accent' : 'warn'}>
-                {primaryText.trim() || t('未设置（公网 IP）')}
+              <Badge
+                tone={
+                  !primaryText.trim() ? 'warn' : domainPending ? 'warn' : domainVerified ? 'ok' : 'accent'
+                }
+              >
+                {!primaryText.trim()
+                  ? t('未设置（公网 IP）')
+                  : domainPending
+                    ? t('待验证')
+                    : domainVerified
+                      ? t('已验证')
+                      : primaryText.trim()}
               </Badge>
             </div>
             <div className="panel-body">
@@ -255,6 +337,60 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                   </div>
                 </Field>
               </div>
+
+              {primaryDomain && domainPending && domainCheck ? (
+                <div className="mt-16">
+                  <Callout tone="warn" icon="shield" title={t('域名待验证')}>
+                    {t('验证完成前，公网域名暂不生效，可在本机（localhost）继续完成验证。')}
+                  </Callout>
+                  <div className="form-stack mt-12">
+                    <Field label={t('DNS 记录类型')} hint={t('在域名 DNS 服务商处添加一条 TXT 记录。')}>
+                      <Input value={domainCheck.record_type || 'TXT'} readOnly disabled />
+                    </Field>
+                    <Field label={t('记录名')} hint={t('有的服务商要求只填主机记录（不包含主域名后缀）。')}>
+                      <div className="row gap-8">
+                        <Input value={domainCheck.record_name} readOnly disabled />
+                        <CopyButton value={domainCheck.record_name} label={t('复制记录名')} />
+                      </div>
+                    </Field>
+                    <Field label={t('记录值')} hint={t('TXT 记录的内容；验证通过后可以删除。')}>
+                      <div className="row gap-8">
+                        <Input value={domainCheck.verification_token} readOnly disabled />
+                        <CopyButton value={domainCheck.verification_token} label={t('复制记录值')} />
+                      </div>
+                    </Field>
+                  </div>
+                  {verifyError ? (
+                    <Callout tone="danger" icon="alert" title={t('验证没有通过')}>
+                      {verifyError}
+                    </Callout>
+                  ) : null}
+                  <div className="row gap-8 mt-12" style={{ flexWrap: 'wrap' }}>
+                    <Button size="sm" loading={verifyBusy} onClick={runDomainVerify} icon="shield">
+                      {t('我已添加，立即验证')}
+                    </Button>
+                    <span className="tiny faint">
+                      {t('DNS 记录生效通常需要几分钟；没通过可以稍后再点一次。')}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              {primaryDomain && domainVerified ? (
+                <div className="mt-16">
+                  <Callout tone="info" icon="check" title={t('主域名已验证')}>
+                    {t('公网域名已经生效；如果刚改过 DNS，浏览器可能需要几分钟缓存。')}
+                  </Callout>
+                </div>
+              ) : null}
+
+              {primaryDomain && !domainPending && !domainVerified && domainCheck && domainCheck.domain ? (
+                <div className="mt-16">
+                  <Callout tone="info" icon="globe">
+                    {t('已保存的域名与当前输入不一致：重新保存后会生成新的 TXT 验证记录。')}
+                  </Callout>
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -537,7 +673,6 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
             <div className="panel-head">
               <div>
                 <h3>{t('绑定概览')}</h3>
-                <p>{t('当前浏览器是否被允许。')}</p>
               </div>
             </div>
             <div className="panel-body">

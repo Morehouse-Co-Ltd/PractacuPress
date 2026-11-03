@@ -44,8 +44,6 @@ const fragment: Dictionary = {
   '游客没有账户，无法登录。': 'Guests have no account and cannot sign in.',
   '最高管理员始终可以进入后台。': 'Super admins can always open the dashboard.',
   '{group} 进入管理后台': '{group}: dashboard access',
-  '从游客到最高管理员，五组覆盖前台的每一种身份。':
-    'From guest to super admin, the five groups cover every identity on the public site.',
   ' · 对应角色 {role}': ' · Server role: {role}',
   '把用户组改成对应的服务端角色，权限就会跟着能力矩阵走。':
     'Point a group at the matching server role and permissions follow the capability matrix.',

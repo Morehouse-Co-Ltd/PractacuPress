@@ -17,14 +17,7 @@ const fragment: Dictionary = {
   '保存失败。': 'Save failed.',
   '左侧切换基本信息、访问与域名、SEO 与性能优化；登录方式与日志有独立入口。':
     'Use the left column to switch between basic info, access and domains, and SEO and performance; sign-in methods and logs have their own pages.',
-  '站点语言': 'Site language',
-  '切换后前台、后台与全部提示文案立即改用该语言；已发布的内容不会被翻译。':
-    'The site, the dashboard, and every message switch to that language right away; published content is not translated.',
-  '简体中文界面。': 'Simplified Chinese interface.',
-  '站点语言是站点级设置：所有访客看到的语言一致，并随站点设计同步到服务器。切换会立即生效，不需要点保存。':
-    'Site language is a site-wide setting: every visitor sees the same language, and it syncs to the server along with the site design. Changes take effect immediately, so no save is needed.',
   '基本信息': 'Basic info',
-  '显示在首页、页脚与分享卡片里。': 'Shown on the home page, in the footer, and in share cards.',
   '站点名称': 'Site name',
   '访问域名': 'Domain',
   '留空时生产环境只允许公网 IP 直接访问。SSL 证书与别名域名在「访问与域名」里配置。':
@@ -57,8 +50,6 @@ const fragment: Dictionary = {
   '站点路径（slug）': 'Site path (slug)',
   '创建站点时生成，不能在此修改。': 'Generated when the site was created; it cannot be changed here.',
   '站点形态': 'Site type',
-  '决定访客能否创建账户，以及前台是否显示注册与登录入口。':
-    'Decides whether visitors can create accounts and whether the site shows sign-up and sign-in entry points.',
   '关闭自助注册。站长可以创建账户，所有账户都能登录后台并拥有最高权限。':
     'Self sign-up is off. The site admin can create accounts, and every account can sign in to the dashboard with full permissions.',
   '访客可以自助注册，登录后评论、收藏与投稿；权限按权限组划分。':
@@ -77,12 +68,10 @@ const fragment: Dictionary = {
   '从个人博客切回社区站点时，之前创建的账户会恢复各自用户组，文章与评论不受影响。':
     'When you switch from a personal blog back to a community site, existing accounts get their own groups back; articles and comments are unaffected.',
   '访客模式': 'Visitor mode',
-  '决定匿名访客能否读取已发布内容。': 'Decides whether anonymous visitors can read published content.',
   '未登录访客可以读已发布内容，匿名请求按站点解析。':
     'Signed-out visitors can read published content; anonymous requests resolve to the site.',
   '所有内容都要求登录；匿名请求返回 401。': 'All content requires signing in; anonymous requests return 401.',
   '发布模式': 'Publish mode',
-  '决定成员发布时是否需要审核。': 'Decides whether member submissions need review.',
   '成员可以从草稿直接发布，不再进入审核队列。':
     'Members can publish straight from a draft without joining the review queue.',
   '所有成员（包括编辑）的稿件都需要另一位编辑审核。':
@@ -132,6 +121,24 @@ const fragment: Dictionary = {
   '这个操作不可撤销': 'This cannot be undone',
   '演示数据只存在这台电脑的浏览器里。重置前请确认没有需要保留的草稿。':
     'Demo data lives only in this browser on this computer. Before resetting, make sure no draft needs to be kept.',
+
+  // O-3 注册开关
+  注册与账户: 'Registration and accounts',
+  开放注册: 'Open registration',
+  个人博客固定关闭注册: 'Personal blogs always have registration closed',
+  '个人博客没有自助注册；需要账户时请到「用户管理」创建。切回社区站点后可以重新打开。':
+    'Personal blogs have no self-service sign-up; create accounts from Members instead. Switch back to a community site to open registration again.',
+  注册已关闭: 'Registration closed',
+  '访客在注册页会看到「本站暂未开放注册」；新成员只能由管理员在「用户管理」里创建或邀请。':
+    'Visitors see “Registration is not open on this site” on the sign-up page; new members can only be created or invited by an admin from Members.',
+  '社区站点模式已生效：注册入口按「开放注册」开关生效，权限组按角色生效。':
+    'Community mode is active: the registration entry point follows the “Open registration” switch, and permission groups follow roles.',
+  '注册接口会直接拒绝新的自助注册（403 registration_closed），不需要再改网关配置。':
+    'The registration API rejects new self-service sign-ups directly (403 registration_closed), so no gateway change is needed.',
+  '留空时生产环境只允许公网 IP 直接访问。SSL 证书与别名域名在「访问与域名」里配置；保存后需要在「访问与域名」完成 TXT 验证，验证前公网域名暂不生效。':
+    'When empty, production only allows direct public IP access. SSL certificates and alias domains live in Access & domains; after saving, complete the TXT verification there — the public domain stays inactive until then.',
+  '关闭后前台与注册页都不再显示注册入口；已注册账户的登录与使用不受影响。':
+    'When off, neither the public site nor the sign-up page shows an entry point, and existing accounts can still sign in and use the site.',
 };
 
 export default fragment;

@@ -10,6 +10,8 @@
 @import './styles/linkCards.css';
 @import './styles/extensions.css';
 @import './styles/header.css';
+@import './styles/storage.css';
+@import './styles/articleContent.css';
 
 :root {
   --bg: #ffffff;
@@ -2387,17 +2389,16 @@ img {
 .admin-page-head p { margin-top: 5px; font-size: 12.5px; color: var(--muted); }
 .admin-page-actions { display: flex; gap: 8px; align-items: center; }
 
+/* 四张统计卡各自独立成卡：中间留出间隔，而不是拼成一整条线框。 */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  overflow: hidden;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 .stat {
   background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   padding: 18px 20px;
 }
 .stat span { font-size: 11px; color: var(--muted); letter-spacing: 0.02em; }
@@ -6526,31 +6527,25 @@ kbd {
 }
 
 /* ---------- 全屏页面编排工作台 ---------- */
-/* 两侧预留与浮动面板等宽的背景留白：页面内容不会被面板压住，
-   没有组件的留白区域用站点背景色填满（色值由 ThemeBuilder 内联传入）。 */
+/* 预览是真实前台的整幅画面：宽度永远等于浏览器视口，媒体查询、栅格断点
+   与真实访问完全一致。两侧面板只是浮在画面上的玻璃面板，不再从画布里
+   抠掉一条留白——否则 iframe 变窄，看到的是断点切换后的假样子。 */
 .builder-fullscreen {
   position: fixed;
   inset: 0;
   z-index: 120;
-  --builder-gutter-left: 0px;
-  --builder-gutter-right: 0px;
   background: var(--builder-canvas-bg, var(--bg-sunken));
   overflow: hidden;
 }
-.builder-fullscreen.is-left-open { --builder-gutter-left: 352px; }
-.builder-fullscreen.is-right-open { --builder-gutter-right: 372px; }
 .builder-fullscreen .builder-preview {
   position: absolute;
   inset: 0;
-  left: var(--builder-gutter-left);
-  right: var(--builder-gutter-right);
   z-index: 0;
   max-width: none;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: #fff;
-  transition: left .18s ease, right .18s ease;
 }
 .builder-fullscreen .builder-preview-frame {
   position: absolute;
@@ -6741,11 +6736,6 @@ body.builder-panel-dragging * {
 .pp-drop-before { box-shadow: inset 0 4px 0 var(--accent); }
 .pp-drop-after { box-shadow: inset 0 -4px 0 var(--accent); }
 
-@media (max-width: 1200px) {
-  /* 窄屏不再预留两侧留白：否则中间的预览会窄到不可用，改回浮动栏悬浮。 */
-  .builder-fullscreen.is-left-open,
-  .builder-fullscreen.is-right-open { --builder-gutter-left: 0px; --builder-gutter-right: 0px; }
-}
 @media (max-width: 1100px) {
   .builder-float-left { width: 280px; }
   .builder-float-right { width: 310px; }
@@ -6825,7 +6815,7 @@ body.builder-mode .admin-side { display: none !important; }
   align-items: stretch;
   gap: 13px;
   width: 100%;
-  padding: 12px 36px 12px 12px;
+  padding: 12px 70px 12px 12px;
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -6857,10 +6847,17 @@ body.builder-mode .admin-side { display: none !important; }
 .theme-bundle-title strong { font-size: 14px; }
 .theme-bundle-note { color: var(--muted); font-size: 11px; line-height: 1.55; }
 .theme-bundle-meta { color: var(--faint); font-size: 10.5px; letter-spacing: .04em; }
-.theme-bundle-delete {
+/* 卡片右上角的操作：编辑（进页面编排）与删除。 */
+.theme-bundle-actions {
   position: absolute;
   top: 6px;
   right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.theme-bundle-iconbtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6873,7 +6870,8 @@ body.builder-mode .admin-side { display: none !important; }
   cursor: pointer;
   opacity: .75;
 }
-.theme-bundle-delete:hover { color: var(--danger); border-color: var(--danger); opacity: 1; }
+.theme-bundle-iconbtn:hover { color: var(--accent); border-color: var(--accent); opacity: 1; }
+.theme-bundle-iconbtn.is-danger:hover { color: var(--danger); border-color: var(--danger); }
 .theme-import-preview {
   display: flex;
   align-items: center;
@@ -7953,6 +7951,401 @@ button.theme-bundle-card {
 }
 /* 命令面板当前项的快捷键提示，accent-soft 底上 faint 太淡。 */
 .pp-command-item.is-active .pp-command-key { color: var(--muted); }
+
+/* =========================================================
+   区块通用外观 + 按钮 / 思维导图（2026-11-01）
+   ---------------------------------------------------------
+   外观本身是内联样式（见 lib/blockAppearance.ts），这里只补
+   属性面板的容器、按钮与导图的外观。所有颜色都走主题令牌，
+   纸白与夜航、明暗两种模式共用同一份类名。
+   ========================================================= */
+
+/* ---------- 属性面板：组件外观分组 ---------- */
+.inspector-appearance {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+.inspector-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inspector-section-head strong { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.inspector-section-head .link-btn:disabled { opacity: .45; cursor: not-allowed; text-decoration: none; }
+.appearance-color { flex-direction: row; align-items: center; gap: 10px; }
+.appearance-color input[type='color'] {
+  width: 46px;
+  height: 32px;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  cursor: pointer;
+}
+.appearance-color code { flex: 1; font-size: 11px; color: var(--muted); }
+.appearance-color .link-btn { flex: none; }
+
+/* 条目列表里的下拉（按钮样式等）：与输入框保持同一套外观。 */
+.itemlist-field select {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  padding: 6px 8px;
+  font-size: 12.5px;
+  color: var(--ink);
+  font-family: inherit;
+}
+
+/* ---------- 按钮区块 ---------- */
+.pp-action-buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+.pp-action-buttons.pp-action-left { justify-content: flex-start; }
+.pp-action-buttons.pp-action-center { justify-content: center; }
+.pp-action-buttons.pp-action-right { justify-content: flex-end; }
+.pp-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill, 999px);
+  font-family: var(--sans);
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.pp-action-btn.is-sm { min-height: 32px; padding: 0 14px; font-size: 12.5px; }
+.pp-action-btn.is-md { min-height: 40px; padding: 0 20px; font-size: 14px; }
+.pp-action-btn.is-lg { min-height: 48px; padding: 0 26px; font-size: 15px; }
+/* 反色对：浅底用深主色 + 近白字；暗底主题的主色会自动换成亮色调。 */
+.pp-action-btn.is-solid { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.pp-action-btn.is-solid:hover {
+  background: color-mix(in srgb, var(--accent) 86%, var(--ink));
+  border-color: color-mix(in srgb, var(--accent) 86%, var(--ink));
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -14px color-mix(in srgb, var(--accent) 72%, transparent);
+}
+.pp-action-btn.is-outline { border-color: var(--line-strong); background: transparent; color: var(--ink); }
+.pp-action-btn.is-outline:hover { border-color: var(--accent); color: var(--accent); }
+.pp-action-btn.is-ghost { background: var(--bg-subtle); color: var(--ink); }
+.pp-action-btn.is-ghost:hover { background: var(--accent-soft, var(--bg-subtle)); color: var(--accent); }
+.pp-action-btn.is-link { min-height: 0; padding: 0; background: transparent; color: var(--accent); }
+.pp-action-btn.is-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pp-action-btn[aria-disabled='true'] {
+  opacity: .55;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ---------- 思维导图区块 ---------- */
+.pp-mindmap { display: flex; flex-direction: column; gap: 12px; }
+.pp-mindmap-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 400;
+  color: var(--ink);
+}
+.pp-mindmap-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.pp-mm-edge { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+.pp-mm-node rect { stroke-width: 1.2; }
+.pp-mm-node text {
+  font-family: var(--sans);
+  dominant-baseline: middle;
+  letter-spacing: .01em;
+}
+.pp-mm-node.is-root text { font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-action-btn { transition: none; }
+}
+
+/* =========================================================
+   文章图表（思维导图 / 逻辑图 / 统计图 / 鱼骨图，2026-11-01）
+   ---------------------------------------------------------
+   正文里存的是 ```` ```pp-diagram ```` 围栏，阅读页/编辑器由
+   lib/diagramHydrate.ts 水合成 <figure class="pp-diagram"> + SVG。
+   下面的类名与 lib/diagramSvg.ts 的输出对应；颜色尽量走主题令牌，
+   彩色分支才用固定色板。
+   ========================================================= */
+
+/* ---------- 阅读页 ---------- */
+.pp-diagram {
+  margin: 28px 0;
+  padding: 16px 16px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  overflow-x: auto;
+}
+.pp-diagram svg {
+  display: block;
+  width: 100%;
+  min-width: 380px;
+  height: auto;
+}
+.pp-diagram-svg text { font-family: var(--sans); }
+/* 鱼骨图的画布比统计图宽，限制最小显示宽度，避免整张图被压到 9px 字号以下。 */
+.pp-diagram-fishbone svg { min-width: 680px; }
+.pp-diagram-title { font-size: 14px; font-weight: 600; }
+.pp-diagram-empty { font-size: 13px; }
+.pp-diagram-edge { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+/* 节点字号由 SVG 的 font-size 属性决定（根 15 / 其余 13），这里不要再覆盖。 */
+.pp-diagram-node.is-root text { font-weight: 600; }
+.pp-diagram-arrow { fill: var(--line-strong); }
+
+/* ---------- 统计图 ---------- */
+.pp-chart-grid { stroke-width: 1; stroke-dasharray: 3 5; }
+.pp-chart-axis { stroke-width: 1; }
+.pp-chart-bar { stroke: none; }
+.pp-chart-line { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.pp-chart-dot { stroke-width: 2; }
+.pp-chart-label { font-size: 11px; }
+.pp-chart-value { font-size: 11px; font-weight: 600; }
+.pp-chart-legend text { font-size: 11.5px; }
+
+/* ---------- 鱼骨图 ---------- */
+.pp-fishbone-spine { fill: none; stroke-width: 2.2; stroke-linecap: round; }
+.pp-fishbone-bone { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+.pp-fishbone-head { stroke-width: 1.2; }
+.pp-fishbone-label { font-size: 12.5px; font-weight: 600; }
+.pp-fishbone-cause { font-size: 11px; }
+.pp-fishbone-cause-tick { stroke-width: 1; }
+
+/* ---------- 编辑器内联预览 ---------- */
+.rich-surface pre.pp-diagram-inline {
+  margin: 14px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  white-space: normal;
+}
+.rich-surface pre.pp-diagram-inline .pp-diagram-source { display: none; }
+.rich-surface .pp-diagram-preview {
+  position: relative;
+  display: block;
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+.rich-surface .pp-diagram-preview svg { display: block; width: 100%; height: auto; }
+.pp-diagram-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.pp-diagram-preview:hover .pp-diagram-edit,
+.pp-diagram-edit:focus-visible { opacity: 1; }
+
+/* ---------- 插入弹窗 ---------- */
+.diagram-dialog-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 330px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.diagram-dialog-preview {
+  min-height: 220px;
+  max-height: 460px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+.diagram-dialog-preview svg { display: block; width: 100%; height: auto; }
+@media (max-width: 780px) {
+  .diagram-dialog-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- 页面骨架（SKELETON / SHIMMER 原位加载） ---------- */
+
+/* 基础占位块：颜色全部来自主题令牌，换主题/深浅色自动跟随。 */
+.pp-skel-line,
+.pp-skel-media {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-sunken) 58%, var(--line) 42%);
+}
+.pp-skel-line { height: 10px; }
+.pp-skel-media {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--r-md);
+}
+.pp-skel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.pp-skel-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pp-skel-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--pp-skel-columns, 2), minmax(0, 1fr));
+  gap: 18px;
+}
+.pp-skel-grid .pp-skel-media { aspect-ratio: 4 / 3; }
+.pp-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.pp-skel-date { width: 54px; flex: none; }
+.pp-skel-row-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.pp-skel-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+.pp-skel-feed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 28px;
+  align-items: start;
+}
+.pp-skel-feed-main,
+.pp-skel-feed-side,
+.pp-skel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pp-skel-mosaic {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.pp-skel-mosaic > :first-child { grid-column: 1 / -1; }
+
+/* 骨架模式下把旧的默认扫光关掉，避免和保护层/全屏预设的动画打架。 */
+[data-pp-skeleton] .skeleton span {
+  position: relative;
+  overflow: hidden;
+  animation: none;
+  background: color-mix(in srgb, var(--bg-sunken) 58%, var(--line) 42%);
+}
+
+@keyframes pp-skel-pulse {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+@keyframes pp-skel-sweep {
+  0% { transform: translateX(-130%); }
+  100% { transform: translateX(230%); }
+}
+
+[data-pp-skeleton='pulse'] .pp-skel-line,
+[data-pp-skeleton='pulse'] .pp-skel-media,
+[data-pp-skeleton='pulse'] .skeleton span {
+  animation: pp-skel-pulse 1.7s ease-in-out infinite;
+}
+
+[data-pp-skeleton='both'] .pp-skel-line,
+[data-pp-skeleton='both'] .pp-skel-media,
+[data-pp-skeleton='both'] .skeleton span {
+  animation: pp-skel-pulse 1.9s ease-in-out infinite;
+}
+
+[data-pp-skeleton='sweep'] .pp-skel-line::after,
+[data-pp-skeleton='sweep'] .pp-skel-media::after,
+[data-pp-skeleton='sweep'] .skeleton span::after,
+[data-pp-skeleton='both'] .pp-skel-line::after,
+[data-pp-skeleton='both'] .pp-skel-media::after,
+[data-pp-skeleton='both'] .skeleton span::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 12%,
+    var(--pp-skel-glint, color-mix(in srgb, var(--accent) 34%, transparent)) 50%,
+    transparent 88%
+  );
+  transform: translateX(-130%);
+  animation: pp-skel-sweep 1.6s ease-in-out infinite;
+}
+
+/* 减少动效：呼吸与扫光都停下来，只留静态占位。 */
+[data-motion='reduced'][data-pp-skeleton] .pp-skel-line,
+[data-motion='reduced'][data-pp-skeleton] .pp-skel-media,
+[data-motion='reduced'][data-pp-skeleton] .skeleton span,
+[data-motion='reduced'] [data-pp-skeleton] .pp-skel-line,
+[data-motion='reduced'] [data-pp-skeleton] .pp-skel-media,
+[data-motion='reduced'] [data-pp-skeleton] .skeleton span {
+  animation: none !important;
+}
+[data-motion='reduced'][data-pp-skeleton] .pp-skel-line::after,
+[data-motion='reduced'][data-pp-skeleton] .pp-skel-media::after,
+[data-motion='reduced'][data-pp-skeleton] .skeleton span::after,
+[data-motion='reduced'] [data-pp-skeleton] .pp-skel-line::after,
+[data-motion='reduced'] [data-pp-skeleton] .pp-skel-media::after,
+[data-motion='reduced'] [data-pp-skeleton] .skeleton span::after {
+  display: none;
+}
+
+/* 后台加载设置：预设卡缩略图与迷你页面骨架预览。 */
+.preset-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 34px;
+}
+.preset-skel .pp-skel-line { height: 4px; }
+.preset-skel .pp-skel-line:nth-child(2) { width: 74%; }
+.preset-skel .pp-skel-line:nth-child(3) { width: 58%; }
+.loading-skeleton-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(560px, 100%);
+  margin: 0 auto;
+  text-align: left;
+}
+.loading-skeleton-preview .pp-skel-line { height: 11px; }
+.loading-skeleton-preview .pp-skel-title { height: 24px; border-radius: 6px; }
+.loading-skeleton-preview .pp-skel-eyebrow { width: 84px; height: 8px; }
+.loading-skeleton-preview .pp-skel-grid { margin-top: 4px; }
+
+@media (max-width: 780px) {
+  .pp-skel-feed { grid-template-columns: minmax(0, 1fr); }
+  .pp-skel-grid { grid-template-columns: minmax(0, 1fr); }
+  .pp-skel-mosaic { grid-template-columns: minmax(0, 1fr); }
+  .pp-skel-mosaic > :first-child { grid-column: auto; }
+}
 
 /* =========================================================
    营销区块（功能网格 / 卡片组 / 步骤，2026-11-03 P2）

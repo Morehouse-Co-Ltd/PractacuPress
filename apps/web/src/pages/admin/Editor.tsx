@@ -544,7 +544,6 @@ function EditorWorkspace() {
               <div className="panel-head">
                 <div>
                   <h3>{t('稿件信息')}</h3>
-                  <p>{t('状态与可用动作由服务端返回。')}</p>
                 </div>
               </div>
               <div className="panel-body" style={{ paddingTop: 6 }}>

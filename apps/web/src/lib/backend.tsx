@@ -29,6 +29,8 @@ import type {
   Role,
   Session,
   Site,
+  SiteDomainVerification,
+  SiteDomainVerificationResult,
   TaxonomySettings,
   TaxonomyTerm,
   TaxonomyTermInput,
@@ -72,10 +74,16 @@ export interface Backend {
       visibility_mode: Site['visibility_mode'];
       publish_mode: Site['publish_mode'];
       domain: string;
+      /** O-3：关闭后注册接口返回 403 registration_closed。 */
+      registration_open: boolean;
     }>,
   ): Promise<void>;
-  /** 设置主域名；空字符串表示清除域名。 */
+  /** 设置主域名；空字符串表示清除域名。保存后进入「待验证」状态。 */
   setSiteDomain(siteId: string, domain: string): Promise<void>;
+  /** 读取主域名与 TXT 归属验证信息（V-12）。 */
+  siteDomain(siteId: string): Promise<SiteDomainVerification>;
+  /** 立即验证主域名归属；失败抛 ApiError（problem.details.reason 说明原因）。 */
+  verifySiteDomain(siteId: string): Promise<SiteDomainVerificationResult>;
   /**
    * 站点设计（主题、页面、扩展、SEO）的服务端副本。
    * 404 视为“远端还没有设计”，返回 null；401 / 403 由调用方吞掉。
@@ -221,12 +229,53 @@ export const INSTALL_RESET_KEY = 'pp.setup.reset';
 
 export type InstallVerdict = 'ok' | 'stale' | 'unknown';
 
-interface SetupStatus {
+/** `/api/v1/setup/status` 的公开响应；安装校验与匿名访客引导（O-1）共用。 */
+export interface SetupStatus {
   installed?: boolean;
   has_admin?: boolean;
   reason?: string;
   site_id?: string;
   site_name?: string;
+  /** O-3：站点是否开放自助注册；旧后端不返回时按开放处理。 */
+  registration_open?: boolean;
+}
+
+export interface ProbeSetupStatusOptions {
+  /** 注入 fetch 便于测试；默认全局 fetch。 */
+  fetchImpl?: typeof fetch;
+  /** 请求超时（毫秒）。 */
+  timeoutMs?: number;
+}
+
+/**
+ * 读取服务端公开的安装状态。
+ *
+ * `base` 为空时按同源相对地址请求（开发代理与启动器都走同源）。网络错误、非 2xx、
+ * 响应不是对象一律返回 null：安装校验与匿名访客引导各自决定回退策略（前者保留
+ * 本地配置，后者回退安装引导）。
+ */
+export async function probeSetupStatus(
+  base: string,
+  options: ProbeSetupStatusOptions = {},
+): Promise<SetupStatus | null> {
+  const { fetchImpl = fetch, timeoutMs = 3000 } = options;
+  const normalized = base.trim().replace(/\/+$/, '');
+  try {
+    const res = await fetchImpl(`${normalized}/api/v1/setup/status`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      credentials: 'include',
+      signal:
+        typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(timeoutMs)
+          : undefined,
+    });
+    if (!res.ok) return null;
+    const status = (await res.json()) as unknown;
+    return status && typeof status === 'object' ? (status as SetupStatus) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -242,30 +291,16 @@ interface SetupStatus {
 export async function verifyInstall(config: WebConfig): Promise<InstallVerdict> {
   if (config.mode !== 'live') return 'ok';
 
-  const base = config.api_base.replace(/\/+$/, '');
-  try {
-    const res = await fetch(`${base}/api/v1/setup/status`, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      credentials: 'include',
-      signal:
-        typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-          ? AbortSignal.timeout(3000)
-          : undefined,
-    });
-    if (!res.ok) return 'unknown';
-    const status = (await res.json()) as SetupStatus;
+  const status = await probeSetupStatus(config.api_base);
+  if (!status) return 'unknown';
 
-    // 站点在，只是这个域名没通过验证：重装解决不了，也不能清配置。
-    if (status.reason === 'domain_unverified') return 'ok';
-    if (status.installed === false) return 'stale';
-    if (typeof status.site_id === 'string' && status.site_id !== config.site_id) return 'stale';
-    // has_admin 只作为排查信息：服务端部署的首个账户本来就是普通成员，
-    // 用它触发重置会让向导反复重来。安装引导在注册步骤另有角色校验。
-    return 'ok';
-  } catch {
-    return 'unknown';
-  }
+  // 站点在，只是这个域名没通过验证：重装解决不了，也不能清配置。
+  if (status.reason === 'domain_unverified') return 'ok';
+  if (status.installed === false) return 'stale';
+  if (typeof status.site_id === 'string' && status.site_id !== config.site_id) return 'stale';
+  // has_admin 只作为排查信息：服务端部署的首个账户本来就是普通成员，
+  // 用它触发重置会让向导反复重来。安装引导在注册步骤另有角色校验。
+  return 'ok';
 }
 
 /** 这些方法不发出请求，不能被包装成 Promise，也不能计入请求限制。 */

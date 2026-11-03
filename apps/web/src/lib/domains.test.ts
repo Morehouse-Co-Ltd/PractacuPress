@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError, fallbackProblem } from './api';
 import {
   DEFAULT_DOMAINS,
   boundDomains,
   defaultCorsOrigins,
   domainAllowed,
   domainEntryError,
+  domainVerificationErrorReason,
   hostMatches,
+  isDomainPendingVerification,
   isPublicIp,
   normalizeDomain,
   normalizeOrigin,
@@ -135,5 +138,54 @@ describe('normalizeOrigin', () => {
     expect(normalizeOrigin('cdn.example.com')).toBe('https://cdn.example.com');
     expect(normalizeOrigin('http://localhost:5173')).toBe('http://localhost:5173');
     expect(normalizeOrigin('ftp://example.com')).toBe('');
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * V-12 主域名归属验证
+ * ------------------------------------------------------------------ */
+
+describe('isDomainPendingVerification', () => {
+  const check = {
+    domain: 'press.example.com',
+    verified: false,
+    verification_token: 'pp_verify_abc',
+    record_name: '_practacu-verify.press.example.com',
+    record_type: 'TXT',
+  };
+
+  it('is pending when the saved domain matches and is not verified', () => {
+    expect(isDomainPendingVerification(check, 'press.example.com')).toBe(true);
+    expect(isDomainPendingVerification(check, '  PRESS.example.com ')).toBe(true);
+    expect(isDomainPendingVerification(check, 'press.example.com:443')).toBe(true);
+    expect(isDomainPendingVerification({ ...check, verified: true }, 'press.example.com')).toBe(false);
+  });
+
+  it('is not pending for an empty, different or missing domain', () => {
+    expect(isDomainPendingVerification(check, '')).toBe(false);
+    expect(isDomainPendingVerification(check, 'other.example.com')).toBe(false);
+    expect(isDomainPendingVerification(null, 'press.example.com')).toBe(false);
+    expect(isDomainPendingVerification(undefined, 'press.example.com')).toBe(false);
+  });
+});
+
+describe('domainVerificationErrorReason', () => {
+  it('maps server reasons to readable categories', () => {
+    expect(
+      domainVerificationErrorReason(
+        new ApiError({ ...fallbackProblem(400), details: { reason: 'domain_verification_failed' } }),
+      ),
+    ).toBe('dns_not_found');
+    expect(
+      domainVerificationErrorReason(
+        new ApiError({ ...fallbackProblem(400), details: { reason: 'validation_failed' } }),
+      ),
+    ).toBe('validation_failed');
+    expect(
+      domainVerificationErrorReason(
+        new ApiError({ ...fallbackProblem(409), details: { reason: 'revision_conflict' } }),
+      ),
+    ).toBe('unknown');
+    expect(domainVerificationErrorReason(new Error('boom'))).toBe('unknown');
   });
 });

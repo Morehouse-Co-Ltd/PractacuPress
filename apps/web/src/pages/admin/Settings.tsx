@@ -6,7 +6,7 @@ import { useTitle } from '../../lib/hooks';
 import { SITE_KIND_LABEL, siteKindOf } from '../../lib/site';
 import { noteActivity } from '../../lib/activity';
 import { useCustomization } from '../../lib/customize';
-import { LOCALES, useT } from '../../lib/i18n';
+import { useT } from '../../lib/i18n';
 import {
   PUBLISH_LABEL,
   VISIBILITY_LABEL,
@@ -36,6 +36,8 @@ export function SettingsPage() {
   const [description, setDescription] = useState(site?.description ?? '');
   const [visibility, setVisibility] = useState<VisibilityMode>(site?.visibility_mode ?? 'public');
   const [publishMode, setPublishMode] = useState<PublishMode>(site?.publish_mode ?? 'review');
+  /** O-3：站点是否开放自助注册；旧后端没有该字段时按开放处理。 */
+  const [registrationOpen, setRegistrationOpen] = useState(site?.registration_open !== false);
   const [kind, setKind] = useState<SiteKind>(siteKindOf(config));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -52,6 +54,7 @@ export function SettingsPage() {
     setDescription(site.description ?? '');
     setVisibility(site.visibility_mode);
     setPublishMode(site.publish_mode);
+    setRegistrationOpen(site.registration_open !== false);
     setDescriptionTouched(false);
   }, [site]);
 
@@ -67,6 +70,7 @@ export function SettingsPage() {
       description !== (site.description ?? '') ||
       visibility !== site.visibility_mode ||
       publishMode !== site.publish_mode ||
+      registrationOpen !== (site.registration_open !== false) ||
       kindChanged ||
       adminPath !== (config.admin_path ?? '/admin'));
 
@@ -139,6 +143,8 @@ export function SettingsPage() {
         ...(sendDescription ? { description: description.trim() } : {}),
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
+        // O-3：个人博客固定关闭注册，不把开关的旧值写回去。
+        registration_open: kind === 'personal' ? false : registrationOpen,
       });
       if (trimmedDomain !== site.domain) {
         await backend.setSiteDomain(site.id, trimmedDomain);
@@ -150,6 +156,7 @@ export function SettingsPage() {
         ...(sendDescription ? { description: description.trim() } : {}),
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
+        registration_open: kind === 'personal' ? false : registrationOpen,
       });
       if (kindChanged) {
         updateConfig({ site_kind: kind });
@@ -170,7 +177,7 @@ export function SettingsPage() {
         kindChanged ? t('站点形态已切换') : t('站点设置已保存'),
         kind === 'personal'
           ? t('个人博客模式已生效：注册入口关闭，所有账户都能登录后台。')
-          : t('社区站点模式已生效：注册重新开放，权限组按角色生效。'),
+          : t('社区站点模式已生效：注册入口按「开放注册」开关生效，权限组按角色生效。'),
       );
     } catch (err) {
       const text = err instanceof Error ? err.message : t('保存失败。');
@@ -211,48 +218,7 @@ export function SettingsPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3>{t('站点语言')}</h3>
-                <p>{t('切换后前台、后台与全部提示文案立即改用该语言；已发布的内容不会被翻译。')}</p>
-              </div>
-            </div>
-            <div className="panel-body">
-              <div className="option-grid two">
-                {LOCALES.map((option) => (
-                  <label
-                    key={option.id}
-                    className={`option${customization.language === option.id ? ' is-selected' : ''}`}
-                  >
-                    <span className="option-icon">
-                      <Icon name="globe" size={16} />
-                    </span>
-                    <span className="option-body">
-                      <strong>{option.native}</strong>
-                      <p>
-                        {option.id === 'zh-CN'
-                          ? t('简体中文界面。')
-                          : 'English interface. Site content is not translated.'}
-                      </p>
-                    </span>
-                    <input
-                      type="radio"
-                      name="site-language"
-                      checked={customization.language === option.id}
-                      onChange={() => updateCustomization({ language: option.id })}
-                    />
-                  </label>
-                ))}
-              </div>
-              <p className="field-hint mt-8">
-                {t('站点语言是站点级设置：所有访客看到的语言一致，并随站点设计同步到服务器。切换会立即生效，不需要点保存。')}
-              </p>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
                 <h3>{t('基本信息')}</h3>
-                <p>{t('显示在首页、页脚与分享卡片里。')}</p>
               </div>
             </div>
             <div className="panel-body">
@@ -269,7 +235,9 @@ export function SettingsPage() {
                   <Field
                     label={t('访问域名')}
                     htmlFor="setting-domain"
-                    hint={t('留空时生产环境只允许公网 IP 直接访问。SSL 证书与别名域名在「访问与域名」里配置。')}
+                    hint={t(
+                      '留空时生产环境只允许公网 IP 直接访问。SSL 证书与别名域名在「访问与域名」里配置；保存后需要在「访问与域名」完成 TXT 验证，验证前公网域名暂不生效。',
+                    )}
                   >
                     <Input
                       id="setting-domain"
@@ -418,7 +386,6 @@ export function SettingsPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('站点形态')}</h3>
-                <p>{t('决定访客能否创建账户，以及前台是否显示注册与登录入口。')}</p>
               </div>
             </div>
             <div className="panel-body">
@@ -455,9 +422,7 @@ export function SettingsPage() {
                 <Callout tone="info" icon="user" title={t('个人博客：注册关闭，账户由站长创建')}>
                   {t('保存后前台不再显示注册入口，注册页关闭；已有账户、文章与评论全部保留，可以继续登录。')}{' '}
                   {t('个人博客下所有账户都能进入后台并拥有最高权限，可以在「用户管理」里创建账户。')}{' '}
-                  {t('连接真实后端时，要彻底关闭注册还需要在网关或服务端禁止')}
-                  <code className="mono"> POST /api/v1/auth/register/email</code>
-                  {t('。')}
+                  {t('注册接口会直接拒绝新的自助注册（403 registration_closed），不需要再改网关配置。')}
                 </Callout>
               ) : (
                 <Callout tone="info" icon="users" title={t('社区站点：自助注册与用户组')}>
@@ -468,12 +433,39 @@ export function SettingsPage() {
             </div>
           </section>
 
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{t('注册与账户')}</h3>
+              </div>
+            </div>
+            <div className="panel-body">
+              <Toggle
+                checked={kind === 'community' && registrationOpen}
+                disabled={kind === 'personal'}
+                onChange={setRegistrationOpen}
+                label={t('开放注册')}
+                description={t(
+                  '关闭后前台与注册页都不再显示注册入口；已注册账户的登录与使用不受影响。',
+                )}
+              />
+              {kind === 'personal' ? (
+                <Callout tone="info" icon="user" title={t('个人博客固定关闭注册')}>
+                  {t('个人博客没有自助注册；需要账户时请到「用户管理」创建。切回社区站点后可以重新打开。')}
+                </Callout>
+              ) : !registrationOpen ? (
+                <Callout tone="warn" icon="lock" title={t('注册已关闭')}>
+                  {t('访客在注册页会看到「本站暂未开放注册」；新成员只能由管理员在「用户管理」里创建或邀请。')}
+                </Callout>
+              ) : null}
+            </div>
+          </section>
+
           {kind === 'community' ? (
           <section className="panel">
             <div className="panel-head">
               <div>
                 <h3>{t('访客模式')}</h3>
-                <p>{t('决定匿名访客能否读取已发布内容。')}</p>
               </div>
             </div>
             <div className="panel-body">
@@ -509,7 +501,6 @@ export function SettingsPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('发布模式')}</h3>
-                <p>{t('决定成员发布时是否需要审核。')}</p>
               </div>
             </div>
             <div className="panel-body">
@@ -557,6 +548,7 @@ export function SettingsPage() {
                   setDescription(site.description ?? '');
                   setVisibility(site.visibility_mode);
                   setPublishMode(site.publish_mode);
+                  setRegistrationOpen(site.registration_open !== false);
                   setKind(siteKindOf(config));
                   setAdminPath(config.admin_path ?? '/admin');
                   setError('');

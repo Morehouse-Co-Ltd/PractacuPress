@@ -34,6 +34,11 @@ export interface DemoComment extends Comment {
 export interface DemoState {
   version: 1;
   site: Site;
+  /**
+   * 演示后端的主域名验证状态：修改域名后置 false，点「立即验证」后置 true。
+   * 缺失按已验证处理（早期演示数据），避免升级后让老用户面对"待验证"。
+   */
+  domain_verified?: boolean;
   users: DemoUser[];
   contents: DemoContent[];
   comments: DemoComment[];
@@ -72,7 +77,14 @@ function cover(label: string, tone: string): string {
 
 interface SeedOptions {
   admin: { email: string; display_name: string; password: string };
-  site: { name: string; domain: string; description: string; visibility_mode: Site['visibility_mode']; publish_mode: Site['publish_mode'] };
+  site: {
+    name: string;
+    domain: string;
+    description: string;
+    visibility_mode: Site['visibility_mode'];
+    publish_mode: Site['publish_mode'];
+    registration_open?: boolean;
+  };
 }
 
 function article(
@@ -255,6 +267,7 @@ export function createSeed(options: SeedOptions): DemoState {
     domain: options.site.domain || 'press.local',
     visibility_mode: options.site.visibility_mode,
     publish_mode: options.site.publish_mode,
+    registration_open: options.site.registration_open ?? true,
     disabled: false,
     description:
       options.site.description ||
@@ -1070,6 +1083,7 @@ export function createSeed(options: SeedOptions): DemoState {
   return {
     version: 1,
     site,
+    domain_verified: true,
     users,
     contents: [...contents, ...posts],
     comments,

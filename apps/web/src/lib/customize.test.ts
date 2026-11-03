@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { pageSearchText, readCustomization, starterPages } from './customize';
+import {
+  MAX_CUSTOM_CSS_CHARS,
+  highRiskCustomCssMarker,
+  pageSearchText,
+  readCustomization,
+  sanitizeCustomCss,
+  starterPages,
+} from './customize';
 import { takeMigrationReport } from './migrationNotice';
 
 describe('readCustomization nested blocks', () => {
@@ -158,6 +165,129 @@ describe('页面内容全部来自页面编排', () => {
       },
     } as never);
     expect(pageSearchText(customization.pages[0])).toContain('一间隔音很好的书房');
+  });
+});
+
+describe('区块通用外观', () => {
+  it('保留合法外观，丢弃未知枚举与坏色值', () => {
+    const customization = readCustomization({
+      customization: {
+        home: {
+          blocks: [
+            {
+              id: 'btn',
+              type: 'button',
+              title: '按钮',
+              props: {},
+              animation: 'none',
+              hidden: false,
+              appearance: {
+                radius: 'lg',
+                shadow: 'md',
+                crop: '16:9',
+                background: '#EEF3EF',
+                padding: 16,
+                border: true,
+                unknown: 'ignored',
+              },
+            },
+            {
+              id: 'bad',
+              type: 'button',
+              title: '按钮',
+              props: {},
+              animation: 'none',
+              hidden: false,
+              appearance: { radius: 'huge', background: 'javascript:alert(1)', padding: -2 },
+            },
+          ],
+        },
+      },
+    } as never);
+
+    expect(customization.home.blocks[0].appearance).toEqual({
+      radius: 'lg',
+      shadow: 'md',
+      crop: '16:9',
+      background: '#eef3ef',
+      padding: 16,
+      border: true,
+    });
+    expect(customization.home.blocks[1].appearance).toBeUndefined();
+  });
+});
+
+// V-03：custom_css 会随服务端设计分发给每个访客，读入/导出时先剔掉高危构造。
+describe('custom_css 内容规范化', () => {
+  it('keeps ordinary custom CSS exactly as written', () => {
+    const css =
+      ':root { --pp-accent: #c33; }\n' +
+      'body { background: url("https://cdn.example/bg.png") no-repeat; }\n' +
+      '@media (min-width: 900px) { .hero { position: fixed; inset: 0; } }';
+
+    expect(sanitizeCustomCss(css)).toBe(css);
+    expect(highRiskCustomCssMarker(css)).toBe('');
+  });
+
+  it('drops rules that carry a high risk construct', () => {
+    const css =
+      '@import url("https://evil.example/x.css");\n' +
+      'body { color: #222; }\n' +
+      'a { background: url(javascript:alert(1)); }\n' +
+      '.ok { padding: 8px; }';
+
+    const sanitized = sanitizeCustomCss(css);
+
+    expect(sanitized).toContain('body { color: #222; }');
+    expect(sanitized).toContain('.ok { padding: 8px; }');
+    expect(sanitized).not.toContain('@import');
+    expect(sanitized).not.toContain('javascript:');
+    expect(highRiskCustomCssMarker(sanitized)).toBe('');
+  });
+
+  it('detects escaped and comment-split spellings', () => {
+    for (const payload of [
+      '@im/* hidden */port url("https://evil.example/x.css");',
+      '\\40 import url("https://evil.example/x.css");',
+      'body { width: expression(alert(1)); }',
+      'a { behavior: url(evil.htc); }',
+      'a { -moz-binding: url(evil.xml#x); }',
+      'a { background: url(\u0027javascript:alert(1)\u0027); }',
+      'a { background: url(data:text/html;base64,PHNjcmlwdD4=); }',
+    ]) {
+      expect(highRiskCustomCssMarker(payload), payload).not.toBe('');
+    }
+  });
+
+  it('drops a whole at-rule block when the payload is nested inside it', () => {
+    const sanitized = sanitizeCustomCss(
+      '@media screen { .x { background: url(javascript:alert(1)); } }\n.y { color: red; }',
+    );
+
+    expect(sanitized).toBe('.y { color: red; }');
+  });
+
+  it('caps the field at the frontend limit', () => {
+    const huge = `a { color: red; }\n${'/* pad */'.repeat(4000)}`;
+
+    expect(sanitizeCustomCss(huge).length).toBe(MAX_CUSTOM_CSS_CHARS);
+  });
+
+  it('is idempotent', () => {
+    const once = sanitizeCustomCss('a { background: url(javascript:alert(1)); }\n.b { color: red; }');
+
+    expect(sanitizeCustomCss(once)).toBe(once);
+  });
+
+  it('readCustomization filters the stored document', () => {
+    const customization = readCustomization({
+      customization: {
+        custom_css: 'html { outline: 9px solid red; }\n@import url("https://evil.example/x.css");',
+      },
+    } as never);
+
+    expect(customization.custom_css).toContain('outline: 9px solid red');
+    expect(customization.custom_css).not.toContain('@import');
   });
 });
 

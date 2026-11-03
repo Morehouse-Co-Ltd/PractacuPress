@@ -6,7 +6,7 @@ import { useBackend } from '../../lib/backend';
 import { readPerformance } from '../../lib/performance';
 import { ApiError } from '../../lib/api';
 import { KIND_LABEL, formatDate, readingTime } from '../../lib/format';
-import { Badge, Button, Callout, EmptyState, Input, Skeleton } from '../../components/ui';
+import { Badge, Button, Callout, EmptyState, Input, SkeletonRow } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { useSeo } from '../../lib/seo';
 import { useT } from '../../lib/i18n';
@@ -119,7 +119,9 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
       <div className="archive-list">
         {loading ? (
           <div className="mt-24">
-            <Skeleton lines={8} />
+            {Array.from({ length: 4 }, (_, i) => (
+              <SkeletonRow key={i} />
+            ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="mt-24">

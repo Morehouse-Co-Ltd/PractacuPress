@@ -67,7 +67,6 @@ const fragment: Dictionary = {
   '、': ', ',
   '。只粘贴自己信任的 CSS。': '. Only paste CSS you trust.',
   '当前设置': 'Current settings',
-  '保存后才在前台生效。': 'Takes effect on the public site after saving.',
   '首次加载': 'First load',
   '切换页面': 'Switch pages',
   '显示': 'Shown',
@@ -82,6 +81,25 @@ const fragment: Dictionary = {
   '没有未保存的修改': 'No unsaved changes',
   '只影响站点前台': 'Affects the public site only',
   '关闭预览': 'Close preview',
+  '全屏加载': 'Full-screen loading',
+  '页面骨架': 'Page skeletons',
+  '加载方式': 'Loading mode',
+  '呼吸 + 扫光': 'Pulse + shimmer',
+  '强调色与扫光': 'Accent and shimmer',
+  '骨架取色跟随主题令牌；强调色作为扫光的高光。':
+    'Skeleton colors follow the theme tokens; the accent color is the shimmer highlight.',
+  '迷你页面骨架按当前动效循环播放。':
+    'The mini page skeleton loops with the current motion.',
+  '迷你骨架按当前动效循环播放；强调色只作扫光高光。':
+    'The mini skeleton loops with the current motion; the accent color only drives the shimmer highlight.',
+  '页面先出现，内容原地补齐': 'Pages appear first, content fills in place',
+  '原位骨架不盖全屏遮罩，也不会等待最短展示时长；数据到达后占位原地换成内容。':
+    'In-place skeletons never cover the screen or wait for the minimum display time; placeholders swap for content in place when data arrives.',
+  '骨架会出现在内容最终出现的位置；后台与编排预览不显示。':
+    'Skeletons appear exactly where the final content lands; the dashboard and layout previews never show them.',
+  '前台等待内容时会显示原位骨架。':
+    'In-place skeletons appear while the public site waits for content.',
+  '原位骨架': 'In-place skeleton',
 };
 
 export default fragment;

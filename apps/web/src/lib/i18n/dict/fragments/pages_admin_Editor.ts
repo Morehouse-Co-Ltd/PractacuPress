@@ -65,7 +65,6 @@ const fragment: Dictionary = {
   '可打开插入指令。保存与导出使用 Markdown，公开页面仍以服务端清洗后的 rendered_html 为准。':
     ' to open the insert menu. Saving and exporting use Markdown, and public pages still use the server-sanitized rendered_html.',
   稿件信息: 'Draft info',
-  '状态与可用动作由服务端返回。': 'The server returns the status and the available actions.',
   创建: 'Created',
   安全策略: 'Security policy',
   '路径（slug）': 'Path (slug)',

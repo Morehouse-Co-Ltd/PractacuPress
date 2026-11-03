@@ -380,7 +380,6 @@ export function MediaPage() {
           <div className="panel-head">
             <div>
               <h3>{t('存储与限制')}</h3>
-              <p>{t('由服务端环境变量决定。')}</p>
             </div>
           </div>
           <div className="panel-body">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { copyText } from '../lib/clipboard';
+import { hydrateDiagrams } from '../lib/diagramHydrate';
 import { useT } from '../lib/i18n';
 
 export interface TocItem {
@@ -9,12 +10,26 @@ export interface TocItem {
   level: number;
 }
 
+/**
+ * 当前文章的正文容器。
+ *
+ * 编排里的文本组件正文也带 `.article-body`（见 MediaBlocks），所以优先用「文章内容」
+ * 区块打的 `[data-pp-article-body]` 标记；没有标记时（旧渲染路径）仍取第一个
+ * `.article-body`，行为与以前一致。
+ */
+function articleBodyRoot(): HTMLElement | null {
+  return (
+    document.querySelector<HTMLElement>('[data-pp-article-body]') ??
+    document.querySelector<HTMLElement>('.article-body')
+  );
+}
+
 /** 给正文标题分配锚点，并返回目录。只在文章页调用。 */
 export function useArticleToc(html: string | undefined): TocItem[] {
   const [items, setItems] = useState<TocItem[]>([]);
 
   useEffect(() => {
-    const root = document.querySelector('.article-body');
+    const root = articleBodyRoot();
     if (!root) {
       setItems([]);
       return;
@@ -89,12 +104,25 @@ export function BackToTop() {
   );
 }
 
+/**
+ * 把正文里的 `pp-diagram` 围栏水合成 SVG 图表。
+ *
+ * 与 `useCodeCopy` 一样只在文章页调用：服务端只返回白名单内的 `pre > code`，
+ * 图表由前端按当前主题画出来，因此不需要放宽安全清洗规则。
+ */
+export function useArticleDiagrams(html: string | undefined) {
+  useEffect(() => {
+    const root = articleBodyRoot();
+    if (!root) return;
+    hydrateDiagrams(root);
+  }, [html]);
+}
+
 /** 给正文里的每个代码块加复制按钮；关闭扩展时把按钮清掉。 */
-export function useCodeCopy(enabled: boolean, html: string | undefined) {
-  const t = useT();
+export function useCodeCopy(enabled: boolean, html: string | undefined) {  const t = useT();
   useEffect(() => {
     if (!enabled) return;
-    const root = document.querySelector('.article-body');
+    const root = articleBodyRoot();
     if (!root) return;
     const cleanups: (() => void)[] = [];
 

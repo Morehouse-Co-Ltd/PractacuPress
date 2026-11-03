@@ -473,7 +473,6 @@ export function MembersPage() {
           <div className="panel-head">
             <div>
               <h3>{personal ? t('个人博客的用户规则') : t('四种用户组能做什么')}</h3>
-              <p>{t('权限由服务端执行，界面只负责表达。')}</p>
             </div>
           </div>
           <div className="panel-body" style={{ paddingTop: 6 }}>

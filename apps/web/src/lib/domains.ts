@@ -1,4 +1,5 @@
-import type { DomainSettings, TlsSettings, WebConfig } from '../types';
+import type { DomainSettings, SiteDomainVerification, TlsSettings, WebConfig } from '../types';
+import { ApiError } from './api';
 import { t } from './i18n';
 import { settingBool, settingList, settingText } from './settings';
 
@@ -272,4 +273,42 @@ export function defaultCorsOrigins(settings: DomainSettings, siteDomain?: string
     if (!out.includes(origin)) out.push(origin);
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * V-12 主域名归属验证
+ * ------------------------------------------------------------------ */
+
+/**
+ * 主域名是否处于「待验证」。
+ *
+ * 保存域名后服务端进入待验证（`verified: false`）；清空域名、验证通过或验证信息
+ * 属于旧域名时都不算待验证，避免把过期状态当成当前状态展示。
+ */
+export function isDomainPendingVerification(
+  check: SiteDomainVerification | null | undefined,
+  domain: string,
+): boolean {
+  const wanted = normalizeDomain(domain) || domain.trim().toLowerCase();
+  if (!wanted || !check) return false;
+  const checked = normalizeDomain(check.domain) || check.domain.trim().toLowerCase();
+  return checked === wanted && check.verified === false;
+}
+
+/**
+ * 把「立即验证」失败映射成可读的原因分类，页面据此选择文案。
+ *
+ * - `dns_not_found`：服务端在 DNS 里还没查到 TXT 记录（可能还没传播，稍后重试）；
+ * - `validation_failed`：域名格式或站点状态不允许验证；
+ * - `unknown`：409 冲突及其它失败，展示通用提示。
+ */
+export function domainVerificationErrorReason(
+  error: unknown,
+): 'dns_not_found' | 'validation_failed' | 'unknown' {
+  if (error instanceof ApiError) {
+    const reason = error.problem.details?.reason;
+    if (reason === 'domain_verification_failed') return 'dns_not_found';
+    if (reason === 'validation_failed') return 'validation_failed';
+  }
+  return 'unknown';
 }

@@ -12,10 +12,6 @@ const fragment: Dictionary = {
   '基础登录方式，含邮件通知与找回密码。':
     'The base sign-in method, with email notifications and password recovery.',
   已启用: 'Enabled',
-  '已配置，登录页会显示入口。': 'Configured; the sign-in page shows an entry point.',
-  '未启用。': 'Not enabled.',
-  '始终可用；注册、登录与找回密码都依赖它。':
-    'Always available; sign-up, sign-in, and password recovery all rely on it.',
   '邮箱 + 密码': 'Email + password',
   令牌: 'Token',
   防跨站: 'CSRF protection',

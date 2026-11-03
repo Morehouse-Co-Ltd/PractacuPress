@@ -24,6 +24,8 @@ import type {
   Role,
   Session,
   Site,
+  SiteDomainVerification,
+  SiteDomainVerificationResult,
   TaxonomySettings,
   TaxonomyTerm,
   TaxonomyTermInput,
@@ -370,7 +372,13 @@ export class HttpBackend {
 
   async logout(): Promise<void> {
     try {
-      await this.request<void>('/auth/logout', { method: 'POST' });
+      // 服务端把登出也纳入 CSRF 派生绑定：没有双提交令牌会 403，HttpOnly refresh
+      // cookie 清不掉，下次挂载 refresh() 会把用户静默登回来。这里与 refresh()/login()
+      // 使用同一份令牌（内存里的 csrf，缺省读 cookie 兜底）。
+      await this.request<void>('/auth/logout', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': this.csrf || readCookie('pp_csrf') },
+      });
     } catch {
       /* 登出失败不阻塞本地清理 */
     } finally {
@@ -412,6 +420,8 @@ export class HttpBackend {
       visibility_mode: Site['visibility_mode'];
       publish_mode: Site['publish_mode'];
       domain: string;
+      /** O-3：关闭后注册接口返回 403 registration_closed。 */
+      registration_open: boolean;
     }>,
   ): Promise<void> {
     await this.request<void>(`/sites/${siteId}/settings`, {
@@ -425,6 +435,23 @@ export class HttpBackend {
     await this.request<void>(`/sites/${siteId}/domain`, {
       method: 'PUT',
       body: JSON.stringify({ domain }),
+    });
+  }
+
+  /**
+   * 读取主域名与其 TXT 归属验证信息（V-12）。
+   *
+   * 保存域名后服务端进入「待验证」：响应里带 verification_token 与 record_name，
+   * 站长把 TXT 记录加到 DNS 后再调用 verifySiteDomain 立即验证。
+   */
+  async siteDomain(siteId: string): Promise<SiteDomainVerification> {
+    return this.request<SiteDomainVerification>(`/sites/${siteId}/domain`);
+  }
+
+  /** 立即验证主域名归属；失败抛 ApiError（details.reason 说明原因）。 */
+  async verifySiteDomain(siteId: string): Promise<SiteDomainVerificationResult> {
+    return this.request<SiteDomainVerificationResult>(`/sites/${siteId}/domain/verify`, {
+      method: 'POST',
     });
   }
 

@@ -9,7 +9,7 @@ import { liveCatalog } from './i18n/live';
 import { createExtension } from './extensions';
 
 /**
- * 扩展工坊的示例模板。
+ * 创作者扩展的示例模板。
  *
  * 每个模板都是一份完整、可直接运行的清单：CSS 只依赖沙箱注入的
  * `--pp-bg` / `--pp-ink` / `--pp-accent` / `--pp-font` 主题变量，
@@ -293,7 +293,7 @@ export function extensionTemplateById(id: string): ExtensionTemplate | undefined
 /**
  * 由模板生成一份扩展清单（默认不启用，等站长在「我的扩展」里打开）。
  *
- * 工坊的「重置为示例」与「我的扩展 → 导入示例」都走这里，保证示例文案只维护一份。
+ * 「我的扩展 → 导入示例」走这里，保证示例文案只维护一份。
  */
 export function createExtensionFromTemplate(template: ExtensionTemplate): CustomExtension {
   return createExtension({

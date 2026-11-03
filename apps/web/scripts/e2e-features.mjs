@@ -8,7 +8,7 @@
  *     键入 `/` → 断言出现斜杠指令面板；Esc 关闭。
  *   C 链接卡片：工具栏「链接」→ 切「卡片」模式 → 填网址 / 标题 / 说明 → 插入 →
  *     断言编辑区出现 a.pp-linkcard；保存后前台文章详情仍能找到。
- *   D 创作者扩展：/admin/extensions → 扩展工坊选示例模板 → 保存 → 「我的扩展」启用 →
+ *   D 创作者扩展：/admin/extensions → 「我的扩展」→ 导入示例扩展 → 卡片上启用 →
  *     前台出现 iframe[data-pp-extension]；禁用并刷新后消失。
  *
  * 前置：`cd apps/web && npm run build`，并让 `node scripts/serve.mjs` 在 PP_E2E_BASE 提供服务。
@@ -110,13 +110,10 @@ const SEL = {
   },
   extensions: {
     iframe: 'iframe[data-pp-extension]',
-    // 已按新 Extensions.tsx 校准：Tabs（role=tab）+ 工坊模板下拉 + .ppe-card 里的 role=switch。
-    // TODO（合并后再确认一次）：若 Extensions.tsx 的文案 / class 再调整，更新这里。
-    workshopTab: /扩展工坊/,
+    // 已按移除「扩展工坊」后的 Extensions.tsx 校准：Tabs 只剩「内置扩展 / 我的扩展」，
+    // 创作者扩展通过导入进入，再在 .ppe-card 上启停。若文案 / class 再调整，只改这里。
     myTab: /我的扩展/,
-    templateSelect: ['select[aria-label="插入示例模板"]', '.ppe-template-select select'],
-    templateId: 'author-card',
-    saveButton: /保存为我的扩展|保存扩展|另存为|更新/,
+    importSample: /文末作者卡|导入全部示例|导入示例扩展/,
     toggleSelector: '[role="switch"], .switch, button[aria-checked]',
     rowSelector: '.ppe-card, .ppe-ext-card, .ppe-extension-card, .ext-card, .ppe-list-item, section, li, tr, .panel',
   },
@@ -979,8 +976,8 @@ async function toggleExtension(name, want) {
 
 async function blockD() {
   currentBlock = 'D';
-  // 已按合并后的 Extensions.tsx 校准：Tabs(role=tab) 三标签、工坊模板下拉、
-  // 「保存为我的扩展」、.ppe-card 里的 role=switch。若后续文案 / class 变化，只需改 SEL.extensions。
+  // 已按移除「扩展工坊」后的 Extensions.tsx 校准：Tabs 只剩「内置扩展 / 我的扩展」，
+  // 创作者扩展通过「导入示例」进入，再在卡片上启用 / 停用。若文案或 class 变化，只需改 SEL.extensions。
   await goto('/admin/extensions');
   const h1 = await waitUntil(`(() => {
     const heading = document.querySelector('h1')?.textContent ?? '';
@@ -988,49 +985,28 @@ async function blockD() {
   })()`, 15000);
   if (!(await check('D', '打开 /admin/extensions 扩展页', !!h1, h1 ? `h1=${h1.trim()}` : '页面标题不含「扩展」'))) return;
 
-  const workshopTab = await clickExtensionsTab(SEL.extensions.workshopTab);
-  if (!(await check('D', '扩展页有「扩展工坊」标签', workshopTab?.ok, workshopTab?.ok ? `点击「${workshopTab.text}」` : `标签候选=${(workshopTab?.texts ?? []).join(' / ')}`))) return;
-  await sleep(500);
-
-  // 选示例模板：工坊用 <select aria-label="插入示例模板">，选中 author-card（文末作者卡）。
-  await waitUntil(`!!document.querySelector(${q(SEL.extensions.templateSelect[0])})`, 8000);
-  const template = await evaljs(`(() => {
-    const list = ${JSON.stringify(SEL.extensions.templateSelect)};
-    const select = list.map((selector) => document.querySelector(selector)).find(Boolean);
-    if (!select) return { ok: false, reason: '找不到示例模板下拉框' };
-    const options = [...select.options].filter((option) => option.value);
-    const target = options.find((option) => option.value === ${q(SEL.extensions.templateId)}) ?? options[0];
-    if (!target) return { ok: false, reason: '下拉框里没有示例模板选项' };
-    select.value = target.value;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-    return { ok: true, value: target.value, text: (target.textContent ?? '').trim() };
+  const studio = await evaljs(`(() => {
+    const tabs = [...document.querySelectorAll('.tabs button, [role="tab"], button')]
+      .filter((node) => node.getClientRects().length > 0)
+      .map((node) => (node.textContent ?? '').replace(/\\s+/g, ' ').trim())
+      .filter(Boolean);
+    return { text: (document.body.innerText || '').includes('扩展工坊'), tabs: tabs.slice(0, 20) };
   })()`);
-  if (!(await check('D', '扩展工坊可选择示例模板', template?.ok, template?.ok ? `选中「${template.text}」(${template.value})` : template?.reason))) return;
-  await sleep(800);
+  await check('D', '扩展工坊入口已移除', studio?.text === false, `标签=${(studio?.tabs ?? []).join(' / ')}`);
 
-  const populated = await evaljs(`(() => {
-    const nodes = [...document.querySelectorAll('input, textarea')];
-    const filled = nodes.filter((node) => (node.value ?? '').trim().length > 0);
-    const nameInput = [...document.querySelectorAll('input')].find((node) => (node.value ?? '').trim() === '文末作者卡');
-    return {
-      filled: filled.length,
-      name: nameInput ? nameInput.value : '',
-      samples: filled.slice(0, 4).map((node) => (node.value ?? '').trim().slice(0, 25)),
-    };
-  })()`);
-  await check('D', '示例模板填充了清单 / 代码内容', (populated?.filled ?? 0) >= 2, `已填字段=${populated?.filled ?? 0} 名称=${populated?.name || '（未匹配）'} 样例=${(populated?.samples ?? []).join(' | ') || '（空）'}`);
-  await shot('D-workshop', '.ppe-studio');
+  const myTabFirst = await clickExtensionsTab(SEL.extensions.myTab);
+  if (!(await check('D', '「我的扩展」标签可用', myTabFirst?.ok, myTabFirst?.ok ? `点击「${myTabFirst.text}」` : `标签候选=${(myTabFirst?.texts ?? []).join(' / ')}`))) return;
 
-  // 保存扩展
-  const save = await evaljs(`(() => {
-    const nodes = [...document.querySelectorAll('button')].filter((node) => !node.disabled && node.getClientRects().length > 0);
-    const re = new RegExp(${q(SEL.extensions.saveButton.source)});
-    const el = nodes.find((node) => re.test((node.textContent ?? '').replace(/\\s+/g, ' ').trim()));
-    if (!el) return { ok: false, texts: nodes.map((node) => (node.textContent ?? '').trim()).filter(Boolean).slice(0, 26) };
-    el.click();
-    return { ok: true, text: (el.textContent ?? '').replace(/\\s+/g, ' ').trim().slice(0, 30) };
+  // 走“导入扩展”区域的一键示例：与上传 .ppext.json 共用同一条解析 / 写入路径。
+  const imported = await evaljs(`(() => {
+    const nodes = [...document.querySelectorAll('.ppe-sample-row button, button')].filter((node) => node.getClientRects().length > 0);
+    const re = new RegExp(${q(SEL.extensions.importSample.source)});
+    const target = nodes.find((node) => re.test((node.textContent ?? '').replace(/\\s+/g, ' ').trim()));
+    if (!target) return { ok: false, texts: nodes.map((node) => (node.textContent ?? '').trim()).filter(Boolean).slice(0, 24) };
+    target.click();
+    return { ok: true, text: (target.textContent ?? '').replace(/\\s+/g, ' ').trim().slice(0, 30) };
   })()`);
-  if (!(await check('D', '点击保存扩展', save?.ok, save?.ok ? `点击「${save.text}」` : `按钮候选=${(save?.texts ?? []).join(' / ')}`))) return;
+  if (!(await check('D', '可从「导入扩展」一键导入示例', imported?.ok, imported?.ok ? `点击「${imported.text}」` : `按钮候选=${(imported?.texts ?? []).join(' / ')}`))) return;
   await sleep(900);
 
   const exts = await readCustomExtensions();

@@ -18,6 +18,7 @@ const fragment: Dictionary = {
   分栏: 'Columns',
   公式: 'Formula',
   链接: 'Link',
+  图表: 'Diagram',
 
   // ---- 指令说明 ----
   二级标题: 'Heading 2',
@@ -35,6 +36,7 @@ const fragment: Dictionary = {
   两栏或三栏布局: 'Two- or three-column layout',
   行内或块级公式: 'Inline or block formula',
   文字链接或链接卡片: 'Text link or link card',
+  '思维导图、逻辑图、统计图、鱼骨图': 'Mind map, logic chart, statistical chart, fishbone diagram',
 
   // ---- 面板框架 ----
   插入指令: 'Insert command',

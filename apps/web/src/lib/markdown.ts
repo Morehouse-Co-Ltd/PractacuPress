@@ -434,11 +434,25 @@ export function safeUrlAttribute(name: string, value: string): string | null {
 }
 
 /**
+ * 会制造「命名访问」的属性（DOM clobbering 的入口）。
+ *
+ * HTML 把带 `id` / `name` 的元素暴露成 `document`、`window` 上的同名属性：
+ * `<img name="getElementById">` 因此能让 `document.getElementById` 变成元素本身，
+ * 任何一次调用都抛 `TypeError`。定制化 text 区块的 HTML 最终走
+ * `dangerouslySetInnerHTML`，而根组件要读主题样式，所以这类属性一律删除；
+ * `is`（自定义内置元素）、`form` / `for`（表单归属与标签关联）同样只服务命名关联，
+ * 正文展示用不到，一并删掉。`class`、`data-*`、`href` 等正常属性不受影响。
+ */
+const NAMED_ACCESS_ATTRIBUTES = new Set(['id', 'name', 'is', 'form', 'for']);
+
+/**
  * 白名单清洗：只保留无需脚本就能安全展示的标签与属性。
  *
  * - 事件处理器（`on*`）、`srcdoc`、内联 `style` 一律删掉；
+ * - 会制造命名访问的属性（见 {@link NAMED_ACCESS_ATTRIBUTES}）一律删掉；
  * - URL 属性（href/src/xlink:href/poster/background/cite/action/formaction/data/srcset）
  *   走 {@link safeUrlAttribute} 的协议白名单，校验前先做规范化；
+ * - `<a target="_blank">` 强制补 `rel="noopener noreferrer"`，与服务端清洗策略对齐；
  * - `<template>` 的内容不在文档树里，`querySelectorAll` 遍历不到，直接整块删掉；
  *   同理删掉 SVG 的 SMIL 动画元素，它们可以在运行时改写 href；
  * - 公式节点只保留纯文本，最后再对 `data-pp-math` 做一次转义。
@@ -459,12 +473,23 @@ export function sanitizeHtml(input: string): string {
         el.removeAttribute(attr.name);
         continue;
       }
+      // 命名访问属性先删：它们不是 URL，也不该参与后面的属性值规范化。
+      if (NAMED_ACCESS_ATTRIBUTES.has(name)) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
       const safe = safeUrlAttribute(name, attr.value);
       if (safe === null) el.removeAttribute(attr.name);
       else if (safe !== attr.value) el.setAttribute(attr.name, safe);
     }
 
     const tag = el.tagName.toLowerCase();
+    // 新标签页里的页面能通过 window.opener 改写本站：服务端清洗器对文章路径强制
+    // 补 rel，这里保持一致（内容自带的 rel 一律覆盖）。
+    const target = (el.getAttribute('target') ?? '').trim().toLowerCase();
+    if (target === '_blank' && (tag === 'a' || tag === 'area')) {
+      el.setAttribute('rel', 'noopener noreferrer');
+    }
     const isInlineFormula = tag === 'span' && el.classList.contains('pp-math-inline');
     const isBlockFormula = tag === 'p' && el.classList.contains('pp-math-block');
     if (isInlineFormula || isBlockFormula) {

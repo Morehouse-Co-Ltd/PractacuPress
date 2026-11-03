@@ -28,6 +28,10 @@ const fragment: Dictionary = {
   撤销: 'Undo',
   重做: 'Redo',
   恢复默认: 'Restore defaults',
+  收起面板: 'Hide panels',
+  展开面板: 'Show panels',
+  '两边的面板会浮在预览上；收起后就是访客看到的整幅页面':
+    'The side panels float above the preview; hiding them shows the full page exactly as visitors see it',
   主题设置: 'Theme settings',
   组件与结构: 'Blocks and structure',
   组件: 'Blocks',
