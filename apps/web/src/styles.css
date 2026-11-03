@@ -8602,3 +8602,60 @@ button.theme-bundle-card {
  */
 .pp-query-block { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .pp-query-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+/* ---------- P3 · 锚点与目录（anchor / anchor-nav） ---------- */
+
+/*
+ * 锚点落点：站点头部是吸顶的（`.site-header`，内容高 66px + 1px 分割线），被跳过去的
+ * 那一节会藏在它后面，所以给落点多留一点上边距：66 + 1 + 5 的呼吸位。
+ *
+ * 平滑滚动**不在这里写**：`html` 上已经有一条 `scroll-behavior: smooth`，并在
+ * `prefers-reduced-motion: reduce` 下关掉（见文件开头的 `html` 与末尾的媒体查询）。
+ * 再写一份只会让两处规则互相打架——尤其是关掉动效的那一半很容易被漏掉。
+ */
+.pp-block[id] {
+  scroll-margin-top: 72px;
+}
+
+.pp-anchor-nav { display: flex; flex-direction: column; gap: 10px; }
+.pp-anchor-nav-heading {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.pp-anchor-nav-list {
+  margin: 0;
+  padding-left: 1.35em;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+.pp-anchor-nav-item { margin: 0; }
+/*
+ * 链接的点击区放大到能点中：目录条目本身很窄，行内文字的可点面积常常只有十几像素高，
+ * 触屏上很难命中。padding 加上负外边距，视觉上不动版。
+ */
+.pp-anchor-nav-link {
+  display: inline-block;
+  padding: 3px 2px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.pp-anchor-nav-link:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+.pp-anchor-nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+/* 当前读到的那一节：用主题色与字重标出，不只靠颜色（颜色之外还有字重）。 */
+.pp-anchor-nav-link[aria-current="location"] { color: var(--accent); font-weight: 600; }
+.pp-anchor-nav-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+@media (max-width: 767px) {
+  /* 窄屏头部更矮（`@media (max-width: 560px)` 里是 58px），落点留白跟着收。 */
+  .pp-block[id] { scroll-margin-top: 64px; }
+}
+

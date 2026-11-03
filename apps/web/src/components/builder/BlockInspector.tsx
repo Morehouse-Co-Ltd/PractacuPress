@@ -16,6 +16,7 @@ import {
   hasBlockAppearance,
 } from '../../lib/blockAppearance';
 import { gridPlacements, gridTemplate } from '../../lib/blocks';
+import { normalizeAnchor } from '../../lib/anchorNav';
 import {
   clampGridPlacement,
   overlayAt,
@@ -97,6 +98,13 @@ export function BlockInspector({
   const patch = (next: Partial<BlockInstance>) => onChange(updateBlock(blocks, block.id, next));
   const columns = block.type === 'columns' ? Math.min(4, Math.max(2, Number(block.props.columns ?? 2))) : 0;
   const children = block.children ?? [];
+  /**
+   * 锚点的**实际落点**：归一化只在渲染与提示里做，输入框保留作者原样打的东西
+   * （中文、空格都留着），这样编辑时不会被悄悄吃掉字符。
+   *
+   * 写入走 `patch`，落在基础区块上——锚点不是展示层字段，不分设备，不进 `at`。
+   */
+  const anchorSlug = normalizeAnchor(block.anchor ?? '');
   /** 当前设备这一层的覆盖；桌面没有层，永远是 undefined。 */
   const local = overrideOf(block, device);
   /**
@@ -254,6 +262,20 @@ export function BlockInspector({
         ) : null}
         <Field label={t('后台显示名')} hint={t('只影响编排器里的识别，不改变前台内容。')}>
           <Input value={block.title} onChange={(event) => patch({ title: event.target.value })} />
+        </Field>
+        <Field
+          label={t('锚点')}
+          hint={
+            anchorSlug
+              ? t('链接地址：#{anchor}；重复的锚点只有第一个生效。', { anchor: anchorSlug })
+              : t('只用小写字母、数字与连字符，最多 40 个字符；留空表示这个区块没有锚点。')
+          }
+        >
+          <Input
+            value={block.anchor ?? ''}
+            placeholder="section-id"
+            onChange={(event) => patch({ anchor: event.target.value || undefined })}
+          />
         </Field>
         <Field
           label={t('入场动画')}

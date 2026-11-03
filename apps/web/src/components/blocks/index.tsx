@@ -46,12 +46,16 @@ import { MEDIA_GALLERY_RENDERERS } from './MediaGalleryBlocks';
 import { CONVERSION_RENDERERS } from './ConversionBlocks';
 import { UTILITY_RENDERERS } from './UtilityBlocks';
 import { QUERY_RENDERERS } from './QueryBlocks';
+import { ANCHOR_RENDERERS } from './AnchorNav';
+import { AnchorScopeProvider, useAnchorScope } from './AnchorScope';
 import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
 
 /**
  * 界面渲染器：把一份组件编排画出来。
  *
  * - 每个区块包一层 <section data-pp-block="id">，思维链通过这个属性找到它；
+ * - 作者填了锚点时，同一个 <section> 再带上 `id`（整页去重，见 `AnchorScope`），
+ *   这样 `#anchor` 链接、浏览器的前进后退和目录高亮用的是同一个落点；
  * - 入场动画是 CSS 类（transform/opacity），首次进入视口时播放一次；
  * - prefers-reduced-motion 时自动降级（见 styles.css）；
  * - 未知区块类型直接跳过：旧配置在新版本里不会白屏。
@@ -74,6 +78,7 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...CONVERSION_RENDERERS,
   ...UTILITY_RENDERERS,
   ...QUERY_RENDERERS,
+  ...ANCHOR_RENDERERS,
 };
 
 /**
@@ -111,6 +116,9 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
   const feed = useFeed();
   const dataContext = useBlockDataContext();
   const visibility = useVisibility();
+  // 锚点是整页分配好的（见 `AnchorScope`）：重复的后来者根本不在表里，
+  // 所以这里查不到就当作没填，绝不自己再 normalize 一遍。
+  const anchors = useAnchorScope();
   // 组件文字可以绑定「显示什么数据」：在这里统一解析一次，所有渲染器都拿到
   // 已经换成真实数据的 props，不用逐个改渲染器。没有绑定时沿用原对象，避免
   // 每次渲染都产生新 props 触发子树重算。
@@ -154,6 +162,9 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
   return (
     <section
       ref={ref}
+      // 锚点直接落在这一层：`#anchor` 与浏览器前进后退都靠这个 id，包一层会把
+      // 「跳到哪」和「哪一段被高亮」错开。空锚点不会走到这里（表里没有）。
+      id={anchors.ids.get(displayBlock.id)}
       className={`pp-block${hasNestedLayer ? ' has-nested-layer' : ''}${
         seen && anim ? ` pp-anim pp-anim-${anim} is-in` : ''
       }${anim ? ' pp-anim-ready' : ''}`}
@@ -262,7 +273,10 @@ export function ScreenRenderer({
   if (!blocks.length) return null;
   return (
     <ScreenScopeProvider scope={scope ?? { type: 'home', id: 'home' }}>
-      <VisibilityProvider value={visibility}>{renderBlocks(blocks, variant, t)}</VisibilityProvider>
+      {/* 锚点分配要求「看见整页」：放在这一层，重复锚点才能按文档顺序判给第一个。 */}
+      <AnchorScopeProvider blocks={blocks}>
+        <VisibilityProvider value={visibility}>{renderBlocks(blocks, variant, t)}</VisibilityProvider>
+      </AnchorScopeProvider>
     </ScreenScopeProvider>
   );
 }

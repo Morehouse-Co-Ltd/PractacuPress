@@ -94,6 +94,13 @@ const fragment: Dictionary = {
   左对齐: 'Left',
   居中: 'Center',
   右对齐: 'Right',
+
+  // ---- 2026-11-03 P3 锚点 ----
+  锚点: 'Anchor',
+  '只用小写字母、数字与连字符，最多 40 个字符；留空表示这个区块没有锚点。':
+    'Lowercase letters, digits and hyphens only, up to 40 characters; leave it empty to give this block no anchor.',
+  '链接地址：#{anchor}；重复的锚点只有第一个生效。':
+    'Link target: #{anchor}; when anchors repeat, only the first one counts.',
 };
 
 export default fragment;

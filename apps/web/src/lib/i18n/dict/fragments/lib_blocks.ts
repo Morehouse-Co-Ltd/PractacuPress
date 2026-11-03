@@ -449,6 +449,11 @@ const fragment: Dictionary = {
   作者: 'Artist',
   封面: 'Cover image',
   '可留空；只作装饰，不参与读屏。': 'Optional; purely decorative and hidden from screen readers.',
+
+  // ---- 2026-11-03 P3 锚点目录（本页目录） ----
+  本页目录: 'Table of contents',
+  '按区块锚点自动生成本页目录，滚动时高亮当前一节。':
+    'Builds a table of contents from block anchors and highlights the current section as you scroll.',
 };
 
 export default fragment;

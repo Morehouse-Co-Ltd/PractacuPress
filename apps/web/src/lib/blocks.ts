@@ -1485,6 +1485,24 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     ],
   },
 
+  /* ---------------- 锚点目录（P3 本页目录） ---------------- */
+  /*
+   * 没有自己的内容：它列的是**别的区块**的锚点（见 `lib/anchorNav.ts` 与
+   * `components/blocks/AnchorScope.tsx`）。作者给区块填好锚点，这一块就自动长出
+   * 一条条链接；锚点为空或重复时目录侧去重、区块侧忽略，两边同一套规则。
+   */
+  {
+    type: 'anchor-nav',
+    name: t('本页目录'),
+    description: t('按区块锚点自动生成本页目录，滚动时高亮当前一节。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '' },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+    ],
+  },
+
   /* ---------------- 内容型（P3 查询块） ---------------- */
   {
     type: 'content-query',
