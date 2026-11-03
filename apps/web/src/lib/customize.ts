@@ -69,6 +69,7 @@ import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 import { normalizeLocale } from './i18n/locales';
 import { CURRENT_SCHEMA_VERSION, migrateCustomization } from './migrate';
+import { publishMigrationReport } from './migrationNotice';
 
 /**
  * 站点外观、页面与扩展。
@@ -1171,6 +1172,10 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
   // 折算现在安全了：渲染层已经求值 at（见 ScreenRenderer 的 applyDisplayOverrides），
   // 折叠掉的手机/平板布局会以 at 覆盖的形式继续生效。
   const migrated = migrateCustomization(config.customization, { foldDevices: true });
+  // 规格 §5.1：折算改写了作者的版面，得让作者知道。报告只交给模块内存（见
+  // lib/migrationNotice.ts），由后台界面取走做一次性提示。访客的引导流程也会走到
+  // 这里，所以这里绝不能碰 localStorage——「已读」只由后台界面记录。
+  publishMigrationReport(migrated.report);
   const raw = migrated.value as Partial<SiteCustomization>;
   const theme = normalizeThemeSettings(raw.theme);
   const layout = raw.layout ?? DEFAULT_LAYOUT;

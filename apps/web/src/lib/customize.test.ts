@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pageSearchText, readCustomization, starterPages } from './customize';
+import { takeMigrationReport } from './migrationNotice';
 
 describe('readCustomization nested blocks', () => {
   it('keeps recursive children and clamps columns', () => {
@@ -157,5 +158,42 @@ describe('页面内容全部来自页面编排', () => {
       },
     } as never);
     expect(pageSearchText(customization.pages[0])).toContain('一间隔音很好的书房');
+  });
+});
+
+// 规格 §5.1：折算改写了作者的版面，读取路径必须把迁移器写的报告交出来——
+// 后台的「版面已自动升级」提示就是从这里拿数据的。
+describe('版面迁移报告', () => {
+  it('折算分端编排之后把报告发布到内存队列', () => {
+    // 先清掉上一条用例可能留下的报告，断言的就是这一次读取。
+    takeMigrationReport();
+    const block = {
+      id: 'hero',
+      type: 'text',
+      title: '标题',
+      props: { title: '你好', body: '正文' },
+      animation: 'fade',
+      hidden: false,
+    };
+
+    readCustomization({
+      customization: {
+        home: {
+          blocks: [block],
+          device_split: true,
+          devices: {
+            desktop: { blocks: [block] },
+            // 手机树只有展示层字段不同：可以被折算进 at，因此会产生报告。
+            mobile: { blocks: [{ ...block, animation: 'none' }] },
+          },
+        },
+      },
+    } as never);
+
+    const report = takeMigrationReport();
+    expect(report).not.toEqual([]);
+    expect(report.join('\n')).toContain('首页');
+    // 取走即清空：同一会话里第二个组件不会重复弹窗。
+    expect(takeMigrationReport()).toEqual([]);
   });
 });

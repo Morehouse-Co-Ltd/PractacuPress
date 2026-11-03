@@ -55,6 +55,9 @@ const fragment: Dictionary = {
   // ---- 保存护栏（规格 §4.5 体积预算） ----
   '这份编排有 {count} 个区块，超过上限 {limit} 个。请先删掉一些再保存。':
     'This layout has {count} blocks, over the limit of {limit}. Delete some before saving.',
+  // ---- 版面迁移的一次性说明（规格 §5.1） ----
+  版面已自动升级: 'Your layout was upgraded automatically',
+  知道了: 'Got it',
 };
 
 export default fragment;

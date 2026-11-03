@@ -33,6 +33,12 @@ import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
+import {
+  hasSeenMigrationReport,
+  markMigrationReportSeen,
+  migrationReportSignature,
+  takeMigrationReport,
+} from '../../lib/migrationNotice';
 
 /**
  * 全屏页面编排工作台。
@@ -40,6 +46,16 @@ import { useT } from '../../lib/i18n';
  * 中间 iframe 是真实前台；左侧组件/结构树和右侧属性检查器是可收起的悬浮窗。
  * 页面编排结果仍写进 customization.home / pages[].layout，兼容旧配置。
  */
+
+/**
+ * 同一次会话里是否已经弹过迁移说明。
+ *
+ * 「已读」是跨会话的持久记录，只在作者点「知道了」之后才写；但配置每变一次都会重新
+ * 走读入路径（`readCustomization` 会重新发布报告），所以「关掉弹窗却没点知道了，
+ * 离开编排台再回来」会让它再弹一次。这个模块级标记补上另一半：本次会话提示过就不再
+ * 自动打开，跨会话仍由 localStorage 的已读签名兜底。
+ */
+let migrationNoticeShown = false;
 
 export function ThemeBuilderPage() {
   const t = useT();
@@ -69,6 +85,11 @@ export function ThemeBuilderPage() {
   const [locateRequest, setLocateRequest] = useState<{ blockId: string; nonce: number } | null>(null);
   // 「文章页」目标需要一个真实文章地址来预览；打开时取第一篇文章。
   const [articlePreviewUrl, setArticlePreviewUrl] = useState('');
+  // 规格 §5.1：读取路径折算过版面时的一次性说明（报告正文 + 已读签名）。
+  const [migrationNotice, setMigrationNotice] = useState<{
+    report: string[];
+    signature: string;
+  } | null>(null);
 
   const currentTheme = activeTheme(customization.active_theme, customization.themes ?? []);
   const themeLabel = currentTheme?.name ?? t('自定义主题');
@@ -188,6 +209,23 @@ export function ThemeBuilderPage() {
       document.body.style.overflow = '';
       document.body.classList.remove('builder-mode');
     };
+  }, []);
+
+  /**
+   * 版面迁移的一次性说明（规格 §5.1）。
+   *
+   * 读取路径已经把分端编排折算成 `at` 覆盖 / 把像素宽折成栅格占位，这里只负责把
+   * 迁移器写好的报告交给作者。报告取走即清空，加上模块级的 `migrationNoticeShown`，
+   * 严格模式的重复挂载与「离开再回来」都不会第二次弹出；报告为空（绝大多数情况，
+   * 已迁移过的站点）时什么都不做。
+   */
+  useEffect(() => {
+    const report = takeMigrationReport();
+    if (!report.length) return;
+    const signature = migrationReportSignature(report);
+    if (hasSeenMigrationReport(signature) || migrationNoticeShown) return;
+    migrationNoticeShown = true;
+    setMigrationNotice({ report, signature });
   }, []);
 
   useEffect(() => {
@@ -332,6 +370,12 @@ export function ThemeBuilderPage() {
             ? t('已按原模板重建组件；页面正文、标题和路径没有改变。')
             : t('组件已清空，页面正文仍会显示。'),
     );
+  };
+
+  /** 关掉迁移说明，并把这份报告记成「已读」——下次读取同一套迁移不再提示。 */
+  const dismissMigrationNotice = () => {
+    if (migrationNotice) markMigrationReportSeen(migrationNotice.signature);
+    setMigrationNotice(null);
   };
 
   const previewUrl =
@@ -542,6 +586,20 @@ export function ThemeBuilderPage() {
           <Callout tone="warn" icon="alert" title={t('只重置编排，不动内容')}>
             {t('文章、页面正文、评论、账户与媒体都不会被删除。恢复后可以按 Ctrl/Cmd + Z 撤销。')}
           </Callout>
+        </Modal>
+
+        <Modal
+          open={!!migrationNotice}
+          title={t('版面已自动升级')}
+          onClose={dismissMigrationNotice}
+          footer={<Button onClick={dismissMigrationNotice}>{t('知道了')}</Button>}
+        >
+          {/* 列表样式写在行内：样式表是全站共享文件，不值得为三行弹窗正文加一个类。 */}
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
+            {(migrationNotice?.report ?? []).map((line, index) => (
+              <li key={`${index}-${line}`}>{line}</li>
+            ))}
+          </ul>
         </Modal>
       </div>
     </RoleGate>
