@@ -232,8 +232,12 @@ function foldDocument(doc: Record<string, unknown>, report: string[]): void {
 /**
  * v1 → v2 迁移。
  *
- * 做两件事：盖上版本号、把 `home` / `article` / `pages[].layout` 原样留在原位。
+ * 做三件事：盖上版本号、把 `home` / `article` / `pages[].layout` 原样留在原位，
  * 传 `{ foldDevices: true }` 时再把三端独立编排折算成 `at` 覆盖（见 `foldDeviceLayouts`）。
+ *
+ * 折算**不看版本号**：P1 之前编辑器一直在生成 `device_split`，那些文档的
+ * `schema_version` 已经是 2（§5.3）。只在 v1 上折，v2 里的三棵树就永远不会折，
+ * 两套模型会一直并存。没有 `device_split` 的 v2 文档折算仍是空操作，不会产生报告。
  *
  * 纯函数：只改浅拷贝出来的文档，折算出的编排都是新对象。
  */
@@ -241,10 +245,11 @@ export function migrateCustomization(raw: unknown, options: MigrateOptions = {})
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { value: {}, report: [] };
   const doc: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
   const version = typeof doc.schema_version === 'number' ? doc.schema_version : 1;
-  if (version >= CURRENT_SCHEMA_VERSION) return { value: doc, report: [] };
+  const fold = options.foldDevices === true;
+  if (version >= CURRENT_SCHEMA_VERSION && !fold) return { value: doc, report: [] };
 
   doc.schema_version = CURRENT_SCHEMA_VERSION;
-  if (options.foldDevices !== true) return { value: doc, report: [] };
+  if (!fold) return { value: doc, report: [] };
 
   const report: string[] = [];
   foldDocument(doc, report);

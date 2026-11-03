@@ -16,6 +16,9 @@ const DEVICES: { key: PreviewDevice; width: string }[] = [
  *
  * 编排器写配置后 iframe 通过 storage 事件更新自身；选中区块通过 postMessage
  * 让预览高亮，双击组件时再让预览平滑移动到它；预览里的点击/双击回传给编排器。
+ *
+ * P1 §5.3 起这里不再有「不同设备分割」开关：设备差异写在区块的 `at` 覆盖层里，
+ * 编辑器不应再生成三棵独立的树。旧文档里的 `device_split` 仍然能读、能渲染。
  */
 export function PreviewFrame({
   url,
@@ -26,8 +29,6 @@ export function PreviewFrame({
   animationPreview,
   device,
   onDeviceChange,
-  split,
-  onSplitChange,
 }: {
   url: string;
   selectedId: string | null;
@@ -40,9 +41,6 @@ export function PreviewFrame({
   /** 受控设备；不传时组件自己维护（兼容旧调用）。 */
   device?: PreviewDevice;
   onDeviceChange?: (device: PreviewDevice) => void;
-  /** 是否开启「不同设备分割」。 */
-  split?: boolean;
-  onSplitChange?: (enabled: boolean) => void;
 }) {
   const t = useT();
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -119,19 +117,6 @@ export function PreviewFrame({
               {deviceLabels[item.key]}
             </button>
           ))}
-          {onSplitChange ? (
-            <label
-              className="builder-split-switch"
-              title={t('开启后，桌面 / 平板 / 手机各用一份独立编排')}
-            >
-              <input
-                type="checkbox"
-                checked={!!split}
-                onChange={(event) => onSplitChange(event.target.checked)}
-              />
-              <span>{t('不同设备分割')}</span>
-            </label>
-          ) : null}
         </div>
         <div className="row gap-4">
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => setNonce((value) => value + 1)}>

@@ -99,6 +99,44 @@ describe('渲染入口上的条件显示', () => {
     expect(ids).not.toContain('kid-mobile-only');
   });
 
+  it('分栏列里的子区块同样服从角色条件：访客看不到 members 区块', () => {
+    me = null;
+    const host = mount({
+      blocks: [
+        createBlock('columns', {
+          id: 'cols',
+          props: { columns: 2, gap: 'normal' },
+          children: [
+            block('col-plain', { column: 1 }),
+            block('col-members', { column: 2, visible: { roles: ['member'] } }),
+          ],
+        }),
+      ],
+    });
+
+    const ids = renderedIds(host);
+    expect(ids).toContain('col-plain');
+    expect(ids).not.toContain('col-members');
+  });
+
+  it('分栏列里的 members 区块对登录会员可见', () => {
+    me = { user: { id: 'u1' } as Me['user'], role: 'member', site_id: 's1' };
+    const host = mount({
+      blocks: [
+        createBlock('columns', {
+          id: 'cols',
+          props: { columns: 2, gap: 'normal' },
+          children: [
+            block('col-plain', { column: 1 }),
+            block('col-members', { column: 2, visible: { roles: ['member'] } }),
+          ],
+        }),
+      ],
+    });
+
+    expect(renderedIds(host)).toContain('col-members');
+  });
+
   it('条件全部满足不了时整屏为空，不留外壳', () => {
     me = null;
     const host = mount({ blocks: [block('members-only', { visible: { roles: ['member'] } })] });

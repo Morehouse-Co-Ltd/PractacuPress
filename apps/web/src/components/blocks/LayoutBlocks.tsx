@@ -12,6 +12,9 @@ export function ContainerBlock({ children }: { children: ReactNode }) {
  *
  * 渲染器不自己递归，而是由 blocks/index.tsx 传入 renderChild，保证每一层都
  * 复用同一套 BlockView（动画、data-pp-block、隐藏过滤都在那里处理）。
+ *
+ * `block.children` 到这里已经过 hidden 与条件显示（`isVisibleAt`）的过滤：
+ * 分栏只负责落位，不再自己判断谁能看——两处各写一遍多半会漏掉一处。
  */
 export function ColumnsBlock({
   block,
@@ -21,7 +24,7 @@ export function ColumnsBlock({
   renderChild: (child: BlockInstance) => ReactNode;
 }) {
   const count = columnCount(block);
-  const children = (block.children ?? []).filter((child) => !child.hidden);
+  const children = block.children ?? [];
   const gap = String(blockProp(block, 'gap', 'normal'));
   return (
     <div className={`pp-columns pp-columns-${count} pp-columns-gap-${gap}`} data-pp-columns={count}>

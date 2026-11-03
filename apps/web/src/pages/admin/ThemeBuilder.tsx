@@ -6,7 +6,6 @@ import { useCustomization } from '../../lib/customize';
 import { activeTheme } from '../../lib/themes';
 import { loadConfig, useBackend } from '../../lib/backend';
 import {
-  cloneBlocks,
   createBlock,
   defaultHomeLayout,
   screenBlocksForDevice,
@@ -83,7 +82,6 @@ export function ThemeBuilderPage() {
   const blocks = screenBlocksForDevice(screenLayout, device);
   const history = useBuilderHistory(blocks);
   const selected = findBlock(history.value, selectedId ?? '')?.block ?? null;
-  const splitDevices = screenLayout.device_split === true;
 
   const setScreenLayout = (next: ScreenLayout) => {
     if (target === 'home') {
@@ -156,37 +154,13 @@ export function ThemeBuilderPage() {
     history.reset(screenBlocksForDevice(screenLayout, next));
   };
 
-  /** 打开时把当前编排复制给三台设备，关闭时以桌面版作为共用编排。 */
-  const toggleSplit = (enabled: boolean) => {
-    if (enabled === splitDevices) return;
-    setSelectedId(null);
-    setLocateRequest(null);
-    if (enabled) {
-      const current = history.value;
-      setScreenLayout({
-        blocks: current,
-        device_split: true,
-        devices: {
-          desktop: { blocks: current },
-          tablet: { blocks: cloneBlocks(current) },
-          mobile: { blocks: cloneBlocks(current) },
-        },
-      });
-      setDevice('desktop');
-      history.reset(current);
-      toast.push(
-        'ok',
-        t('已开启不同设备分割'),
-        t('桌面 / 平板 / 手机现在各有一份独立编排，切换设备再编辑。'),
-      );
-      return;
-    }
-    const desktop = screenLayout.devices?.desktop?.blocks ?? history.value;
-    setScreenLayout({ blocks: desktop });
-    setDevice('desktop');
-    history.reset(desktop);
-    toast.push('ok', t('已关闭不同设备分割'), t('三台设备重新共用同一份编排（保留桌面版）。'));
-  };
+  /**
+   * 旧的分设备编排（device_split）只读不写。
+   *
+   * P1 §5.3 起编辑器不再生成 `device_split`：设备差异写进区块的 `at` 覆盖层，
+   * 三台设备共用同一棵树。历史文档里残留的三棵树仍然照常读取与渲染（见
+   * `persistBlocks` / `changeDevice`），但不再提供「开启分割」的入口。
+   */
 
   useEffect(() => {
     if (target !== 'article' || articlePreviewUrl) return;
@@ -416,8 +390,6 @@ export function ThemeBuilderPage() {
           animationPreview={animationPreview}
           device={device}
           onDeviceChange={changeDevice}
-          split={splitDevices}
-          onSplitChange={toggleSplit}
         />
 
         <div className="builder-floating-top">

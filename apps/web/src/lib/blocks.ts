@@ -1387,20 +1387,31 @@ export function widthToSpan(width: number, containerWidth: number, columns = 12)
 /**
  * 一次性把「像素宽」折算成「栅格占位」。
  *
+ * 只折算**直接位于 grid 容器内**的区块：`span` 只有 `GridBlock` 会消费，而
+ * `BlockView` 仍然用 `width` 画外层区块的宽度。把 grid 之外的 width 折成 span
+ * 并删掉 width，等于让 v1 里设过像素宽的区块在第一次读取后悄悄变成满宽——
+ * P1 的底线是「v1 配置读出来仍然渲染成原来的样子」。
+ *
+ * 「是不是栅格里的格子」由 `inGrid` 一路传下去，不回头去查父节点：父节点信息在
+ * 递归里本来就有，事后再找一遍既慢又容易和真实嵌套走散。
+ *
  * 只处理没有 span 的区块——已经有 span 的说明用户已经按格子排过，不再二次折算。
- * 这是 P1 §5.1 定下的一次性迁移：不保留两套宽度语义并存。
  */
 export function migrateWidthsToSpan(
   blocks: BlockInstance[],
   containerWidth: number,
   columns = 12,
+  inGrid = false,
 ): BlockInstance[] {
   return blocks.map((block) => {
+    // 只有 grid 的直接子区块才是「格子」；grid 里再套 container / columns，
+    // 更深的区块已经不是栅格项，宽度语义照旧。
+    const childInGrid = block.type === 'grid';
     const children = block.children?.length
-      ? migrateWidthsToSpan(block.children, containerWidth, columns)
+      ? migrateWidthsToSpan(block.children, containerWidth, columns, childInGrid)
       : block.children;
     const next: BlockInstance = children !== block.children ? { ...block, children } : block;
-    if (typeof block.width !== 'number' || block.width <= 0 || block.span) return next;
+    if (!inGrid || typeof block.width !== 'number' || block.width <= 0 || block.span) return next;
     const { width: _dropWidth, ...rest } = next;
     return { ...rest, span: { base: widthToSpan(block.width, containerWidth, columns) } };
   });

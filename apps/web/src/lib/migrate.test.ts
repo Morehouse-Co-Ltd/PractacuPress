@@ -98,6 +98,60 @@ describe('migrateCustomization', () => {
     expect(home.devices).toBeUndefined();
   });
 
+  it('v2 文档里残留的 device_split 同样折算（§5.3：不再只在 v1 上折）', () => {
+    // P1 之前编辑器一直在生成三棵树，这些文档的 schema_version 已经是 2。
+    // 只看版本号的话，它们永远不会折，两套模型就一直并存。
+    const { value, report } = migrateCustomization(
+      {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        home: {
+          blocks: [block('a'), block('b')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a'), block('b', { hidden: true })] } },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect(home.device_split).toBeUndefined();
+    expect(home.devices).toBeUndefined();
+    expect((home.blocks as Array<Record<string, unknown>>)[1].at).toEqual({ mobile: { hidden: true } });
+    expect(report.join('')).toContain('手机');
+  });
+
+  it('v2 文档里真正不同的设备树仍然保留并报告（守卫不变）', () => {
+    const { value, report } = migrateCustomization(
+      {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [{ ...block('a'), title: '手机版标题' }] } },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect(home.device_split).toBe(true);
+    expect((home.devices as Record<string, unknown>).mobile).toBeDefined();
+    expect((home.blocks as Array<Record<string, unknown>>)[0].at).toBeUndefined();
+    expect(report.join('')).toContain('内容');
+  });
+
+  it('关闭折算时 v2 文档原样返回（编辑器只读不写 device_split）', () => {
+    const input = {
+      schema_version: CURRENT_SCHEMA_VERSION,
+      home: {
+        blocks: [block('a')],
+        device_split: true,
+        devices: { mobile: { blocks: [block('a', { hidden: true })] } },
+      },
+    };
+    const { value, report } = migrateCustomization(structuredClone(input));
+    expect(value).toEqual(input);
+    expect(report).toEqual([]);
+  });
+
   it('桌面编辑在 devices.desktop 里时以它为准（不退回旧快照）', () => {
     // layout.blocks 只是「打开分端那一刻」的快照，之后的桌面编辑进了 devices.desktop。
     // 两边结构一致时若仍拿快照当基础，站点会悄悄退回旧内容。
@@ -360,6 +414,24 @@ describe('迁移结果落盘', () => {
   it('读取路径显式打开了折算：v1 的三端编排读进来就是 at', () => {
     const config = {
       customization: {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { hidden: true })] } },
+        },
+      },
+    } as unknown as WebConfig;
+
+    const customization = readCustomization(config);
+    expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
+    expect(customization.home.device_split).toBeUndefined();
+    expect(customization.home.devices).toBeUndefined();
+  });
+
+  it('读取路径对 v2 文档同样折算残留的 device_split（§5.3）', () => {
+    const config = {
+      customization: {
+        schema_version: 2,
         home: {
           blocks: [block('a')],
           device_split: true,

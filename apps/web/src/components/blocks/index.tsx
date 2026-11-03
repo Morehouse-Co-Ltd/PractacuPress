@@ -163,7 +163,13 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
       {skeletonShape ? (
         <BlockSkeleton block={displayBlock} shape={skeletonShape} />
       ) : isColumns ? (
-        <ColumnsBlock block={displayBlock} renderChild={(child) => <BlockView key={child.id} block={child} />} />
+        // 分栏自己不认得设备与角色：把同一份过滤结果（hidden + 条件显示）交给它，
+        // 与栅格 / 分节同一条路径。少了这一步，列里 members-only 或未来日期的区块
+        // 会在访客面前照常渲染——`ColumnsBlock` 只过滤 hidden。
+        <ColumnsBlock
+          block={{ ...displayBlock, children: visibleChildren }}
+          renderChild={(child) => <BlockView key={child.id} block={child} />}
+        />
       ) : isContainer ? (
         <ContainerBlock>
           {visibleChildren.map((child) => (
