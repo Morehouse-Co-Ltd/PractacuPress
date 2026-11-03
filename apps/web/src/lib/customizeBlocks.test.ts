@@ -63,6 +63,39 @@ describe('normalizeScreenLayout', () => {
   });
 });
 
+describe('normalizeScreenLayout：分设备 offset', () => {
+  function blockWithTablet(override: unknown) {
+    return { ...textBlock('g1'), at: { tablet: override } };
+  }
+
+  it('分设备 offset 归一化后原样保留', () => {
+    const layout = normalizeScreenLayout({
+      blocks: [blockWithTablet({ offset: { base: 0, md: 3 } })],
+    });
+    // 读一次再存一次不能把平板上的偏移吃掉——白名单漏了 offset，刷新就永久丢失。
+    expect(layout.blocks[0].at?.tablet?.offset).toEqual({ base: 0, md: 3 });
+  });
+
+  it('分设备 offset 超界夹到 11（偏移的上限是 11，不是 span 的 12）', () => {
+    const layout = normalizeScreenLayout({ blocks: [blockWithTablet({ offset: { base: 99 } })] });
+    expect(layout.blocks[0].at?.tablet?.offset).toEqual({ base: 11 });
+  });
+
+  it('offset 0 保留为 0：借用 span 的 1–12 夹取会把它抬成 1', () => {
+    const layout = normalizeScreenLayout({ blocks: [blockWithTablet({ offset: { base: 0 } })] });
+    expect(layout.blocks[0].at?.tablet?.offset).toEqual({ base: 0 });
+  });
+
+  it('坏掉的 offset 被丢弃，同一份覆盖里的其它字段照常保留', () => {
+    const layout = normalizeScreenLayout({
+      blocks: [blockWithTablet({ offset: { base: 'x' }, span: { base: 6 } })],
+    });
+    const tablet = layout.blocks[0].at?.tablet;
+    expect(tablet?.offset).toBeUndefined();
+    expect(tablet?.span).toEqual({ base: 6 });
+  });
+});
+
 describe('blockBudgetStatus', () => {
   it('超过 200 个区块时报告超限', () => {
     const blocks = Array.from({ length: 201 }, (_, i) => textBlock(`b${i}`));

@@ -511,6 +511,8 @@ export interface BlockSpan {
 export type BlockDisplayOverride = Partial<
   Pick<BlockInstance, 'span' | 'appearance' | 'animation' | 'hidden' | 'custom_css' | 'width' | 'height'>
 > & {
+  /** 分设备的栅格起始列偏移；与 `span` 同形，取值 0–11。 */
+  offset?: BlockSpan;
   align?: 'left' | 'center' | 'right';
   gap_scale?: number;
   mt?: number;

@@ -597,12 +597,40 @@ function normalizeBlockSpan(value: unknown): BlockSpan | undefined {
   return span;
 }
 
+/**
+ * 起始列偏移是栅格里的「从第几栏开始」，不是宽度：0 完全合法（第一栏起），
+ * 上限是 11（第 12 栏起）。所以它不能借 `span` 的 1–12 夹取——那会把
+ * 合法的 `offset: 0` 抬成 1。
+ */
+const OFFSET_MIN = 0;
+const OFFSET_MAX = 11;
+
+function clampOffset(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
+  return Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, value));
+}
+
+function normalizeBlockOffset(value: unknown): BlockSpan | undefined {
+  const record = plainRecord(value);
+  if (!record) return undefined;
+  const base = clampOffset(record.base);
+  if (base === undefined) return undefined;
+  const offset: BlockSpan = { base };
+  for (const key of ['md', 'sm'] as const) {
+    const item = clampOffset(record[key]);
+    if (item !== undefined) offset[key] = item;
+  }
+  return offset;
+}
+
 function normalizeDisplayOverride(value: unknown): BlockDisplayOverride | undefined {
   const record = plainRecord(value);
   if (!record) return undefined;
   const patch: BlockDisplayOverride = {};
   const span = normalizeBlockSpan(record.span);
   if (span) patch.span = span;
+  const offset = normalizeBlockOffset(record.offset);
+  if (offset) patch.offset = offset;
   const appearance = normalizeBlockAppearance(record.appearance);
   if (appearance) patch.appearance = appearance;
   if (typeof record.animation === 'string' && (ANIMATIONS as string[]).includes(record.animation)) {
