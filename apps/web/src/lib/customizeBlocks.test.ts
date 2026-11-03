@@ -94,6 +94,13 @@ describe('normalizeScreenLayout：分设备 offset', () => {
     expect(tablet?.offset).toBeUndefined();
     expect(tablet?.span).toEqual({ base: 6 });
   });
+
+  it('顶层 offset 也按 0–11 归一化，offset 0 不被抬成 1', () => {
+    const layout = normalizeScreenLayout({
+      blocks: [{ ...textBlock('top'), offset: { base: 0 } }],
+    });
+    expect(layout.blocks[0].offset).toEqual({ base: 0 });
+  });
 });
 
 describe('blockBudgetStatus', () => {

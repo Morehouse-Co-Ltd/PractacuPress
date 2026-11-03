@@ -697,7 +697,8 @@ function blockDisplayFields(raw: Partial<BlockInstance>): Partial<BlockInstance>
   const at = normalizeBlockAt(raw.at);
   const visible = normalizeBlockVisibility(raw.visible);
   const span = normalizeBlockSpan(raw.span);
-  const offset = normalizeBlockSpan(raw.offset);
+  // offset 是「从第几栏起」，0 合法、上限 11，不能借用 span 的 1–12 夹取。
+  const offset = normalizeBlockOffset(raw.offset);
   const anchor = typeof raw.anchor === 'string' && raw.anchor ? raw.anchor.slice(0, 120) : undefined;
   return {
     ...(at ? { at } : {}),
