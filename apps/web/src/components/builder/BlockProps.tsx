@@ -48,6 +48,57 @@ function BindPicker({
   );
 }
 
+/**
+ * 媒体字段：地址输入框 + 「从媒体库选择」按钮。
+ *
+ * 顶层 `media` 属性与 repeater 行共用这一份实现——两处界面一致，也只有一个
+ * 地方需要维护。值的形状仍然是一个纯 URL 字符串，选择器只负责把它写回去。
+ *
+ * 弹窗开关由调用方（受控）持有：repeater 用同一份 `openRow` 状态保证同一时刻
+ * 只有一行能打开选择器，而不是每行各弹一个。
+ */
+function MediaField({
+  id,
+  value,
+  onChange,
+  ariaLabel,
+  open,
+  onOpen,
+  onClose,
+}: {
+  id?: string;
+  value: string;
+  onChange: (url: string) => void;
+  ariaLabel?: string;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const pickLabel = t('从媒体库选择');
+  return (
+    <>
+      <div className="media-field">
+        <Input
+          id={id}
+          value={value}
+          aria-label={ariaLabel}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-label={ariaLabel ? `${ariaLabel} ${pickLabel}` : undefined}
+          onClick={onOpen}
+        >
+          {pickLabel}
+        </Button>
+      </div>
+      {open ? <MediaPicker open onClose={onClose} onPick={onChange} /> : null}
+    </>
+  );
+}
+
 function PropControl({
   block,
   schema,
@@ -61,6 +112,8 @@ function PropControl({
   const id = `blk-${block.id}-${schema.key}`;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  /** repeater 行里的媒体弹窗：`行号:字段名`，同一时刻只可能有一个。 */
+  const [openRow, setOpenRow] = useState<string | null>(null);
 
   if (schema.type === 'repeater') {
     const items = blockPropRecord(block, schema.key);
@@ -87,37 +140,57 @@ function PropControl({
                 const update = (value: string | number | boolean) => {
                   commit(items.map((entry, i) => (i === index ? { ...entry, [field.key]: value } : entry)));
                 };
-                return (
+                const rowKey = `${index}:${field.key}`;
+                const control =
+                  field.type === 'media' ? (
+                    <MediaField
+                      value={String(item[field.key] ?? '')}
+                      onChange={update}
+                      ariaLabel={label}
+                      open={openRow === rowKey}
+                      onOpen={() => setOpenRow(rowKey)}
+                      onClose={() => setOpenRow(null)}
+                    />
+                  ) : field.type === 'select' ? (
+                    <select
+                      value={String(item[field.key] ?? '')}
+                      onChange={(event) => update(event.target.value)}
+                      aria-label={label}
+                    >
+                      <option value="">—</option>
+                      {(field.options ?? []).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.type === 'toggle' ? (
+                    <input
+                      type="checkbox"
+                      checked={item[field.key] === true}
+                      onChange={(event) => update(event.target.checked)}
+                      aria-label={label}
+                    />
+                  ) : (
+                    <input
+                      type={field.type === 'color' ? 'color' : 'text'}
+                      value={String(item[field.key] ?? '')}
+                      onChange={(event) => update(event.target.value)}
+                      aria-label={label}
+                    />
+                  );
+                // 媒体行多了「从媒体库选择」按钮：按钮不能放进 <label>（label 只收
+                // 短语内容，点按钮也会被当成点标签），所以换成同一套 class 的 div，
+                // 可访问名由控件自带的 aria-label 提供。其余行保持原来的 label。
+                return field.type === 'media' ? (
+                  <div key={field.key} className="itemlist-field">
+                    <span>{field.label}</span>
+                    {control}
+                  </div>
+                ) : (
                   <label key={field.key} className="itemlist-field">
                     <span>{field.label}</span>
-                    {field.type === 'select' ? (
-                      <select
-                        value={String(item[field.key] ?? '')}
-                        onChange={(event) => update(event.target.value)}
-                        aria-label={label}
-                      >
-                        <option value="">—</option>
-                        {(field.options ?? []).map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : field.type === 'toggle' ? (
-                      <input
-                        type="checkbox"
-                        checked={item[field.key] === true}
-                        onChange={(event) => update(event.target.checked)}
-                        aria-label={label}
-                      />
-                    ) : (
-                      <input
-                        type={field.type === 'color' ? 'color' : 'text'}
-                        value={String(item[field.key] ?? '')}
-                        onChange={(event) => update(event.target.value)}
-                        aria-label={label}
-                      />
-                    )}
+                    {control}
                   </label>
                 );
               })}
@@ -153,20 +226,13 @@ function PropControl({
   if (schema.type === 'media') {
     return (
       <Field label={schema.label} hint={schema.hint} htmlFor={id}>
-        <div className="media-field">
-          <Input
-            id={id}
-            value={String(block.props[schema.key] ?? '')}
-            onChange={(event) => onChange(schema.key, event.target.value)}
-          />
-          <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
-            {t('从媒体库选择')}
-          </Button>
-        </div>
-        <MediaPicker
+        <MediaField
+          id={id}
+          value={String(block.props[schema.key] ?? '')}
+          onChange={(url) => onChange(schema.key, url)}
           open={pickerOpen}
+          onOpen={() => setPickerOpen(true)}
           onClose={() => setPickerOpen(false)}
-          onPick={(url) => onChange(schema.key, url)}
         />
       </Field>
     );
