@@ -47,7 +47,14 @@ import {
   inferActiveTheme,
   normalizeCustomTheme,
 } from './themes';
-import { BLOCK_TYPES, blockDef, createBlock, defaultHomeLayout, nextBlockId } from './blocks';
+import {
+  BLOCK_TYPES,
+  blockDef,
+  createBlock,
+  defaultHomeLayout,
+  migrateWidthsToSpan,
+  nextBlockId,
+} from './blocks';
 import type { PropSchema } from './blocks';
 import { normalizeBlockAppearance } from './blockAppearance';
 import { MAX_BLOCKS, MAX_BLOCK_DEPTH, MAX_CHILDREN_PER_CONTAINER, clampColumn, countBlocks } from './blockTree';
@@ -999,9 +1006,21 @@ function normalizeBlockList(value: unknown): BlockInstance[] {
   return trimmed;
 }
 
+/**
+ * 读取路径上的一次性折算：像素宽（`width`）→ 栅格占位（`span`）。
+ *
+ * 这是 P1 §5.1 定下的「一次性迁移」：只在读入时折，不在保存时折，两套宽度语义
+ * 不会长期并存。折算一律在 `normalizeBlockList` 之后、`at` 分档覆盖之外进行：
+ * 归一化看到的是原始树，`at.tablet` / `at.mobile` 里的大小覆盖是用户按设备分档
+ * 定的，不能被一次折算吃掉（否则手机上的差异读一次就永久丢失）。
+ *
+ * 容器宽按 1200 估算（常规内容宽），只影响折算出的档位，不影响渲染的真实宽度。
+ */
+const MIGRATE_CONTAINER_WIDTH = 1200;
+
 export function normalizeScreenLayout(value: unknown): ScreenLayout {
   const raw = value as ScreenLayout | undefined;
-  const blocks = normalizeBlockList(raw?.blocks);
+  const blocks = migrateWidthsToSpan(normalizeBlockList(raw?.blocks), MIGRATE_CONTAINER_WIDTH);
   if (!raw?.device_split || !raw.devices || typeof raw.devices !== 'object') {
     return { blocks };
   }
@@ -1009,7 +1028,9 @@ export function normalizeScreenLayout(value: unknown): ScreenLayout {
   for (const device of ['desktop', 'tablet', 'mobile'] as const) {
     const entry = raw.devices[device];
     if (!entry || !Array.isArray(entry.blocks)) continue;
-    devices[device] = { blocks: normalizeBlockList(entry.blocks) };
+    devices[device] = {
+      blocks: migrateWidthsToSpan(normalizeBlockList(entry.blocks), MIGRATE_CONTAINER_WIDTH),
+    };
   }
   return { blocks, device_split: true, devices };
 }

@@ -631,7 +631,7 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     description: t('一整段版面：可限宽、可设上下留白、可加底色与分割线。'),
     group: 'shared',
     variants: ['classic', 'bento'],
-    defaults: { max_width: 'normal', padding_y: 5, background: '', divider: false },
+    defaults: { max_width: 'normal', padding_y: 6, background: '', divider: false },
     schema: [
       {
         key: 'max_width',
@@ -639,7 +639,7 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
         type: 'select',
         options: [
           { value: 'narrow', label: t('窄（640）') },
-          { value: 'normal', label: t('常规（960）') },
+          { value: 'normal', label: t('常规（860）') },
           { value: 'wide', label: t('宽（1200）') },
           { value: 'full', label: t('满宽') },
         ],
@@ -1371,3 +1371,37 @@ export function sectionLayout(block: BlockInstance): {
   };
 }
 
+/* ---------------- 像素宽 → 栅格占位（一次性折算） ---------------- */
+
+/**
+ * 像素宽折算成栅格列数；向上取整，坏输入按满栏处理。
+ */
+export function widthToSpan(width: number, containerWidth: number, columns = 12): number {
+  if (!Number.isFinite(width) || !Number.isFinite(containerWidth) || containerWidth <= 0) {
+    return columns;
+  }
+  const raw = Math.ceil((width / containerWidth) * columns);
+  return Math.min(columns, Math.max(1, raw));
+}
+
+/**
+ * 一次性把「像素宽」折算成「栅格占位」。
+ *
+ * 只处理没有 span 的区块——已经有 span 的说明用户已经按格子排过，不再二次折算。
+ * 这是 P1 §5.1 定下的一次性迁移：不保留两套宽度语义并存。
+ */
+export function migrateWidthsToSpan(
+  blocks: BlockInstance[],
+  containerWidth: number,
+  columns = 12,
+): BlockInstance[] {
+  return blocks.map((block) => {
+    const children = block.children?.length
+      ? migrateWidthsToSpan(block.children, containerWidth, columns)
+      : block.children;
+    const next: BlockInstance = children !== block.children ? { ...block, children } : block;
+    if (typeof block.width !== 'number' || block.width <= 0 || block.span) return next;
+    const { width: _dropWidth, ...rest } = next;
+    return { ...rest, span: { base: widthToSpan(block.width, containerWidth, columns) } };
+  });
+}

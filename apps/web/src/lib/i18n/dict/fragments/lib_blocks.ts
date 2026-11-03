@@ -324,7 +324,7 @@ const fragment: Dictionary = {
     'A whole band of the page: constrained width, top and bottom padding, background colour and dividers.',
   内容宽度: 'Content width',
   '窄（640）': 'Narrow (640)',
-  '常规（960）': 'Regular (960)',
+  '常规（860）': 'Regular (860)',
   '宽（1200）': 'Wide (1200)',
   满宽: 'Full width',
   上下留白: 'Vertical padding',
