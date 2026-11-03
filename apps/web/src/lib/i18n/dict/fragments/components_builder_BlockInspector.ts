@@ -50,6 +50,34 @@ const fragment: Dictionary = {
       '{count} child blocks. Drag components into the matching column on the left, or add them with the “Text / Columns” buttons in the column.',
   },
   删除区块: 'Delete block',
+
+  // ---- 2026-11-01 组件外观 ----
+  组件外观: 'Block appearance',
+  清除外观: 'Reset appearance',
+  '作用在组件最外层；要让图片或子组件也一起切角，再打开「裁剪」。':
+    'Applies to the outer block box; turn on “Crop” as well to clip images and child blocks to the rounded corners.',
+  阴影: 'Shadow',
+  '跟随明暗主题的柔和投影；「强调光晕」用站点主色。':
+    'A soft shadow that follows the light/dark theme; “Accent glow” uses the site accent colour.',
+  '裁剪溢出内容，或按比例裁成相框；文字型组件慎用固定比例。':
+    'Clip overflowing content, or crop the block to a fixed aspect ratio; avoid fixed ratios for text-heavy blocks.',
+  内边距: 'Padding',
+  '单位 px，0 表示不额外留白；配合背景色可以把组件做成卡片。':
+    'In px; 0 adds no extra space. Together with a background colour this makes the block look like a card.',
+  背景色: 'Background colour',
+  '为空表示透明。配合内边距可以把组件做成卡片。':
+    'Empty means transparent. Together with padding this makes the block look like a card.',
+  组件背景色: 'Block background colour',
+  透明: 'Transparent',
+  清除: 'Clear',
+  主题描边: 'Theme border',
+  '用主题的细分割线颜色描一圈边框。': 'Draws a hairline border in the theme divider colour.',
+
+  // ---- 2026-11-03 设备覆盖层 ----
+  已覆盖: 'Overridden',
+  恢复继承: 'Restore inherited',
+  '只改这一台设备；其他设备保持原样。': 'Editing this device only; the others stay unchanged.',
+  '已覆盖：只对这一台设备生效。': 'Overridden: applies to this device only.',
 };
 
 export default fragment;

@@ -8,6 +8,7 @@ import {
   applyDisplayOverrides,
   overlayAt,
   spacingPx,
+  writeOverride,
 } from './layout';
 import { STEP_DEFS } from './logic';
 
@@ -102,6 +103,53 @@ describe('overlayAt 的边界（护栏）', () => {
     const blocks = [mk('p', { children: [child] })];
     applyDisplayOverrides(blocks, 'mobile');
     expect(blocks[0].children?.[0].children?.[0].hidden).toBe(false);
+  });
+});
+
+describe('writeOverride', () => {
+  it('手机上改外观写进 at.mobile，不动基础外观', () => {
+    const block = mk('a', { appearance: { radius: 'md' } });
+    const next = writeOverride(block, 'mobile', { appearance: { radius: 'xl' } });
+    expect(next.appearance).toEqual({ radius: 'md' });
+    expect(next.at?.mobile?.appearance).toEqual({ radius: 'xl' });
+  });
+
+  it('桌面上改外观写回基础字段', () => {
+    const block = mk('a', { appearance: { radius: 'md' } });
+    const next = writeOverride(block, 'desktop', { appearance: { radius: 'xl' } });
+    expect(next.appearance).toEqual({ radius: 'xl' });
+    // desktop 没有覆盖层：类型上就不存在这个键，这里守住「实现也别偷偷造一层」。
+    expect((next.at as Record<string, unknown> | undefined)?.desktop).toBeUndefined();
+  });
+
+  it('恢复继承：传空 patch 时删掉该设备的覆盖', () => {
+    const block = mk('a', { at: { mobile: { hidden: true } } });
+    const next = writeOverride(block, 'mobile', {});
+    expect(next.at?.mobile).toBeUndefined();
+  });
+
+  it('写覆盖不修改入参，也不把覆盖泄漏进基础字段', () => {
+    const block = mk('a', { appearance: { radius: 'md' }, at: { mobile: { hidden: true } } });
+    const next = writeOverride(block, 'mobile', { appearance: { radius: 'xl' }, hidden: false });
+    // 入参原封不动：调用方还要拿它比较、撤销。
+    expect(block.appearance).toEqual({ radius: 'md' });
+    expect(block.at).toEqual({ mobile: { hidden: true } });
+    expect(next).not.toBe(block);
+    // 覆盖层与已有字段合并，而不是整层替换。
+    expect(next.at?.mobile).toEqual({ hidden: false, appearance: { radius: 'xl' } });
+  });
+
+  it('外观按字段合并，显式 undefined 恢复单项继承', () => {
+    const block = mk('a', { at: { mobile: { appearance: { radius: 'xl', shadow: 'lg' } } } });
+    const next = writeOverride(block, 'mobile', { appearance: { radius: undefined } });
+    expect(next.at?.mobile).toEqual({ appearance: { shadow: 'lg' } });
+  });
+
+  it('覆盖层清空后 at 整键消失，不留下空对象', () => {
+    const block = mk('a', { at: { mobile: { appearance: { radius: 'xl' } }, tablet: { hidden: true } } });
+    const next = writeOverride(block, 'mobile', { appearance: { radius: undefined } });
+    expect(next.at).toEqual({ tablet: { hidden: true } });
+    expect(writeOverride(next, 'tablet', {})).not.toHaveProperty('at');
   });
 });
 

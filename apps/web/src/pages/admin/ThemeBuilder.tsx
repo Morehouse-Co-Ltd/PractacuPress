@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { BlockInstance, BuilderDevice, ScreenLayout } from '../../types';
@@ -139,12 +139,20 @@ export function ThemeBuilderPage() {
     setScreenLayout({ blocks: next });
   };
 
-  /** 切换预览设备；开启分设备后同时切换编辑中的那份编排。 */
+  /**
+   * 切换预览设备。
+   *
+   * P1 起设备差异写在区块的 `at` 覆盖层里：切换设备看的是同一棵树的不同层，
+   * 所以撤销栈和选中项都留着——撤销一次仍然撤销「刚才那次改动」。
+   * 旧的分设备编排（device_split）各设备仍是独立的树，那种情况必须整段换掉，
+   * 否则会把上一台设备的编排写到这台设备名下。
+   */
   const changeDevice = (next: BuilderDevice) => {
     if (next === device) return;
     setDevice(next);
-    setSelectedId(null);
     setLocateRequest(null);
+    if (!screenLayout.device_split) return;
+    setSelectedId(null);
     history.reset(screenBlocksForDevice(screenLayout, next));
   };
 
@@ -227,6 +235,19 @@ export function ThemeBuilderPage() {
     update({ home: customization.home });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 文章页的正文是编排里的一个占位符组件：第一次打开「文章页」而编排还是空的时，
+  // 先放入「文章内容」占位符，否则文章正文只能按旧逻辑渲染在评论区之后，无法参与排版。
+  const seededArticle = useRef(false);
+  useEffect(() => {
+    if (target !== 'article' || seededArticle.current) return;
+    seededArticle.current = true;
+    if (screenLayout.device_split || screenLayout.blocks.length) return;
+    const block = createBlock('article-content');
+    history.commit([block]);
+    setSelectedId(block.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
 
   // 预览 iframe 把“拖到真实位置”的目标回传到这里。
   useEffect(() => {
@@ -430,6 +451,19 @@ export function ThemeBuilderPage() {
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => setResetOpen(true)}>
             {t('恢复默认')}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="columns"
+            onClick={() => {
+              const open = !(leftOpen && rightOpen);
+              setLeftOpen(open);
+              setRightOpen(open);
+            }}
+            title={t('两边的面板会浮在预览上；收起后就是访客看到的整幅页面')}
+          >
+            {leftOpen || rightOpen ? t('收起面板') : t('展开面板')}
+          </Button>
           <Badge tone="accent">{themeLabel}</Badge>
           <Link to="/admin/themes" className="btn btn-ghost btn-sm builder-appearance-link">
             <Icon name="palette" size={14} /> {t('主题设置')}
@@ -470,6 +504,7 @@ export function ThemeBuilderPage() {
             <BlockInspector
               block={selected}
               blocks={history.value}
+              device={device}
               onChange={changeBlocks}
               onDelete={remove}
               onEditRichText={(block) => setRichBlock(block)}
