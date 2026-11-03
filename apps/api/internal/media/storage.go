@@ -34,9 +34,11 @@ type Storage interface {
 
 // HeadSampleSize is how many leading bytes inspection receives.
 //
-// It is enough for every magic number this service checks (the longest is 12 bytes
-// for WebP) with room to spare.
-const HeadSampleSize = 64
+// The security service checks the complete magic number of every accepted type (the
+// longest is 12 bytes for WebP) and additionally scans the sample for HTML/SVG polyglot
+// markers, so it gets more than a bare signature: 512 bytes is enough for the marker
+// scan while keeping the read cheap. The sample is never the whole file.
+const HeadSampleSize = 512
 
 // LocalStorage stores objects under a directory on the local filesystem.
 type LocalStorage struct {
@@ -146,6 +148,7 @@ func (s *LocalStorage) Open(ctx context.Context, key string) (io.ReadCloser, err
 	}
 	return file, nil
 }
+
 // Delete removes the object.
 func (s *LocalStorage) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {

@@ -94,7 +94,9 @@ func TestOpenAssetInSiteScopesBySite(t *testing.T) {
 		Purpose:    PurposeContent,
 	})
 
-	service, err := NewService(ServiceConfig{Repository: repo, Scanner: cleanScanner{}, Storage: store})
+	refs := newFakeReferences()
+	refs.mark("s1", "a1")
+	service, err := NewService(ServiceConfig{Repository: repo, Scanner: cleanScanner{}, Storage: store, References: refs})
 	require.NoError(t, err)
 
 	// The owning site reads the bytes.

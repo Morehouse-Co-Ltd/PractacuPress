@@ -77,11 +77,11 @@ func TestDeleteIsIdempotent(t *testing.T) {
 func TestReadHeadCapsSampleSize(t *testing.T) {
 	storage := newStorage(t)
 	ctx := context.Background()
-	payload := bytes.Repeat([]byte("A"), 200)
+	payload := bytes.Repeat([]byte("A"), HeadSampleSize+64)
 
 	require.NoError(t, storage.Put(ctx, "ab/big.bin", bytes.NewReader(payload), int64(len(payload))))
 
-	head, err := storage.ReadHead(ctx, "ab/big.bin", 1000)
+	head, err := storage.ReadHead(ctx, "ab/big.bin", HeadSampleSize*8)
 	require.NoError(t, err)
 	require.Len(t, head, HeadSampleSize, "the sample never exceeds the inspection budget")
 }

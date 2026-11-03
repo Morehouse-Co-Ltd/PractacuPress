@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 type fakeRepo struct {
@@ -113,6 +114,9 @@ func (f *fakeRepo) ListAssets(
 		if filter.ScanStatus != "" && asset.ScanStatus != filter.ScanStatus {
 			continue
 		}
+		if filter.OwnerID != "" && asset.OwnerID != filter.OwnerID {
+			continue
+		}
 		out = append(out, asset)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -164,7 +168,11 @@ func newService(t *testing.T, repo Repository, scanner Scanner) *Service {
 	return service
 }
 
-func owner() Actor { return Actor{UserID: "u1", SiteID: "s1"} }
+func owner() Actor { return Actor{UserID: "u1", SiteID: "s1", Role: site.RoleEditor} }
+
+// member is a non-privileged caller: it may act on its own uploads but the site wide
+// library and other people's private assets stay closed.
+func member() Actor { return Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember} }
 
 func imageRequest() UploadRequest {
 	return UploadRequest{FileName: "photo.png", DeclaredMIME: "image/png", Size: 1024, Purpose: PurposeContent}
@@ -737,6 +745,22 @@ func TestListAssetsScopesToActorSite(t *testing.T) {
 	require.Len(t, assets, 1, "another site's assets must never appear")
 	require.Equal(t, mine.ID, assets[0].ID)
 	require.Equal(t, "s1", repo.lastList().siteID, "the scope comes from the token, not the caller")
+}
+
+func TestListAssetsMemberSeesOnlyTheirOwnAssets(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, &fakeScanner{})
+	ctx := context.Background()
+
+	_, _, err := service.ListAssets(ctx, member(), AssetFilter{}, 0, page.Cursor{})
+	require.NoError(t, err)
+	require.Equal(t, "u1", repo.lastList().filter.OwnerID,
+		"a member may only list their own uploads")
+
+	_, _, err = service.ListAssets(ctx, owner(), AssetFilter{}, 0, page.Cursor{})
+	require.NoError(t, err)
+	require.Empty(t, repo.lastList().filter.OwnerID,
+		"an editor lists the site wide library")
 }
 
 func TestListAssetsAppliesFilters(t *testing.T) {
