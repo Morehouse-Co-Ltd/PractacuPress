@@ -141,6 +141,29 @@ export interface SiteCustomizationSaved {
   updated_at: string;
 }
 
+/**
+ * 内容列表（`GET /articles`、`GET /posts`）的查询参数。
+ *
+ * P3 起服务端支持四个筛选参数（见 `internal/content/handler.go`）：
+ * - `category_id`：按分类 id 筛选；
+ * - `tag`：按标签名筛选；
+ * - `since`：只取这个时刻之后发布的内容，RFC3339；
+ * - `sort`：`newest`（缺省）或 `oldest`。
+ *
+ * 全部是可选的：查询块只把用户真正填了的那几个放进去，空值不上线（空串会被服务端
+ * 当成"筛选一个空分类"，结果永远为空）。
+ */
+export interface ContentListOptions {
+  limit?: number;
+  cursor?: string;
+  authorId?: string;
+  categoryId?: string;
+  tag?: string;
+  /** RFC3339 时间点；只保留此刻之后发布的内容。 */
+  since?: string;
+  sort?: 'newest' | 'oldest';
+}
+
 interface HttpBackendOptions {
   base: string;
   onExpired: () => void;
@@ -489,12 +512,17 @@ export class HttpBackend {
 
   async listContent(
     kind: ContentKind,
-    options: { limit?: number; cursor?: string; authorId?: string } = {},
+    options: ContentListOptions = {},
   ): Promise<ContentPage> {
     const params = new URLSearchParams();
     params.set('limit', String(options.limit ?? 20));
     if (options.cursor) params.set('cursor', options.cursor);
     if (options.authorId) params.set('author_id', options.authorId);
+    // P3 的四个筛选参数：空值不上线，服务端会当成"筛选空条件"。
+    if (options.categoryId) params.set('category_id', options.categoryId);
+    if (options.tag) params.set('tag', options.tag);
+    if (options.since) params.set('since', options.since);
+    if (options.sort) params.set('sort', options.sort);
     return this.request<ContentPage>(`/${kind}s?${params.toString()}`);
   }
 

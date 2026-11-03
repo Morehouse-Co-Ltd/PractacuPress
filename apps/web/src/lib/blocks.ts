@@ -1484,6 +1484,78 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
       { key: 'cover', label: t('封面'), type: 'media', hint: t('可留空；只作装饰，不参与读屏。') },
     ],
   },
+
+  /* ---------------- 内容型（P3 查询块） ---------------- */
+  {
+    type: 'content-query',
+    name: t('内容查询'),
+    description: t('按分类、标签、时间与排序实时取内容；卡片样式与「文章组件」共用。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: {
+      source: 'latest',
+      term_id: '',
+      window: 'all',
+      sort: 'newest',
+      layout: 'grid',
+      limit: 6,
+      show_excerpt: true,
+      show_meta: true,
+    },
+    schema: [
+      {
+        key: 'source',
+        label: t('筛选来源'),
+        type: 'select',
+        options: [
+          { value: 'latest', label: t('最新内容') },
+          { value: 'category', label: t('分类') },
+          { value: 'tag', label: t('标签') },
+          { value: 'author', label: t('按作者') },
+        ],
+        hint: t('选「分类」「标签」「作者」时，下面的条件才带上服务端筛选。'),
+      },
+      {
+        key: 'term_id',
+        label: t('分类 / 标签 / 作者'),
+        type: 'text',
+        hint: t('填 id 或名称，留空就是不筛选。演示模式不按它筛选。'),
+      },
+      {
+        key: 'window',
+        label: t('时间范围'),
+        type: 'select',
+        options: [
+          { value: 'all', label: t('全部') },
+          { value: '7d', label: t('最近 7 天') },
+          { value: '30d', label: t('最近 30 天') },
+        ],
+        hint: t('按发布时间筛选。演示模式不按时间筛选。'),
+      },
+      {
+        key: 'sort',
+        label: t('排序'),
+        type: 'select',
+        options: [
+          { value: 'newest', label: t('最新优先') },
+          { value: 'oldest', label: t('最旧优先') },
+        ],
+        hint: t('演示模式不按它排序。'),
+      },
+      {
+        key: 'layout',
+        label: t('布局'),
+        type: 'select',
+        options: [
+          { value: 'list', label: t('单列列表') },
+          { value: 'grid', label: t('双列卡片') },
+        ],
+      },
+      { key: 'limit', label: t('显示条数'), type: 'number', min: 1, max: 24, step: 1 },
+      { key: 'show_excerpt', label: t('显示摘要'), type: 'toggle' },
+      { key: 'show_meta', label: t('显示日期'), type: 'toggle' },
+    ],
+  },
 ];
 
 /**
@@ -1850,4 +1922,74 @@ export function migrateWidthsToSpan(
     const { width: _dropWidth, ...rest } = next;
     return { ...rest, span: { base: widthToSpan(block.width, containerWidth, columns) } };
   });
+}
+
+/* ---------------- 内容查询块（content-query） ---------------- */
+
+/** 查询块的筛选来源，与注册表里 `source` 的四档一一对应。 */
+export type ContentQuerySource = 'latest' | 'category' | 'tag' | 'author';
+
+/** 查询块的时间窗。 */
+export type ContentQueryWindow = 'all' | '7d' | '30d';
+
+/** 查询块的排序：服务端只认这两档。 */
+export type ContentQuerySort = 'newest' | 'oldest';
+
+/**
+ * 查询块翻译出来的请求参数。
+ *
+ * 可选字段**缺失**表示"没有这个条件"，而不是空串：服务端把 `category_id=` 当成
+ * "筛选一个空分类"，结果永远是空列表，与"不筛分类"是两回事。
+ */
+export interface ContentQueryRequest {
+  categoryId?: string;
+  tag?: string;
+  authorId?: string;
+  /** RFC3339；服务端只返回此刻之后发布的内容。 */
+  since?: string;
+  sort: ContentQuerySort;
+  limit: number;
+  layout: 'list' | 'grid';
+}
+
+/** 时间窗对应的天数；`all` 与认不出的值都不在这张表里。 */
+const WINDOW_DAYS: Record<string, number> = { '7d': 7, '30d': 30 };
+
+/** 一天的毫秒数。窗口换算走毫秒减法，不经过本地时区，也就不会被夏令时吃掉一小时。 */
+const DAY_MS = 86_400_000;
+
+/**
+ * 时间窗 → RFC3339 时间点。
+ *
+ * 纯函数：`now` 由调用方给，测试不会随真实时钟漂移。`all` 以及任何认不出的值
+ * （旧配置、手写的字符串）都返回 `undefined`，也就是"不带时间条件"——比猜一个
+ * 窗口更接近作者的本意。
+ */
+export function sinceFromWindow(window: string, now: Date): string | undefined {
+  const days = WINDOW_DAYS[window];
+  if (!days) return undefined;
+  return new Date(now.getTime() - days * DAY_MS).toISOString();
+}
+
+/**
+ * 把查询块的 props 翻译成请求参数。
+ *
+ * 只读 props，不读注册表也不碰 DOM：渲染器与测试共用这一份，筛选规则不会两处
+ * 各写一遍。`now` 注入是为了让 `since` 可测；生产调用省略它时取当前时刻。
+ */
+export function queryRequest(props: BlockProps, now: Date = new Date()): ContentQueryRequest {
+  const source = typeof props.source === 'string' ? props.source : 'latest';
+  const term = typeof props.term_id === 'string' ? props.term_id.trim() : '';
+  const request: ContentQueryRequest = {
+    sort: props.sort === 'oldest' ? 'oldest' : 'newest',
+    limit: clampInt(props.limit, 1, 24, 6),
+    layout: props.layout === 'list' ? 'list' : 'grid',
+  };
+  // 只有选中的来源才带条件，空 term_id 也不产生空串条件。
+  if (term && source === 'category') request.categoryId = term;
+  if (term && source === 'tag') request.tag = term;
+  if (term && source === 'author') request.authorId = term;
+  const since = sinceFromWindow(typeof props.window === 'string' ? props.window : 'all', now);
+  if (since) request.since = since;
+  return request;
 }

@@ -45,6 +45,7 @@ import { MARKETING_RENDERERS } from './MarketingBlocks';
 import { MEDIA_GALLERY_RENDERERS } from './MediaGalleryBlocks';
 import { CONVERSION_RENDERERS } from './ConversionBlocks';
 import { UTILITY_RENDERERS } from './UtilityBlocks';
+import { QUERY_RENDERERS } from './QueryBlocks';
 import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
 
 /**
@@ -72,6 +73,7 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...MEDIA_GALLERY_RENDERERS,
   ...CONVERSION_RENDERERS,
   ...UTILITY_RENDERERS,
+  ...QUERY_RENDERERS,
 };
 
 /**

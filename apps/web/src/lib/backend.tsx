@@ -38,7 +38,7 @@ import type {
 import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
 import { accessController, AccessBlockedError, isPreviewFrame, readAccess } from './access';
 import { HttpBackend } from './api';
-import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
+import type { SiteCustomizationSaved, SiteCustomizationSnapshot, ContentListOptions } from './api';
 import { DemoBackend } from './demo';
 import { useT } from './i18n';
 import { configurePerformance, readPerformance } from './performance';
@@ -108,7 +108,7 @@ export interface Backend {
   publicUser(userId: string): Promise<PublicProfile>;
   listContent(
     kind: ContentKind,
-    options?: { limit?: number; cursor?: string; authorId?: string },
+    options?: ContentListOptions,
   ): Promise<ContentPage>;
   getContent(kind: ContentKind, id: string): Promise<Content>;
   createDraft(kind: ContentKind, input: DraftInput): Promise<Content>;

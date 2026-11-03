@@ -85,3 +85,35 @@ export function loadingEnabled(settings: LoadingSettings): boolean {
     (settings.show_on_first_load || settings.show_on_navigation)
   );
 }
+
+export type SkeletonShape =
+  | 'feed'
+  | 'list'
+  | 'grid'
+  | 'feature'
+  | 'mosaic'
+  | 'aside';
+
+/**
+ * 页面编排里会等内容的区块 → 骨架形状。
+ *
+ * 只登记真正依赖 FeedContext 的区块：静态区块（标题、文本、按钮、图片等）
+ * 立刻就能画出真实内容，不该被骨架盖住。未登记的类型由渲染器自己处理，
+ * 这样新组件不会因为漏登记而白屏。
+ */
+export const BLOCK_SKELETON_SHAPES: Record<string, SkeletonShape> = {
+  feed: 'feed',
+  'post-list': 'list',
+  'post-grid': 'grid',
+  'feature-post': 'feature',
+  spotlight: 'mosaic',
+  'spotlight-hot': 'mosaic',
+  'stat-list': 'aside',
+  archive: 'aside',
+  articles: 'grid',
+  'popular-content': 'list',
+  'recent-content': 'list',
+  // P3 查询块：真实后端自己取数，演示模式读 FeedContext，两种模式都可能等 feed，
+  // 形状取与「文章组件」相同的卡片网格（列表布局也落在同一套卡片样式上）。
+  'content-query': 'grid',
+};

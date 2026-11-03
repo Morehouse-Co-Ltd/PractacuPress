@@ -245,7 +245,14 @@ function contentUrl(item: Content): string {
   return `/${item.kind === 'article' ? 'a' : 'p'}/${item.id}`;
 }
 
-function ArticleCard({
+/**
+ * 内容卡片：封面 + 类型 + 标题 + 摘要 / 日期 / 标签。
+ *
+ * 导出给 P3 的查询块复用：它按分类 / 标签 / 时间在服务端取数，但卡片的样子必须
+ * 与「文章组件」完全一致，所以样式（`.pp-article-card` / `.pp-article-grid`）与
+ * 结构只留这一份。
+ */
+export function ArticleCard({
   item,
   layout,
   showExcerpt,

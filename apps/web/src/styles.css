@@ -8592,3 +8592,13 @@ button.theme-bundle-card {
   .pp-audio-player { max-width: 100%; }
 }
 
+/* ---------- P3 · 内容查询区块（content-query） ---------- */
+
+/*
+ * 卡片结构与样式复用「文章组件」的 .pp-article-grid / .pp-article-card（见上方
+ * 「文章组件」一节），查询块只补自己的两处：容器节奏与空态。
+ *
+ * 空结果是一句话，不是一块空容器：区块没有内容时不留一个点了没反应的框。
+ */
+.pp-query-block { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.pp-query-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
