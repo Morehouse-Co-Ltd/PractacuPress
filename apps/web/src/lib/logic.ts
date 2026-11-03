@@ -1,7 +1,6 @@
 import type { LogicChain, LogicStep, ThemeMode } from '../types';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
-import { BREAKPOINT_MD } from './layout';
 
 /**
  * 思维链引擎（无代码逻辑）。
@@ -89,15 +88,15 @@ export const LOGIC_TRIGGERS = liveCatalog(RAW_LOGIC_TRIGGERS);
 /**
  * `is_mobile` / `is_desktop` 的提示文案。
  *
- * 阈值与编排器共用同一张断点表（`lib/layout.ts` 的 `BREAKPOINT_MD`），
- * 文案里的数字由常量拼出，改断点时提示不会和实际行为脱节。
+ * 键必须写成**字面量**：i18n 覆盖率闸门只认引号里的原文，变量参数会被
+ * 当成「没有中文可包裹」而跳过，那两条英文就会悄悄脱闸。
+ *
+ * 阈值与编排器仍共用同一张断点表（`lib/layout.ts` 的 `BREAKPOINT_MD`），改断点时
+ * 这两句文案要一起改——`layout.test.ts` 有护栏用例盯着这个同步。
  */
-const MOBILE_HINT = `视口宽度 < ${BREAKPOINT_MD}px。`;
-const DESKTOP_HINT = `视口宽度 ≥ ${BREAKPOINT_MD}px。`;
-
 const RAW_LOGIC_CONDITIONS: StepDef[] = [
-  { type: 'is_mobile', name: t('是手机访问'), hint: t(MOBILE_HINT), fields: [] },
-  { type: 'is_desktop', name: t('是桌面访问'), hint: t(DESKTOP_HINT), fields: [] },
+  { type: 'is_mobile', name: t('是手机访问'), hint: t('视口宽度 < 768px。'), fields: [] },
+  { type: 'is_desktop', name: t('是桌面访问'), hint: t('视口宽度 ≥ 768px。'), fields: [] },
   { type: 'is_logged_in', name: t('已登录'), hint: t('当前有会话。'), fields: [] },
   { type: 'is_anonymous', name: t('未登录'), hint: t('访客状态。'), fields: [] },
   { type: 'is_personal', name: t('是个人博客'), hint: t('站点形态为个人博客。'), fields: [] },

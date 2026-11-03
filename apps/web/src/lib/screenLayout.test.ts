@@ -34,6 +34,9 @@ describe('按设备选择页面编排', () => {
     // P1 把 640 收敛到 BREAKPOINT_MD：700px 以前算平板，现在算手机。
     expect(builderDeviceForWidth(700)).toBe('mobile');
     expect(builderDeviceForWidth(768)).toBe('tablet');
+    // 桌面闸门同理：1023 还是平板，1024 起才是桌面。
+    expect(builderDeviceForWidth(1023)).toBe('tablet');
+    expect(builderDeviceForWidth(1024)).toBe('desktop');
   });
 
   it('开启分割后取对应设备，缺失设备回退桌面', () => {

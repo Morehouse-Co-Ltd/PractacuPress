@@ -9,6 +9,7 @@ import {
   overlayAt,
   spacingPx,
 } from './layout';
+import { STEP_DEFS } from './logic';
 
 function mk(id: string, extra: Partial<BlockInstance> = {}): BlockInstance {
   return { id, type: 'text', title: id, props: {}, animation: 'none', hidden: false, ...extra };
@@ -74,5 +75,40 @@ describe('applyDisplayOverrides', () => {
   it('批量应用手机覆盖', () => {
     const blocks = [mk('a', { at: { mobile: { hidden: true } } }), mk('b')];
     expect(applyDisplayOverrides(blocks, 'mobile').map((b) => b.hidden)).toEqual([true, false]);
+  });
+});
+
+describe('overlayAt 的边界（护栏）', () => {
+  it('绝不把 props 合进结果——内容永远只有一份来源', () => {
+    const block = mk('a', { props: { body: 'base' } });
+    // 故意构造一个带 props 的非法覆盖层，模拟坏实现会用的写法
+    const poisoned = { ...block, at: { mobile: { props: { body: 'hacked' } } } } as unknown as BlockInstance;
+    expect(overlayAt(poisoned, 'mobile').props).toEqual({ body: 'base' });
+  });
+
+  it('桌面返回原数组本身（短路，不复制）', () => {
+    const blocks = [mk('a')];
+    expect(applyDisplayOverrides(blocks, 'desktop')).toBe(blocks);
+  });
+
+  it('显式 hidden:false 能把基础隐藏反隐藏', () => {
+    const block = mk('a', { hidden: true, at: { mobile: { hidden: false } } });
+    expect(overlayAt(block, 'mobile').hidden).toBe(false);
+  });
+
+  it('深层子区块同样不被修改', () => {
+    const grandchild = mk('g', { at: { mobile: { hidden: true } } });
+    const child = mk('c', { children: [grandchild] });
+    const blocks = [mk('p', { children: [child] })];
+    applyDisplayOverrides(blocks, 'mobile');
+    expect(blocks[0].children?.[0].children?.[0].hidden).toBe(false);
+  });
+});
+
+describe('逻辑条件提示与断点表同步', () => {
+  it('is_mobile / is_desktop 的提示数字跟随 BREAKPOINT_MD', () => {
+    // 提示文案是字面量（i18n 闸门要求），所以这里守住「改断点别忘了改文案」。
+    expect(STEP_DEFS.is_mobile.hint).toContain(`< ${BREAKPOINT_MD}px`);
+    expect(STEP_DEFS.is_desktop.hint).toContain(`≥ ${BREAKPOINT_MD}px`);
   });
 });
