@@ -70,19 +70,39 @@ describe('按设备选择页面编排', () => {
     expect(source[0].title).not.toBe('改过的');
   });
 
-  it('配置归一化保留 device_split 与各设备编排', () => {
+  it('读取路径折算三端编排：结构相同的设备副本变成 at 覆盖', () => {
+    const desktop = [createBlock('text', { title: '桌面文案' })];
+    const customization = readCustomization({
+      customization: {
+        home: {
+          blocks: desktop,
+          device_split: true,
+          devices: {
+            desktop: { blocks: desktop },
+            mobile: { blocks: [{ ...desktop[0], hidden: true }] },
+          },
+        },
+      },
+    } as never);
+    // Task 6 打开了折算：渲染层已经求值 at，所以读入时就是「一份 base + at 覆盖」。
+    expect(customization.home.device_split).toBeUndefined();
+    expect(customization.home.devices).toBeUndefined();
+    expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
+  });
+
+  it('结构对不上的设备编排读入时仍然保留（折算不敢动它）', () => {
     const layout = layoutWithDevices();
     const customization = readCustomization({
       customization: {
         home: layout,
       },
     } as never);
-    expect(customization.home.device_split).toBe(true);
-    // 折算推迟到渲染层开始求值 at 之后（P1），所以读入时三端编排必须原样留着；
-    // 现在折会让没被渲染的手机/平板布局悄悄退回桌面版。
-    expect(customization.home.devices?.desktop?.blocks[0].title).toBe('桌面文案');
+    // 桌面副本与 base 同 id：结构相同，折算时丢掉。
+    expect(customization.home.devices?.desktop).toBeUndefined();
+    // 手机那份是另建的区块（id 不同 = 结构不同），原样保留，交给人决定。
     expect(customization.home.blocks[0].title).toBe('桌面文案');
     expect(customization.home.devices?.mobile?.blocks[0].title).toBe('手机文案');
+    expect(customization.home.device_split).toBe(true);
 
     const shared = readCustomization({
       customization: {

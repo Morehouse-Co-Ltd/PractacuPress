@@ -139,17 +139,53 @@ export function foldDeviceLayouts(layout: unknown, label: string, report: string
 }
 
 /**
+ * 迁移的调用选项。
+ *
+ * `foldDevices` 默认关闭，原因写在 `foldDeviceLayouts` 上：折算会删掉被折叠的设备树，
+ * 只有渲染层真的求值 `at` 之后才安全。读取路径（`readCustomization`）显式打开它，
+ * 其它调用点保持 P0 的行为不变。
+ */
+export interface MigrateOptions {
+  foldDevices?: boolean;
+}
+
+/** 页面的报告标签：带标题更好认，标题缺失时退回通称。 */
+function pageLabel(page: Record<string, unknown>): string {
+  const title = typeof page.title === 'string' ? page.title.trim() : '';
+  return title ? `页面「${title}」` : '页面';
+}
+
+/** 把一份文档里的三端编排折算掉；`doc` 已经是浅拷贝，这里只替换其中的字段。 */
+function foldDocument(doc: Record<string, unknown>, report: string[]): void {
+  if (doc.home !== undefined) doc.home = foldDeviceLayouts(doc.home, '首页', report);
+  if (doc.article !== undefined) doc.article = foldDeviceLayouts(doc.article, '文章页', report);
+  if (!Array.isArray(doc.pages)) return;
+  doc.pages = doc.pages.map((page) => {
+    if (!page || typeof page !== 'object' || Array.isArray(page)) return page;
+    const entry = page as Record<string, unknown>;
+    if (entry.layout === undefined) return page;
+    return { ...entry, layout: foldDeviceLayouts(entry.layout, pageLabel(entry), report) };
+  });
+}
+
+/**
  * v1 → v2 迁移。
  *
- * 只做两件事：盖上版本号、把 `home` / `article` / `pages[].layout` 原样留在原位。
- * 三端编排的折算不在这一步——见 `foldDeviceLayouts`。
+ * 做两件事：盖上版本号、把 `home` / `article` / `pages[].layout` 原样留在原位。
+ * 传 `{ foldDevices: true }` 时再把三端独立编排折算成 `at` 覆盖（见 `foldDeviceLayouts`）。
+ *
+ * 纯函数：只改浅拷贝出来的文档，折算出的编排都是新对象。
  */
-export function migrateCustomization(raw: unknown): MigrationResult {
+export function migrateCustomization(raw: unknown, options: MigrateOptions = {}): MigrationResult {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { value: {}, report: [] };
   const doc: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
   const version = typeof doc.schema_version === 'number' ? doc.schema_version : 1;
   if (version >= CURRENT_SCHEMA_VERSION) return { value: doc, report: [] };
 
   doc.schema_version = CURRENT_SCHEMA_VERSION;
-  return { value: doc, report: [] };
+  if (options.foldDevices !== true) return { value: doc, report: [] };
+
+  const report: string[] = [];
+  foldDocument(doc, report);
+  return { value: doc, report };
 }

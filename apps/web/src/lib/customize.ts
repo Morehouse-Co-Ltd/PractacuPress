@@ -1139,7 +1139,10 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
   if (!config.customization) return DEFAULT_CUSTOMIZATION;
   // 只改读取路径：v1 的三棵树在这里折算成 v2 的展示层覆盖，保存路径仍然写原始对象，
   // 迁移结果在下一次保存（或 customizationSync 的本地缓存写回）时自然落盘。
-  const raw = migrateCustomization(config.customization).value as Partial<SiteCustomization>;
+  // 折算现在安全了：渲染层已经求值 at（见 ScreenRenderer 的 applyDisplayOverrides），
+  // 折叠掉的手机/平板布局会以 at 覆盖的形式继续生效。
+  const migrated = migrateCustomization(config.customization, { foldDevices: true });
+  const raw = migrated.value as Partial<SiteCustomization>;
   const theme = normalizeThemeSettings(raw.theme);
   const layout = raw.layout ?? DEFAULT_LAYOUT;
   const variant = layout.variant === 'bento' ? 'bento' : 'classic';

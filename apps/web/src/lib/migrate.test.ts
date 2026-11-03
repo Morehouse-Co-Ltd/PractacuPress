@@ -82,6 +82,74 @@ describe('migrateCustomization', () => {
     expect(input).toEqual(snapshot);
   });
 
+  it('v1 文档在读取时把三端布局折算成 at（因为渲染层已经求值 at）', () => {
+    const { value } = migrateCustomization(
+      {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { hidden: true })] } },
+        },
+      },
+      { foldDevices: true },
+    );
+    const home = value.home as Record<string, unknown>;
+    expect((home.blocks as Array<Record<string, unknown>>)[0].at).toEqual({ mobile: { hidden: true } });
+    expect(home.devices).toBeUndefined();
+  });
+
+  it('首页之外的编排也折算：文章页与自定义页面，报告逐条带上页面标签', () => {
+    const split = () => ({
+      blocks: [block('a')],
+      device_split: true,
+      devices: { mobile: { blocks: [block('a', { hidden: true })] } },
+    });
+    const { value, report } = migrateCustomization(
+      {
+        home: split(),
+        article: split(),
+        pages: [{ id: 'p1', title: '关于', layout: split() }],
+      },
+      { foldDevices: true },
+    );
+    expect(report).toHaveLength(3);
+    expect(report.every((line) => line.includes('手机'))).toBe(true);
+    expect(report.some((line) => line.includes('关于'))).toBe(true);
+
+    const article = value.article as Record<string, unknown>;
+    expect(article.devices).toBeUndefined();
+    const page = (value.pages as Array<Record<string, unknown>>)[0];
+    const layout = page.layout as Record<string, unknown>;
+    expect(layout.devices).toBeUndefined();
+    expect((layout.blocks as Array<Record<string, unknown>>)[0].at).toEqual({ mobile: { hidden: true } });
+    // 页面自身的字段不能被折算顺手改掉。
+    expect(page.title).toBe('关于');
+  });
+
+  it('打开折算时同样不修改调用方传进来的文档', () => {
+    const input = {
+      home: {
+        blocks: [block('a')],
+        device_split: true,
+        devices: { mobile: { blocks: [block('a', { hidden: true })] } },
+      },
+      pages: [
+        {
+          id: 'p1',
+          title: '关于',
+          layout: {
+            blocks: [block('b')],
+            device_split: true,
+            devices: { mobile: { blocks: [block('b', { hidden: true })] } },
+          },
+        },
+      ],
+    };
+    const snapshot = structuredClone(input);
+    migrateCustomization(input, { foldDevices: true });
+    expect(input).toEqual(snapshot);
+  });
+
   it('对迁移结果再跑一次不产生任何变化（幂等）', () => {
     const once = migrateCustomization({
       home: {
@@ -191,5 +259,22 @@ describe('迁移结果落盘', () => {
 
     const twice = readCustomization({ customization: once });
     expect(twice).toEqual(once);
+  });
+
+  it('读取路径显式打开了折算：v1 的三端编排读进来就是 at', () => {
+    const config = {
+      customization: {
+        home: {
+          blocks: [block('a')],
+          device_split: true,
+          devices: { mobile: { blocks: [block('a', { hidden: true })] } },
+        },
+      },
+    } as unknown as WebConfig;
+
+    const customization = readCustomization(config);
+    expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
+    expect(customization.home.device_split).toBeUndefined();
+    expect(customization.home.devices).toBeUndefined();
   });
 });
