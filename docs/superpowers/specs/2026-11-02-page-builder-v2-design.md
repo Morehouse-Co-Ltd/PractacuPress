@@ -548,3 +548,159 @@ gzip ≈ +15 KB」，实测更低）。注意：工作树是多个会话共用�
   展开后若发生重渲染，第一条会回到 `open_first` 的值（换受控状态要多一份与 DOM 争抢
   的状态机，不值得）。
 - `pricing` 没有「列数」属性（`auto-fit` 自适应），与 Task 2 的网格区块刻意不同。
+
+## 15. P3 实现记录（2026-11-03）
+
+4 个任务，从 `ce2e497`（P3 计划）到 `14d9a51`、`5ec5318`、`c6b7c14`、`08d56b4`。前三个任务各自
+只碰一层：Task 1 给两个列表端点补参数，Task 2 和 Task 3 各加一个区块，Task 4 是唯一横跨
+前后端的一体任务（表单与它的端点必须同时存在，否则界面只能给出一个点了没反应的按钮）。
+零新增依赖。
+
+### 15.1 服务端：列表的四个筛选参数
+
+`GET /articles` 与 `GET /posts` 各加四个可选 query 参数（`packages/contracts/openapi/openapi.yaml`
+同步，两个 `get` 都写全）：
+
+| 参数 | 形状 | 语义 |
+| --- | --- | --- |
+| `category_id` | string，≤36 | 只返回该分类下的内容 |
+| `tag` | string，≤40 | 只返回带这个标签的内容（精确匹配，见 §15.7） |
+| `since` | RFC3339 | 只返回此刻**之后**发布的内容 |
+| `sort` | `newest`（默认）/ `oldest` | 排序 |
+
+`content.NormalizeTag`（trim、≤40 字节、拒绝含 `"` 与 `\` 的名字，非法返回空串）与
+`content.ValidateSort` 是纯函数，handler 里非法值直接 400，不静默回退；`contentstore.List`
+把 `CategoryID` 翻成 `CategoryIDEQ`、`Since` 翻成 `CreatedAtGTE`、`oldest` 翻成 `Asc`。
+**空串不当条件**：`category_id=` 会被前端当成"没有这个条件"而不发送（`queryRequest` 里
+可选字段缺失而非空串），否则服务端会去筛一个空分类，结果永远是空列表。
+
+### 15.2 三个区块
+
+| 任务 | 交付 | 渲染器 / 数据层 |
+| --- | --- | --- |
+| Task 2 | `content-query` | `components/blocks/QueryBlocks.tsx` + `lib/blocks.ts` 的 `queryRequest` / `sinceFromWindow` |
+| Task 3 | `anchor-nav`（+ 属性面板的「锚点」输入） | `components/blocks/AnchorNav.tsx`、`AnchorScope.tsx` + `lib/anchorNav.ts` |
+| Task 4 | `contact-form` | `components/blocks/FormBlocks.tsx` + `lib/contactForm.ts` |
+
+- **`content-query`**：`source`（`latest` / `category` / `tag` / `author`）、`term_id`、
+  `window`（`all` / `7d` / `30d`）、`sort`（`newest` / `oldest`）、`layout`（`list` / `grid`）、
+  `limit`（1–24）、`show_excerpt` / `show_meta`。`queryRequest(props, now)` 把 props 翻成
+  请求参数（`source` 决定 `term_id` 落到 `categoryId` / `tag` / `authorId` 哪一格），
+  `sinceFromWindow` 走毫秒减法换算 `since`（不经本地时区，夏令时吃不掉一小时）。
+  卡片直接复用「文章组件」的 `ArticleCard`（`.pp-article-grid` / `.pp-article-card`），
+  空结果只画一句「这里还没有内容。」，不留空容器；骨架形状登记在 `lib/loading.ts`。
+- **`anchor-nav`**：只有 `heading` 一个属性。目录的数据来自**整页的一趟遍历**——`ScreenRenderer`
+  里算好 `anchorIds` / `anchorTargets` 再经 `AnchorScope` 往下发，所以「目录里列出的链接」
+  与「页面上画出的 `id`」出自同一份结果，不会出现死链。渲染成
+  `<nav aria-label="本页目录">` + `<a href="#anchor">`，点击是原生锚点跳转（URL 可复制、
+  前进后退照常），高亮用 `IntersectionObserver`（阈值 0.25，取最靠上的一节，卸载时
+  `disconnect()`）；没有这个 API 的环境退化为不高亮，跳转一点不受影响。锚点归一化在
+  `normalizeAnchor`（小写、空格转 `-`、只留 `[a-z0-9-]`、≤40），**第一次出现者胜**。
+- **`contact-form`**：`heading`、`intro`（`richtext`，走 `renderMarkdown` + `sanitizeHtml`）、
+  `submit_label`、`success_text`、`show_name`、`show_email`。三态 idle / sending / sent；
+  失败回到 idle 并提示重试，**永远不清空用户输入**；蜜罐 `website` 藏在视口外
+  （`aria-hidden` + `tabIndex=-1`，不是 `display:none`），填了就不发请求、界面按成功处理；
+  前端另有一层 60 秒冷却，只为让读者不必等一个 429 才知道。演示模式不发请求，直接进成功态
+  并在按钮下方注明「演示模式下不会真的发送。」
+
+### 15.3 联系端点
+
+`POST /api/v1/sites/{siteID}/contact`（匿名，站点来自 host 解析，跨站一律 403）：
+
+| 结果 | 条件 |
+| --- | --- |
+| 202 `{"status":"accepted"}` | 校验通过（含蜜罐非空——静默接受但不投递） |
+| 400 | 缺 `message`、`message` > 2000 **字符**、`name` > 80 字节、`email` > 200 字节或不含 `@` |
+| 429 | 同一访客（登录态按账号，匿名按客户端地址）在 60 秒内二次提交 |
+| 503 / 500 | 没有接线通知服务（部署问题，不是"这个站点没有表单"） |
+
+- 投递：给该站点**所有在册且活跃的站点管理员**各发一条 `TypeContact` 通知，主题
+  `站点来信：<name>`（无名字时 `站点来信`），正文纯文本；最多 50 个收件人，超出部分不再
+  扇出但消息照常送达前面的人。
+- 边界单位：`name` / `email` 按**字节**（通知 payload 按字节封顶），`message` 按**字符**
+  （中文一字三字节，按字节算会把这份产品主要读者的额度砍到三分之一）；
+  `notifications.MaxContactMessageLength` 与 payload 的例外上限跟这条边界对齐。
+- 顺序是刻意的：**蜜罐 → 校验 → 冷却**。校验在冷却之前，写长了的人可以立刻改，
+  不用被锁一分钟；只有"真的会投递"的提交才消耗冷却名额。请求体在解码前被 `MaxBytesReader`
+  限到 16 KiB。
+
+### 15.4 验证数字（2026-11-03 本机实测）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Go 构建 | `go build ./apps/api/...`（仓库根） | 通过，退出码 0 |
+| Go 测试 | `go test ./apps/api/...` | **全部包 ok，无 FAIL**（`internal/auth` 10.7s、`internal/site` 6.5s 最慢） |
+| 前端测试 | `npx vitest run`（`apps/web`） | **70 文件 / 921 测试通过**（P2 收尾 66 / 829） |
+| 类型检查 | `npm run typecheck` | 0 错误 |
+| 构建 | `npm run build` | 成功（`tsc --noEmit && vite build`，347 模块） |
+| 浏览器 e2e | `node scripts/e2e-builder-blocks.mjs` | **PASS 64 / FAIL 0**（P2 收尾 49），14 张截图在 `apps/web/.tmp/shots-builder/` |
+| i18n 覆盖率闸门 | 随 vitest 跑的 `lib/i18n/coverage.test.ts` | 3/3 绿 |
+
+e2e 新增的是 **H 段（`[P3]` 15 条断言）**，原有 8 段一条未改（`SETUP 3 / BUILDER 2 /
+BUTTON 3 / UTILITY 12 / PALETTE 2 / APPEARANCE 14 / CONFIG 5 / PERSIST 8`，合计仍是 49 条）：
+内容查询断言卡片真的画出来且条数不超过面板上限、走 `.pp-article-grid.is-grid`；本页目录
+先给按钮区块填 `quick-start` 锚点，再断言 `<nav aria-label="本页目录">`、链接文案非空、
+**每条链接都指得着页面上的 `id`**；联系表单断言三个字段 + 蜜罐 `tabindex=-1` + 演示模式
+提示，再走「空留言 → 提示」与「填好 → 成功态、留言不被清空」两条路径。新增截图 4 张
+（`07-query-block` / `08-anchor-nav` / `09-contact-form` / `10-contact-form-sent`），
+与原有 10 张同在一个目录。
+
+### 15.5 体积增量（对比 P2 收尾）
+
+P2 收尾的产物（`dist/assets`）没有留档，用的是 §14.3 记录的
+**1,841,330 字节 raw / 555,842 字节 gzip**；本轮产物同法量（`node .tmp/dist-size.mjs dist/assets`，
+每个文件 `zlib.gzipSync` level 9 后求和）：
+
+| 口径 | P2 收尾（记录值） | P3 收尾（实测） | 增量 |
+| --- | --- | --- | --- |
+| assets raw | 1,841,330 B | 1,860,057 B | **+18,727 B（+18.3 KiB）** |
+| assets gzip | 555,842 B | 561,683 B | **+5,841 B（+5.7 KiB）** |
+| 其中 CSS（raw） | 227,999 B | 230,418 B | +2,419 B |
+| 其中主 JS（raw） | 1,303,277 B | 1,318,695 B | +15,418 B |
+| 其余 chunk（raw） | 310,054 B | 310,944 B | +890 B |
+
+gzip 增量 **+5.7 KiB**，在 P3 的 10 KB 预算内（用了约 57%）。同一句提醒仍然成立：工作树与
+别的会话共用，`styles.css` 与 `index.js` 里含并发会话尚未提交的代码，所以这个数字是 P3 增量
+的**上界**，不是精确归因。`dist-pre-p2/assets` 的 1,794,500 字节仍在（本轮复量一致），
+需要一次看全 P2+P3 时可以直接对它做差。
+
+### 15.6 刻意只做联系表单（订阅与 A/B 未做）
+
+**订阅名单不做。** 订阅不是"多一个表单字段"，而是一组必须一起存在的东西：订阅者表、
+退订链路、导出、以及隐私/合规声明。只做"收集"不做"退订"的订阅名单是负债。反过来，
+"读者能给站长留一句话"用**既有的通知链路**就能闭环——站长在自己的信箱里读到它，
+除此之外任何地方都不留副本，也就没有第二份数据要过期、导出或泄露，不为一个功能新加一张表。
+
+**A/B 不做**：它需要分流口径、曝光/转化统计与结论呈现，是实验平台，不是版面能力（也与
+§2 非目标相冲突）。规格 §7.1 里写的 `popular` / `pinned` 来源、`sort: popular`、
+`layout: mosaic` 同样没做——服务端没有热度、置顶与马赛克位的数据，按「不做前端假装筛选」
+的原则，这些选项**直接不放进面板**，而不是放进去再在本地过滤一页。
+
+### 15.7 已知限制
+
+1. **冷却按实例计**：60 秒那层是进程内的 `map`（按 `siteID|user:<id>` 或 `siteID|ip:<addr>`
+   分键，写时顺手清过期项），两个 API 进程各持一份，等于"每个实例每分钟各放行一次"。
+   覆盖整个集群的是引擎既有的全局限流，这一层只负责让单个访客别把慢端点刷爆。
+   多实例强制冷却需要把计数挪到网关或共享存储，本轮没做。
+2. **标签筛选是 JSON 文本的精确 token 匹配**（`TagsContains("\"tag\"")`）：跨 SQLite /
+   MySQL / PostgreSQL 都可移植，代价是标签名**不能含 `"` 或 `\`**——`NormalizeTag` 已经把
+   这类名字挡成 400，所以查询不会误配，但作者也不能用带引号的标签名。
+3. **锚点去重的作用域是一个 `ScreenRenderer`**：文章页同时渲染两种版式时，两棵渲染树各算
+   一趟分配，同名锚点会在 DOM 里出现两个同 `id`，浏览器自己决定 `#anchor` 落到哪一个。
+   首页与单版式页面没有这个问题；要彻底解决得把作用域提到页面级。
+4. **演示模式不筛选**：`content-query` 在演示模式下直接取 `FeedContext` 的演示数据并按
+   `limit` 截断，不按分类 / 标签 / 时间过滤，也不改写排序；面板里的提示写明"演示模式不生效"。
+5. **邮箱只查形状**：含 `@`、首尾不是 `@`、不含空白，长度 ≤200 字节。不验证可达性——
+   在这里做投递验证只会误杀真地址，而且什么也证明不了。
+6. **属性面板的两个手写字段（「后台显示名」「锚点」）的 `<label>` 没有 `htmlFor`**：
+   `Field` 的 label 与里面的 `<Input>` 之间没有 id 关联，点 label 不会聚焦、读屏也不会播报
+   字段名。这是 P0 起的既有写法（`ui.tsx` 的 `Field`），P3 的锚点控件沿用了它；本轮只做
+   记录，没有改产品代码，e2e 因此改用"从 label 退到最近的 `.field` 容器里取控件"来定位。
+
+### 15.8 仍未做
+
+- 订阅名单与退订链路（需要独立规格：订阅者表、退订、导出、合规声明）；
+- A/B 与实验分流；
+- 冷却的分布式实现（网关或共享存储），多实例部署前必须补；
+- `content-query` 的 `popular` / `pinned` / `mosaic`（等服务端有对应数据再进面板）；
+- 目录锚点的页面级作用域（见 §15.7 第 3 条）。

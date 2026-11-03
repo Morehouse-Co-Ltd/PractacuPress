@@ -989,6 +989,348 @@ async function runUtilityChecks() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* P3：内容查询 / 本页目录 / 联系表单                                   */
+/* ------------------------------------------------------------------ */
+
+/** 预览 iframe 里的区块类型清单（失败时用来解释"为什么读不到"）。 */
+const FRAME_TYPES = `[...doc.querySelectorAll('section[data-pp-block]')].map((el) => el.getAttribute('data-block-type'))`;
+
+/** 读预览 iframe 里「内容查询」区块画了什么。 */
+async function readQueryBlock() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="content-query"]');
+    if (!section) return { ok: false, reason: '预览里没有 content-query 区块', types: ${FRAME_TYPES} };
+    const cards = [...section.querySelectorAll('.pp-article-card')];
+    const titleOf = (card) => ((card.querySelector('.pp-article-copy strong') || {}).textContent || '').trim();
+    return {
+      ok: true,
+      cards: cards.length,
+      titles: cards.map(titleOf).slice(0, 4),
+      grid: !!section.querySelector('.pp-article-grid.is-grid'),
+      empty: !!section.querySelector('.pp-query-empty'),
+      loading: (section.textContent || '').indexOf('正在读取内容') >= 0,
+    };
+  `));
+}
+
+/** 读预览 iframe 里「本页目录」区块的链接，并核对每个链接都指得着一个 id。 */
+async function readAnchorNav() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="anchor-nav"]');
+    if (!section) return { ok: false, reason: '预览里没有 anchor-nav 区块', types: ${FRAME_TYPES} };
+    const nav = section.querySelector('nav.pp-anchor-nav');
+    const links = [...section.querySelectorAll('.pp-anchor-nav-link')].map((node) => ({
+      href: node.getAttribute('href') || '',
+      text: (node.textContent || '').trim(),
+      current: node.getAttribute('aria-current') || '',
+    }));
+    return {
+      ok: true,
+      hasNav: !!nav,
+      ariaLabel: nav ? nav.getAttribute('aria-label') || '' : '',
+      links,
+      resolved: links.map((link) => !!doc.getElementById(String(link.href).replace('#', ''))),
+      empty: !!section.querySelector('.pp-anchor-nav-empty'),
+      anchorSection: !!doc.getElementById('quick-start'),
+    };
+  `));
+}
+
+/** 读预览 iframe 里「联系表单」区块的结构与三态文案。 */
+async function readContactForm() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="contact-form"]');
+    if (!section) return { ok: false, reason: '预览里没有 contact-form 区块', types: ${FRAME_TYPES} };
+    const pick = (sel) => section.querySelector(sel);
+    const textOf = (sel) => (pick(sel) ? (pick(sel).textContent || '').trim() : '');
+    const button = pick('.pp-contact-submit');
+    const area = pick('textarea[name="message"]');
+    const honeypot = pick('input[name="website"]');
+    return {
+      ok: true,
+      hasForm: !!pick('.pp-contact-form'),
+      name: !!pick('input[name="name"]'),
+      email: !!pick('input[name="email"]'),
+      message: !!area,
+      honeypot: !!honeypot,
+      honeypotTabIndex: honeypot ? honeypot.getAttribute('tabindex') : null,
+      demoHint: textOf('.pp-contact-demo-hint'),
+      submitLabel: button ? (button.textContent || '').trim() : '',
+      error: textOf('.pp-contact-error'),
+      success: textOf('.pp-contact-success'),
+      messageValue: area ? String(area.value || '') : '',
+    };
+  `));
+}
+
+/** 点联系表单的提交按钮（演示模式不发请求，见 FormBlocks.tsx）。 */
+async function clickContactSubmit() {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="contact-form"]');
+    if (!section) return { ok: false, reason: '预览里没有 contact-form 区块' };
+    const button = section.querySelector('.pp-contact-submit');
+    if (!button) return { ok: false, reason: '表单里没有提交按钮' };
+    button.click();
+    return { ok: true };
+  `));
+}
+
+/** 往留言框里写一段话：在 iframe 的 realm 里派发 input，React 的 onChange 才收得到。 */
+async function fillContactMessage(text) {
+  return evaljs(frameExpr(`
+    const section = doc.querySelector('section[data-block-type="contact-form"]');
+    if (!section) return { ok: false, reason: '预览里没有 contact-form 区块' };
+    const area = section.querySelector('textarea[name="message"]');
+    if (!area) return { ok: false, reason: '表单里没有留言输入框' };
+    const proto = frame.contentWindow.HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(area, ${q(text)});
+    area.dispatchEvent(new frame.contentWindow.Event('input', { bubbles: true }));
+    return { ok: true, value: area.value };
+  `));
+}
+
+/**
+ * H. P3 数据与交互（Task 5）：内容查询 / 本页目录 / 联系表单。
+ *
+ * 三块都读预览 iframe 的真实 DOM，不读配置。演示模式的行为决定了断言口径：
+ * - `content-query` 在演示模式下**不伪造筛选**（见 QueryBlocks.tsx），直接画演示数据，
+ *   所以这里断言「卡片真的画出来了、条数不超面板上限、网格布局生效」，不假装验证筛选；
+ * - `anchor-nav` 先给按钮区块填一个锚点，再断言目录里的每条链接都能在页面上找到 `id`
+ *   ——两边出自同一趟遍历，有死链就是回归；
+ * - `contact-form` 在演示模式下不发请求，所以能确定地走完「空留言 → 提示」与
+ *   「填好 → 成功态」两条路径，且断言失败时输入不被清空。
+ */
+async function runP3Checks() {
+  console.log('\n=== H. P3 数据与交互：内容查询 / 本页目录 / 联系表单 ===');
+
+  /* ---------- 内容查询 ---------- */
+  const query = await clickPalette(['内容查询', 'Content query']);
+  const queryAdded = query?.ok === true;
+  await check(
+    'P3',
+    '组件库里有「内容查询」并可点击追加',
+    queryAdded,
+    query?.ok
+      ? `组件=${query.label}`
+      : `${query?.reason ?? 'unknown'}${query?.candidates?.length ? `；候选: ${query.candidates.join(' / ')}` : ''}`,
+  );
+  if (queryAdded) {
+    try {
+      await waitUntil(`!!document.querySelector('.builder-inspector')`, 12000);
+      await fillFieldByLabel('显示条数', '3');
+    } catch (err) {
+      await check('P3', '内容查询面板里把条数改成 3', false, err instanceof Error ? err.message : String(err));
+    }
+    const cards = await pollValue(
+      readQueryBlock,
+      (value) => value?.ok && value.cards > 0 && !value.loading,
+      15000,
+    );
+    await check(
+      'P3',
+      'content-query 画出文章卡片，条数不超过面板上限',
+      cards?.ok === true && cards.cards > 0 && cards.cards <= 3 && cards.empty === false,
+      cards?.ok
+        ? `卡片=${cards.cards} 标题=[${cards.titles.join(' | ')}]`
+        : String(cards?.reason ?? 'unknown'),
+    );
+    await check(
+      'P3',
+      'content-query 用 .pp-article-grid.is-grid（与文章组件共用卡片样式）',
+      cards?.grid === true,
+      cards?.ok ? '' : String(cards?.reason ?? 'unknown'),
+    );
+    await scrollFrameTo('section[data-block-type="content-query"]');
+    await shot('07-query-block');
+  }
+
+  /* ---------- 锚点 + 本页目录 ---------- */
+  // 先给已有的按钮区块填一个锚点：目录需要至少一个目标才不是空状态。
+  let anchorSet = false;
+  try {
+    await selectTreeRow('button');
+    await fillInspectorFieldByLabel('锚点', 'quick-start');
+    anchorSet = true;
+  } catch (err) {
+    await check('P3', '属性面板里给按钮区块填上锚点 #quick-start', false, err instanceof Error ? err.message : String(err));
+  }
+  if (anchorSet) {
+    await check('P3', '属性面板里给按钮区块填上锚点 #quick-start', true, 'anchor=quick-start');
+  }
+
+  const nav = await clickPalette(['本页目录', 'Table of contents']);
+  const navAdded = nav?.ok === true;
+  await check(
+    'P3',
+    '组件库里有「本页目录」并可点击追加',
+    navAdded,
+    nav?.ok
+      ? `组件=${nav.label}`
+      : `${nav?.reason ?? 'unknown'}${nav?.candidates?.length ? `；候选: ${nav.candidates.join(' / ')}` : ''}`,
+  );
+  if (navAdded) {
+    const toc = await pollValue(
+      readAnchorNav,
+      (value) => value?.ok && value.links.length >= 1,
+      15000,
+    );
+    await check(
+      'P3',
+      'anchor-nav 渲染成 <nav aria-label="本页目录">',
+      toc?.ok === true && toc.hasNav === true && toc.ariaLabel === '本页目录',
+      toc?.ok ? `aria-label=${toc.ariaLabel} 链接=${toc.links.length}` : String(toc?.reason ?? 'unknown'),
+    );
+    await check(
+      'P3',
+      '目录列出按钮区块的锚点，链接文案非空',
+      toc?.links?.length >= 1 &&
+        toc.links[0].href === '#quick-start' &&
+        String(toc.links[0].text).length > 0,
+      toc?.ok
+        ? `链接=[${toc.links.map((link) => `${link.href}(${link.text})`).join(' | ')}]`
+        : String(toc?.reason ?? 'unknown'),
+    );
+    await check(
+      'P3',
+      '每个目录链接都指得着页面上的 id（没有死链）',
+      toc?.ok === true && toc.links.length > 0 && toc.resolved.every(Boolean) && toc.anchorSection === true,
+      toc?.ok ? `resolved=[${toc.resolved.join(',')}] section#quick-start=${toc.anchorSection}` : String(toc?.reason ?? 'unknown'),
+    );
+    await scrollFrameTo('section[data-block-type="anchor-nav"]');
+    await shot('08-anchor-nav');
+  }
+
+  /* ---------- 联系表单 ---------- */
+  const form = await clickPalette(['联系表单', 'Contact form']);
+  const formAdded = form?.ok === true;
+  await check(
+    'P3',
+    '组件库里有「联系表单」并可点击追加',
+    formAdded,
+    form?.ok
+      ? `组件=${form.label}`
+      : `${form?.reason ?? 'unknown'}${form?.candidates?.length ? `；候选: ${form.candidates.join(' / ')}` : ''}`,
+  );
+  if (formAdded) {
+    const rendered = await pollValue(readContactForm, (value) => value?.ok && value.hasForm, 15000);
+    await check(
+      'P3',
+      '联系表单渲染姓名 / 回信邮箱 / 留言三个字段与提交按钮',
+      rendered?.ok === true &&
+        rendered.name === true &&
+        rendered.email === true &&
+        rendered.message === true &&
+        String(rendered.submitLabel).length > 0,
+      rendered?.ok
+        ? `字段=[name:${rendered.name} email:${rendered.email} message:${rendered.message}] 按钮=${rendered.submitLabel}`
+        : String(rendered?.reason ?? 'unknown'),
+    );
+    await check(
+      'P3',
+      '蜜罐 website 字段存在并从 Tab 顺序里摘出去（tabindex=-1）',
+      rendered?.honeypot === true && rendered.honeypotTabIndex === '-1',
+      `honeypot=${rendered?.honeypot} tabindex=${rendered?.honeypotTabIndex ?? 'null'}`,
+    );
+    await check(
+      'P3',
+      '演示模式标注「演示模式下不会真的发送。」',
+      String(rendered?.demoHint ?? '').includes('演示模式下不会真的发送'),
+      `提示=${rendered?.demoHint ?? '缺失'}`,
+    );
+    await scrollFrameTo('section[data-block-type="contact-form"]');
+    await shot('09-contact-form');
+
+    // 空留言：给一句提示，不发请求。
+    try {
+      await clickContactSubmit();
+      const invalid = await pollValue(
+        readContactForm,
+        (value) => value?.ok && String(value.error).length > 0,
+        8000,
+      );
+      await check(
+        'P3',
+        '空留言提交时提示「请先写下要发送的内容。」',
+        String(invalid?.error ?? '').includes('请先写下要发送的内容'),
+        `提示=${invalid?.error ?? '缺失'}`,
+      );
+    } catch (err) {
+      await check('P3', '空留言提交时提示「请先写下要发送的内容。」', false, err instanceof Error ? err.message : String(err));
+    }
+
+    // 填好再提交：演示模式直接进成功态，且输入不被清空。
+    try {
+      await fillContactMessage('这条来自 e2e，验证 P3 联系表单。');
+      await clickContactSubmit();
+      const sent = await pollValue(
+        readContactForm,
+        (value) => value?.ok && String(value.success).length > 0,
+        10000,
+      );
+      await check(
+        'P3',
+        '填好留言后进入成功态（演示模式不发请求）',
+        String(sent?.success ?? '').trim().length > 0 && String(sent?.error ?? '') === '',
+        `成功文案=${sent?.success ?? '缺失'}`,
+      );
+      await check(
+        'P3',
+        '发送成功后留言仍在输入框里（不清空用户输入）',
+        String(sent?.messageValue ?? '').length > 0,
+        `留言长度=${String(sent?.messageValue ?? '').length}`,
+      );
+      await shot('10-contact-form-sent');
+    } catch (err) {
+      await check('P3', '填好留言后进入成功态（演示模式不发请求）', false, err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
+/**
+ * 按属性面板里的字段名填一个「非 schema 驱动」的字段（后台显示名 / 锚点这类）。
+ *
+ * 这类字段是手写的 `<Field label>` 包一个 `<Input>`，没有 `htmlFor`——label 与输入框
+ * 之间没有 id 关联，`fillFieldByLabel` 从 `for` 倒推输入框的做法在这里拿不到元素，
+ * 所以改为从 label 所在的 `.field` 容器里取第一个输入框。
+ */
+async function fillInspectorFieldByLabel(label, value) {
+  const result = await evaljs(`(() => {
+    const wanted = ${q(label)};
+    const labels = [...document.querySelectorAll('.builder-inspector label.field-label')];
+    const hit = labels.find((node) => (node.textContent ?? '').replace(/\\s+/g, ' ').trim() === wanted);
+    if (!hit) {
+      return {
+        ok: false,
+        reason: '属性面板里没有字段「' + wanted + '」',
+        fields: labels.map((node) => (node.textContent ?? '').trim()).filter(Boolean).slice(0, 30),
+      };
+    }
+    // label 没有 for：退到同一个 .field 容器里找控件。
+    const el = hit.closest('.field')?.querySelector('input, textarea, select') ?? null;
+    if (!el) return { ok: false, reason: '字段「' + wanted + '」所在的 .field 里没有输入框' };
+    const proto = el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : el instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, ${q(value)});
+    else el.value = ${q(value)};
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return { ok: true, value: el.value };
+  })()`);
+  if (!result?.ok) {
+    throw new Error(
+      `填写字段「${label}」失败：${result?.reason ?? 'unknown'}${result?.fields?.length ? `；可见字段: ${result.fields.join(' / ')}` : ''}`,
+    );
+  }
+  await sleep(150);
+  return result.value;
+}
+
 /** 在左侧结构树里按区块类型（.tree-meta 里的 type）选中一行。 */
 async function selectTreeRow(type) {
   return evaljs(`(() => {
@@ -1380,6 +1722,10 @@ async function runBuilderChecks() {
   );
   await scrollFrameTo(SEL.buttonSection);
   await shot('06-after-reload-button');
+
+  /* ---------- H. P3 数据与交互 ---------- */
+  currentSection = 'P3';
+  await runP3Checks();
 }
 
 function flattenBlocks(blocks, out = []) {
@@ -1396,7 +1742,7 @@ function flattenBlocks(blocks, out = []) {
 /* ------------------------------------------------------------------ */
 
 function printSummary() {
-  const sections = ['SETUP', 'BUILDER', 'BUTTON', 'UTILITY', 'PALETTE', 'APPEARANCE', 'CONFIG', 'PERSIST', 'RUN'];
+  const sections = ['SETUP', 'BUILDER', 'BUTTON', 'UTILITY', 'PALETTE', 'APPEARANCE', 'CONFIG', 'PERSIST', 'P3', 'RUN'];
   console.log('\n================ 汇总 ================');
   for (const section of sections) {
     const items = results.filter((item) => item.section === section);
