@@ -25,6 +25,7 @@ import { motionReduced } from '../../lib/performance';
 import { BLOCK_SKELETON_SHAPES } from '../../lib/loading';
 import { applyDisplayOverrides } from '../../lib/layout';
 import { isVisibleAt, roleFromSession, type VisibilityContext } from '../../lib/visibility';
+import { isPreviewFrame } from '../../lib/access';
 import { useAuth } from '../../lib/session';
 import { useT } from '../../lib/i18n';
 import { usePageSkeleton } from '../SkeletonMode';
@@ -212,7 +213,13 @@ export function ScreenRenderer({
   const { me } = useAuth();
   const role = roleFromSession(me);
   const now = useMemo(() => new Date(), []);
-  const visibility = useMemo<VisibilityContext>(() => ({ device, role, now }), [device, role, now]);
+  // 编排器预览跑在 iframe 里（带管理员真实登录态）：角色与时间窗在预览里不该生效，
+  // 否则作者刚设了限制的区块会当场消失、再也选不中。设备条件仍然生效。
+  const preview = useMemo(() => isPreviewFrame(), []);
+  const visibility = useMemo<VisibilityContext>(
+    () => ({ device, role, now, preview }),
+    [device, role, now, preview],
+  );
   const blocks = applyDisplayOverrides(screenBlocksForDevice(layout, device), device)
     .filter((block) => !block.hidden)
     .filter((block) => isVisibleAt(block, visibility));

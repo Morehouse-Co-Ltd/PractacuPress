@@ -38,6 +38,20 @@ describe('isVisibleAt', () => {
     expect(isVisibleAt(block, ctx())).toBe(true);
   });
 
+  it('预览模式下角色与时间窗都不生效，只保留设备条件', () => {
+    const restricted = {
+      visible: { roles: ['member' as const], from: '2030-01-01' },
+    };
+    expect(isVisibleAt(restricted, { ...ctx('admin'), preview: true })).toBe(true);
+    const deviceOnly = { visible: { devices: ['mobile' as const], roles: ['member' as const] } };
+    expect(isVisibleAt(deviceOnly, { ...ctx('admin', 'desktop'), preview: true })).toBe(false);
+    expect(isVisibleAt(deviceOnly, { ...ctx('admin', 'mobile'), preview: true })).toBe(true);
+  });
+
+  it('非预览时角色仍然生效', () => {
+    expect(isVisibleAt({ visible: { roles: ['member' as const] } }, ctx('guest'))).toBe(false);
+  });
+
   it('三个条件同时存在时全部满足才可见', () => {
     const block = {
       visible: { devices: ['mobile' as const], roles: ['member' as const], from: '2026-11-01' },
