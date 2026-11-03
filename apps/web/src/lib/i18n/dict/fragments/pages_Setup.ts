@@ -327,6 +327,8 @@ const fragment: Dictionary = {
   '创建管理员': 'Create administrator',
   '继续': 'Continue',
   '、': ', ',
+  '8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。':
+    '8–128 characters, combining at least two of: lowercase, uppercase, digits, symbols. A long passphrase is best.',
 };
 
 export default fragment;

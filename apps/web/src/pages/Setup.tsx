@@ -15,6 +15,7 @@ import { HttpBackend, ApiError, normalizeOrigin } from '../lib/api';
 import { DemoBackend } from '../lib/demo';
 import { INSTALL_RESET_KEY, saveConfig } from '../lib/backend';
 import { SITE_KIND_LABEL } from '../lib/site';
+import { passwordProblem, passwordProblemText } from '../lib/passwordPolicy';
 import { createCustomizationWithPages } from '../lib/customize';
 import { DEFAULT_THEME, applyMode, applyPreset } from '../lib/theme';
 import { inferActiveTheme, themeLibrary } from '../lib/themes';
@@ -499,8 +500,10 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       if (!isEmail(draft.admin.email)) return t('请填写有效的邮箱地址。');
       if (!draft.admin.display_name.trim()) return t('请填写显示名称。');
       if (draft.admin.display_name.length > 120) return t('显示名称不能超过 120 个字符。');
-      if (draft.admin.password.length < 8) return t('密码至少 8 位。');
-      if (draft.admin.password.length > 128) return t('密码不能超过 128 位。');
+      // 与后端同一套策略（8–128 位、至少两类字符）；只查长度会让用户拿到一句
+      // 笼统的「请求参数不符合要求」。
+      const passwordIssue = passwordProblem(draft.admin.password);
+      if (passwordIssue) return t(passwordProblemText(passwordIssue, t));
       if (draft.admin.password !== draft.admin.confirm) return t('两次输入的密码不一致。');
       return '';
     }
@@ -1537,7 +1540,7 @@ go run ./apps/api/cmd/server`}</pre>
                               autoComplete="email"
                             />
                           </Field>
-                          <Field label={t('密码')} htmlFor="admin-pass" hint={t('8–128 位。建议使用长口令。')}>
+                          <Field label={t('密码')} htmlFor="admin-pass" hint={t('8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。')}>
                             <Input
                               id="admin-pass"
                               type="password"

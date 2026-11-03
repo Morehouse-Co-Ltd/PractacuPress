@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+﻿import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { AuthProviderId } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
+import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
 import { ApiError } from '../../lib/api';
 import { PUBLISH_LABEL, VISIBILITY_LABEL } from '../../lib/format';
 import { isPersonalSite } from '../../lib/site';
@@ -139,8 +140,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         setError(t('请填写显示名称。'));
         return;
       }
-      if (password.length < 8) {
-        setError(t('密码至少 8 位。'));
+      // 与后端同一套密码策略；只查长度会让用户提交后收到一句笼统的「参数不合法」。
+      const passwordIssue = passwordProblem(password);
+      if (passwordIssue) {
+        setError(t(passwordProblemText(passwordIssue, t)));
         return;
       }
       if (password !== confirm) {

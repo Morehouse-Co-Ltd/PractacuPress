@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ActivityEntry,
   Asset,
   AuthProviderId,
@@ -36,6 +36,7 @@ import { ApiError, fallbackProblem, uuid } from './api';
 import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
 import type { ContactPayload } from './contactForm';
 import { canReview, ROLE_RANK, slugify } from './format';
+import { passwordProblem, passwordProblemText } from './passwordPolicy';
 import { renderSource } from './markdown';
 import {
   applyDemoTaxonomy,
@@ -543,7 +544,11 @@ export class DemoBackend {
       this.fail(400, 'validation_failed', '请填写有效的邮箱地址。');
     }
     if (!input.display_name.trim()) this.fail(400, 'validation_failed', '请填写显示名称。');
-    if (input.password.length < 8) this.fail(400, 'validation_failed', '密码至少 8 位。');
+    // 与真实服务端同一套密码策略，否则演示模式能建的账户，线上建不了。
+    const passwordIssue = passwordProblem(input.password);
+    if (passwordIssue) {
+      this.fail(400, 'validation_failed', passwordProblemText(passwordIssue, (key) => key));
+    }
     if (this.state.users.some((u) => u.email.toLowerCase() === email)) {
       this.fail(409, 'conflict', '该邮箱已经注册。');
     }

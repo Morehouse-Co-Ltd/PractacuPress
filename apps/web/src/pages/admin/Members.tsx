@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { noteActivity } from '../../lib/activity';
+import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
 import { ROLE_HINT, ROLE_LABEL } from '../../lib/format';
 import { SITE_KIND_LABEL, siteKindOf } from '../../lib/site';
 import { usePermissions } from '../../lib/usePermissions';
@@ -117,8 +118,11 @@ export function MembersPage() {
       setFormError(t('请填写有效的邮箱地址。'));
       return;
     }
-    if (draft.password.length < 8) {
-      setFormError(t('密码至少 8 位。'));
+    // 与后端同一套密码策略（8–128 位、至少两类字符），否则提交后只会拿到一句
+    // 笼统的「请求参数不符合要求」，管理员根本不知道密码缺什么。
+    const passwordIssue = passwordProblem(draft.password);
+    if (passwordIssue) {
+      setFormError(t(passwordProblemText(passwordIssue, t)));
       return;
     }
     setBusy(true);
@@ -652,7 +656,7 @@ export function MembersPage() {
             <Field
               label={t('初始密码')}
               htmlFor="member-password"
-              hint={t('至少 8 位。创建后请通过安全渠道交给对方。')}
+              hint={t('8–128 位，且至少包含两类字符（小写、大写、数字、符号）。创建后请通过安全渠道交给对方。')}
             >
               <Input
                 id="member-password"

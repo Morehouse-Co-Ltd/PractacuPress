@@ -143,6 +143,8 @@ const fragment: Dictionary = {
     'New visitors become regular members by signing up; admins can also pick the group directly in Add user, which saves a later change.',
   '当前身份：{identity}。': 'Signed in as: {identity}.',
   '站点形态：{kind}。': 'Site type: {kind}.',
+  '8–128 位，且至少包含两类字符（小写、大写、数字、符号）。创建后请通过安全渠道交给对方。':
+    '8–128 characters, combining at least two of: lowercase, uppercase, digits, symbols. Hand the initial password over through a safe channel.',
 };
 
 export default fragment;
