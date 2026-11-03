@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import type {
   BlockArea,
   BlockInstance,
@@ -15,6 +24,8 @@ import { styleDeclarations } from '../../lib/blockStyles';
 import { motionReduced } from '../../lib/performance';
 import { BLOCK_SKELETON_SHAPES } from '../../lib/loading';
 import { applyDisplayOverrides } from '../../lib/layout';
+import { isVisibleAt, roleFromSession, type VisibilityContext } from '../../lib/visibility';
+import { useAuth } from '../../lib/session';
 import { useT } from '../../lib/i18n';
 import { usePageSkeleton } from '../SkeletonMode';
 import { useFeed } from './FeedContext';
@@ -54,12 +65,41 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...ARTICLE_RENDERERS,
 };
 
+/**
+ * 条件显示的求值上下文。
+ *
+ * 子区块在任意深度都要用同一套「设备 / 角色 / 此刻」来求值（分栏容器、容器、
+ * 嵌套层三条路径各不相同），所以走 context 而不是 props：`BlockView` 是递归的，
+ * props 得穿过 `ColumnsBlock` 的 renderChild 和 `renderBlocks` 的分栏分组，
+ * 而 context 让每个 `BlockView` 自己取——同目录的 `ScreenScope` / `FeedContext`
+ * 已经是这个形状。
+ *
+ * 缺省 `null` 表示"不做条件显示过滤"：编排器里单独渲染一个区块预览时没有这层
+ * provider，编辑时该看得见被藏起来的区块。
+ */
+const VisibilityCtx = createContext<VisibilityContext | null>(null);
+
+function VisibilityProvider({
+  value,
+  children,
+}: {
+  value: VisibilityContext;
+  children: ReactNode;
+}) {
+  return <VisibilityCtx.Provider value={value}>{children}</VisibilityCtx.Provider>;
+}
+
+function useVisibility(): VisibilityContext | null {
+  return useContext(VisibilityCtx);
+}
+
 function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) {
   const ref = useRef<HTMLElement>(null);
   const seen = useInView(ref);
   const motion = usePageSkeleton();
   const feed = useFeed();
   const dataContext = useBlockDataContext();
+  const visibility = useVisibility();
   // 组件文字可以绑定「显示什么数据」：在这里统一解析一次，所有渲染器都拿到
   // 已经换成真实数据的 props，不用逐个改渲染器。没有绑定时沿用原对象，避免
   // 每次渲染都产生新 props 触发子树重算。
@@ -74,7 +114,11 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
   const isColumns = displayBlock.type === 'columns';
   const isContainer = displayBlock.type === 'container';
   const anim = displayBlock.animation && displayBlock.animation !== 'none' ? displayBlock.animation : '';
-  const visibleChildren = (displayBlock.children ?? []).filter((child) => !child.hidden);
+  // 子区块服从与根级区块同一条规则：设备、角色、时间窗。没有 provider 时
+  // visibility 为 null，只按 hidden 过滤（编排器预览要看全）。
+  const visibleChildren = (displayBlock.children ?? []).filter(
+    (child) => !child.hidden && (!visibility || isVisibleAt(child, visibility)),
+  );
   const hasNestedLayer = !isColumns && !isContainer && visibleChildren.length > 0;
   // 骨架模式 + 内容还在加载 + 该区块依赖 FeedContext：外壳保留，内部只画骨架。
   // 未登记的类型（标题/文本/按钮/hero 等）照常渲染，不会把能立刻显示的内容藏起来。
@@ -163,13 +207,19 @@ export function ScreenRenderer({
 }) {
   const t = useT();
   const device = useViewportDevice();
-  const blocks = applyDisplayOverrides(screenBlocksForDevice(layout, device), device).filter(
-    (block) => !block.hidden,
-  );
+  // 条件显示：角色由登录态推出，设备是当前断点，时间点在挂载时取一次。
+  // 不为时间窗挂定时器——改天换内容靠下一次加载生效，比每个会话重排一次版面省。
+  const { me } = useAuth();
+  const role = roleFromSession(me);
+  const now = useMemo(() => new Date(), []);
+  const visibility = useMemo<VisibilityContext>(() => ({ device, role, now }), [device, role, now]);
+  const blocks = applyDisplayOverrides(screenBlocksForDevice(layout, device), device)
+    .filter((block) => !block.hidden)
+    .filter((block) => isVisibleAt(block, visibility));
   if (!blocks.length) return null;
   return (
     <ScreenScopeProvider scope={scope ?? { type: 'home', id: 'home' }}>
-      {renderBlocks(blocks, variant, t)}
+      <VisibilityProvider value={visibility}>{renderBlocks(blocks, variant, t)}</VisibilityProvider>
     </ScreenScopeProvider>
   );
 }
