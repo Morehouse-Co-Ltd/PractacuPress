@@ -352,6 +352,31 @@ const fragment: Dictionary = {
   '最多 8 条，序号按顺序自动生成。': 'Up to 8 items; the numbers are generated in order.',
   '最多 9 条。链接可填 http(s) 地址或以 / 开头的站内路径；留空则卡片不可点击。':
     'Up to 9 cards. Links may be http(s) URLs or absolute site paths starting with /; leave the link empty to keep the card unclickable.',
+
+  // ---- 2026-11-03 媒体型区块（团队 / Logo 墙 / 图集） ----
+  团队成员: 'Team members',
+  '成员头像 + 姓名 + 头衔，头像裁成正圆；没填头像时用姓名首字母兜底。':
+    'Member avatar with name and role, cropped to a circle; when no avatar is set, the first letter of the name stands in for it.',
+  姓名: 'Name',
+  头衔: 'Role',
+  '最多 12 位。头像留空时用姓名首字母做占位。':
+    'Up to 12 members. When the avatar is empty, the first letter of the name is used as a placeholder.',
+  'Logo 墙': 'Logo wall',
+  '一排合作方 Logo，默认灰度、悬停恢复彩色，适合客户与伙伴背书。':
+    'A row of partner logos, greyscale by default and in colour on hover; good for customer and partner endorsements.',
+  'Logo 一行放几个；窄屏自动减少。': 'How many logos per row; narrow screens show fewer.',
+  '最多 12 个。替代文字留给读屏；纯装饰可留空。':
+    'Up to 12 logos. Alt text is for screen readers; leave it empty for purely decorative images.',
+  Logo: 'Logo',
+  '图片栅格，点开看大图，可用方向键前后切换。':
+    'An image grid; click to see the large version and use the arrow keys to move between images.',
+  '1:1 方形': '1:1 square',
+  '4:3 横向': '4:3 landscape',
+  '16:9 宽幅': '16:9 wide',
+  '缩略图裁成同一个比例，点击看原图。':
+    'Thumbnails are cropped to the same ratio; click one to see the full image.',
+  '最多 20 张。说明会显示在大图下方，也用作图片的替代文字。':
+    'Up to 20 images. The caption is shown below the large image and also used as its alt text.',
 };
 
 export default fragment;

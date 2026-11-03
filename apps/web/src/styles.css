@@ -8081,3 +8081,191 @@ button.theme-bundle-card {
 @media (prefers-reduced-motion: reduce) {
   .pp-card-grid-card { transition: none; }
 }
+
+/* =========================================================
+   媒体区块（团队 / Logo 墙 / 图集，2026-11-03 P2）
+   ---------------------------------------------------------
+   数据在 lib/blocks.ts，渲染器在 components/blocks/MediaGalleryBlocks.tsx。
+   列数由渲染器下发 --pp-media-columns，缩略图比例走 --pp-gallery-ratio；
+   断点行为只写在这个文件里（沿用 P1 的 767px 断点，不新造断点）。
+   颜色全部走主题令牌；Logo 墙在 hover / 键盘聚焦时恢复彩色，只改滤镜不位移，
+   减少动效时连过渡也去掉。
+   ========================================================= */
+
+.pp-mediablock { display: flex; flex-direction: column; gap: 18px; }
+.pp-mediablock-heading {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 400;
+  color: var(--ink);
+}
+
+/* ---------- 团队 ---------- */
+.pp-team {
+  display: grid;
+  grid-template-columns: repeat(var(--pp-media-columns, 3), minmax(0, 1fr));
+  gap: 18px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pp-team-member { min-width: 0; }
+.pp-team-card,
+.pp-team-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: var(--r-lg);
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+}
+.pp-team-link:hover .pp-team-name { color: var(--accent); }
+.pp-team-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pp-team-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-subtle));
+}
+.pp-team-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 缺图时的首字母占位：主题色底 + 主题笔色，绝不会出现破图图标。 */
+.pp-team-initial {
+  font-family: var(--serif);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--accent);
+  user-select: none;
+}
+.pp-team-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.pp-team-role { font-size: 12px; line-height: 1.6; color: var(--muted); }
+
+/* ---------- Logo 墙 ---------- */
+.pp-logo-wall {
+  display: grid;
+  grid-template-columns: repeat(var(--pp-media-columns, 4), minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pp-logo-wall-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+}
+.pp-logo-wall img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 52px;
+  object-fit: contain;
+  filter: grayscale(1);
+  opacity: 0.7;
+  transition: filter 160ms ease, opacity 160ms ease;
+}
+/* hover 与键盘聚焦都恢复彩色：只改滤镜，不做位移。 */
+.pp-logo-wall li:hover img,
+.pp-logo-wall a:hover img,
+.pp-logo-wall a:focus-visible img { filter: grayscale(0); opacity: 1; }
+.pp-logo-wall a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+/* ---------- 图集 ---------- */
+.pp-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--pp-media-columns, 3), minmax(0, 1fr));
+  gap: 10px;
+}
+.pp-gallery-thumb {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+  aspect-ratio: var(--pp-gallery-ratio, 4 / 3);
+  cursor: zoom-in;
+  transition: border-color 140ms ease;
+}
+.pp-gallery-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pp-gallery-thumb:hover { border-color: var(--accent); }
+.pp-gallery-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 灯箱：原生 dialog。居中、限高，背板压暗，Esc 与焦点陷阱都是浏览器给的。 */
+.pp-gallery-dialog {
+  max-width: min(960px, 92vw);
+  max-height: 92vh;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  color: var(--ink);
+  overflow: hidden;
+}
+.pp-gallery-dialog::backdrop { background: rgb(0 0 0 / 72%); }
+.pp-gallery-figure { display: flex; flex-direction: column; margin: 0; }
+.pp-gallery-large {
+  display: block;
+  max-width: 100%;
+  max-height: 76vh;
+  object-fit: contain;
+  background: var(--bg-subtle);
+}
+.pp-gallery-caption { padding: 10px 14px 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.pp-gallery-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.pp-gallery-count { margin-right: auto; font-size: 12px; color: var(--muted); }
+.pp-gallery-prev,
+.pp-gallery-next,
+.pp-gallery-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pp-gallery-prev:hover,
+.pp-gallery-next:hover,
+.pp-gallery-close:hover { border-color: var(--accent); color: var(--accent); }
+.pp-gallery-close { border-color: transparent; font-size: 18px; }
+.pp-gallery-prev:focus-visible,
+.pp-gallery-next:focus-visible,
+.pp-gallery-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 窄屏：两列排开，列数变量不再说了算（断点与 P1 一致）。 */
+@media (max-width: 767px) {
+  .pp-team,
+  .pp-logo-wall,
+  .pp-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-logo-wall img { transition: none; }
+  .pp-gallery-thumb { transition: none; }
+}

@@ -1173,6 +1173,113 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
       },
     ],
   },
+
+  /* ---------------- 内容型（P2 媒体组件三件套） ---------------- */
+  {
+    type: 'team',
+    name: t('团队成员'),
+    description: t('成员头像 + 姓名 + 头衔，头像裁成正圆；没填头像时用姓名首字母兜底。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', columns: 3, items: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'columns',
+        label: t('列数'),
+        type: 'select',
+        options: [2, 3, 4].map((n) => ({ value: String(n), label: t('{count} 列', { count: n }) })),
+      },
+      {
+        key: 'items',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('成员'),
+        maxItems: 12,
+        hint: t('最多 12 位。头像留空时用姓名首字母做占位。'),
+        itemSchema: [
+          { key: 'avatar', label: t('头像'), type: 'media' },
+          { key: 'name', label: t('姓名'), type: 'text' },
+          { key: 'role', label: t('头衔'), type: 'text' },
+          { key: 'link', label: t('链接'), type: 'text' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'logo-wall',
+    name: t('Logo 墙'),
+    description: t('一排合作方 Logo，默认灰度、悬停恢复彩色，适合客户与伙伴背书。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', columns: 4, items: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'columns',
+        label: t('列数'),
+        type: 'select',
+        options: [2, 3, 4, 5, 6].map((n) => ({
+          value: String(n),
+          label: t('{count} 列', { count: n }),
+        })),
+        hint: t('Logo 一行放几个；窄屏自动减少。'),
+      },
+      {
+        key: 'items',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('Logo'),
+        maxItems: 12,
+        hint: t('最多 12 个。替代文字留给读屏；纯装饰可留空。'),
+        itemSchema: [
+          { key: 'image', label: t('图片'), type: 'media' },
+          { key: 'link', label: t('链接'), type: 'text' },
+          { key: 'alt', label: t('替代文字'), type: 'text' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'gallery',
+    name: t('图集'),
+    description: t('图片栅格，点开看大图，可用方向键前后切换。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', columns: 3, ratio: '4:3', items: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'columns',
+        label: t('列数'),
+        type: 'select',
+        options: [2, 3, 4].map((n) => ({ value: String(n), label: t('{count} 列', { count: n }) })),
+      },
+      {
+        key: 'ratio',
+        label: t('比例'),
+        type: 'select',
+        options: [
+          { value: '1:1', label: t('1:1 方形') },
+          { value: '4:3', label: t('4:3 横向') },
+          { value: '16:9', label: t('16:9 宽幅') },
+        ],
+        hint: t('缩略图裁成同一个比例，点击看原图。'),
+      },
+      {
+        key: 'items',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('图片'),
+        maxItems: 20,
+        hint: t('最多 20 张。说明会显示在大图下方，也用作图片的替代文字。'),
+        itemSchema: [
+          { key: 'image', label: t('图片'), type: 'media' },
+          { key: 'caption', label: t('说明'), type: 'text' },
+        ],
+      },
+    ],
+  },
 ];
 
 /**
