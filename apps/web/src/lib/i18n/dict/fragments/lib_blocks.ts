@@ -332,6 +332,26 @@ const fragment: Dictionary = {
   上下留白: 'Vertical padding',
   底色: 'Background colour',
   上下分割线: 'Top and bottom divider',
+
+  // ---- 2026-11-03 内容型区块（功能网格 / 卡片组 / 步骤） ----
+  功能网格: 'Feature grid',
+  '图标 + 标题 + 说明，2–4 列排开，适合把功能点一次讲清。':
+    'Icon, title and description in 2–4 columns: a quick way to explain what the product does.',
+  卡片组: 'Card grid',
+  '一组可点击的卡片，比功能网格更自由，适合导航与推荐。':
+    'A set of clickable cards; freer than the feature grid, good for navigation and recommendations.',
+  步骤: 'Steps',
+  '按顺序排列的步骤 / 流程，可纵向也可横向排开。':
+    'Ordered steps or a process, laid out vertically or horizontally.',
+  方向: 'Direction',
+  纵向: 'Vertical',
+  横向: 'Horizontal',
+  '横向在窄屏自动退回纵向。': 'On narrow screens the horizontal layout falls back to vertical.',
+  '最多 8 条。图标可填内置图标名，留空则不显示图标。':
+    'Up to 8 items. The icon may be any built-in icon name; leave it empty to show no icon.',
+  '最多 8 条，序号按顺序自动生成。': 'Up to 8 items; the numbers are generated in order.',
+  '最多 9 条。链接可填 http(s) 地址或以 / 开头的站内路径；留空则卡片不可点击。':
+    'Up to 9 cards. Links may be http(s) URLs or absolute site paths starting with /; leave the link empty to keep the card unclickable.',
 };
 
 export default fragment;

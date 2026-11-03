@@ -7953,3 +7953,131 @@ button.theme-bundle-card {
 }
 /* 命令面板当前项的快捷键提示，accent-soft 底上 faint 太淡。 */
 .pp-command-item.is-active .pp-command-key { color: var(--muted); }
+
+/* =========================================================
+   营销区块（功能网格 / 卡片组 / 步骤，2026-11-03 P2）
+   ---------------------------------------------------------
+   数据在 lib/blocks.ts，渲染器在 components/blocks/MarketingBlocks.tsx。
+   列数由渲染器下发 --pp-marketing-columns，断点行为只写在这个文件里：
+   与 P1 的断点表一致（767px 以下横向步骤退回纵向，不新造断点）。
+   颜色全部走主题令牌；卡片 hover 只改颜色、不位移，减少动效时连过渡也去掉。
+   ========================================================= */
+
+.pp-marketing { display: flex; flex-direction: column; gap: 18px; }
+.pp-marketing-heading {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 400;
+  color: var(--ink);
+}
+
+/* ---------- 功能网格 ---------- */
+.pp-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--pp-marketing-columns, 3), minmax(0, 1fr));
+  gap: 14px;
+}
+.pp-feature-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 20px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+}
+.pp-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+.pp-feature-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.pp-feature-text { margin: 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
+
+/* ---------- 卡片组 ---------- */
+.pp-card-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--pp-marketing-columns, 3), minmax(0, 1fr));
+  gap: 14px;
+}
+.pp-card-grid-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+/* hover 只换颜色：没有 translate，也没有阴影位移，减少动效时天然不动。 */
+.pp-card-grid-card:hover {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-subtle));
+}
+.pp-card-grid-card.is-link:hover { border-color: var(--accent); }
+.pp-card-grid-card.is-link:hover .pp-card-grid-title { color: var(--accent); }
+.pp-card-grid-card.is-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pp-card-grid-title { margin: 0; font-size: 15px; font-weight: 600; }
+.pp-card-grid-text { margin: 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
+
+/* ---------- 步骤 ---------- */
+.pp-steps { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.pp-step { display: flex; gap: 12px; min-width: 0; }
+.pp-step-no {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1;
+}
+.pp-step-body { min-width: 0; padding-top: 3px; }
+.pp-step-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.pp-step-text { margin: 4px 0 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
+
+/* 横向：一行排开，圈与圈之间拉一条细连线（最后一步不长尾巴）。 */
+.pp-steps.is-horizontal { flex-direction: row; align-items: flex-start; gap: 0; }
+.pp-steps.is-horizontal .pp-step {
+  position: relative;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+}
+.pp-steps.is-horizontal .pp-step::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: calc(50% + 22px);
+  right: calc(-50% + 22px);
+  height: 1px;
+  background: var(--line);
+}
+.pp-steps.is-horizontal .pp-step:last-child::after { display: none; }
+
+/* 窄屏放不下一行三步：退回纵向，连线一并去掉（断点与 P1 一致）。 */
+@media (max-width: 767px) {
+  .pp-steps.is-horizontal { flex-direction: column; gap: 14px; }
+  .pp-steps.is-horizontal .pp-step { flex-direction: row; gap: 12px; }
+  .pp-steps.is-horizontal .pp-step::after { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-card-grid-card { transition: none; }
+}

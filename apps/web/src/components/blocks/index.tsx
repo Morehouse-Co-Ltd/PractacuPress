@@ -41,6 +41,7 @@ import { DATA_RENDERERS } from './DataBlocks';
 import { ENGAGE_RENDERERS } from './EngageBlocks';
 import { ACTION_RENDERERS } from './ActionBlocks';
 import { ARTICLE_RENDERERS } from './ArticleBlocks';
+import { MARKETING_RENDERERS } from './MarketingBlocks';
 import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
 
 /**
@@ -64,6 +65,7 @@ const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElemen
   ...ENGAGE_RENDERERS,
   ...ACTION_RENDERERS,
   ...ARTICLE_RENDERERS,
+  ...MARKETING_RENDERERS,
 };
 
 /**

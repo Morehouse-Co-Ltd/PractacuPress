@@ -77,7 +77,13 @@ export interface BlockDefinition {
   type: string;
   name: string;
   description: string;
-  group: 'classic' | 'nightflight' | 'shared';
+  /**
+   * 目录分组（`content` 是 P2 起的内容型组件）。
+   *
+   * 「添加组件」面板的分组按 type 推导（见 `BlockTreeEditor` 的 `groupOf`），
+   * 这个字段只描述区块的来源批次，不参与渲染。
+   */
+  group: 'classic' | 'nightflight' | 'shared' | 'content';
   /** 出现在哪些布局变体的“添加组件”菜单里。 */
   variants: LayoutVariant[];
   defaults: BlockProps;
@@ -1068,6 +1074,103 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
         ],
       },
       { key: 'new_tab', label: t('外部链接在新窗口打开'), type: 'toggle' },
+    ],
+  },
+
+  /* ---------------- 内容型（P2 无媒体组件三件套） ---------------- */
+  {
+    type: 'feature-grid',
+    name: t('功能网格'),
+    description: t('图标 + 标题 + 说明，2–4 列排开，适合把功能点一次讲清。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', columns: 3, items: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'columns',
+        label: t('列数'),
+        type: 'select',
+        options: [2, 3, 4].map((n) => ({ value: String(n), label: t('{count} 列', { count: n }) })),
+      },
+      {
+        key: 'items',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('条目'),
+        maxItems: 8,
+        hint: t('最多 8 条。图标可填内置图标名，留空则不显示图标。'),
+        itemSchema: [
+          { key: 'icon', label: t('图标'), type: 'text' },
+          { key: 'title', label: t('标题'), type: 'text' },
+          { key: 'text', label: t('说明'), type: 'textarea' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'card-grid',
+    name: t('卡片组'),
+    description: t('一组可点击的卡片，比功能网格更自由，适合导航与推荐。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', columns: 3, items: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'columns',
+        label: t('列数'),
+        type: 'select',
+        options: [2, 3, 4].map((n) => ({ value: String(n), label: t('{count} 列', { count: n }) })),
+      },
+      {
+        key: 'items',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('条目'),
+        maxItems: 9,
+        hint: t(
+          '最多 9 条。链接可填 http(s) 地址或以 / 开头的站内路径；留空则卡片不可点击。',
+        ),
+        itemSchema: [
+          { key: 'title', label: t('标题'), type: 'text' },
+          { key: 'text', label: t('说明'), type: 'textarea' },
+          { key: 'link', label: t('链接'), type: 'text' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'steps',
+    name: t('步骤'),
+    description: t('按顺序排列的步骤 / 流程，可纵向也可横向排开。'),
+    group: 'content',
+    variants: ['classic', 'bento'],
+    defaults: { heading: '', orientation: 'vertical', items: [] },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空隐藏标题。') },
+      {
+        key: 'orientation',
+        label: t('方向'),
+        type: 'select',
+        options: [
+          { value: 'vertical', label: t('纵向') },
+          { value: 'horizontal', label: t('横向') },
+        ],
+        hint: t('横向在窄屏自动退回纵向。'),
+      },
+      {
+        key: 'items',
+        label: t('条目'),
+        type: 'repeater',
+        itemLabel: t('条目'),
+        maxItems: 8,
+        hint: t('最多 8 条，序号按顺序自动生成。'),
+        itemSchema: [
+          { key: 'title', label: t('标题'), type: 'text' },
+          { key: 'text', label: t('说明'), type: 'textarea' },
+        ],
+      },
     ],
   },
 ];
