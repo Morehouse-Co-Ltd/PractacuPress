@@ -122,6 +122,17 @@ function sessionId(): string {
   }
 }
 
+/**
+ * 匿名会话标识，供访问统计与阅读量去重共用。
+ *
+ * 阅读量在服务端累加（FSD A-16），同一个值既写进访问记录，也作为
+ * `X-Visit-Session` 头随详情读取发出，于是「一次访问」和「一次阅读」指的是同一次
+ * 浏览器会话。它只是去重提示，不是身份凭证。
+ */
+export function clientSessionId(): string {
+  return sessionId();
+}
+
 /** 记录一次页面访问；相同路径 5 秒内重复触发（React StrictMode）会被忽略。 */
 export function recordVisit(input: {
   path: string;

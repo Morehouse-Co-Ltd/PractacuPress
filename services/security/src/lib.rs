@@ -15,4 +15,8 @@ pub mod password;
 ///
 /// It is stored next to sanitized content so a later policy change can invalidate
 /// previously published HTML instead of leaving it silently unverified.
-pub const POLICY_VERSION: &str = "2026-10-18.1";
+///
+/// 2026-11-02.1: V-22 — `class` values are filtered token by token (pp-*/language-*
+/// plus a small Markdown ecosystem allow-list) and upload inspection uses the
+/// complete file signatures plus HTML/SVG polyglot rejection.
+pub const POLICY_VERSION: &str = "2026-11-02.1";

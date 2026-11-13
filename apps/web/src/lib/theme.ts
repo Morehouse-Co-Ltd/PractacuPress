@@ -30,40 +30,52 @@ export interface ThemePreset {
   dark: ThemeTokenSet;
 }
 
-/** 深色暖黑（夜航 · 默认）。 */
+/**
+ * 深色石墨（夜航 · 默认）。
+ *
+ * 2026-11 修订：从暖黑 + 薰衣草改为冷石墨 + 电光蓝。底色压得更深，
+ * 卡片、输入框和线条靠亮度差分层，不再依赖带紫的暖色；强调色与浅色模式
+ * 共用同一支蓝，切换明暗时视觉重心不会跳。
+ */
 const NIGHT_DARK: ThemeTokenSet = {
-  background: '#18171d',
-  ink: '#f7f7fa',
-  accent: '#c4b5fd',
-  bg_subtle: '#1d1e22',
-  bg_sunken: '#21232a',
-  ink_soft: '#d6d6e0',
-  muted: '#a1a2b8',
-  faint: '#6f7085',
-  line: '#2c2d36',
-  line_strong: '#3d3d3f',
-  accent_soft: '#c4b5fd1f',
-  accent_ink: '#1e1b2e',
-  prose: '#d6d6e0',
+  background: '#0b0d11',
+  ink: '#f2f4f8',
+  accent: '#6e9bff',
+  bg_subtle: '#12151b',
+  bg_sunken: '#181c24',
+  ink_soft: '#c9cfda',
+  muted: '#8c93a2',
+  faint: '#616978',
+  line: '#222832',
+  line_strong: '#323a47',
+  accent_soft: '#6e9bff1f',
+  accent_ink: '#08101f',
+  prose: '#cbd1dc',
 };
 
-/** 浅色冷白纸（夜航的浅色重配，不是深色反相）。 */
+/**
+ * 浅色冷白（夜航的浅色重配，不是深色反相）。
+ *
+ * 这是原来「白昼」卡片设计的延续：近白纸面、白色卡片、电光蓝强调色。
+ * 白昼作为独立主题被移除后，它的明亮观感留在这里，由同一个明暗开关切换。
+ */
 const NIGHT_LIGHT: ThemeTokenSet = {
-  background: '#f7f9fe',
-  ink: '#17181d',
-  accent: '#163bf2',
+  background: '#f7f8fa',
+  ink: '#101318',
+  accent: '#2457f5',
   bg_subtle: '#ffffff',
-  bg_sunken: '#eef1f9',
-  ink_soft: '#363636',
-  muted: '#5b5d6b',
-  faint: '#8a8c9b',
-  line: '#e6eaf5',
-  line_strong: '#d8ddec',
-  accent_soft: '#163bf214',
+  bg_sunken: '#eef1f6',
+  ink_soft: '#3a404b',
+  muted: '#666e7c',
+  faint: '#9299a6',
+  line: '#e3e7ee',
+  line_strong: '#d3d9e3',
+  accent_soft: '#eaf0ff',
   accent_ink: '#ffffff',
-  prose: '#363636',
+  prose: '#333944',
 };
 
+/** 白昼：已合并进夜航的冷白重配，旧配置读取时由 customize.ts 折算。 */
 const RAW_THEME_PRESETS: ThemePreset[] = [
   {
     id: 'paper',
@@ -248,7 +260,7 @@ const RAW_THEME_PRESETS: ThemePreset[] = [
   {
     id: 'night',
     name: t('夜航'),
-    note: t('深色杂志风：暖黑底、薰衣草主色、封面图组织内容。'),
+    note: t('冷石墨与电光蓝：深色为主、浅色为同一套设计的明亮重配。'),
     mode: 'dark',
     light: NIGHT_LIGHT,
     dark: NIGHT_DARK,
@@ -461,8 +473,8 @@ function deriveFromBase(theme: ThemeSettings): ThemeTokenSet {
 }
 
 /** 解析出最终生效的令牌：预设底 → 自定义推导 → 高级覆盖。 */
-export function resolveTokens(theme: ThemeSettings): ThemeTokenSet {
-  const fromPreset = presetTokens(theme.preset, theme.mode);
+export function resolveTokens(theme: ThemeSettings, mode: ThemeMode = theme.mode): ThemeTokenSet {
+  const fromPreset = presetTokens(theme.preset, mode);
   const base = fromPreset ?? deriveFromBase(theme);
   const overrides = theme.tokens ?? {};
   const next: ThemeTokenSet = { ...base };
@@ -472,6 +484,38 @@ export function resolveTokens(theme: ThemeSettings): ThemeTokenSet {
     if (safe) next[key] = safe;
   }
   return next;
+}
+
+function relativeLuminance(hex: string): number | null {
+  const value = hex.trim();
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
+  if (!match) return null;
+  const raw = match[1].length === 3 ? [...match[1]].map((c) => c + c).join('') : match[1];
+  const channels = [0, 2, 4].map((offset) => {
+    const channel = parseInt(raw.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+/**
+ * 在给定底色上挑一个能读的文字色。
+ *
+ * 安装向导的主题预览会把主题自己的底色与文字色画进一张小卡片：主题作者
+ * 如果填了一对低对比度的值，预览里的「Aa」就会消失。这里只用十六进制值
+ * 计算相对亮度，对比不足时退回黑或白，保证预览始终可读；不是十六进制
+ * （例如 color-mix 表达式）时原样返回，让 CSS 自己处理。
+ */
+export function readableInk(background: string, preferred: string): string {
+  const bg = relativeLuminance(background);
+  const ink = relativeLuminance(preferred);
+  if (bg === null) return preferred;
+  if (ink !== null) {
+    const lighter = Math.max(bg, ink);
+    const darker = Math.min(bg, ink);
+    if ((lighter + 0.05) / (darker + 0.05) >= 3) return preferred;
+  }
+  return bg > 0.45 ? '#101318' : '#f7f8fa';
 }
 
 /**
@@ -484,9 +528,9 @@ const CSS_TOKEN_NAME: Record<string, string> = {
 };
 
 /** 生成站点主题的 CSS 变量。派生色由 color-mix 计算，保证同一套配色自洽。 */
-export function themeCss(customization: SiteCustomization): string {
+export function themeCss(customization: SiteCustomization, mode?: ThemeMode): string {
   const { theme } = customization;
-  const tokens = resolveTokens(theme);
+  const tokens = resolveTokens(theme, mode ?? theme.mode);
   const r = theme.radius;
   const sm = Math.max(0, r - 2);
   const lg = Math.min(16, r + 4);
@@ -497,9 +541,14 @@ export function themeCss(customization: SiteCustomization): string {
       return safe ? `  ${CSS_TOKEN_NAME[key] ?? `--${key.replace(/_/g, '-')}`}: ${safe};` : null;
     })
     .filter((line): line is string => line !== null);
-  // 后台不跟随前台的暗色主题：固定纸白令牌，避免暗色令牌让表格、卡片和表单发灰。
+  // 后台有自己的明暗模式：浅色沿用纸白令牌（与改造前完全一致），深色用夜航的
+  // 冷石墨令牌。两者都写在 html[data-surface="admin"] 下，站点前台的 :root 不受影响。
   const adminTokens = presetTokens('paper', 'light')!;
   const adminLines = Object.entries(adminTokens).map(
+    ([key, value]) => `  ${CSS_TOKEN_NAME[key] ?? `--${key.replace(/_/g, '-')}`}: ${value};`,
+  );
+  const adminDarkTokens = presetTokens('night', 'dark')!;
+  const adminDarkLines = Object.entries(adminDarkTokens).map(
     ([key, value]) => `  ${CSS_TOKEN_NAME[key] ?? `--${key.replace(/_/g, '-')}`}: ${value};`,
   );
   return `:root {
@@ -519,11 +568,57 @@ ${lines.join('\n')}
 html[data-surface="admin"] {
   color-scheme: light;
 ${adminLines.join('\n')}
+  --admin-panel: #ffffff;
+  --admin-panel-alt: #fafaf7;
+  --admin-border: #ecece6;
+  --admin-border-soft: #e7e8e0;
+  --admin-hover: #f2f3ee;
+  --admin-glass: rgba(255, 255, 255, 0.9);
+  --admin-glass-strong: rgba(255, 255, 255, 0.94);
+  --admin-glow: #f5f6f1;
   --article-width: 720px;
   --article-size: 17.5px;
   --r-sm: 4px;
   --r-md: 6px;
   --r-lg: 10px;
+}
+/* 后台深色：与站点前台的主题完全解耦，只由后台自己的偏好（data-admin-theme）触发。 */
+html[data-surface="admin"][data-admin-theme="dark"] {
+  color-scheme: dark;
+${adminDarkLines.join('\n')}
+  --admin-panel: #12151b;
+  --admin-panel-alt: #181c24;
+  --admin-border: #222832;
+  --admin-border-soft: #2a313c;
+  --admin-hover: #1d2430;
+  --admin-glass: rgba(18, 21, 27, 0.9);
+  --admin-glass-strong: rgba(18, 21, 27, 0.94);
+  --admin-glow: #0f141d;
+  --article-width: 720px;
+  --article-size: 17.5px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+}
+/* 安装向导：固定浅色纸面令牌。
+   安装时浏览器里可能还留着上一次安装的深色主题变量，而向导里的语言切换、选项卡
+   和检查项有硬编码的白底；不隔离的话会出现白底上的浅色字。 */
+html[data-surface="setup"] {
+  color-scheme: light;
+${adminLines.join('\n')}
+  --article-width: 720px;
+  --article-size: 17.5px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+}
+/* 后台与安装向导：body 底色跟随各自的令牌。后台深色由 data-admin-theme 切换；
+   安装向导始终固定浅色。index.html 里的「深色模式首屏防闪」规则优先级相同，
+   所以要用同一层的规则把底色与文字拉回当前界面自己的令牌。 */
+html[data-surface="admin"] body,
+html[data-surface="setup"] body {
+  background: var(--bg);
+  color: var(--ink);
 }
 /* 柔化：背景光晕 + 组件颜色平滑过渡；只在站点前台生效，后台保持清晰。 */
 html[data-surface="site"] body {

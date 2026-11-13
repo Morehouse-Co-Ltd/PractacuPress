@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ArticleCover } from '../types';
 import { isDemo, useBackend } from '../lib/backend';
+import { useMediaSrc } from '../lib/assetUrl';
 import { MAX_COVERS, coverUrlError, normalizeCoverUrl, useCustomization } from '../lib/customize';
 import { coverAlt, coverFor, coverFrameStyle, coverImageStyle } from '../lib/covers';
 import { usePermissions } from '../lib/usePermissions';
@@ -55,6 +56,12 @@ export function ArticleCoverPanel({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 封面通常 purpose=site 可以匿名读，但手工贴的 /api/v1/media 地址可能是
+  // content 用途，匿名请求会被挡成 404，所以预览也走带鉴权的 blob；
+  // data URL（演示模式上传）原样返回。
+  const preview = saved?.url && !hidden ? saved : null;
+  const previewSrc = useMediaSrc(preview?.url);
 
   useEffect(() => {
     // 只在切换稿件（含新稿保存后拿到 id）时回填；写入配置也会更新 customization，
@@ -194,7 +201,6 @@ export function ArticleCoverPanel({
     }
   };
 
-  const preview = saved?.url && !hidden ? saved : null;
   const status = hidden ? (
     <Badge tone="muted">{t('已隐藏')}</Badge>
   ) : preview ? (
@@ -232,7 +238,7 @@ export function ArticleCoverPanel({
           {preview ? (
             <div className="cover cover-custom" style={coverFrameStyle('16 / 9')}>
               <img
-                src={preview.url}
+                src={previewSrc.src || undefined}
                 alt={coverAlt(preview, title || t('封面'))}
                 loading="lazy"
                 style={coverImageStyle(preview)}

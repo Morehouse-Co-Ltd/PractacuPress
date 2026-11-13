@@ -120,6 +120,7 @@ func newHarnessWithOptions(t *testing.T, visibility site.VisibilityMode, lookup 
 		Config:       cfg,
 		SiteResolver: staticSiteResolver{site: site.Site{ID: siteID, Slug: "main", Name: "Main", VisibilityMode: visibility}},
 		AccessTokens: issuer,
+		Memberships:  siteService,
 		Auth:         authHandler,
 		Sites:        siteHandler,
 	})
@@ -308,6 +309,111 @@ func TestUpdateSettingsAppliesForAdmin(t *testing.T) {
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &payload))
 	require.Equal(t, "open", payload["publish_mode"])
 	require.Equal(t, "members_only", payload["visibility_mode"])
+}
+
+func TestSiteAdminCanSetSiteAndMemberMediaQuotas(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "quota-admin@example.com")
+	targetID := h.userID(t, h.register(t, "quota-member@example.com"))
+
+	updatedSite := h.do(t, http.MethodPatch, "/api/v1/sites/"+h.siteID+"/settings", adminToken,
+		`{"media_quota_bytes":4096}`)
+	require.Equal(t, http.StatusNoContent, updatedSite.Code, updatedSite.Body.String())
+
+	siteResponse := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID, adminToken, "")
+	var sitePayload map[string]any
+	require.NoError(t, json.Unmarshal(siteResponse.Body.Bytes(), &sitePayload))
+	require.Equal(t, float64(4096), sitePayload["media_quota_bytes"])
+
+	updatedMember := h.do(t, http.MethodPatch,
+		"/api/v1/sites/"+h.siteID+"/members/"+targetID+"/quota", adminToken,
+		`{"media_quota_bytes":8192}`)
+	require.Equal(t, http.StatusOK, updatedMember.Code, updatedMember.Body.String())
+
+	var memberPayload map[string]any
+	require.NoError(t, json.Unmarshal(updatedMember.Body.Bytes(), &memberPayload))
+	require.Equal(t, float64(8192), memberPayload["media_quota_bytes"])
+}
+
+func TestSiteMediaQuotaPatchKeepsNullZeroAndOmittedDistinct(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "quota-admin@example.com")
+	settingsPath := "/api/v1/sites/" + h.siteID + "/settings"
+	sitePath := "/api/v1/sites/" + h.siteID
+
+	set := func(body string) *httptest.ResponseRecorder {
+		return h.do(t, http.MethodPatch, settingsPath, adminToken, body)
+	}
+	getQuota := func() any {
+		response := h.do(t, http.MethodGet, sitePath, adminToken, "")
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
+		return payload["media_quota_bytes"]
+	}
+
+	require.Equal(t, http.StatusNoContent, set(`{"media_quota_bytes":4096}`).Code)
+	require.Equal(t, float64(4096), getQuota())
+	require.Equal(t, http.StatusNoContent, set(`{"media_quota_bytes":0}`).Code)
+	require.Equal(t, float64(0), getQuota(), "zero is an explicit unlimited override")
+	require.Equal(t, http.StatusNoContent, set(`{"media_quota_bytes":null}`).Code)
+	require.Nil(t, getQuota(), "null restores the inherited deployment default")
+
+	require.Equal(t, http.StatusNoContent, set(`{"media_quota_bytes":2048}`).Code)
+	require.Equal(t, http.StatusNoContent, set(`{"name":"Updated"}`).Code)
+	require.Equal(t, float64(2048), getQuota(), "omitting the field leaves its stored override untouched")
+
+	invalid := set(`{"media_quota_bytes":-1}`)
+	require.Equal(t, http.StatusBadRequest, invalid.Code, invalid.Body.String())
+	require.Equal(t, float64(2048), getQuota())
+}
+
+func TestMemberMediaQuotaPatchAndMemberList(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "quota-admin@example.com")
+	targetID := h.userID(t, h.register(t, "quota-member@example.com"))
+	quotaPath := h.memberPath(targetID, "/quota")
+
+	set := func(body string) *httptest.ResponseRecorder {
+		return h.do(t, http.MethodPatch, quotaPath, adminToken, body)
+	}
+	response := set(`{"media_quota_bytes":8192}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, float64(8192), decodeMember(t, response)["media_quota_bytes"])
+
+	list := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID+"/members", adminToken, "")
+	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(list.Body.Bytes(), &payload))
+	items := payload["items"].([]any)
+	var target map[string]any
+	for _, item := range items {
+		row := item.(map[string]any)
+		if row["user_id"] == targetID {
+			target = row
+		}
+	}
+	require.NotNil(t, target)
+	require.Equal(t, float64(8192), target["media_quota_bytes"])
+
+	response = set(`{"media_quota_bytes":0}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, float64(0), decodeMember(t, response)["media_quota_bytes"])
+	response = set(`{"media_quota_bytes":null}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Nil(t, decodeMember(t, response)["media_quota_bytes"])
+
+	response = set(`{"media_quota_bytes":-1}`)
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+}
+
+func TestMemberMediaQuotaRequiresSiteAdministrator(t *testing.T) {
+	h := newHarness(t)
+	memberToken := h.register(t, "quota-member@example.com")
+	targetID := h.userID(t, memberToken)
+
+	response := h.do(t, http.MethodPatch, h.memberPath(targetID, "/quota"), memberToken,
+		`{"media_quota_bytes":1024}`)
+	require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 }
 
 func (h *harness) attemptLogin(t *testing.T, email string) *httptest.ResponseRecorder {
@@ -937,4 +1043,85 @@ func TestUpdateSettingsRegistrationSwitch(t *testing.T) {
 	memberToken := h.register(t, "member2@example.com")
 	denied := h.do(t, http.MethodPatch, path, memberToken, `{"registration_open":false}`)
 	require.Equal(t, http.StatusForbidden, denied.Code)
+}
+
+// TestCapabilityGroupIsEnforcedByServer walks the whole contract of a custom group:
+// create it, assign a member, watch the server refuse the revoked capability, then
+// switch the capability back on and watch the same request succeed.
+func TestCapabilityGroupIsEnforcedByServer(t *testing.T) {
+	h := newHarness(t)
+	adminToken, _ := h.makeSiteAdmin(t, "admin@example.com")
+
+	groupPath := "/api/v1/sites/" + h.siteID + "/permission-groups/ops"
+	narrow := `{
+		"name":"运营组",
+		"base_role":"site_admin",
+		"capabilities":{"read_content":true,"manage_site":true,"view_log":true,"manage_member":false},
+		"admin_access":true
+	}`
+	created := h.do(t, http.MethodPut, groupPath, adminToken, narrow)
+	require.Equal(t, http.StatusOK, created.Code, created.Body.String())
+	var group map[string]any
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &group))
+	require.Equal(t, "运营组", group["name"])
+	require.Equal(t, "site_admin", group["base_role"])
+	require.False(t, group["builtin"].(bool))
+
+	memberToken := h.register(t, "operator@example.com")
+	memberID := h.userID(t, memberToken)
+	assigned := h.do(t, http.MethodPatch,
+		"/api/v1/sites/"+h.siteID+"/members/"+memberID+"/group", adminToken, `{"group_key":"ops"}`)
+	require.Equal(t, http.StatusNoContent, assigned.Code, assigned.Body.String())
+
+	membersPath := "/api/v1/sites/" + h.siteID + "/members"
+	// readOperator returns the member row the admin list renders, including the group
+	// label the Members page shows in its dropdown and table.
+	readOperator := func() map[string]any {
+		listed := h.do(t, http.MethodGet, membersPath, adminToken, "")
+		require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
+		var body struct {
+			Items []map[string]any `json:"items"`
+		}
+		require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &body))
+		for _, item := range body.Items {
+			if item["user_id"] == memberID {
+				return item
+			}
+		}
+		t.Fatalf("operator %s missing from the member list", memberID)
+		return nil
+	}
+	require.Equal(t, "ops", readOperator()["group_key"])
+	require.Equal(t, "运营组", readOperator()["group_name"])
+
+	// The custom group narrows the site_admin role: member management is off even
+	// though the role alone would allow it.
+	denied := h.do(t, http.MethodGet, membersPath, memberToken, "")
+	require.Equal(t, http.StatusForbidden, denied.Code, denied.Body.String())
+	problem := decodeProblemBody(t, denied.Body.Bytes())
+	require.Equal(t, "capability_required", problem["details"].(map[string]any)["reason"])
+
+	// Switching the capability on takes effect on the next request: no re-login and
+	// no page refresh is needed for the server to see the new matrix. Renaming the
+	// group is visible in the same member list without moving the member.
+	wide := `{
+		"name":"运营二组",
+		"base_role":"site_admin",
+		"capabilities":{"read_content":true,"manage_site":true,"view_log":true,"manage_member":true},
+		"admin_access":true
+	}`
+	updated := h.do(t, http.MethodPut, groupPath, adminToken, wide)
+	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
+	require.Equal(t, "运营二组", readOperator()["group_name"])
+
+	allowed := h.do(t, http.MethodGet, membersPath, memberToken, "")
+	require.Equal(t, http.StatusOK, allowed.Code, allowed.Body.String())
+}
+
+// decodeProblemBody reads a problem+json body for the assertions above.
+func decodeProblemBody(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	var problem map[string]any
+	require.NoError(t, json.Unmarshal(body, &problem))
+	return problem
 }

@@ -29,7 +29,10 @@ export function recordActivity(entry: Omit<ActivityEntry, 'id' | 'at'>) {
   }
 }
 
-/** 演示后端自己维护活动日志；真实后端没有审计端点，因此记录在浏览器本地。 */
+/**
+ * 演示后端自己维护活动日志；真实后端的合规审计在服务端 `audit_logs`。
+ * 这里保留浏览器本地缓存，只用于仪表盘等位置的即时反馈，不作为审计依据。
+ */
 export function noteActivity(
   backend: Backend,
   actor: string,

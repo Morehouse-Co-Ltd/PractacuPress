@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { StorageScope, StorageSettings, StorageStrategy } from '../../types';
+import type {
+  StorageScope,
+  StorageScopeAllocation,
+  StorageSettings,
+  StorageStrategy,
+} from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import {
   DEFAULT_LOCAL_DIR,
+  MAX_ALLOCATION_ENTRIES,
+  MAX_ALLOCATION_QUOTA_GB,
   MAX_STRATEGIES,
   MAX_STRATEGY_NAME,
   STORAGE_SCOPES,
-  buildStorageEnvSnippet,
   createStrategyId,
   defaultStorage,
   emptyStrategy,
@@ -17,7 +23,9 @@ import {
   normalizeStorage,
   normalizeStrategy,
   readStorage,
+  scopeAllocation,
   scopeLabel,
+  scopesUsingStrategy,
   storageDriverLabel,
   storageUrlError,
   strategyLocation,
@@ -31,7 +39,6 @@ import {
   Badge,
   Button,
   Callout,
-  CopyButton,
   Field,
   Input,
   Modal,
@@ -69,6 +76,38 @@ const SCOPE_META: {
 /** 正在编辑的策略：新建时没有 id，编辑时用已有 id。 */
 type EditorState = { mode: 'create' } | { mode: 'edit'; id: string };
 
+/** 一个用途的容量合计；0 表示其中至少有一套策略不限容量。 */
+function quotaSummary(allocation: StorageScopeAllocation, t: ReturnType<typeof useT>): string {
+  const entries =
+    allocation.mode === 'single' ? allocation.entries.slice(0, 1) : allocation.entries;
+  if (entries.some((entry) => entry.quota_gb === 0)) return t('含不限容量');
+  const total = entries.reduce((sum, entry) => sum + entry.quota_gb, 0);
+  return t('合计 {size} GB', { size: total });
+}
+
+/** 策略的展示名：名称留空时回落到类型名，保证摘要行不会只剩一个徽标。 */
+function strategyName(strategy: StorageStrategy): string {
+  return strategy.name.trim() || storageDriverLabel(strategy.driver);
+}
+
+/**
+ * 名称和类型是否说了两回事。
+ *
+ * 默认策略叫「本地储存」，类型也是「本地储存」；再拼成「本地储存 · 本地储存」
+ * 只是重复，所以只有用户自己改了名字才在摘要和下拉里带上类型。
+ */
+function strategyNeedsDriver(strategy: StorageStrategy): boolean {
+  const name = strategyName(strategy).trim().toLowerCase();
+  return name !== storageDriverLabel(strategy.driver).toLowerCase();
+}
+
+/** 下拉选项的纯文本：原生下拉不能用富文本，只能靠标签本身避免重复。 */
+function strategyOptionLabel(strategy: StorageStrategy): string {
+  return strategyNeedsDriver(strategy)
+    ? `${strategyName(strategy)} · ${storageDriverLabel(strategy.driver)}`
+    : strategyName(strategy);
+}
+
 export function StoragePage() {
   const t = useT();
   useTitle(t('储存策略'));
@@ -78,9 +117,9 @@ export function StoragePage() {
   const saved = useMemo(() => readStorage(config), [config]);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<StorageSettings>(() => saved);
-  // 密钥只留在组件状态里，用于生成 .env 片段；刷新页面后就没了。
-  const [secret, setSecret] = useState('');
   const [editing, setEditing] = useState<EditorState | null>(null);
+  /** 正在弹窗里调整分配方式的用途；null 表示弹窗关闭。 */
+  const [allocationScope, setAllocationScope] = useState<StorageScope | null>(null);
   const [form, setForm] = useState<StorageStrategy>(() => emptyStrategy());
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<StorageStrategy | null>(null);
@@ -103,16 +142,38 @@ export function StoragePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
-  const snippet = buildStorageEnvSnippet(saved, secret);
   const draftGlobal = globalStrategyOf(draft);
   const draftCloud = usedStrategies(draft).some((strategy) => strategy.driver === 's3');
-  const savedCloud = saved.strategies.some((strategy) => strategy.driver === 's3');
   const deleteFallback = deleteTarget
     ? draft.strategies.find((strategy) => strategy.id !== deleteTarget.id)
     : undefined;
   const deleteScopes = deleteTarget
-    ? STORAGE_SCOPES.filter((scope) => draft.scopes[scope] === deleteTarget.id)
+    ? scopesUsingStrategy(draft, deleteTarget.id)
     : [];
+
+  /** 弹窗对应的用途、分配与主策略；弹窗关闭时都是 null。 */
+  const allocationMeta = allocationScope
+    ? SCOPE_META.find((meta) => meta.scope === allocationScope) ?? null
+    : null;
+  const activeAllocation = allocationScope ? scopeAllocation(draft, allocationScope) : null;
+  const activePrimary =
+    allocationScope && activeAllocation
+      ? findStrategy(
+          draft,
+          activeAllocation.entries[0]?.strategy_id ?? draft.scopes[allocationScope],
+        )
+      : null;
+  const activeShownEntries = activeAllocation
+    ? activeAllocation.mode === 'single'
+      ? activeAllocation.entries.slice(0, 1)
+      : activeAllocation.entries
+    : [];
+  const activeHasAvailable = activeAllocation
+    ? draft.strategies.some(
+        (strategy) =>
+          !activeAllocation.entries.some((entry) => entry.strategy_id === strategy.id),
+      )
+    : false;
 
   const openCreate = () => {
     if (draft.strategies.length >= MAX_STRATEGIES) {
@@ -179,7 +240,7 @@ export function StoragePage() {
     toast.push(
       'ok',
       t('已更新储存策略'),
-      t('点右上角「保存修改」写入这台电脑的本地安装配置；部署片段也会随之更新。'),
+      t('点右上角「保存修改」写入这台电脑的本地安装配置。'),
     );
   };
 
@@ -189,16 +250,30 @@ export function StoragePage() {
     const remaining = draft.strategies.filter((strategy) => strategy.id !== target.id);
     // 至少保留一套：只剩一套时删除按钮本来就是禁用的，这里再兜一次底。
     if (!remaining.length) return;
-    const scopes = { ...draft.scopes };
+    const normalized = normalizeStorage(draft);
+    const allocations = {} as Record<StorageScope, StorageScopeAllocation>;
     for (const scope of STORAGE_SCOPES) {
-      if (scopes[scope] === target.id) scopes[scope] = remaining[0].id;
+      const allocation = normalized.allocations![scope];
+      const entries = allocation.entries.filter(
+        (entry) => entry.strategy_id !== target.id,
+      );
+      if (!entries.length) {
+        entries.push({ strategy_id: remaining[0].id, quota_gb: 0 });
+      }
+      allocations[scope] = { ...allocation, entries };
     }
-    setDraft({ ...draft, strategies: remaining, scopes });
+    const scopes = {} as Record<StorageScope, string>;
+    for (const scope of STORAGE_SCOPES) {
+      scopes[scope] = allocations[scope].entries[0].strategy_id;
+    }
+    setDraft({ ...normalized, strategies: remaining, scopes, allocations });
     setDeleteTarget(null);
     toast.push(
       'ok',
       t('已删除储存策略「{name}」', { name: target.name }),
-      t('引用它的用途已经回落到第一套策略，点「保存修改」后生效；不会删除任何文件。'),
+      deleteScopes.length
+        ? t('引用它的用途已经从分配里移除，空出来的位置回落到第一套策略，点「保存修改」后生效；不会删除任何文件。')
+        : t('没有用途在使用这套策略，删除不会改变上传位置，也不会删除任何文件。'),
     );
   };
 
@@ -240,15 +315,21 @@ export function StoragePage() {
     toast.push(
       'ok',
       t('储存策略已保存'),
-      t('已写入这台电脑的本地安装配置；把下方片段写进服务器 .env 并重启 API 之后，新的上传才会写到目标位置。'),
+      t('已写入这台电脑的本地安装配置；用途分配、容量上限与切换顺序都会一并保存。'),
     );
     if (me) {
+      const multiCount = STORAGE_SCOPES.filter(
+        (scope) => scopeAllocation(next, scope).mode === 'quota',
+      ).length;
       noteActivity(
         backend,
         me.user.display_name,
         '修改储存策略',
         site?.name ?? '站点',
-        `${next.strategies.length} 套策略 · 全局「${globalStrategyOf(next).name}」`,
+        t('{count} 套策略 · {multi} 个用途多策略', {
+          count: next.strategies.length,
+          multi: multiCount,
+        }),
       );
     }
   };
@@ -257,16 +338,151 @@ export function StoragePage() {
     const next = defaultStorage();
     updateConfig({ storage: next });
     setDraft(next);
-    setSecret('');
     toast.push(
       'ok',
       t('已恢复默认储存策略'),
-      t('回到一套「本地储存」（./data/media），四个用途都指向它；不会删除任何文件，也不会修改服务器的 .env。'),
+      t('回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。'),
     );
   };
 
-  const patchScope = (scope: StorageScope, id: string) => {
-    setDraft({ ...draft, scopes: { ...draft.scopes, [scope]: id } });
+  /**
+   * 更新一个用途的完整分配。
+   *
+   * 先走一次 normalizeStorage，保证旧草稿也带上 allocations；再把主策略
+   * `scopes[scope]` 同步成分配顺序的第一套。
+   */
+  const patchAllocation = (
+    scope: StorageScope,
+    update: (allocation: StorageScopeAllocation) => StorageScopeAllocation,
+  ) => {
+    setDraft((prev) => {
+      const normalized = normalizeStorage(prev);
+      const allocations = {
+        ...normalized.allocations!,
+        [scope]: update(normalized.allocations![scope]),
+      };
+      const scopes = {
+        ...normalized.scopes,
+        [scope]:
+          allocations[scope].entries[0]?.strategy_id ?? normalized.scopes[scope],
+      };
+      return { ...normalized, scopes, allocations };
+    });
+  };
+
+  const setScopeMode = (scope: StorageScope, mode: StorageScopeAllocation['mode']) => {
+    patchAllocation(scope, (allocation) => ({ ...allocation, mode }));
+  };
+
+  const setScopeOverflow = (
+    scope: StorageScope,
+    overflow: StorageScopeAllocation['overflow'],
+  ) => {
+    patchAllocation(scope, (allocation) => ({ ...allocation, overflow }));
+  };
+
+  const setSingleStrategy = (scope: StorageScope, strategyId: string) => {
+    patchAllocation(scope, (allocation) => {
+      const first = allocation.entries[0] ?? { strategy_id: strategyId, quota_gb: 0 };
+      const rest = allocation.entries
+        .slice(1)
+        .filter((entry) => entry.strategy_id !== strategyId);
+      return {
+        ...allocation,
+        entries: [{ ...first, strategy_id: strategyId }, ...rest],
+      };
+    });
+  };
+
+  const setEntryStrategy = (scope: StorageScope, index: number, strategyId: string) => {
+    const allocation = scopeAllocation(draft, scope);
+    if (
+      allocation.entries.some(
+        (entry, entryIndex) =>
+          entryIndex !== index && entry.strategy_id === strategyId,
+      )
+    ) {
+      toast.push(
+        'error',
+        t('这套策略已经在当前用途里了。'),
+        t('同一个用途里每套策略只能出现一次，可以先用上移 / 下移调整顺序。'),
+      );
+      return;
+    }
+    patchAllocation(scope, (current) => ({
+      ...current,
+      entries: current.entries.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, strategy_id: strategyId } : entry,
+      ),
+    }));
+  };
+
+  const setEntryQuota = (scope: StorageScope, index: number, raw: number) => {
+    const quota = Number.isFinite(raw)
+      ? Math.min(MAX_ALLOCATION_QUOTA_GB, Math.max(0, Math.round(raw)))
+      : 0;
+    patchAllocation(scope, (allocation) => ({
+      ...allocation,
+      entries: allocation.entries.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, quota_gb: quota } : entry,
+      ),
+    }));
+  };
+
+  const moveEntry = (scope: StorageScope, index: number, delta: -1 | 1) => {
+    patchAllocation(scope, (allocation) => {
+      const target = index + delta;
+      if (target < 0 || target >= allocation.entries.length) return allocation;
+      const entries = [...allocation.entries];
+      [entries[index], entries[target]] = [entries[target], entries[index]];
+      return { ...allocation, entries };
+    });
+  };
+
+  const addEntry = (scope: StorageScope) => {
+    const allocation = scopeAllocation(draft, scope);
+    if (allocation.entries.length >= MAX_ALLOCATION_ENTRIES) {
+      toast.push(
+        'info',
+        t('这个用途已经分配了 {max} 套策略', { max: MAX_ALLOCATION_ENTRIES }),
+        t('移除一套不再使用的策略后再添加。'),
+      );
+      return;
+    }
+    const used = new Set(allocation.entries.map((entry) => entry.strategy_id));
+    const candidate = draft.strategies.find((strategy) => !used.has(strategy.id));
+    if (!candidate) {
+      toast.push(
+        'info',
+        t('当前用途没有可添加的策略了。'),
+        t('先新建一套储存策略，或移除一套已有的策略。'),
+      );
+      return;
+    }
+    patchAllocation(scope, (current) => ({
+      ...current,
+      mode: 'quota',
+      entries: [
+        ...current.entries,
+        { strategy_id: candidate.id, quota_gb: 0 },
+      ],
+    }));
+  };
+
+  const removeEntry = (scope: StorageScope, index: number) => {
+    const allocation = scopeAllocation(draft, scope);
+    if (allocation.entries.length <= 1) {
+      toast.push(
+        'info',
+        t('至少保留一套策略。'),
+        t('要把这个用途改回单策略，可以切换「分配方式」。'),
+      );
+      return;
+    }
+    patchAllocation(scope, (current) => ({
+      ...current,
+      entries: current.entries.filter((_, entryIndex) => entryIndex !== index),
+    }));
   };
 
   return (
@@ -276,8 +492,7 @@ export function StoragePage() {
           <h1>{t('储存策略')}</h1>
           <p>
             {t('决定上传的图片与附件写到哪里：先建一套或几套储存策略（本地目录或 S3 兼容的云对象存储），')}{' '}
-            {t('再让每个用途各选一套。浏览器只能保存部署意图，真正生效要靠服务器上的')}{' '}
-            <code className="mono">.env</code> {t('与重启 API。')}
+            {t('再为每个用途分配一套或多套；多套时按顺序使用，并可在达到容量上限后自动切换。')}
           </p>
         </div>
         <div className="admin-page-actions">
@@ -291,348 +506,496 @@ export function StoragePage() {
       </div>
 
       <Callout tone="info" icon="database" title={t('保存只是写配置，部署才算切换')}>
-        {t('本页只写入这台电脑的本地安装配置，并把选择翻译成可粘贴的 API')}{' '}
-        <code className="mono">.env</code> {t('片段；服务器需要把片段写进')}{' '}
-        <code className="mono">.env</code> {t('并重启 API 才生效。演示模式与真实后端行为一致：')}{' '}
-        {t('都可以保存与生成片段，但演示模式没有真正的服务端进程可重启。')}
+        {t('本页只写入这台电脑的本地安装配置，不会改动服务器上的文件或凭据。')}{' '}
+        {t('服务器最终使用哪套存储，仍由部署时的存储配置决定；演示模式与真实后端行为一致。')}
       </Callout>
 
-      <div className="settings-grid mt-20">
-        <div className="editor-main">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('储存策略')}</h3>
-                <p>
-                  {t('每套策略就是一个存储目标；被最多用途使用的那套会写成 .env 的全局 STORAGE_DRIVER，')}
-                  {t('其余用途只写自己的覆盖变量。')}
-                </p>
-              </div>
-              <div className="storage-panel-actions">
-                <Badge tone={draft.strategies.length > 1 ? 'accent' : 'muted'}>
-                  {t('{count} 套', { count: draft.strategies.length })}
-                </Badge>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="plus"
-                  onClick={openCreate}
-                  disabled={draft.strategies.length >= MAX_STRATEGIES}
-                >
-                  {t('新建储存策略')}
-                </Button>
-              </div>
-            </div>
-            <div className="panel-body">
-              <div className="storage-strategy-list">
-                {draft.strategies.map((strategy) => {
-                  const usedBy = STORAGE_SCOPES.filter(
-                    (scope) => draft.scopes[scope] === strategy.id,
-                  );
-                  return (
-                    <div
-                      key={strategy.id}
-                      className={cx(
-                        'storage-strategy',
-                        draftGlobal.id === strategy.id && 'is-global',
-                      )}
-                    >
-                      <span
-                        className={cx(
-                          'storage-strategy-icon',
-                          strategy.driver === 's3' ? 'is-cloud' : 'is-local',
-                        )}
-                      >
-                        <Icon name={strategy.driver === 's3' ? 'globe' : 'server'} size={16} />
-                      </span>
-                      <div className="storage-strategy-body">
-                        <div className="storage-strategy-title">
-                          <strong>{strategy.name}</strong>
-                          <Badge tone={strategy.driver === 's3' ? 'accent' : 'neutral'}>
-                            {storageDriverLabel(strategy.driver)}
-                          </Badge>
-                          {draftGlobal.id === strategy.id ? (
-                            <Badge tone="ok">{t('全局')}</Badge>
-                          ) : null}
-                        </div>
-                        <p className="storage-strategy-path mono">{strategyLocation(strategy)}</p>
-                        {strategy.driver === 's3' && strategy.s3_endpoint ? (
-                          <p className="tiny faint">
-                            {t('Endpoint：{value}', { value: strategy.s3_endpoint })}
-                          </p>
-                        ) : null}
-                        <p className="storage-strategy-usage">
-                          {usedBy.length
-                            ? t('用于：{scopes}', {
-                                scopes: usedBy.map((scope) => scopeLabel(scope)).join(' / '),
-                              })
-                            : t('暂时没有用途使用这套策略')}
-                        </p>
-                      </div>
-                      <div className="storage-strategy-actions">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon="edit"
-                          onClick={() => openEdit(strategy)}
-                        >
-                          {t('编辑')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon="trash"
-                          disabled={draft.strategies.length <= 1}
-                          onClick={() => setDeleteTarget(strategy)}
-                        >
-                          {t('删除')}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="tiny faint mt-12">
-                {t('至少保留一套、最多 {max} 套：只有一套时删除按钮不可用，达到上限时不能再新建。删除被用途引用的策略时，那些用途会回落到第一套。', { max: MAX_STRATEGIES })}
+      <div className="editor-main mt-20">
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h3>{t('储存策略')}</h3>
+              <p>
+                {t('每套策略就是一个存储目标；被最多用途使用的那套会标记为全局策略。')}
               </p>
             </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('用途分配')}</h3>
-                <p>
-                  {t('四个用途各自从已有策略里选一套：图片可以放图床，附件可以继续留在本地。')}
-                </p>
-              </div>
-              <Badge tone="muted">
-                {t('{count} 套在用', { count: usedStrategies(draft).length })}
+            <div className="storage-panel-actions">
+              <Badge tone={draft.strategies.length > 1 ? 'accent' : 'muted'}>
+                {t('{count} 套', { count: draft.strategies.length })}
               </Badge>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="plus"
+                onClick={openCreate}
+                disabled={draft.strategies.length >= MAX_STRATEGIES}
+              >
+                {t('新建储存策略')}
+              </Button>
             </div>
-            <div className="panel-body">
-              <div className="storage-scope-grid">
-                {SCOPE_META.map((meta) => {
-                  const strategy = findStrategy(draft, draft.scopes[meta.scope]);
-                  return (
-                    <div key={meta.scope} className="storage-scope">
-                      <div className="storage-scope-head">
-                        <span className="storage-scope-icon">
-                          <Icon name={meta.icon} size={16} />
+          </div>
+          <div className="panel-body">
+            <div className="storage-strategy-list">
+              {draft.strategies.map((strategy) => {
+                const usedBy = scopesUsingStrategy(draft, strategy.id);
+                return (
+                  <div
+                    key={strategy.id}
+                    className={cx(
+                      'storage-strategy',
+                      draftGlobal.id === strategy.id && 'is-global',
+                    )}
+                  >
+                    <span
+                      className={cx(
+                        'storage-strategy-icon',
+                        strategy.driver === 's3' ? 'is-cloud' : 'is-local',
+                      )}
+                    >
+                      <Icon name={strategy.driver === 's3' ? 'globe' : 'server'} size={16} />
+                    </span>
+                    <div className="storage-strategy-body">
+                      <div className="storage-strategy-title">
+                        <strong>{strategy.name}</strong>
+                        <Badge tone={strategy.driver === 's3' ? 'accent' : 'neutral'}>
+                          {storageDriverLabel(strategy.driver)}
+                        </Badge>
+                        {draftGlobal.id === strategy.id ? (
+                          <Badge tone="ok">{t('全局')}</Badge>
+                        ) : null}
+                      </div>
+                      <p className="storage-strategy-path mono">{strategyLocation(strategy)}</p>
+                      {strategy.driver === 's3' && strategy.s3_endpoint ? (
+                        <p className="tiny faint">
+                          {t('Endpoint：{value}', { value: strategy.s3_endpoint })}
+                        </p>
+                      ) : null}
+                      <p className="storage-strategy-usage">
+                        {usedBy.length
+                          ? t('用于：{scopes}', {
+                              scopes: usedBy.map((scope) => scopeLabel(scope)).join(' / '),
+                            })
+                          : t('暂时没有用途使用这套策略')}
+                      </p>
+                    </div>
+                    <div className="storage-strategy-actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon="edit"
+                        onClick={() => openEdit(strategy)}
+                      >
+                        {t('编辑')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon="trash"
+                        disabled={draft.strategies.length <= 1}
+                        onClick={() => setDeleteTarget(strategy)}
+                      >
+                        {t('删除')}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="tiny faint mt-12">
+              {t('至少保留一套、最多 {max} 套：只有一套时删除按钮不可用，达到上限时不能再新建。删除被用途引用的策略时，那些用途会回落到第一套。', { max: MAX_STRATEGIES })}
+            </p>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h3>{t('用途分配')}</h3>
+              <p>
+                {t('每个用途可以只用一套策略，也可以分配多套并设置各自的容量上限。')}
+              </p>
+            </div>
+            <Badge tone="muted">
+              {t('{count} 套在用', { count: usedStrategies(draft).length })}
+            </Badge>
+          </div>
+          <div className="panel-body">
+            <div className="storage-scope-grid">
+              {SCOPE_META.map((meta) => {
+                const allocation = scopeAllocation(draft, meta.scope);
+                const shownEntries =
+                  allocation.mode === 'single'
+                    ? allocation.entries.slice(0, 1)
+                    : allocation.entries;
+                const primary = findStrategy(
+                  draft,
+                  allocation.entries[0]?.strategy_id ?? draft.scopes[meta.scope],
+                );
+                const strategyNames = shownEntries
+                  .map((entry) => strategyName(findStrategy(draft, entry.strategy_id)))
+                  .join(' → ');
+                return (
+                  <div key={meta.scope} className="storage-scope">
+                    <div className="storage-scope-head">
+                      <span className="storage-scope-icon">
+                        <Icon name={meta.icon} size={16} />
+                      </span>
+                      <div className="storage-scope-body">
+                        <strong>{scopeLabel(meta.scope)}</strong>
+                        <p>{scopeDescription[meta.scope]}</p>
+                      </div>
+                      <Badge tone={allocation.mode === 'quota' ? 'accent' : 'muted'}>
+                        {allocation.mode === 'quota'
+                          ? t('多策略')
+                          : t('单策略')}
+                      </Badge>
+                    </div>
+
+                    <Field label={t('储存策略')}>
+                      <button
+                        type="button"
+                        className="storage-current"
+                        onClick={() => setAllocationScope(meta.scope)}
+                        aria-haspopup="dialog"
+                        aria-label={t('查看「{scope}」的储存策略', {
+                          scope: scopeLabel(meta.scope),
+                        })}
+                      >
+                        <span className="storage-current-icon">
+                          <Icon
+                            name={primary.driver === 's3' ? 'globe' : 'server'}
+                            size={15}
+                          />
                         </span>
-                        <div className="storage-scope-body">
-                          <strong>{scopeLabel(meta.scope)}</strong>
-                          <p>{scopeDescription[meta.scope]}</p>
+                        <span className="storage-current-body">
+                          <span className="storage-current-title">
+                            <strong>
+                              {allocation.mode === 'quota'
+                                ? t('{count} 套策略', { count: shownEntries.length })
+                                : strategyName(primary)}
+                            </strong>
+                            {allocation.mode === 'single' && strategyNeedsDriver(primary) ? (
+                              <Badge tone={primary.driver === 's3' ? 'accent' : 'neutral'}>
+                                {storageDriverLabel(primary.driver)}
+                              </Badge>
+                            ) : null}
+                          </span>
+                          <span className="storage-current-meta">
+                            {allocation.mode === 'quota'
+                              ? `${strategyNames} · ${quotaSummary(allocation, t)}`
+                              : strategyLocation(primary)}
+                          </span>
+                        </span>
+                        <span className="storage-current-side">
+                          <span className="tiny">{t('查看')}</span>
+                          <Icon name="chevron-right" size={15} />
+                        </span>
+                      </button>
+                    </Field>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="storage-callouts">
+              {draftGlobal.driver !== 's3' && draftCloud ? (
+                <Callout tone="warn" icon="alert" title={t('有用途指向云策略，但全局策略还是本地储存')}>
+                  {t('服务器目前只支持一套云凭据；多套云策略需要部署方另行提供 endpoint、区域与 Access Key。')}{' '}
+                  {t('把云策略分配给更多用途，它就会自动成为全局策略。')}
+                </Callout>
+              ) : null}
+              <Callout tone="info" icon="info" title={t('多策略按顺序切换')}>
+                {t('每个用途的第一套是主策略；达到容量上限后，按「写满后」的规则切换到下一套或停止。')}{' '}
+                {t('容量上限按用途单独记录，不改变策略本身的存储位置。')}
+              </Callout>
+            </div>
+          </div>
+        </section>
+
+        {allocationScope && allocationMeta && activeAllocation && activePrimary ? (
+          <Modal
+            open
+            title={t('「{scope}」的储存策略', { scope: scopeLabel(allocationScope) })}
+            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；点「完成」后记得保存修改。')}
+            onClose={() => setAllocationScope(null)}
+            width={680}
+            footer={
+              <Button onClick={() => setAllocationScope(null)} icon="check">
+                {t('完成')}
+              </Button>
+            }
+          >
+            <div className="storage-allocation-dialog">
+              <Field
+                label={t('分配方式')}
+                hint={
+                  activeAllocation.mode === 'single'
+                    ? t('只使用一套策略，最省心。')
+                    : t('按顺序使用多套策略；前一套达到容量上限后，按「写满后」的规则处理。')
+                }
+              >
+                <Tabs
+                  value={activeAllocation.mode}
+                  onChange={(mode) => setScopeMode(allocationScope, mode)}
+                  items={[
+                    { key: 'single', label: t('单策略') },
+                    { key: 'quota', label: t('多策略 · 容量切换') },
+                  ]}
+                />
+              </Field>
+
+              {activeAllocation.mode === 'single' ? (
+                <Field label={t('储存策略')}>
+                  <div
+                    className="storage-strategy-options"
+                    role="radiogroup"
+                    aria-label={t('储存策略')}
+                  >
+                    {draft.strategies.map((item) => {
+                      const selected = item.id === activePrimary.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          className={cx(
+                            'storage-strategy-option',
+                            selected && 'is-selected',
+                          )}
+                          onClick={() => setSingleStrategy(allocationScope, item.id)}
+                        >
+                          <span className="storage-strategy-option-icon">
+                            <Icon
+                              name={item.driver === 's3' ? 'globe' : 'server'}
+                              size={15}
+                            />
+                          </span>
+                          <span className="storage-strategy-option-body">
+                            <span className="storage-strategy-option-title">
+                              <strong>{strategyName(item)}</strong>
+                              {strategyNeedsDriver(item) ? (
+                                <Badge
+                                  tone={item.driver === 's3' ? 'accent' : 'neutral'}
+                                >
+                                  {storageDriverLabel(item.driver)}
+                                </Badge>
+                              ) : null}
+                            </span>
+                            <span className="storage-strategy-option-path">
+                              {strategyLocation(item)}
+                            </span>
+                          </span>
+                          <span
+                            className={cx(
+                              'storage-strategy-option-check',
+                              selected && 'is-checked',
+                            )}
+                            aria-hidden
+                          >
+                            {selected ? <Icon name="check" size={12} /> : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              ) : (
+                <div className="storage-allocation">
+                  <div className="storage-allocation-caption">
+                    <span>{t('策略顺序')}</span>
+                    <span>{t('容量上限')}</span>
+                    <span className="tiny faint">{quotaSummary(activeAllocation, t)}</span>
+                  </div>
+                  <div className="storage-allocation-list">
+                    {activeAllocation.entries.map((entry, index) => (
+                      <div
+                        key={`${entry.strategy_id}-${index}`}
+                        className="storage-allocation-row"
+                      >
+                        <span className="storage-allocation-order" aria-hidden>
+                          {index + 1}
+                        </span>
+                        <Select
+                          className="storage-strategy-select"
+                          value={entry.strategy_id}
+                          aria-label={t('第 {index} 套策略', { index: index + 1 })}
+                          onChange={(event) =>
+                            setEntryStrategy(allocationScope, index, event.target.value)
+                          }
+                        >
+                          {draft.strategies.map((item) => {
+                            const taken = activeAllocation.entries.some(
+                              (other, otherIndex) =>
+                                otherIndex !== index &&
+                                other.strategy_id === item.id,
+                            );
+                            return (
+                              <option key={item.id} value={item.id} disabled={taken}>
+                                {strategyOptionLabel(item)}
+                              </option>
+                            );
+                          })}
+                        </Select>
+                        <div className="input-suffix storage-allocation-quota">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={MAX_ALLOCATION_QUOTA_GB}
+                            step={1}
+                            value={entry.quota_gb}
+                            aria-label={t('容量上限')}
+                            onChange={(event) =>
+                              setEntryQuota(
+                                allocationScope,
+                                index,
+                                Number(event.target.value),
+                              )
+                            }
+                          />
+                          <span>GB</span>
+                        </div>
+                        <div className="storage-allocation-actions">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon="arrow-up"
+                            title={t('上移')}
+                            aria-label={t('上移')}
+                            disabled={index === 0}
+                            onClick={() => moveEntry(allocationScope, index, -1)}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon="arrow-up"
+                            className="storage-allocation-down"
+                            title={t('下移')}
+                            aria-label={t('下移')}
+                            disabled={index === activeAllocation.entries.length - 1}
+                            onClick={() => moveEntry(allocationScope, index, 1)}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon="close"
+                            title={t('移除这套策略')}
+                            aria-label={t('移除这套策略')}
+                            disabled={activeAllocation.entries.length <= 1}
+                            onClick={() => removeEntry(allocationScope, index)}
+                          />
                         </div>
                       </div>
-                      <Field
-                        label={t('储存策略')}
-                        htmlFor={`storage-scope-${meta.scope}`}
-                        hint={t('位置：{path}', { path: strategyLocation(strategy) })}
-                      >
-                        <Select
-                          id={`storage-scope-${meta.scope}`}
-                          value={strategy.id}
-                          onChange={(event) => patchScope(meta.scope, event.target.value)}
-                        >
-                          {draft.strategies.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {`${item.name} · ${storageDriverLabel(item.driver)}`}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="storage-callouts">
-                {draftGlobal.driver !== 's3' && draftCloud ? (
-                  <Callout tone="warn" icon="alert" title={t('有用途指向云策略，但全局策略还是本地储存')}>
-                    {t('片段里不会生成 STORAGE_S3_* 凭据，服务器需要另行提供 endpoint、区域与 Access Key。')}{' '}
-                    {t('把云策略分配给更多用途，它就会自动成为全局策略。')}
-                  </Callout>
-                ) : null}
-                <Callout tone="info" icon="info" title={t('全局策略由用途数量决定')}>
-                  {t('被最多用途使用的那套写成全局 STORAGE_DRIVER 与 STORAGE_S3_*；数量并列时取列表里靠前的一套。')}{' '}
-                  {t('其余用途只写自己的 STORAGE_<用途>_* 覆盖，缺省位置由服务器按全局目录推出来。')}
-                </Callout>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('上传体积提示')}</h3>
-                <p>{t('只用于前端提示，不会改变服务端上限。')}</p>
-              </div>
-              <Badge tone="muted">{t('非服务端参数')}</Badge>
-            </div>
-            <div className="panel-body">
-              <div className="form-grid">
-                <NumberField
-                  id="storage-max-upload"
-                  label={t('单文件上限提示')}
-                  hint={t('API 与安全服务默认限制 25 MiB；要传更大的文件，需要同时调整 API 与安全服务，而不是只改这里。')}
-                  value={draft.max_upload_mb}
-                  min={1}
-                  max={2048}
-                  unit="MB"
-                  onChange={(max_upload_mb) => setDraft({ ...draft, max_upload_mb })}
-                />
-              </div>
-              {draft.max_upload_mb > 25 ? (
-                <Callout tone="warn" icon="alert" title={t('超过 API 默认的 25 MiB 附件上限')}>
-                  {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 与安全服务的')}{' '}
-                  {t('请求体上限，否则请求会被更早的一层拒绝。')}
-                </Callout>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('部署片段')}</h3>
-                <p>{t('按已保存的策略生成；指向全局策略的用途不写变量，密钥只来自下面的输入框。')}</p>
-              </div>
-              <CopyButton value={snippet} label={t('复制 .env')} />
-            </div>
-            <div className="panel-body">
-              {savedCloud ? (
-                <div className="form-grid storage-secret">
+                    ))}
+                  </div>
+                  <div className="storage-allocation-foot">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="plus"
+                      disabled={
+                        activeAllocation.entries.length >= MAX_ALLOCATION_ENTRIES ||
+                        !activeHasAvailable
+                      }
+                      onClick={() => addEntry(allocationScope)}
+                    >
+                      {t('添加一套策略')}
+                    </Button>
+                    <span className="tiny faint">{t('0 表示不限容量')}</span>
+                  </div>
                   <Field
-                    label={t('Secret Key（仅本次）')}
-                    htmlFor="storage-secret-key"
-                    aside={secret ? <Badge tone="accent">{t('仅本次')}</Badge> : null}
-                    hint={t('只用于生成 .env 片段，不写入浏览器配置，保存后也不会回显；服务器只有一套 STORAGE_S3_SECRET_KEY，所有云策略共用它。')}
+                    label={t('写满后')}
+                    htmlFor={`storage-overflow-${allocationScope}`}
+                    hint={t('按顺序写入；前面的策略写满后才会使用下一套。容量上限只作用于这个用途。')}
                   >
-                    <Input
-                      id="storage-secret-key"
-                      type="password"
-                      value={secret}
-                      placeholder={t('只在本页内存里保留')}
-                      autoComplete="off"
-                      onChange={(event) => setSecret(event.target.value)}
-                    />
+                    <Select
+                      id={`storage-overflow-${allocationScope}`}
+                      value={activeAllocation.overflow}
+                      onChange={(event) =>
+                        setScopeOverflow(
+                          allocationScope,
+                          event.target.value as StorageScopeAllocation['overflow'],
+                        )
+                      }
+                    >
+                      <option value="switch">{t('自动切换到下一套')}</option>
+                      <option value="stop">{t('停止写入并提示')}</option>
+                    </Select>
                   </Field>
+                  <p className="tiny faint">
+                    {t('当前顺序：{order}', {
+                      order: activeShownEntries
+                        .map(
+                          (entry, index) =>
+                            `${index + 1}. ${strategyName(findStrategy(draft, entry.strategy_id))}`,
+                        )
+                        .join(' → '),
+                    })}
+                  </p>
                 </div>
-              ) : null}
-              <pre className="auth-env-code">{snippet}</pre>
-              <div className="mt-12">
-                <Callout tone="warn" icon="alert" title={t('保存不会让服务器立刻换存储')}>
-                  {t('把片段写进 API 的')}{' '}
-                  <code className="mono">.env</code> {t('（或启动器环境变量）并重启后才会生效。')}{' '}
-                  {t('切换存储不会自动搬运已有文件：旧目录里的图片仍在旧目录，旧桶里的对象仍在旧桶，')}{' '}
-                  {t('需要自己用 rclone / aws s3 sync 之类同步，或继续保留旧路径。')}
-                </Callout>
-              </div>
+              )}
             </div>
-          </section>
+          </Modal>
+        ) : null}
 
-          <div className="row gap-8 mt-20">
-            <Button disabled={!dirty} onClick={save} icon="check">
-              {t('保存修改')}
-            </Button>
-            {dirty ? (
-              <Button variant="ghost" onClick={() => setDraft(readStorage(config))}>
-                {t('放弃未保存的修改')}
-              </Button>
-            ) : (
-              <span className="tiny faint">{t('没有未保存的修改')}</span>
-            )}
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h3>{t('上传体积提示')}</h3>
+              <p>{t('只用于前端提示，不会改变服务端上限。')}</p>
+            </div>
+            <Badge tone="muted">{t('非服务端参数')}</Badge>
           </div>
+          <div className="panel-body">
+            <div className="form-grid">
+              <NumberField
+                id="storage-max-upload"
+                label={t('单文件上限提示')}
+                hint={t('API 与安全服务默认限制 25 MiB；要传更大的文件，需要同时调整 API 与安全服务，而不是只改这里。')}
+                value={draft.max_upload_mb}
+                min={1}
+                max={2048}
+                unit="MB"
+                onChange={(max_upload_mb) => setDraft({ ...draft, max_upload_mb })}
+              />
+            </div>
+            {draft.max_upload_mb > 25 ? (
+              <Callout tone="warn" icon="alert" title={t('超过 API 默认的 25 MiB 附件上限')}>
+                {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 与安全服务的')}{' '}
+                {t('请求体上限，否则请求会被更早的一层拒绝。')}
+              </Callout>
+            ) : null}
+          </div>
+        </section>
+
+        <div className="row gap-8">
+          <Button disabled={!dirty} onClick={save} icon="check">
+            {t('保存修改')}
+          </Button>
+          {dirty ? (
+            <Button variant="ghost" onClick={() => setDraft(readStorage(config))}>
+              {t('放弃未保存的修改')}
+            </Button>
+          ) : (
+            <span className="tiny faint">{t('没有未保存的修改')}</span>
+          )}
         </div>
 
-        <aside className="settings-side">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('当前配置')}</h3>
-              </div>
-            </div>
-            <div className="panel-body">
-              <div className="mini-list">
-                <div className="mini-row">
-                  <span className="mini-label">{t('策略数量')}</span>
-                  <span className="mini-value">
-                    {t('{count} 套', { count: saved.strategies.length })}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('上传提示')}</span>
-                  <span className="mini-value">{saved.max_upload_mb} MB</span>
-                </div>
-              </div>
-
-              <div className="storage-side-strategies mt-12">
-                {saved.strategies.map((strategy) => (
-                  <div key={strategy.id} className="storage-side-strategy">
-                    <span className="storage-side-strategy-name">{strategy.name}</span>
-                    <span className="storage-side-strategy-meta">
-                      {`${storageDriverLabel(strategy.driver)} · ${strategyLocation(strategy)}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mini-list mt-12">
-                {SCOPE_META.map((meta) => (
-                  <div className="mini-row" key={meta.scope}>
-                    <span className="mini-label">{scopeLabel(meta.scope)}</span>
-                    <span className="mini-value">
-                      {findStrategy(saved, saved.scopes[meta.scope]).name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="row gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
-                <Link to="/admin/media" className="btn btn-secondary btn-sm">
-                  {t('打开媒体库')}
-                </Link>
-                <Link to="/admin/performance" className="btn btn-ghost btn-sm">
-                  {t('性能优化')}
-                </Link>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('切换存储的顺序')}</h3>
-                <p>{t('先备份，再切换。')}</p>
-              </div>
-            </div>
-            <div className="panel-body">
-              <ol className="perf-steps">
-                <li>{t('备份本地 data/media 目录，或记下旧桶名与前缀。')}</li>
-                <li>{t('新建或编辑目标储存策略，再把要迁移的用途分配过去。')}</li>
-                <li>{t('保存修改，复制下方的 .env 片段。')}</li>
-                <li>{t('把片段写进服务器 .env，重启 API（不是刷新后台）。')}</li>
-                <li>{t('上传图片验证；必要时用 rclone 迁移已有文件。')}</li>
-                <li>{t('确认前台图片正常后，再清理旧目录或旧桶。')}</li>
-              </ol>
-            </div>
-          </section>
-
-          <div className="danger-zone">
-            <h3>{t('恢复默认储存策略')}</h3>
-            <p>{t('回到一套「本地储存」（./data/media），四个用途都指向它；不会删除文件，也不会修改服务器的 .env。')}</p>
-            <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={reset}>
-              {t('恢复默认')}
-            </Button>
-          </div>
-        </aside>
+        <div className="danger-zone">
+          <h3>{t('恢复默认储存策略')}</h3>
+          <p>
+            {t('回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。')}
+          </p>
+          <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={reset}>
+            {t('恢复默认')}
+          </Button>
+        </div>
       </div>
 
       <Modal
         open={!!editing}
         title={editing?.mode === 'edit' ? t('编辑储存策略') : t('新建储存策略')}
-        description={t('策略名会出现在用途分配与 .env 片段注释里；密钥不在这个弹窗保存。')}
+        description={t('策略名会出现在用途分配里；密钥不在这个弹窗保存。')}
         onClose={() => setEditing(null)}
         width={660}
         footer={
@@ -779,10 +1142,6 @@ export function StoragePage() {
               {t('对象存储默认是私有的；需要前台直接引用图片时，要么给桶开只读策略，要么在桶前面挂 CDN / 自定义域名。')}
             </Callout>
           ) : null}
-
-          <p className="tiny faint">
-            {t('Secret Key 不在这里填写：它只留在页面内存里，只用于生成 .env 片段。')}
-          </p>
         </div>
       </Modal>
 
@@ -808,7 +1167,7 @@ export function StoragePage() {
           <div className="form-stack">
             {deleteScopes.length && deleteFallback ? (
               <Callout tone="warn" icon="alert" title={t('有用途正在使用这套策略')}>
-                {t('删除后这些用途会回落到第一套策略「{name}」：', {
+                {t('删除后这些用途里的这套策略会被移除，空出来的位置回落到第一套策略「{name}」：', {
                   name: deleteFallback.name,
                 })}{' '}
                 {deleteScopes.map((scope) => scopeLabel(scope)).join(' / ')}
@@ -817,7 +1176,7 @@ export function StoragePage() {
               <p className="small muted">{t('没有用途在使用这套策略，删除不会改变上传位置。')}</p>
             )}
             <p className="tiny faint">
-              {t('删除只改这台电脑的配置，不会删除任何文件，也不会修改服务器的 .env；已经上传的文件仍留在原位置。')}
+              {t('删除只改这台电脑的配置，不会删除任何文件，也不会修改服务器的存储配置；已经上传的文件仍留在原位置。')}
             </p>
           </div>
         ) : null}

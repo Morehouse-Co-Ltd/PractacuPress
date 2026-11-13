@@ -36,8 +36,8 @@ func TestDecodeRejectsMalformedCursors(t *testing.T) {
 	cases := []string{
 		"not base64!!",
 		base64.RawURLEncoding.EncodeToString([]byte("not json")),
-		base64.RawURLEncoding.EncodeToString([]byte(`{"k":"x"}`)),   // no id
-		base64.RawURLEncoding.EncodeToString([]byte(`{"id":""}`)),   // empty id
+		base64.RawURLEncoding.EncodeToString([]byte(`{"k":"x"}`)), // no id
+		base64.RawURLEncoding.EncodeToString([]byte(`{"id":""}`)), // empty id
 		base64.RawURLEncoding.EncodeToString([]byte(`{"id":"a","k":5}`)),
 	}
 	for _, raw := range cases {

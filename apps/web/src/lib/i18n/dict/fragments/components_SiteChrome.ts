@@ -21,6 +21,7 @@ const fragment: Dictionary = {
   '（{count}）': '({count})',
   私信: 'Messages',
   个人主页: 'Profile',
+  我的互动: 'My activity',
   管理后台: 'Admin',
   退出登录: 'Sign out',
   演示数据: 'Demo data',

@@ -17,6 +17,12 @@ const fragment: Dictionary = {
   返回内容库: 'Back to the content library',
   '保存后会生成一份内容，并按右侧选择的状态提交或发布。正文会交给服务端清洗。':
     'Saving creates a piece of content and submits or publishes it with the status chosen on the right. The server sanitizes the body.',
+  '保存后会生成一份内容；右上角可以直接保存草稿或发布，正文会交给服务端清洗。':
+    'Saving creates a piece of content; the buttons at the top right save a draft or publish it directly. The server sanitizes the body.',
+  '右上角决定存草稿还是发布；这里显示当前状态。':
+    'The top-right buttons save a draft or publish; this panel shows the current status.',
+  '作者不能审核自己的内容；如果当前账户没有直接发布权限，右上角主按钮会显示「提交审核」。':
+    'Authors cannot review their own content; if this account cannot publish directly, the primary button at the top right reads “Submit for review”.',
   '仅自己与编辑可见，可以继续修改。': 'Only you and editors can see it, and you can keep editing.',
   '进入审核队列，等待另一位编辑处理。': 'It joins the review queue and waits for another editor.',
   直接发布: 'Publish directly',
@@ -113,6 +119,96 @@ const fragment: Dictionary = {
   '{action}失败': '{action} failed',
   '现在是「{status}」': 'It is now “{status}”',
   '{author} · 更新于 {date}': '{author} · Updated {date}',
+  保存修订: 'Save revision',
+  '已发布内容仍可修订，归档由编辑执行。':
+    'Published content can still be revised; an editor archives it.',
+  版本历史: 'Version history',
+  '每次保存都会留下一个可回滚的版本，最多保留 20 个。':
+    'Every save keeps a restorable version; the newest 20 are retained.',
+  正在载入版本历史: 'Loading version history',
+  无法读取版本历史: 'The version history could not be loaded',
+  还没有版本记录: 'No versions yet',
+  回滚: 'Restore',
+  回滚前备份: 'Backup before restore',
+  无法读取这个版本: 'This version could not be read',
+  '已回滚到版本 {version}': 'Restored version {version}',
+  回滚失败: 'Restore failed',
+  '版本 {version}': 'Version {version}',
+  回滚到此版本: 'Restore this version',
+  编辑者: 'Editor',
+  '回滚这份稿件？': 'Restore this draft?',
+  '回滚前会先备份当前版本，因此回滚本身也可以撤销；发布状态不会改变。':
+    'The current version is backed up first, so the restore can itself be undone; the publish status does not change.',
+  确认回滚: 'Restore it',
+  '将恢复到版本 {version}（{date}）。': 'Restore version {version} ({date}).',
+
+  // ---- 本地自动保存与草稿恢复 ----
+  '正在保存本地草稿…': 'Saving the local draft…',
+  '本地草稿保存失败（可能是浏览器存储已满）':
+    'The local draft could not be saved (browser storage may be full)',
+  '草稿已自动保存 · {time}': 'Draft autosaved · {time}',
+  自动保存失败: 'Autosave failed',
+  '浏览器本地存储空间不足或已被禁用；请先手动保存草稿。':
+    'Browser storage is full or disabled; save the draft manually for now.',
+  本地草稿已恢复: 'Local draft restored',
+  '还没有保存到服务器，记得保存草稿。':
+    'It has not been saved to the server yet; remember to save the draft.',
+  本地草稿已丢弃: 'Local draft discarded',
+  '编辑器保留服务器上的当前版本。': 'The editor keeps the current server version.',
+  有未处理的本地草稿: 'An undecided local draft remains',
+  '继续编辑会覆盖旧草稿；也可以现在恢复。':
+    'Editing will overwrite the old draft; you can also restore it now.',
+  '恢复上次编辑？': 'Resume your last edit?',
+  '发现本地草稿，服务器版本已更新': 'Local draft found, but the server version is newer',
+  '服务器上的版本在本地草稿之后更新过。恢复并保存会覆盖服务器版本；如果拿不准，先用服务器版本。':
+    'The server version was updated after this local draft. Restoring and saving will overwrite the server version; if unsure, keep the server version.',
+  '发现 {time} 自动保存的本地草稿。': 'Found a local draft autosaved {time}.',
+  本地草稿: 'Local draft',
+  服务器版本: 'Server version',
+  稍后再说: 'Decide later',
+  丢弃本地草稿: 'Discard local draft',
+  恢复本地草稿: 'Restore local draft',
+  使用服务器版本: 'Use server version',
+  '恢复本地草稿会替换当前编辑区的内容；服务端版本在保存之前不会被改动。':
+    'Restoring the local draft replaces the editor content; the server version is not changed until you save.',
+
+  // ---- 发布与访问 ----
+  发布与访问: 'Publishing and access',
+  '预约发布时间、访问权限与单篇评论策略。':
+    'Schedule publication, choose who may read the item, and set its comment policy.',
+  预约发布时间: 'Scheduled publication',
+  '保存后到点自动发布；手动发布会清除预约。':
+    'It publishes automatically at the chosen time; a manual publish clears the schedule.',
+  '站点要求先审核，审核通过后才能预约或直接发布。':
+    'This site requires review, so scheduling and direct publishing become available after approval.',
+  '留空表示不预约。到点后由服务端自动发布。':
+    'Leave empty for no schedule. The server publishes the draft when the time arrives.',
+  取消预约: 'Cancel schedule',
+  访问权限: 'Access',
+  '公开内容会出现在列表、搜索与订阅源里。':
+    'Public items appear in listings, search and feeds.',
+  '密码与仅登录内容只能通过链接访问，不会出现在列表、搜索、订阅源或站点地图里。':
+    'Password and members-only items are direct-link-only and never appear in listings, search, feeds or the sitemap.',
+  公开: 'Public',
+  密码访问: 'Password',
+  仅登录读者: 'Members only',
+  访问密码: 'Access password',
+  '已设置访问密码；留空表示保持不变。':
+    'An access password is set; leave empty to keep it.',
+  '至少 4 个字符，保存后只保留哈希。':
+    'At least 4 characters. Only a hash is stored.',
+  留空保持不变: 'Leave empty to keep it',
+  设置访问密码: 'Set an access password',
+  评论策略: 'Comment policy',
+  '单篇设置优先于站点级评论开关。':
+    'The per-item setting overrides the site-wide comment switches.',
+  跟随站点设置: 'Follow site settings',
+  开启评论: 'Comments open',
+  关闭评论: 'Comments closed',
+  先审后发: 'Review before publishing',
+  '密码访问需要设置一个访问密码。': 'Password access needs an access password.',
+  '访问密码至少需要 4 个字符。': 'The access password must be at least 4 characters.',
+  '预约发布时间必须晚于现在。': 'The scheduled publication must be in the future.',
 };
 
 export default fragment;

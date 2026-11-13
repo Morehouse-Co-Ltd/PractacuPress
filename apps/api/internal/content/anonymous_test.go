@@ -63,31 +63,121 @@ func (s *stubRepo) List(_ context.Context, filter content.ListFilter) ([]content
 				continue
 			}
 		}
+		if len(filter.AccessModes) > 0 {
+			allowed := false
+			mode := item.AccessMode
+			if mode == "" {
+				mode = content.AccessPublic
+			}
+			for _, filterMode := range filter.AccessModes {
+				if mode == filterMode {
+					allowed = true
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
 		out = append(out, item)
 	}
 	return out, nil
 }
 
-func (s *stubRepo) Search(_ context.Context, siteID, term string, kind content.Kind, limit int) ([]content.Content, error) {
+func (s *stubRepo) Search(_ context.Context, filter content.SearchFilter) (content.SearchPage, error) {
 	out := make([]content.Content, 0)
 	for _, item := range s.items {
-		if item.SiteID != siteID || item.Status != content.StatusPublished {
+		if item.SiteID != filter.SiteID || item.Status != content.StatusPublished {
 			continue
 		}
-		if kind != "" && item.Kind != kind {
+		if item.AccessMode != "" && item.AccessMode != content.AccessPublic {
 			continue
 		}
-		if strings.Contains(strings.ToLower(item.Title), strings.ToLower(term)) {
+		if filter.Kind != "" && item.Kind != filter.Kind {
+			continue
+		}
+		if item.CategoryID != filter.CategoryID && filter.CategoryID != "" {
+			continue
+		}
+		if filter.AuthorID != "" && item.AuthorID != filter.AuthorID {
+			continue
+		}
+		if strings.Contains(strings.ToLower(item.Title+" "+item.Summary+" "+item.SourceBody), strings.ToLower(filter.Term)) {
 			out = append(out, item)
 		}
 	}
-	if len(out) > limit {
-		out = out[:limit]
+	total := len(out)
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
 	}
-	return out, nil
+	return content.SearchPage{Items: out, Total: total}, nil
 }
 func (s *stubRepo) Transition(context.Context, content.Content, content.Status, site.AuditEntry) (content.Content, error) {
 	return content.Content{}, content.ErrInvalidTransition
+}
+
+func (s *stubRepo) ListRevisions(context.Context, string, string, int) ([]content.Revision, error) {
+	return nil, content.ErrNotFound
+}
+
+func (s *stubRepo) FindRevision(context.Context, string, string, string) (content.Revision, error) {
+	return content.Revision{}, content.ErrNotFound
+}
+
+func (s *stubRepo) RestoreRevision(context.Context, content.Content, content.Revision, site.AuditEntry) (content.Content, error) {
+	return content.Content{}, content.ErrInvalidTransition
+}
+
+func (s *stubRepo) DueSchedules(context.Context, time.Time, int) ([]content.Content, error) {
+	return nil, nil
+}
+
+func (s *stubRepo) RecordScheduleFailure(context.Context, string, string, int, bool, site.AuditEntry) error {
+	return content.ErrNotFound
+}
+
+// IncrementViewCount mirrors the store: only a published item of the site counts.
+func (s *stubRepo) IncrementViewCount(_ context.Context, siteID, contentID string) error {
+	for index, item := range s.items {
+		if item.ID == contentID && item.SiteID == siteID && item.Status == content.StatusPublished {
+			s.items[index].ViewCount++
+		}
+	}
+	return nil
+}
+
+func (s *stubRepo) Popular(_ context.Context, filter content.PopularFilter) ([]content.Content, error) {
+	out := make([]content.Content, 0, len(s.items))
+	for _, item := range s.items {
+		if item.SiteID != filter.SiteID || item.Status != content.StatusPublished {
+			continue
+		}
+		if item.AccessMode != "" && item.AccessMode != content.AccessPublic {
+			continue
+		}
+		if filter.Kind != "" && item.Kind != filter.Kind {
+			continue
+		}
+		if filter.CategoryID != "" && item.CategoryID != filter.CategoryID {
+			continue
+		}
+		if filter.Tag != "" {
+			found := false
+			for _, tag := range item.Tags {
+				if tag == filter.Tag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return out, nil
 }
 
 type acceptingSanitizer struct{}

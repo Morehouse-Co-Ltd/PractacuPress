@@ -84,6 +84,16 @@ func Status(v string) predicate.SiteMember {
 	return predicate.SiteMember(sql.FieldEQ(FieldStatus, v))
 }
 
+// GroupKey applies equality check predicate on the "group_key" field. It's identical to GroupKeyEQ.
+func GroupKey(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldEQ(FieldGroupKey, v))
+}
+
+// MediaQuotaBytes applies equality check predicate on the "media_quota_bytes" field. It's identical to MediaQuotaBytesEQ.
+func MediaQuotaBytes(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldEQ(FieldMediaQuotaBytes, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.SiteMember {
 	return predicate.SiteMember(sql.FieldEQ(FieldCreatedAt, v))
@@ -352,6 +362,121 @@ func StatusEqualFold(v string) predicate.SiteMember {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.SiteMember {
 	return predicate.SiteMember(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// GroupKeyEQ applies the EQ predicate on the "group_key" field.
+func GroupKeyEQ(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldEQ(FieldGroupKey, v))
+}
+
+// GroupKeyNEQ applies the NEQ predicate on the "group_key" field.
+func GroupKeyNEQ(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldNEQ(FieldGroupKey, v))
+}
+
+// GroupKeyIn applies the In predicate on the "group_key" field.
+func GroupKeyIn(vs ...string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldIn(FieldGroupKey, vs...))
+}
+
+// GroupKeyNotIn applies the NotIn predicate on the "group_key" field.
+func GroupKeyNotIn(vs ...string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldNotIn(FieldGroupKey, vs...))
+}
+
+// GroupKeyGT applies the GT predicate on the "group_key" field.
+func GroupKeyGT(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldGT(FieldGroupKey, v))
+}
+
+// GroupKeyGTE applies the GTE predicate on the "group_key" field.
+func GroupKeyGTE(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldGTE(FieldGroupKey, v))
+}
+
+// GroupKeyLT applies the LT predicate on the "group_key" field.
+func GroupKeyLT(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldLT(FieldGroupKey, v))
+}
+
+// GroupKeyLTE applies the LTE predicate on the "group_key" field.
+func GroupKeyLTE(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldLTE(FieldGroupKey, v))
+}
+
+// GroupKeyContains applies the Contains predicate on the "group_key" field.
+func GroupKeyContains(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldContains(FieldGroupKey, v))
+}
+
+// GroupKeyHasPrefix applies the HasPrefix predicate on the "group_key" field.
+func GroupKeyHasPrefix(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldHasPrefix(FieldGroupKey, v))
+}
+
+// GroupKeyHasSuffix applies the HasSuffix predicate on the "group_key" field.
+func GroupKeyHasSuffix(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldHasSuffix(FieldGroupKey, v))
+}
+
+// GroupKeyEqualFold applies the EqualFold predicate on the "group_key" field.
+func GroupKeyEqualFold(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldEqualFold(FieldGroupKey, v))
+}
+
+// GroupKeyContainsFold applies the ContainsFold predicate on the "group_key" field.
+func GroupKeyContainsFold(v string) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldContainsFold(FieldGroupKey, v))
+}
+
+// MediaQuotaBytesEQ applies the EQ predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesEQ(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldEQ(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesNEQ applies the NEQ predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesNEQ(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldNEQ(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesIn applies the In predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesIn(vs ...int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldIn(FieldMediaQuotaBytes, vs...))
+}
+
+// MediaQuotaBytesNotIn applies the NotIn predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesNotIn(vs ...int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldNotIn(FieldMediaQuotaBytes, vs...))
+}
+
+// MediaQuotaBytesGT applies the GT predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesGT(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldGT(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesGTE applies the GTE predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesGTE(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldGTE(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesLT applies the LT predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesLT(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldLT(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesLTE applies the LTE predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesLTE(v int64) predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldLTE(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesIsNil applies the IsNil predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesIsNil() predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldIsNull(FieldMediaQuotaBytes))
+}
+
+// MediaQuotaBytesNotNil applies the NotNil predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesNotNil() predicate.SiteMember {
+	return predicate.SiteMember(sql.FieldNotNull(FieldMediaQuotaBytes))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

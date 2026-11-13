@@ -5,12 +5,16 @@ import (
 	"context"
 	"time"
 
+	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaquotaguard"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	entsite "github.com/practacu/practacu-press/apps/api/ent/site"
+	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
-	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
-	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
 )
 
 // Store is the Ent backed implementation of media.Repository.
@@ -22,10 +26,44 @@ type Store struct {
 func New(client *entgen.Client) *Store { return &Store{client: client} }
 
 var _ media.Repository = (*Store)(nil)
+var _ media.QuotaOverrideReader = (*Store)(nil)
+var _ media.GarbageCatalog = (*Store)(nil)
+
+// MediaQuotaOverrides returns the explicit site and active membership limits.
+// Nil values deliberately remain nil so the media service can apply deployment
+// defaults; zero is retained as an explicit unlimited override.
+func (s *Store) MediaQuotaOverrides(ctx context.Context, siteID, userID string) (media.QuotaOverrides, error) {
+	siteRow, err := s.client.Site.Get(ctx, siteID)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return media.QuotaOverrides{}, media.ErrNotFound
+		}
+		return media.QuotaOverrides{}, err
+	}
+
+	member, err := s.client.SiteMember.Query().
+		Where(
+			sitemember.SiteIDEQ(siteID),
+			sitemember.UserIDEQ(userID),
+			sitemember.StatusEQ(site.MemberStatusActive),
+		).
+		Only(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return media.QuotaOverrides{}, media.ErrPermissionDenied
+		}
+		return media.QuotaOverrides{}, err
+	}
+	return media.QuotaOverrides{UserBytes: member.MediaQuotaBytes, SiteBytes: siteRow.MediaQuotaBytes}, nil
+}
 
 // InsertUpload opens an upload session.
 func (s *Store) InsertUpload(ctx context.Context, upload media.Upload) (media.Upload, error) {
-	created, err := s.client.MediaUpload.Create().
+	return insertUpload(ctx, s.client, upload)
+}
+
+func insertUpload(ctx context.Context, client *entgen.Client, upload media.Upload) (media.Upload, error) {
+	created, err := client.MediaUpload.Create().
 		SetSiteID(upload.SiteID).
 		SetOwnerID(upload.OwnerID).
 		SetFileName(upload.FileName).
@@ -40,6 +78,133 @@ func (s *Store) InsertUpload(ctx context.Context, upload media.Upload) (media.Up
 		return media.Upload{}, err
 	}
 	return toUpload(created), nil
+}
+
+// InsertUploadWithinQuota serializes reservations at the site row before reading
+// usage, so concurrent requests and API replicas observe committed reservations.
+func (s *Store) InsertUploadWithinQuota(
+	ctx context.Context,
+	upload media.Upload,
+	userLimitBytes, siteLimitBytes int64,
+) (media.Upload, error) {
+	if upload.Size <= 0 || userLimitBytes < 0 || siteLimitBytes < 0 {
+		return media.Upload{}, media.ErrInvalidInput
+	}
+
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return media.Upload{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	exists, err := tx.Site.Query().Where(entsite.IDEQ(upload.SiteID)).Exist(ctx)
+	if err != nil {
+		return media.Upload{}, err
+	}
+	if !exists {
+		return media.Upload{}, media.ErrNotFound
+	}
+
+	if err := tx.MediaQuotaGuard.Create().
+		SetSiteID(upload.SiteID).
+		OnConflictColumns(mediaquotaguard.FieldSiteID).
+		Ignore().Exec(ctx); err != nil {
+		return media.Upload{}, err
+	}
+	locked, err := tx.MediaQuotaGuard.Update().
+		Where(mediaquotaguard.SiteIDEQ(upload.SiteID)).
+		AddSerial(1).
+		Save(ctx)
+	if err != nil {
+		return media.Upload{}, err
+	}
+	if locked != 1 {
+		return media.Upload{}, media.ErrNotFound
+	}
+
+	assetUsage, err := sumUsage(ctx, func(ctx context.Context, v any) error {
+		return tx.MediaAsset.Query().Where(mediaasset.SiteIDEQ(upload.SiteID)).
+			Aggregate(entgen.As(entgen.Sum(mediaasset.FieldSize), "total")).Scan(ctx, v)
+	})
+	if err != nil {
+		return media.Upload{}, err
+	}
+	userAssetUsage, err := sumUsage(ctx, func(ctx context.Context, v any) error {
+		return tx.MediaAsset.Query().Where(mediaasset.SiteIDEQ(upload.SiteID), mediaasset.OwnerIDEQ(upload.OwnerID)).
+			Aggregate(entgen.As(entgen.Sum(mediaasset.FieldSize), "total")).Scan(ctx, v)
+	})
+	if err != nil {
+		return media.Upload{}, err
+	}
+	now := time.Now().UTC()
+	activeUploads := mediaupload.Or(
+		mediaupload.StatusEQ(string(media.UploadPending)),
+		mediaupload.StatusEQ(string(media.UploadUploaded)),
+	)
+	siteUploadUsage, err := sumUsage(ctx, func(ctx context.Context, v any) error {
+		return tx.MediaUpload.Query().Where(mediaupload.SiteIDEQ(upload.SiteID), mediaupload.ExpiresAtGT(now), activeUploads).
+			Aggregate(entgen.As(entgen.Sum(mediaupload.FieldSize), "total")).Scan(ctx, v)
+	})
+	if err != nil {
+		return media.Upload{}, err
+	}
+	userUploadUsage, err := sumUsage(ctx, func(ctx context.Context, v any) error {
+		return tx.MediaUpload.Query().Where(
+			mediaupload.SiteIDEQ(upload.SiteID),
+			mediaupload.OwnerIDEQ(upload.OwnerID),
+			mediaupload.ExpiresAtGT(now),
+			activeUploads,
+		).Aggregate(entgen.As(entgen.Sum(mediaupload.FieldSize), "total")).Scan(ctx, v)
+	})
+	if err != nil {
+		return media.Upload{}, err
+	}
+
+	if exceedsQuota(userAssetUsage, userUploadUsage, upload.Size, userLimitBytes) ||
+		exceedsQuota(assetUsage, siteUploadUsage, upload.Size, siteLimitBytes) {
+		return media.Upload{}, media.ErrQuotaExceeded
+	}
+
+	created, err := insertUpload(ctx, tx.Client(), upload)
+	if err != nil {
+		return media.Upload{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return media.Upload{}, err
+	}
+	committed = true
+	return created, nil
+}
+
+func sumUsage(ctx context.Context, scan func(context.Context, any) error) (int64, error) {
+	var rows []struct {
+		Total int64 `json:"total"`
+	}
+	if err := scan(ctx, &rows); err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	return rows[0].Total, nil
+}
+
+func exceedsQuota(used, reserved, requested, limit int64) bool {
+	if limit == 0 {
+		return false
+	}
+	if used >= limit {
+		return true
+	}
+	remaining := limit - used
+	if reserved >= remaining {
+		return true
+	}
+	return requested > remaining-reserved
 }
 
 // FindUpload loads a session inside a site scope.
@@ -223,6 +388,55 @@ func (s *Store) DeleteAsset(ctx context.Context, siteID, assetID string) error {
 		return media.ErrNotFound
 	}
 	return nil
+}
+
+// AllAssets returns every asset row across every site.
+//
+// It exists for offline garbage collection only, which is why it is not part of
+// media.Repository: no request handler should be able to enumerate all tenants.
+func (s *Store) AllAssets(ctx context.Context) ([]media.Asset, error) {
+	rows, err := s.client.MediaAsset.Query().
+		Order(entgen.Asc(mediaasset.FieldCreatedAt), entgen.Asc(mediaasset.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	assets := make([]media.Asset, 0, len(rows))
+	for _, row := range rows {
+		assets = append(assets, toAsset(row))
+	}
+	return assets, nil
+}
+
+// AllUploads returns every upload session across every site.
+func (s *Store) AllUploads(ctx context.Context) ([]media.Upload, error) {
+	rows, err := s.client.MediaUpload.Query().
+		Order(entgen.Asc(mediaupload.FieldCreatedAt), entgen.Asc(mediaupload.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	uploads := make([]media.Upload, 0, len(rows))
+	for _, row := range rows {
+		uploads = append(uploads, toUpload(row))
+	}
+	return uploads, nil
+}
+
+// MarkUploadExpired closes an abandoned session.
+//
+// A row that already moved on is left untouched, so a concurrent completion is never
+// overwritten by a collector that read the row a moment earlier.
+func (s *Store) MarkUploadExpired(ctx context.Context, uploadID string, at time.Time) error {
+	_, err := s.client.MediaUpload.Update().
+		Where(
+			mediaupload.IDEQ(uploadID),
+			mediaupload.StatusIn(string(media.UploadPending), string(media.UploadUploaded)),
+		).
+		SetStatus(string(media.UploadExpired)).
+		SetUpdatedAt(at).
+		Save(ctx)
+	return err
 }
 
 func toUpload(row *entgen.MediaUpload) media.Upload {

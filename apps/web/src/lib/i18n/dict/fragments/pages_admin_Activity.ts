@@ -3,31 +3,35 @@ import type { Dictionary } from '../../plural';
 /** 来源：`apps/web/src/pages/admin/Activity.tsx` */
 const fragment: Dictionary = {
   网站日志: 'Site log',
-  '演示后端记录的站点操作与本浏览器登录记录。真实后端把审计写入 audit_logs，但 v0.1.0 没有对外查询端点。':
-    'Site actions recorded by the demo backend plus sign-in records from this browser. The real backend writes audits to audit_logs, but v0.1.0 exposes no query endpoint.',
-  '真实后端没有审计查询端点；这里记录的是本浏览器内执行的管理操作与登录。':
-    'The real backend has no audit query endpoint; this records the admin actions and sign-ins performed in this browser.',
+  '这里展示服务端 audit_logs 中属于当前站点的审计记录。':
+    "Server-side audit_logs entries that belong to this site.",
+  服务端审计日志: 'Server-side audit log',
+  '登录、发布、删除、角色变更与站点设置修改都会写入 audit_logs。只有站点管理员可以查询本页；记录按时间倒序，可用时间、操作人、动作与目标筛选。':
+    'Sign-ins, publishing, deletion, role changes and site setting changes are written to audit_logs. Only site administrators can query this page; entries are newest first and can be filtered by time, actor, action and target.',
   '导出 CSV': 'Export CSV',
-  '这不是服务端审计日志': 'This is not a server-side audit log',
-  '设计文档要求所有管理操作、权限失败与安全事件写入 audit_logs，并在服务端保留。当前 OpenAPI 没有暴露审计查询接口，因此本页只能展示：演示数据的种子记录，或此浏览器执行操作时留下的本地记录。':
-    'The design document requires every admin action, permission failure, and security event to be written to audit_logs and kept on the server. The current OpenAPI exposes no audit query endpoint, so this page can only show seeded demo records or the local records left by actions performed in this browser.',
-  '它不能替代合规审计。': 'It cannot replace a compliance audit.',
-  '搜索操作者、动作或对象': 'Search actor, action, or target',
-  搜索操作日志: 'Search activity log',
-  '{count} 条': { one: '1 entry', other: '{count} entries' },
-  清空本地记录: 'Clear local records',
+  刷新: 'Refresh',
+  时间范围: 'Time range',
+  '最近 24 小时': 'Last 24 hours',
+  '最近 7 天': 'Last 7 days',
+  '最近 30 天': 'Last 30 days',
+  全部时间: 'All time',
+  操作人: 'Actor',
+  全部操作人: 'All actors',
+  动作: 'Action',
+  全部动作: 'All actions',
+  目标类型: 'Target type',
+  全部目标: 'All targets',
+  系统: 'System',
   正在载入操作日志: 'Loading activity log',
   还没有操作日志: 'No activity log yet',
   '发布内容、修改站点设置或调整用户组后，记录会出现在这里。':
     'Records appear here after you publish content, change site settings, or adjust user groups.',
-  '记录保存在浏览器 localStorage，上限 120 条；清除浏览器数据会一并清空。服务端审计以数据库为准。':
-    'Records are kept in this browser’s localStorage, up to 120 entries; clearing browser data clears them too. Server-side auditing is authoritative in the database.',
-  '清空本地操作日志？': 'Clear the local activity log?',
-  '只会删除这个浏览器里的记录，不影响服务端数据。':
-    'Only the records in this browser are deleted; server data is not affected.',
-  清空: 'Clear',
+  '加载更多失败': 'Could not load more',
+  '加载更多': 'Load more',
+  '记录保存在服务端 audit_logs 表中，按站点隔离；导出 CSV 只包含当前筛选已加载的记录。':
+    'Records live in the server-side audit_logs table, scoped per site; the CSV export contains only the records loaded by the current filter.',
+  '{count} 条': { one: '1 entry', other: '{count} entries' },
   '已导出 CSV': 'CSV exported',
-  本地记录已清空: 'Local records cleared',
 };
 
 export default fragment;

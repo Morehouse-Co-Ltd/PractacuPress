@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AccessSettings, RateRule } from '../../types';
 import { useAuth } from '../../lib/session';
+import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { useBackend } from '../../lib/backend';
 import {
   accessController,
@@ -88,9 +89,10 @@ function RuleEditor({
 export function AccessPage({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   useTitle(embedded ? t('访问与域名') : t('访问限制'));
-  const { config, site, me, updateConfig } = useAuth();
+  const { config, site, me } = useAuth();
   const backend = useBackend();
   const toast = useToast();
+  const saveSiteConfig = useSaveSiteConfig();
   const saved = useMemo(() => readAccess(config), [config]);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<AccessSettings>(() => saved);
@@ -105,24 +107,28 @@ export function AccessPage({ embedded = false }: { embedded?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
-  const save = () => {
+  const save = async () => {
     const next = readAccess({ access: draft });
-    updateConfig({ access: next });
+    const ok = await saveSiteConfig({ access: next });
     setDraft(next);
+    if (!ok) return;
     toast.push(
       'ok',
       t('访问限制已保存'),
-      next.enabled ? t('浏览器端规则立即生效。') : t('浏览器端保护当前关闭。'),
+      next.enabled
+        ? t('已写入站点服务端配置：访客刷新页面后按这套规则计数。')
+        : t('浏览器端保护当前关闭。'),
     );
     if (me) {
       noteActivity(backend, me.user.display_name, '修改访问限制', site?.name ?? '站点', next.enabled ? '已启用' : '已关闭');
     }
   };
 
-  const reset = () => {
-    updateConfig({ access: DEFAULT_ACCESS });
+  const reset = async () => {
+    const ok = await saveSiteConfig({ access: DEFAULT_ACCESS });
     setDraft(DEFAULT_ACCESS);
     accessController.clear();
+    if (!ok) return;
     toast.push('ok', t('已恢复默认限制'), t('浏览器端保护已关闭；已保存的网关数值也回到默认。'));
   };
 

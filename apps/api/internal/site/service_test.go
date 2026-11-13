@@ -21,16 +21,23 @@ type fakeRepo struct {
 	domainUpdates  int
 	audits         []AuditEntry
 	settings       *SettingsInput
+	quotaUpdates   int
 	// customization is the saved design document, keyed by site id. A missing key means
 	// the site never saved one.
 	customization map[string]Customization
+	// siteConfig is the saved runtime configuration, keyed by site id.
+	siteConfig    map[string]SiteConfig
 	saveConflicts int
+	// permissionGroups is the capability groups of each site, keyed by site id and key.
+	permissionGroups map[string]map[string]PermissionGroup
 }
 
 func newFakeRepo() *fakeRepo {
 	return &fakeRepo{
-		members:       make(map[string]Member),
-		customization: make(map[string]Customization),
+		members:          make(map[string]Member),
+		customization:    make(map[string]Customization),
+		siteConfig:       make(map[string]SiteConfig),
+		permissionGroups: make(map[string]map[string]PermissionGroup),
 	}
 }
 
@@ -72,8 +79,45 @@ func (f *fakeRepo) SaveCustomization(
 	return saved, nil
 }
 
-func memberKey(siteID, userID string) string { return siteID + "/" + userID }
+// SiteConfig mirrors the store: a site without a saved configuration answers NotFound.
+func (f *fakeRepo) SiteConfig(_ context.Context, siteID string) (SiteConfig, error) {
+	saved, ok := f.siteConfig[siteID]
+	if !ok {
+		return SiteConfig{}, ErrSiteConfigNotFound
+	}
+	return saved, nil
+}
 
+// SaveSiteConfig mirrors the store's conditional write, including the conflict when the
+// stored revision has moved on.
+func (f *fakeRepo) SaveSiteConfig(
+	_ context.Context,
+	siteID string,
+	in SiteConfigInput,
+	audit AuditEntry,
+) (SiteConfig, error) {
+	saved, exists := f.siteConfig[siteID]
+	if in.ExpectedRevision > 0 {
+		if !exists || saved.Revision != in.ExpectedRevision {
+			f.saveConflicts++
+			return SiteConfig{}, ErrSiteConfigConflict
+		}
+	}
+	revision := saved.Revision
+	if !exists {
+		revision = 0
+	}
+	saved = SiteConfig{
+		Document:  append([]byte(nil), in.Document...),
+		Revision:  revision + 1,
+		UpdatedAt: audit.At,
+	}
+	f.siteConfig[siteID] = saved
+	f.audits = append(f.audits, audit)
+	return saved, nil
+}
+
+func memberKey(siteID, userID string) string { return siteID + "/" + userID }
 func (f *fakeRepo) FindByDomain(_ context.Context, hostname string) (Site, error) {
 	for _, candidate := range f.sites {
 		if candidate.Domain != "" && NormalizeHost(candidate.Domain) == hostname {
@@ -187,6 +231,21 @@ func (f *fakeRepo) UpdateMemberStatus(_ context.Context, siteID, userID, status 
 	return nil
 }
 
+func (f *fakeRepo) UpdateMemberMediaQuota(_ context.Context, siteID, userID string, quota QuotaOverride, audit AuditEntry) error {
+	key := memberKey(siteID, userID)
+	member, ok := f.members[key]
+	if !ok {
+		return ErrTargetNotFound
+	}
+	if quota.Present {
+		member.MediaQuotaBytes = quota.Bytes
+		f.members[key] = member
+	}
+	f.quotaUpdates++
+	f.audits = append(f.audits, audit)
+	return nil
+}
+
 func (f *fakeRepo) DeleteMember(_ context.Context, siteID, userID string, audit AuditEntry) error {
 	key := memberKey(siteID, userID)
 	if _, ok := f.members[key]; !ok {
@@ -211,6 +270,9 @@ func (f *fakeRepo) UpdateSettings(_ context.Context, siteID string, in SettingsI
 		}
 		if in.RegistrationOpen != nil {
 			f.sites[i].RegistrationOpen = *in.RegistrationOpen
+		}
+		if in.MediaQuota.Present {
+			f.sites[i].MediaQuotaBytes = in.MediaQuota.Bytes
 		}
 	}
 	f.audits = append(f.audits, audit)
@@ -1007,6 +1069,85 @@ func TestUpdateSettingsRegistrationSwitch(t *testing.T) {
 	open := true
 	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{RegistrationOpen: &open}, ""))
 	require.True(t, repo.sites[0].RegistrationOpen)
+}
+
+func TestUpdateSettingsMediaQuotaTriState(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1"}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	service := newService(t, repo)
+	actor := repo.members[memberKey("s1", "admin")]
+	ctx := context.Background()
+
+	value := int64(4096)
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{
+		MediaQuota: QuotaOverride{Present: true, Bytes: &value},
+	}, ""))
+	require.Equal(t, int64(4096), *repo.sites[0].MediaQuotaBytes)
+
+	zero := int64(0)
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{
+		MediaQuota: QuotaOverride{Present: true, Bytes: &zero},
+	}, ""))
+	require.Equal(t, int64(0), *repo.sites[0].MediaQuotaBytes)
+
+	// An omitted property does not modify the stored override.
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{}, ""))
+	require.Equal(t, int64(0), *repo.sites[0].MediaQuotaBytes)
+
+	// An explicit null is represented by a present override with no value.
+	require.NoError(t, service.UpdateSettings(ctx, actor, "s1", SettingsInput{
+		MediaQuota: QuotaOverride{Present: true},
+	}, ""))
+	require.Nil(t, repo.sites[0].MediaQuotaBytes)
+
+	negative := int64(-1)
+	err := service.UpdateSettings(ctx, actor, "s1", SettingsInput{
+		MediaQuota: QuotaOverride{Present: true, Bytes: &negative},
+	}, "")
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestUpdateMemberMediaQuotaRequiresSiteAdminAndScopesTarget(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1"}, {ID: "s2"}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	repo.members[memberKey("s1", "editor")] = activeMember("s1", "editor", RoleEditor)
+	repo.members[memberKey("s1", "member")] = activeMember("s1", "member", RoleMember)
+	service := newService(t, repo)
+	ctx := context.Background()
+	value := int64(8192)
+	quota := QuotaOverride{Present: true, Bytes: &value}
+
+	admin := repo.members[memberKey("s1", "admin")]
+	updated, err := service.UpdateMemberMediaQuota(ctx, admin, "s1", "member", quota, "req-1")
+	require.NoError(t, err)
+	require.Equal(t, int64(8192), *updated.MediaQuotaBytes)
+	require.Equal(t, int64(8192), *repo.members[memberKey("s1", "member")].MediaQuotaBytes)
+
+	_, err = service.UpdateMemberMediaQuota(ctx, repo.members[memberKey("s1", "editor")],
+		"s1", "member", quota, "")
+	require.ErrorIs(t, err, ErrPermissionDenied)
+	_, err = service.UpdateMemberMediaQuota(ctx, admin, "s2", "member", quota, "")
+	require.ErrorIs(t, err, ErrCrossSite)
+	_, err = service.UpdateMemberMediaQuota(ctx, admin, "s1", "missing", quota, "")
+	require.ErrorIs(t, err, ErrTargetNotFound)
+
+	zero := int64(0)
+	updated, err = service.UpdateMemberMediaQuota(ctx, admin, "s1", "member",
+		QuotaOverride{Present: true, Bytes: &zero}, "")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), *updated.MediaQuotaBytes)
+
+	updated, err = service.UpdateMemberMediaQuota(ctx, admin, "s1", "member",
+		QuotaOverride{Present: true}, "")
+	require.NoError(t, err)
+	require.Nil(t, updated.MediaQuotaBytes)
+
+	negative := int64(-1)
+	_, err = service.UpdateMemberMediaQuota(ctx, admin, "s1", "member",
+		QuotaOverride{Present: true, Bytes: &negative}, "")
+	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
 func TestRegistrationOpenReadsTheSite(t *testing.T) {

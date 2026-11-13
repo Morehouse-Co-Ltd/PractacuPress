@@ -14,8 +14,8 @@ const fragment: Dictionary = {
   '# 还没有填写 SMTP 主机，找回密码暂时不可用':
     '# No SMTP host yet, so password recovery is unavailable for now',
   '<在服务端填写>': '<fill in on the server>',
-  '# 重置邮件里的链接指向这个地址；留空则使用请求来源':
-    '# The link in password reset emails points at this address; leave it empty to use the request origin',
+  '# 绝对链接的前缀；留空时服务端按 https 假定，桌面 / localhost（http）请显式填写 http://127.0.0.1:<端口>':
+    '# Prefix for absolute links; when blank the server assumes https, so a desktop / localhost (http) install must fill in http://127.0.0.1:<port>',
   '<你的站点地址，例如 https://press.example.com>':
     '<your site address, for example https://press.example.com>',
 };

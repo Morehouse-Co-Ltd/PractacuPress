@@ -14,6 +14,7 @@ const fragment: Dictionary = {
 
   // ---- 筛选与计数 ----
   '在当前列表中筛选标题': 'Filter titles in the current list',
+  文章显示方式: 'Article display mode',
   筛选: 'Filter',
   '公开阅读 · 已载入 {count} 篇': {
     one: 'Public reading · 1 loaded',
@@ -55,6 +56,13 @@ const fragment: Dictionary = {
   '这是一个仅成员可见的站点': 'This site is visible to members only',
   '匿名访客会收到 401。登录后可以继续阅读。':
     'Anonymous visitors get a 401. Sign in to keep reading.',
+
+  // ---- 分类 / 标签入口与年/月分组 ----
+  分类: 'Categories',
+  标签: 'Tags',
+  年份快速跳转: 'Jump to a year',
+  '{count} 篇': { one: '1 item', other: '{count} items' },
+  '{month} 月': 'Month {month}',
 };
 
 export default fragment;

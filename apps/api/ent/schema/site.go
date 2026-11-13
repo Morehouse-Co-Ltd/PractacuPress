@@ -41,11 +41,18 @@ func (Site) Fields() []ent.Field {
 			Default(PublishModeReview).
 			Validate(oneOf(PublishModeOpen, PublishModeReview, PublishModeRoleBased)),
 		field.String("description").MaxLen(2000).Optional().Nillable(),
+		field.Int64("media_quota_bytes").Optional().Nillable(),
 		// RegistrationOpen controls whether anonymous visitors may create a member
 		// account. The first account of a desktop install is unaffected (it is the
 		// bootstrap administrator); closing registration is an anti-abuse switch for
 		// public sites.
 		field.Bool("registration_open").Default(true),
+		// Comment policy is site level state, not part of the design document: the
+		// API must enforce it even when a client writes to /comments directly.
+		// CommentsEnabled closes new comment writes; CommentsRequireReview sends new
+		// comments to the moderation queue instead of publishing them immediately.
+		field.Bool("comments_enabled").Default(true),
+		field.Bool("comments_require_review").Default(false),
 		field.Bool("disabled").Default(false),
 		createdField(),
 		updatedField(),

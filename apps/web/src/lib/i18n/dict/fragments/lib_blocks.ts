@@ -39,8 +39,8 @@ const fragment: Dictionary = {
   '纯色模式下作为界面背景或占位块。':
     'In solid color mode, used as a background or placeholder block.',
   次按钮: 'Secondary button',
-  '从已发布内容统计每个月发了多少篇，参考站的「八月 2026 · 1 篇」。':
-    'Counts published items per month, like the reference site’s “August 2026 · 1 item”.',
+  '从已发布内容统计每个月发了多少篇，例如「八月 2026 · 1 篇」。':
+    'Counts how many posts were published each month, for example “August 2026 · 1”.',
   大格子显示摘要: 'Show summary in large tiles',
   '带标题、说明和链接的条目列表。': 'A list of items with a title, description and link.',
   单位: 'Unit',
@@ -64,11 +64,13 @@ const fragment: Dictionary = {
   高度: 'Height',
   更多链接文字: 'More link label',
   '关闭时是纯文字的紧凑榜单。': 'When off, it is a compact text-only list.',
-  黑卡背景图: 'Black card background image',
-  黑卡大标题: 'Black card headline',
-  黑卡底部搜索框: 'Search box at the bottom of the black card',
-  黑卡底色: 'Black card background',
-  黑卡显示域名: 'Show domain on the black card',
+  '没有背景图时使用。夜航默认纯黑；白昼使用主题的卡片底色。':
+    'Used when there is no background image. Night flight defaults to black; Daylight uses the theme’s card surface.',
+  主卡背景图: 'Main card background image',
+  主卡大标题: 'Main card headline',
+  主卡底部搜索框: 'Search box at the bottom of the main card',
+  主卡底色: 'Main card background',
+  主卡显示域名: 'Show domain on the main card',
   '横向大卡：左侧封面、右侧标题摘要与 meta，是双栏布局的主内容流。':
     'Wide rows with a cover on the left and title, summary and meta on the right — the main content stream of the two-column layout.',
   环形图: 'Donut chart',
@@ -155,8 +157,8 @@ const fragment: Dictionary = {
   数据: 'Data',
   数据来源: 'Data source',
   数值: 'Value',
-  '双卡首屏：左侧大黑卡（可换背景图 + 大标题 + 搜索框）/ 右侧是紧凑的热门榜单，也可以换回彩虹渐变卡。':
-    'Two-card hero: a large black card on the left (custom background image, big headline and search box) and a compact popular list on the right, or switch back to the rainbow gradient card.',
+  '双卡首屏：主卡放标题、说明与搜索框，侧卡放热门榜或欢迎卡；卡片外观随主题变化。':
+    'Two-card hero: the main card carries the headline, blurb and search box; the side card holds the popular list or a welcome card. The card styling follows the active theme.',
   说明: 'Description',
   搜索框占位文字: 'Search placeholder',
   搜索入口: 'Search launcher',
@@ -214,7 +216,7 @@ const fragment: Dictionary = {
   样式: 'Style',
   '页面底部的一条号召横幅，可改文案与按钮。':
     'A call-to-action band at the bottom of the page; the copy and buttons are editable.',
-  夜航首屏: 'Nightflight hero',
+  双卡首屏: 'Two-card hero',
   '一段可编辑的引言，适合发刊词与摘句。':
     'An editable quote, good for a masthead note or a favorite passage.',
   '一个打开全屏搜索浮层的按钮（Shift+S）。':
@@ -280,8 +282,8 @@ const fragment: Dictionary = {
     'Latest or popular articles in a list, grid or floating cards.',
   '最新文章 / 帖子列表 + 右侧栏，带分类切换。':
     'Latest articles and posts with a sidebar and category tabs.',
-  '左边是标题卡，右边是热门榜。':
-    'The left side is the headline card, the right side is the popular list.',
+  '左侧是主卡，右侧是热门榜或欢迎卡。':
+    'The main card is on the left; the popular list or welcome card on the right.',
   '左侧竖线 + 圆点的节点列表，适合站点大事记。':
     'A node list with a vertical line and dots, good for a site timeline.',
   左对齐: 'Align left',
@@ -454,6 +456,34 @@ const fragment: Dictionary = {
   本页目录: 'Table of contents',
   '按区块锚点自动生成本页目录，滚动时高亮当前一节。':
     'Builds a table of contents from block anchors and highlights the current section as you scroll.',
+
+  // ---- 2026-11-08 Daylight ----
+  白昼头版: 'Daylight front',
+  '左侧刊头文案、右侧封面故事；白昼首页的分栏头版。':
+    'A split front page with the masthead copy on the left and a cover story on the right.',
+  '留空使用「外观 → 首页首屏」的眉题或站点名。':
+    'Leave empty to use the kicker from Appearance → Home hero, or the site name.',
+  '留空使用「外观 → 首页首屏」的标题；支持换行与 *斜体强调*。':
+    'Leave empty to use the headline from Appearance → Home hero; line breaks and *italic emphasis* are supported.',
+  '留空使用外观里的副标题或站点简介。':
+    'Leave empty to use the subtitle from Appearance or the site description.',
+  '留空显示「开始阅读」。': 'Leave empty to show “Start reading”.',
+  '留空显示「全部文章」。': 'Leave empty to show “All articles”.',
+  栏目导轨: 'Section rail',
+  '横向排列栏目与文章数，适合日报式首页的分区导航。':
+    'A horizontal rail of sections and story counts for a daily-paper style home page.',
+  '留空显示「栏目」。': 'Leave empty to show “Sections”.',
+  最多几个栏目: 'Maximum sections',
+  三列故事: 'Three-column stories',
+  '三列封面故事卡，白昼首页的主内容区。':
+    'A three-column grid of cover story cards, the main content area of the Daylight home page.',
+  '留空显示「最新文章」。': 'Leave empty to show “Latest articles”.',
+  跳过前几篇: 'Skip the first stories',
+  '避免和头版的封面故事重复。': 'Use this to avoid repeating the front-page cover story.',
+  文字简报: 'Text briefs',
+  '双列、无封面的文字条目，给首页留出不同于图片卡的阅读节奏。':
+    'Two columns of text-only entries, giving the home page a reading rhythm distinct from the image cards.',
+  '留空显示「继续阅读」。': 'Leave empty to show “Continue reading”.',
 };
 
 export default fragment;

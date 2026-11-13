@@ -1,0 +1,23 @@
+/* =========================================================
+   扩展运行时：扩展注册的后台页面
+   ---------------------------------------------------------
+   页面：components/AdminExtensionPage.tsx
+   路由：/admin/ext/:pageId（旧 /admin/system → /admin/ext/system）
+   注册：lib/plugins/adminRegistry.ts + lib/extensions/builtin.tsx
+   ========================================================= */
+
+/* 外壳只提供排版上下文：页面自己带 admin-page-head / panel，宽度与其它后台页一致。 */
+.admin-ext-page {
+  min-width: 0;
+}
+
+/* 错误边界兜底：扩展页面抛错时只替换这一页，侧栏与顶栏保持可用。 */
+.admin-ext-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-ext-fallback .callout {
+  margin: 0;
+}

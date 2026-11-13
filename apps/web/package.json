@@ -13,20 +13,29 @@
     "test:watch": "vitest",
     "start": "node scripts/serve.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
-    "e2e:i18n": "node scripts/e2e-i18n.mjs"
+    "e2e:i18n": "node scripts/e2e-i18n.mjs",
+    "e2e": "node e2e/harness.mjs",
+    "e2e:test": "playwright test --config e2e/playwright.config.ts",
+    "e2e:theme": "node scripts/e2e-theme-identity.mjs",
+    "e2e:admin-theme": "node scripts/e2e-admin-theme.mjs",
+    "e2e:article-style": "node scripts/e2e-article-style.mjs"
   },
   "dependencies": {
+    "katex": "0.16.22",
+    "qrcode-generator": "^1.4.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router-dom": "7.18.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "5.2.0",
-    "happy-dom": "^18.0.1",
+    "esbuild": "0.28.2",
+    "happy-dom": "^21.0.4",
     "typescript": "5.9.3",
     "vite": "7.3.7",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.12"
   }
 }

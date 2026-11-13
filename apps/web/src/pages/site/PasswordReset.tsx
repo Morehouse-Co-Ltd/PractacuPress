@@ -3,10 +3,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { ApiError } from '../../lib/api';
+import { captchaReasonText, captchaSceneRequired } from '../../lib/captcha';
 import { isPersonalSite } from '../../lib/site';
 import { useAuth } from '../../lib/session';
 import { useT } from '../../lib/i18n';
 import { Button, Callout, Field, Input } from '../../components/ui';
+import { CaptchaField, useCaptchaStatus } from '../../components/Captcha';
 import { Icon } from '../../components/Icon';
 
 /** 认证页共用的两栏外壳：左侧表单，右侧站点注脚。 */
@@ -61,12 +63,21 @@ function errorMessage(err: unknown, t: Translator): string {
 export function ForgotPasswordPage() {
   const t = useT();
   const backend = useBackend();
+  const { config } = useAuth();
   const [params] = useSearchParams();
   const [email, setEmail] = useState(params.get('email') ?? '');
   const [ticket, setTicket] = useState<{ token?: string; expires_in: number } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useTitle(t('找回密码'));
+
+  // 「发送重置链接」是匿名可触发的发信动作，站点可以在这一步要求人机验证。
+  const captcha = useCaptchaStatus();
+  const captchaRequired = captchaSceneRequired(captcha.status, 'password_reset');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaFailure, setCaptchaFailure] = useState('');
+  const recaptchaVersion = config.customization?.verification.recaptcha_version ?? 'v2';
 
   const policy = useAsync(async () => backend.passwordResetPolicy(), [backend]);
 
@@ -79,10 +90,18 @@ export function ForgotPasswordPage() {
     }
     setBusy(true);
     try {
-      const result = await backend.requestPasswordReset(email.trim());
+      const result = await backend.requestPasswordReset(email.trim(), captchaToken || undefined);
       setTicket({ token: result.token, expires_in: result.expires_in });
     } catch (err) {
-      setError(errorMessage(err, t));
+      setCaptchaToken('');
+      setCaptchaFailure('');
+      setCaptchaNonce((value) => value + 1);
+      const reason =
+        err instanceof ApiError
+          ? (err.problem.details as { reason?: string } | undefined)?.reason
+          : undefined;
+      const captchaText = captchaReasonText(reason, t);
+      setError(captchaText || errorMessage(err, t));
     } finally {
       setBusy(false);
     }
@@ -165,13 +184,28 @@ export function ForgotPasswordPage() {
             />
           </Field>
 
+          <CaptchaField
+            scene="password_reset"
+            status={captcha.status}
+            onToken={setCaptchaToken}
+            recaptchaVersion={recaptchaVersion}
+            resetKey={captchaNonce}
+            onFailure={setCaptchaFailure}
+          />
+
           {error ? (
             <Callout tone="danger" icon="alert">
               {error}
             </Callout>
           ) : null}
 
-          <Button type="submit" size="lg" loading={busy} iconRight="arrow-right">
+          <Button
+            type="submit"
+            size="lg"
+            loading={busy}
+            disabled={captchaRequired && !!captchaFailure}
+            iconRight="arrow-right"
+          >
             {t('发送重置链接')}
           </Button>
         </form>

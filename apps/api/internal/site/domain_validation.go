@@ -10,6 +10,13 @@ import (
 // MaxDomainLength is the DNS limit for a fully qualified name, including dots.
 const MaxDomainLength = 253
 
+// NormalizeDomain validates and normalises an operator supplied primary domain.
+//
+// It is the exported form of the rule every endpoint that accepts a domain uses, so a
+// platform site creation cannot drift from the settings screen. An empty string means
+// "no domain" and is returned unchanged.
+func NormalizeDomain(raw string) (string, error) { return normalizeDomain(raw) }
+
 // normalizeDomain validates an operator supplied primary domain.
 //
 // An empty string is allowed and means "clear the domain"; the handler distinguishes

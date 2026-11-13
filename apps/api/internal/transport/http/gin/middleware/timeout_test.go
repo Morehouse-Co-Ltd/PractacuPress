@@ -1,7 +1,7 @@
 package middleware
 
 import (
-		"io"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -145,4 +145,3 @@ func TestLongLivedRequestsMatchesUpgrades(t *testing.T) {
 	req.Header.Set("Upgrade", "websocket")
 	require.Equal(t, http.StatusOK, serve(r, req).Code)
 }
-

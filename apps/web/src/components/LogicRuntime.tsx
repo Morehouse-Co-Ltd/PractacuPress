@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { LogicStep } from '../types';
 import { useAuth } from '../lib/session';
-import { useCustomization } from '../lib/customize';
+import { useCustomization, useThemeMode } from '../lib/customize';
 import { isPersonalSite } from '../lib/site';
-import { applyMode } from '../lib/theme';
+import { setThemePreference } from '../lib/themePreference';
+import { runThemeTransition } from '../lib/themeTransition';
 import { dispatchInterfaceCommand } from '../lib/interfaceCommands';
 import { evaluateChain, type LogicContext, type LogicEvent } from '../lib/logic';
 import { BREAKPOINT_MD } from '../lib/layout';
@@ -82,11 +83,12 @@ function applyAction(step: LogicStep, switchMode: (mode: 'light' | 'dark') => vo
 }
 
 export function LogicRuntime() {
-  const { customization, update } = useCustomization();
+  const { customization } = useCustomization();
   const { me, config } = useAuth();
   const location = useLocation();
   const chains = customization.logic.chains;
-  const mode = customization.theme.mode;
+  // 条件里读实际看到的模式（Cookie 偏好优先），不是站点默认值。
+  const { mode } = useThemeMode();
 
   // 滚动 / 闲置 / 交互状态放在 ref 里，求值时不触发重渲染。
   const scrollRef = useRef(0);
@@ -132,7 +134,7 @@ export function LogicRuntime() {
         lastFiredRef.current[chain.id] = now;
         for (const action of result.actions) {
           applyAction(action, (next) => {
-            update({ theme: applyMode(state.theme, next) });
+            runThemeTransition(() => setThemePreference(next));
           });
         }
       }
@@ -201,7 +203,7 @@ export function LogicRuntime() {
 
     return () => cleanups.forEach((fn) => fn());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chains, needs.scroll, needs.idle, needs.pointer, update]);
+  }, [chains, needs.scroll, needs.idle, needs.pointer]);
 
   // 明暗切换求值：模式变化来自配置更新，单独监听。
   useEffect(() => {
@@ -223,12 +225,12 @@ export function LogicRuntime() {
       if (!result.fired) continue;
       for (const action of result.actions) {
         applyAction(action, (next) => {
-          update({ theme: applyMode(state.theme, next) });
+          runThemeTransition(() => setThemePreference(next));
         });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, needs.dark, chains.length, update]);
+  }, [mode, needs.dark, chains.length]);
 
   return null;
 }

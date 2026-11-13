@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import type { BlockInstance, Comment } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
+import { ApiError } from '../../lib/api';
 import { usePermissions } from '../../lib/usePermissions';
 import { useCustomization } from '../../lib/customize';
+import { captchaReasonText, captchaSceneRequired } from '../../lib/captcha';
 import { useToast } from '../../lib/toast';
 import { blockProp } from '../../lib/blocks';
 import { formatDate } from '../../lib/format';
 import { useT } from '../../lib/i18n';
 import { Avatar, Callout, EmptyState, Skeleton } from '../ui';
+import { CaptchaField, useCaptchaStatus } from '../Captcha';
 import { Icon } from '../Icon';
 import { useScreenScope } from './ScreenScope';
 
@@ -38,6 +41,13 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
   const [error, setError] = useState('');
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
+  // 留言走评论接口，所以同样受站点评论人机验证约束。
+  const captcha = useCaptchaStatus();
+  const captchaRequired = captchaSceneRequired(captcha.status, 'comment');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaFailure, setCaptchaFailure] = useState('');
+  const captchaBlocked = captchaRequired && !!captchaFailure;
 
   const commentsDisabled = !customization.comments.enabled;
 
@@ -68,10 +78,16 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
     setBusy(true);
     try {
       await backend.createComment(
-        { target_type: 'page', target_id: scope.id, body: text },
+        {
+          target_type: 'page',
+          target_id: scope.id,
+          body: text,
+          captcha_token: captchaToken || undefined,
+        },
         { require_review: customization.comments.require_review },
       );
       setBody('');
+      resetCaptcha();
       await load();
       toast.push(
         'ok',
@@ -79,10 +95,26 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
         customization.comments.require_review ? t('通过审核后才会公开显示。') : undefined,
       );
     } catch (err) {
-      toast.push('error', t('发送失败'), err instanceof Error ? err.message : undefined);
+      resetCaptcha();
+      const reason =
+        err instanceof ApiError
+          ? (err.problem.details as { reason?: string } | undefined)?.reason
+          : undefined;
+      toast.push(
+        'error',
+        t('发送失败'),
+        captchaReasonText(reason, t) || (err instanceof Error ? err.message : undefined),
+      );
     } finally {
       setBusy(false);
     }
+  };
+
+  /** 一次性 token：提交后（成功或失败）都要重新验证。 */
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaFailure('');
+    setCaptchaNonce((value) => value + 1);
   };
 
   const sorted = [...items].sort((a, b) =>
@@ -123,9 +155,21 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
               rows={4}
               aria-label={t('给{title}留言', { title: scope.title ?? t('这个页面') })}
             />
+            <CaptchaField
+              scene="comment"
+              status={captcha.status}
+              onToken={setCaptchaToken}
+              recaptchaVersion={customization.verification.recaptcha_version ?? 'v2'}
+              resetKey={captchaNonce}
+              onFailure={setCaptchaFailure}
+            />
             <div className="pp-guestbook-actions">
               <span className="tiny faint">{body.length}/5000</span>
-              <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !body.trim()}>
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={busy || !body.trim() || captchaBlocked}
+              >
                 {busy ? t('发送中…') : t('留下这句话')}
               </button>
             </div>

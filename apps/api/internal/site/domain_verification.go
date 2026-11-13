@@ -67,6 +67,12 @@ type TXTLookup interface {
 	LookupTXT(ctx context.Context, name string) ([]string, error)
 }
 
+// DomainStatusOf projects a stored site onto the admin API shape.
+//
+// It is exported for the platform console, which shows the same challenge to an
+// operator before the site has a hostname that resolves.
+func DomainStatusOf(found Site) DomainStatus { return domainStatusOf(found) }
+
 // domainStatusOf projects a stored site onto the admin API shape.
 //
 // The challenge token is only exposed while it is still needed: a verified domain has

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Practacu Press API reference</title>
+    <link rel="stylesheet" href="/api/v1/docs/app.css" />
+    <script src="/api/v1/docs/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">PP</span>
+        <div class="brand-copy">
+          <strong>Practacu Press API</strong>
+          <span id="spec-meta" class="muted">Loading the embedded contract…</span>
+        </div>
+      </div>
+      <nav class="topbar-actions" aria-label="Contract links">
+        <a class="button" href="/">Back to site</a>
+        <a class="button" href="openapi.json">openapi.json</a>
+      </nav>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" aria-label="API navigation">
+        <label class="search" for="operation-search">
+          <span>Filter</span>
+          <input
+            id="operation-search"
+            type="search"
+            placeholder="Path, method or tag"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <nav id="tag-nav" class="tag-nav" aria-label="Tags"></nav>
+        <p class="sidebar-note">
+          Served by this instance from <code>packages/contracts/openapi/openapi.yaml</code>.
+          Base URL: <code>/api/v1</code>.
+        </p>
+      </aside>
+
+      <main id="content" class="content">
+        <section id="intro" class="panel intro" aria-live="polite">
+          <p class="muted">Loading…</p>
+        </section>
+        <div id="operations"></div>
+      </main>
+    </div>
+
+    <noscript>
+      <p class="noscript">
+        This reference renders the OpenAPI document with JavaScript. The raw contract is
+        available at <a href="openapi.json">openapi.json</a>.
+      </p>
+    </noscript>
+  </body>
+</html>

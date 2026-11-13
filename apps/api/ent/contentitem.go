@@ -39,6 +39,8 @@ type ContentItem struct {
 	RenderedHTML string `json:"rendered_html,omitempty"`
 	// PolicyVersion holds the value of the "policy_version" field.
 	PolicyVersion string `json:"policy_version,omitempty"`
+	// Revision holds the value of the "revision" field.
+	Revision int `json:"revision,omitempty"`
 	// CategoryID holds the value of the "category_id" field.
 	CategoryID *string `json:"category_id,omitempty"`
 	// Tags holds the value of the "tags" field.
@@ -47,6 +49,18 @@ type ContentItem struct {
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 	// ArchivedAt holds the value of the "archived_at" field.
 	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+	// PublishAt holds the value of the "publish_at" field.
+	PublishAt *time.Time `json:"publish_at,omitempty"`
+	// PublishAttempts holds the value of the "publish_attempts" field.
+	PublishAttempts int `json:"publish_attempts,omitempty"`
+	// AccessMode holds the value of the "access_mode" field.
+	AccessMode string `json:"access_mode,omitempty"`
+	// AccessPasswordHash holds the value of the "access_password_hash" field.
+	AccessPasswordHash *string `json:"access_password_hash,omitempty"`
+	// ViewCount holds the value of the "view_count" field.
+	ViewCount int `json:"view_count,omitempty"`
+	// CommentPolicy holds the value of the "comment_policy" field.
+	CommentPolicy string `json:"comment_policy,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -59,9 +73,11 @@ func (*ContentItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case contentitem.FieldID, contentitem.FieldSiteID, contentitem.FieldAuthorID, contentitem.FieldKind, contentitem.FieldStatus, contentitem.FieldTitle, contentitem.FieldSlug, contentitem.FieldSummary, contentitem.FieldSourceFormat, contentitem.FieldSourceBody, contentitem.FieldRenderedHTML, contentitem.FieldPolicyVersion, contentitem.FieldCategoryID, contentitem.FieldTags:
+		case contentitem.FieldRevision, contentitem.FieldPublishAttempts, contentitem.FieldViewCount:
+			values[i] = new(sql.NullInt64)
+		case contentitem.FieldID, contentitem.FieldSiteID, contentitem.FieldAuthorID, contentitem.FieldKind, contentitem.FieldStatus, contentitem.FieldTitle, contentitem.FieldSlug, contentitem.FieldSummary, contentitem.FieldSourceFormat, contentitem.FieldSourceBody, contentitem.FieldRenderedHTML, contentitem.FieldPolicyVersion, contentitem.FieldCategoryID, contentitem.FieldTags, contentitem.FieldAccessMode, contentitem.FieldAccessPasswordHash, contentitem.FieldCommentPolicy:
 			values[i] = new(sql.NullString)
-		case contentitem.FieldPublishedAt, contentitem.FieldArchivedAt, contentitem.FieldCreatedAt, contentitem.FieldUpdatedAt:
+		case contentitem.FieldPublishedAt, contentitem.FieldArchivedAt, contentitem.FieldPublishAt, contentitem.FieldCreatedAt, contentitem.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -150,6 +166,12 @@ func (_m *ContentItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.PolicyVersion = value.String
 			}
+		case contentitem.FieldRevision:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field revision", values[i])
+			} else if value.Valid {
+				_m.Revision = int(value.Int64)
+			}
 		case contentitem.FieldCategoryID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field category_id", values[i])
@@ -176,6 +198,44 @@ func (_m *ContentItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ArchivedAt = new(time.Time)
 				*_m.ArchivedAt = value.Time
+			}
+		case contentitem.FieldPublishAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field publish_at", values[i])
+			} else if value.Valid {
+				_m.PublishAt = new(time.Time)
+				*_m.PublishAt = value.Time
+			}
+		case contentitem.FieldPublishAttempts:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field publish_attempts", values[i])
+			} else if value.Valid {
+				_m.PublishAttempts = int(value.Int64)
+			}
+		case contentitem.FieldAccessMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_mode", values[i])
+			} else if value.Valid {
+				_m.AccessMode = value.String
+			}
+		case contentitem.FieldAccessPasswordHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_password_hash", values[i])
+			} else if value.Valid {
+				_m.AccessPasswordHash = new(string)
+				*_m.AccessPasswordHash = value.String
+			}
+		case contentitem.FieldViewCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field view_count", values[i])
+			} else if value.Valid {
+				_m.ViewCount = int(value.Int64)
+			}
+		case contentitem.FieldCommentPolicy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field comment_policy", values[i])
+			} else if value.Valid {
+				_m.CommentPolicy = value.String
 			}
 		case contentitem.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -258,6 +318,9 @@ func (_m *ContentItem) String() string {
 	builder.WriteString("policy_version=")
 	builder.WriteString(_m.PolicyVersion)
 	builder.WriteString(", ")
+	builder.WriteString("revision=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Revision))
+	builder.WriteString(", ")
 	if v := _m.CategoryID; v != nil {
 		builder.WriteString("category_id=")
 		builder.WriteString(*v)
@@ -275,6 +338,28 @@ func (_m *ContentItem) String() string {
 		builder.WriteString("archived_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	if v := _m.PublishAt; v != nil {
+		builder.WriteString("publish_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("publish_attempts=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PublishAttempts))
+	builder.WriteString(", ")
+	builder.WriteString("access_mode=")
+	builder.WriteString(_m.AccessMode)
+	builder.WriteString(", ")
+	if v := _m.AccessPasswordHash; v != nil {
+		builder.WriteString("access_password_hash=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("view_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ViewCount))
+	builder.WriteString(", ")
+	builder.WriteString("comment_policy=")
+	builder.WriteString(_m.CommentPolicy)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

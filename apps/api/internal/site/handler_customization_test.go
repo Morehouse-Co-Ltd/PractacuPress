@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 )
 
 // put sends one JSON body to the harness router with an optional bearer token.

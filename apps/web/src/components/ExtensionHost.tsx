@@ -84,6 +84,15 @@ export interface ExtensionHostProps {
   /** 预览态：额外样式与更紧凑的高度限制。 */
   preview?: boolean;
   className?: string;
+  /**
+   * iframe 首次 load 后回调。
+   *
+   * 编辑器的预览用它判断「沙箱到底跑起来了没有」：迟迟不 load 时只把预览
+   * 回退到上次保存的版本，不阻塞表单与保存。
+   */
+  onLoad?: () => void;
+  /** iframe 自身报错（极少见）；编辑器据此隔离预览失败。 */
+  onError?: () => void;
 }
 
 export function ExtensionHost({
@@ -92,6 +101,8 @@ export function ExtensionHost({
   maxHeight = MAX_FRAME_HEIGHT,
   preview = false,
   className,
+  onLoad,
+  onError,
 }: ExtensionHostProps) {
   const t = useT();
   const toast = useToast();
@@ -269,7 +280,11 @@ export function ExtensionHost({
         data-pp-extension={extension.id}
         title={extension.name}
         srcDoc={srcDoc}
-        onLoad={requestHeight}
+        onLoad={() => {
+          requestHeight();
+          onLoad?.();
+        }}
+        onError={() => onError?.()}
         style={{ height: `${frameHeight}px` }}
       />
     </div>

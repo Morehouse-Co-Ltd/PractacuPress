@@ -24,6 +24,7 @@ import {
 } from '../../lib/serverConfig';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
+import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
 import {
@@ -49,9 +50,10 @@ function linesOf(value: string): string[] {
 export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   useTitle(embedded ? t('访问与域名') : t('域名绑定'));
-  const { config, site, me, updateConfig, applySite } = useAuth();
+  const { config, site, me, applySite } = useAuth();
   const backend = useBackend();
   const toast = useToast();
+  const saveSiteConfig = useSaveSiteConfig();
   const saved = useMemo(() => readDomains(config), [config]);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<DomainSettings>(() => saved);
@@ -201,12 +203,17 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           tls: { ...draft.tls, email: draft.tls.email.trim() },
         },
       });
-      updateConfig({ domains: next });
+      // 域名白名单是站点级配置：写服务端，访客才读得到（本机 localStorage 只做首屏缓存）。
+      const ok = await saveSiteConfig({ domains: next });
       setDraft(next);
       setPrimaryText(normalizedPrimary);
       setAliasText(next.aliases.join('\n'));
       setOriginText(next.cors_origins.join('\n'));
       setProxyText(next.trusted_proxies.join('\n'));
+      if (!ok) {
+        setErrors([t('配置没有保存到服务端，请稍后重试。')]);
+        return;
+      }
       toast.push(
         'ok',
         t('访问与域名已保存'),
@@ -234,14 +241,15 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
-  const reset = () => {
-    updateConfig({ domains: DEFAULT_DOMAINS });
+  const reset = async () => {
+    const ok = await saveSiteConfig({ domains: DEFAULT_DOMAINS });
     setDraft(DEFAULT_DOMAINS);
     setAliasText('');
     setOriginText('');
     setProxyText('');
     setPrimaryText(site?.domain || '');
     setErrors([]);
+    if (!ok) return;
     toast.push('ok', t('已恢复默认域名设置'), t('白名单关闭，localhost 与 IP 默认允许。'));
   };
 
@@ -249,7 +257,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
     <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className={embedded ? 'admin-page-head embedded-section-head' : 'admin-page-head'}>
         <div>
-          {embedded ? <h2>{t('访问与域名')}</h2> : <h1>{t('访问与域名')}</h1>}
+          {embedded ? <h2>{t('域名绑定')}</h2> : <h1>{t('访问与域名')}</h1>}
           <p>
             {t('设置站点主域名、别名白名单、SSL 证书、CORS 来源与反向代理信任地址，并生成 Nginx 与 API 环境变量片段。没有设置主域名时，生产环境只允许公网 IP 直接访问。')}
           </p>

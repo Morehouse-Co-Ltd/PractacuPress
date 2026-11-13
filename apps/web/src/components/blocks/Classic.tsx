@@ -2,6 +2,8 @@ import { Fragment, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { BlockInstance, Content } from '../../types';
 import { useAuth } from '../../lib/session';
+import { usePermissions } from '../../lib/usePermissions';
+import { writingEntryPath } from '../../lib/adminAccess';
 import { useFeed } from './FeedContext';
 import { PUBLISH_LABEL, VISIBILITY_LABEL, formatDate, readingTime, ROLE_LABEL } from '../../lib/format';
 import { Badge, EmptyState, Skeleton, SkeletonCard, Tabs } from '../ui';
@@ -20,8 +22,10 @@ function contentUrl(item: Content): string {
 function ClassicHero({ block }: { block: BlockInstance }) {
   const t = useT();
   const { site, me, config } = useAuth();
+  const { can, adminEntry } = usePermissions();
   const { all, loading } = useFeed();
   const personal = isPersonalSite(config);
+  const readTarget = all[0] ? contentUrl(all[0]) : '/articles';
   const title = blockProp(block, 'title', '').trim();
   const lede = blockProp(block, 'lede', '').trim();
   const heroTitle = title || DEFAULT_HERO.title;
@@ -54,14 +58,17 @@ function ClassicHero({ block }: { block: BlockInstance }) {
         <p className="hero-lede">{heroLede}</p>
         <div className="hero-cta">
           {me ? (
-            <Link to="/admin/content/new/article" className="btn btn-primary btn-lg">
-              {t('开始写一篇')} <Icon name="arrow-right" size={15} />
-            </Link>
+            can('write_content') ? (
+              <Link to={writingEntryPath('article', adminEntry)} className="btn btn-primary btn-lg">
+                {t('开始写一篇')} <Icon name="arrow-right" size={15} />
+              </Link>
+            ) : (
+              <Link to={readTarget} className="btn btn-primary btn-lg">
+                {t('开始阅读')} <Icon name="arrow-right" size={15} />
+              </Link>
+            )
           ) : personal ? (
-            <Link
-              to={feature ? contentUrl(feature) : '/articles'}
-              className="btn btn-primary btn-lg"
-            >
+            <Link to={readTarget} className="btn btn-primary btn-lg">
               {t('开始阅读')} <Icon name="arrow-right" size={15} />
             </Link>
           ) : (
@@ -145,6 +152,7 @@ function StoryMeta({ item }: { item: Content }) {
 function ClassicFeed({ block }: { block: BlockInstance }) {
   const t = useT();
   const { site, me, status, config } = useAuth();
+  const { can, adminEntry } = usePermissions();
   const { articles, posts, all, loading } = useFeed();
   const personal = isPersonalSite(config);
   const limit = blockProp(block, 'limit', 12);
@@ -187,8 +195,11 @@ function ClassicFeed({ block }: { block: BlockInstance }) {
                 : t('写下第一篇，或者去审核队列看看有没有待处理的稿子。')
             }
             action={
-              me ? (
-                <Link to="/admin/content/new/article" className="btn btn-secondary btn-sm">
+              me && can('write_content') ? (
+                <Link
+                  to={writingEntryPath('article', adminEntry)}
+                  className="btn btn-secondary btn-sm"
+                >
                   {t('新建草稿')}
                 </Link>
               ) : null
@@ -298,17 +309,20 @@ function ClassicFeed({ block }: { block: BlockInstance }) {
                   </Link>
                 </section>
               )
-            ) : (
+            ) : can('write_content') ? (
               <section className="side-block">
                 <h3>{t('写点什么')}</h3>
                 <p className="side-note">
                   {t('支持 Markdown、HTML 与纯文本。保存为草稿后，按站点的发布模式提交审核。')}
                 </p>
-                <Link to="/admin/content/new/article" className="btn btn-secondary btn-sm mt-12">
+                <Link
+                  to={writingEntryPath('article', adminEntry)}
+                  className="btn btn-secondary btn-sm mt-12"
+                >
                   {t('新建草稿')}
                 </Link>
               </section>
-            )}
+            ) : null}
           </div>
         </aside>
       ) : null}
@@ -319,11 +333,13 @@ function ClassicFeed({ block }: { block: BlockInstance }) {
 function ClassicJoinBand({ block }: { block: BlockInstance }) {
   const t = useT();
   const { me, config } = useAuth();
+  const { can, adminEntry } = usePermissions();
   const personal = isPersonalSite(config);
   const title = blockProp(block, 'title', '').trim();
   const body = blockProp(block, 'body', '').trim();
   const primary = blockProp(block, 'primary', '').trim();
   const secondary = blockProp(block, 'secondary', '').trim();
+  const canWrite = !!me && can('write_content');
 
   const defaultTitle = me
     ? t('这间房子还空着一间书房。')
@@ -343,10 +359,19 @@ function ClassicJoinBand({ block }: { block: BlockInstance }) {
         <p>{body || defaultBody}</p>
       </div>
       <div className="row gap-8">
-        {me ? (
+        {canWrite ? (
           <>
-            <Link to="/admin/content/new/article" className="btn btn-primary btn-md">
+            <Link to={writingEntryPath('article', adminEntry)} className="btn btn-primary btn-md">
               {primary || t('开始写作')}
+            </Link>
+            <Link to="/notifications" className="btn btn-secondary btn-md">
+              {secondary || t('查看通知')}
+            </Link>
+          </>
+        ) : me ? (
+          <>
+            <Link to="/articles" className="btn btn-primary btn-md">
+              {primary || t('全部文章')}
             </Link>
             <Link to="/notifications" className="btn btn-secondary btn-md">
               {secondary || t('查看通知')}

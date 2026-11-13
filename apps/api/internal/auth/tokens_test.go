@@ -230,6 +230,27 @@ func TestCSRFTokenIsDerivedFromTheRefreshToken(t *testing.T) {
 	require.NotEqual(t, csrf, other.CSRFToken(first.Plain))
 }
 
+// TestContentUnlockTokenIsBoundToOneItem covers the grant behind password protected
+// content: it verifies only for the site and content it was minted for, and it is not
+// accepted as an access token.
+func TestContentUnlockTokenIsBoundToOneItem(t *testing.T) {
+	issuer := newTestIssuer(t)
+
+	token, expiresAt, err := issuer.IssueContentUnlock(t.Context(), "site_1", "content_1")
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+	require.WithinDuration(t, time.Now().Add(ContentUnlockTTL), expiresAt, time.Minute)
+
+	require.True(t, issuer.VerifyContentUnlock(t.Context(), token, "site_1", "content_1"))
+	require.False(t, issuer.VerifyContentUnlock(t.Context(), token, "site_1", "content_2"))
+	require.False(t, issuer.VerifyContentUnlock(t.Context(), token, "site_2", "content_1"))
+	require.False(t, issuer.VerifyContentUnlock(t.Context(), token, "site_1", ""))
+
+	// The purpose claim keeps it out of the access token path.
+	_, err = issuer.VerifyAccess(token)
+	require.ErrorIs(t, err, ErrInvalidToken)
+}
+
 func TestTokensEqualIsConstantTimeComparison(t *testing.T) {
 	require.True(t, TokensEqual("abc", "abc"))
 	require.False(t, TokensEqual("abc", "abd"))

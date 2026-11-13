@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { PerformanceSettings } from '../../types';
 import { useAuth } from '../../lib/session';
+import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { useBackend } from '../../lib/backend';
 import {
   DEFAULT_PERFORMANCE,
@@ -27,6 +28,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { NumberField } from '../../components/NumberField';
 import { RoleGate } from '../../components/Guards';
+import { EffectCards, type EffectCardItem } from '../../components/EffectCards';
 
 function linesOf(value: string): string[] {
   return value
@@ -38,9 +40,10 @@ function linesOf(value: string): string[] {
 export function PerformancePage() {
   const t = useT();
   useTitle(t('性能优化'));
-  const { config, site, me, updateConfig } = useAuth();
+  const { config, site, me } = useAuth();
   const backend = useBackend();
   const toast = useToast();
+  const saveSiteConfig = useSaveSiteConfig();
   const saved = useMemo(() => readPerformance(config), [config]);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<PerformanceSettings>(() => saved);
@@ -56,7 +59,7 @@ export function PerformancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
-  const save = () => {
+  const save = async () => {
     if (draft.db_max_open_conns > 0 && draft.db_max_idle_conns > draft.db_max_open_conns) {
       toast.push(
         'error',
@@ -68,13 +71,14 @@ export function PerformancePage() {
     const next = readPerformance({
       performance: { ...draft, preconnect: linesOf(preconnectText) },
     });
-    updateConfig({ performance: next });
+    const ok = await saveSiteConfig({ performance: next });
     setDraft(next);
     setPreconnectText(next.preconnect.join('\n'));
+    if (!ok) return;
     toast.push(
       'ok',
       t('性能设置已保存'),
-      t('前台行为立即生效；服务器超时、数据库连接池与网关缓存需要按片段部署后重启。'),
+      t('已写入站点服务端配置：首屏条数、缓存与懒加载对访客生效；服务器超时、数据库连接池与网关缓存需要按片段部署后重启。'),
     );
     if (me) {
       noteActivity(
@@ -87,12 +91,64 @@ export function PerformancePage() {
     }
   };
 
-  const reset = () => {
-    updateConfig({ performance: DEFAULT_PERFORMANCE });
+  const reset = async () => {
+    const ok = await saveSiteConfig({ performance: DEFAULT_PERFORMANCE });
     setDraft(DEFAULT_PERFORMANCE);
     setPreconnectText('');
+    if (!ok) return;
     toast.push('ok', t('已恢复默认性能设置'), t('前台请求量与缓存回到稳妥默认值。'));
   };
+
+  const effectCards: EffectCardItem[] = [
+    {
+      icon: 'file',
+      label: t('首页读取'),
+      value: t('{count} 条 × 2', { count: saved.feed_limit }),
+      note: t('文章 + 帖子'),
+    },
+    {
+      icon: 'layers',
+      label: t('归档页'),
+      value: t('每页 {count} 条', { count: saved.archive_limit }),
+      note: t('分页大小'),
+    },
+    {
+      icon: 'refresh',
+      label: t('请求缓存'),
+      value: saved.request_cache ? t('{count} 秒', { count: saved.cache_ttl }) : t('关闭'),
+      note: saved.request_cache ? t('重复请求合并') : t('每次都回源'),
+    },
+    {
+      icon: 'image',
+      label: t('媒体'),
+      value: saved.lazy_media ? t('懒加载') : t('立即加载'),
+      note: t('首屏带宽'),
+    },
+    {
+      icon: 'sparkle',
+      label: t('动效'),
+      value: saved.disable_animations ? t('已减少') : t('跟随系统'),
+      note: t('降低渲染压力'),
+    },
+    {
+      icon: 'globe',
+      label: t('网关压缩'),
+      value: saved.gzip ? t('开启') : t('未开启'),
+      note: t('静态资源传输'),
+    },
+    {
+      icon: 'clock',
+      label: t('API 超时'),
+      value: t('{count} 秒', { count: saved.api_read_timeout }),
+      note: t('慢请求保护'),
+    },
+    {
+      icon: 'database',
+      label: t('数据库连接'),
+      value: saved.db_max_open_conns || t('驱动默认'),
+      note: t('连接池上限'),
+    },
+  ];
 
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
@@ -101,7 +157,7 @@ export function PerformancePage() {
           <h1>{t('性能优化')}</h1>
           <p>
             {t('目标不是让动画更快，而是减少 API 查询、重复请求与静态资源占用，让服务器在高峰时')}{' '}
-            {t('仍能及时响应。浏览器侧设置立即生效；服务器超时、连接池与网关缓存会生成部署片段。')}
+            {t('仍能及时响应。浏览器侧设置保存到站点服务端，所有访客刷新后按同一套参数运行；服务器超时、连接池与网关缓存会生成部署片段。')}
           </p>
         </div>
         <div className="admin-page-actions">
@@ -121,9 +177,29 @@ export function PerformancePage() {
         {t('网关参数需要合并进 Nginx 或云 WAF。本页不会自动修改服务器。')}
       </Callout>
 
-      <div className="settings-grid mt-20">
-        <div className="editor-main">
-          <section className="panel">
+      <div className="editor-main mt-20">
+        <section className="panel effect-overview">
+          <div className="panel-head">
+            <div>
+              <h3>{t('当前效果')}</h3>
+              <p>{t('按已保存的设置汇总；修改后点「保存修改」才会更新。')}</p>
+            </div>
+            <Badge tone="muted">{t('即时生效')}</Badge>
+          </div>
+          <div className="panel-body">
+            <EffectCards items={effectCards} columns={4} />
+            <div className="effect-links">
+              <Link to="/admin/access" className="btn btn-secondary btn-sm">
+                {t('配置请求限制')}
+              </Link>
+              <Link to="/admin/loading" className="btn btn-ghost btn-sm">
+                {t('加载动画')}
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
             <div className="panel-head">
               <div>
                 <h3>{t('请求量与首屏负载')}</h3>
@@ -381,88 +457,32 @@ export function PerformancePage() {
               </details>
             </div>
           </section>
+        <div className="row gap-8">
+          <Button disabled={!dirty} onClick={save} icon="check">
+            {t('保存修改')}
+          </Button>
+          {dirty ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDraft(readPerformance(config));
+                setPreconnectText(saved.preconnect.join('\n'));
+              }}
+            >
+              {t('放弃未保存的修改')}
+            </Button>
+          ) : (
+            <span className="tiny faint">{t('没有未保存的修改')}</span>
+          )}
         </div>
 
-        <aside className="settings-side">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('当前效果')}</h3>
-              </div>
-            </div>
-            <div className="panel-body">
-              <div className="mini-list">
-                <div className="mini-row">
-                  <span className="mini-label">{t('首页读取')}</span>
-                  <span className="mini-value">
-                    {t('{count} 条 × 2', { count: saved.feed_limit })}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('请求缓存')}</span>
-                  <span className="mini-value">
-                    {saved.request_cache ? t('{count} 秒', { count: saved.cache_ttl }) : t('关闭')}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('媒体')}</span>
-                  <span className="mini-value">{saved.lazy_media ? t('懒加载') : t('立即加载')}</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('动效')}</span>
-                  <span className="mini-value">
-                    {saved.disable_animations ? t('已减少') : t('跟随系统')}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('API 超时')}</span>
-                  <span className="mini-value">{t('{count} 秒', { count: saved.api_read_timeout })}</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('数据库连接')}</span>
-                  <span className="mini-value">
-                    {saved.db_max_open_conns || t('驱动默认')}
-                  </span>
-                </div>
-              </div>
-              <div className="row gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
-                <Link to="/admin/access" className="btn btn-secondary btn-sm">
-                  {t('配置请求限制')}
-                </Link>
-                <Link to="/admin/loading" className="btn btn-ghost btn-sm">
-                  {t('加载动画')}
-                </Link>
-              </div>
-            </div>
-          </section>
-
-          <div className="danger-zone">
-            <h3>{t('恢复默认性能设置')}</h3>
-            <p>{t('回到稳妥默认值；不会改变访问限制、域名或加载动画。')}</p>
-            <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={reset}>
-              {t('恢复默认')}
-            </Button>
-          </div>
-        </aside>
-      </div>
-
-      <div className="row gap-8 mt-20">
-        <Button disabled={!dirty} onClick={save} icon="check">
-          {t('保存修改')}
-        </Button>
-        {dirty ? (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setDraft(readPerformance(config));
-              setPreconnectText(saved.preconnect.join('\n'));
-            }}
-          >
-            {t('放弃未保存的修改')}
+        <div className="danger-zone">
+          <h3>{t('恢复默认性能设置')}</h3>
+          <p>{t('回到稳妥默认值；不会改变访问限制、域名或加载动画。')}</p>
+          <Button variant="danger" size="sm" className="mt-12" icon="refresh" onClick={reset}>
+            {t('恢复默认')}
           </Button>
-        ) : (
-          <span className="tiny faint">{t('没有未保存的修改')}</span>
-        )}
+        </div>
       </div>
     </RoleGate>
   );

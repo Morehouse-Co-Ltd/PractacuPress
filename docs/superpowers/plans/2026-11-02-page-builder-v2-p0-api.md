@@ -533,51 +533,47 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// gzipMinBytes 以下不压缩：小响应压完反而更大，还多一次 CPU。
-const gzipMinBytes = 1024
-
 // streamingPrefixes 是长连接端点：压缩会缓冲，等于把事件流掐死。
 var streamingPrefixes = []string{"/api/v1/events", "/api/v1/ws"}
 
-// gzipWriter 延迟写入：小响应直接透传，超过阈值才建 gzip 流。
+// gzipWriter 只在真的写了 body 时才收尾；204 / 304 不允许带 body，
+// 也就不允许带 gzip 帧。
 type gzipWriter struct {
 	gin.ResponseWriter
-	writer     *gzip.Writer
-	compressed bool
-	status     int
+	writer *gzip.Writer
+	skip   bool
+	wrote  bool
 }
 
 func (w *gzipWriter) WriteHeader(code int) {
-	w.status = code
+	// 必须在底层 Header 落盘之前删掉 Content-Encoding：304 带 gzip 头是协议错误。
+	if code < http.StatusOK || code == http.StatusNoContent || code == http.StatusNotModified {
+		w.skip = true
+		w.Header().Del("Content-Encoding")
+	}
 	w.ResponseWriter.WriteHeader(code)
 }
 
 func (w *gzipWriter) Write(data []byte) (int, error) {
-	if w.compressed {
-		return w.writer.Write(data)
-	}
-	if len(data) < gzipMinBytes {
+	if w.skip {
 		return w.ResponseWriter.Write(data)
 	}
-	w.compressed = true
-	w.Header().Set("Content-Encoding", "gzip")
-	w.Header().Del("Content-Length")
-	w.writer.Reset(w.ResponseWriter)
+	w.wrote = true
 	return w.writer.Write(data)
 }
 
 func (w *gzipWriter) Close() error {
-	if !w.compressed {
+	if w.skip || !w.wrote {
 		return nil
 	}
 	return w.writer.Close()
 }
 
-// Gzip compresses JSON and text responses with the standard library.
+// Gzip compresses API responses with the standard library.
 //
 // The API process serves the site design document (up to 1 MiB) on every page load;
 // only the container deployment had a proxy compressing it, so the desktop build sent
-// the whole thing as plain text. Streaming and already-encoded responses are skipped.
+// the whole thing as plain text. Streaming, upgraded and body-less responses are skipped.
 func Gzip() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
@@ -595,11 +591,12 @@ func Gzip() gin.HandlerFunc {
 			return
 		}
 
-		writer := &gzipWriter{
-			ResponseWriter: c.Writer,
-			writer:         gzip.NewWriter(c.Writer),
-			status:         http.StatusOK,
-		}
+		c.Header("Content-Encoding", "gzip")
+		c.Header("Vary", "Accept-Encoding")
+		c.Header("Content-Length", "")
+		c.Writer.Header().Del("Content-Length")
+
+		writer := &gzipWriter{ResponseWriter: c.Writer, writer: gzip.NewWriter(c.Writer)}
 		c.Writer = writer
 		c.Next()
 		if err := writer.Close(); err != nil {

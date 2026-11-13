@@ -37,6 +37,7 @@ const fragment: Dictionary = {
     'One member starts a direct message; several create a group chat.',
   创建会话: 'Create conversation',
   创建失败: 'Could not create',
+  无法加载成员: 'Could not load members',
   '当前站点没有其他可选成员。': 'This site has no other members to choose from.',
   '创建后你一定是成员；私信要求恰好一位其他成员。未读游标由服务端保存。':
     'You are a member as soon as it is created; a direct message needs exactly one other member. The read cursor is stored by the server.',

@@ -53,6 +53,24 @@ const fragment: Dictionary = {
   '分享图预览': 'Share image preview',
   '带不带 @ 都可以。': 'With or without the @ is fine.',
 
+  '订阅源': 'Feeds',
+  'RSS 2.0 与 Atom 1.0 由服务端直接提供；关闭后根路径返回 404。':
+    'RSS 2.0 and Atom 1.0 are served by the backend; when switched off the root paths answer 404.',
+  '启用订阅源': 'Enable feeds',
+  '同时关闭 RSS 与 Atom，包括分类与标签订阅。':
+    'Turns off RSS and Atom, including the category and tag feeds.',
+  '输出全文': 'Include full text',
+  '关闭时只输出摘要；打开后包含清洗过的正文。':
+    'When off, only the summary is emitted; when on, the sanitized body is included.',
+  '每个源最多条数': 'Maximum entries per feed',
+  '超过内容服务的上限时会按 100 条截断。':
+    'Values above the content service ceiling are clamped to 100 entries.',
+  '提供分类与标签订阅': 'Offer category and tag feeds',
+  '在 /category/{slug}/ 与 /tag/{slug}/ 下提供 RSS 与 Atom。':
+    'Serves RSS and Atom under /category/{slug}/ and /tag/{slug}/.',
+  '站点订阅': 'Site feeds',
+  '分类与标签订阅': 'Category and tag feeds',
+
   '站长验证': 'Webmaster verification',
   '把搜索平台给的验证值填进来，会输出对应的 meta 标签。':
     'Paste the verification value the search platform gives you and the matching meta tag is emitted.',

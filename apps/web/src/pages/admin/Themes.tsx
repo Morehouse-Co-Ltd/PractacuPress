@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { AppearanceSectionId, FooterColumn, HeaderStyle, NavChild, NavTab, SiteTheme, SocialLink } from '../../types';
+import type {
+  AppearanceSectionId,
+  ArticleCardStyle,
+  FooterColumn,
+  HeaderStyle,
+  NavChild,
+  NavTab,
+  SiteTheme,
+  SocialLink,
+} from '../../types';
 import { useAuth } from '../../lib/session';
 import { navPages, useCustomization } from '../../lib/customize';
 import { applyMode, DEFAULT_THEME } from '../../lib/theme';
@@ -109,6 +118,21 @@ export function ThemesPage() {
   ];
   const headerStyleLabel =
     headerStyleOptions.find((option) => option.id === headerStyle)?.label ?? t('经典吸顶');
+
+  /** 夜航首页文章卡的两套外观；只对 bento 版式开放。 */
+  const articleStyle = layout.article_card_style ?? 'cover';
+  const articleStyleOptions: { id: ArticleCardStyle; label: string; note: string }[] = [
+    {
+      id: 'cover',
+      label: t('封面在上'),
+      note: t('现在的外观：封面在卡片上方，标题与简介在下方。'),
+    },
+    {
+      id: 'blur',
+      label: t('模糊背景'),
+      note: t('封面铺满整张卡片并高斯模糊，标题与简介压在图上。'),
+    },
+  ];
 
   /* ---------- 导航 Tab ---------- */
 
@@ -442,7 +466,7 @@ export function ThemesPage() {
 
             <p className="field-hint">
               {t(
-                '三个样式都会在滚动后变化：经典加阴影、顶部透明补底色、悬浮胶囊收缩成一条圆角栏（参考截图里的 效果）。悬浮胶囊宽度上限 1280px，窄屏自动铺满；页首透明时请确认首屏背景上的文字仍然可读。',
+                '三个样式都会在滚动后变化：经典加阴影、顶部透明补底色、悬浮胶囊收缩成一条圆角栏。悬浮胶囊宽度上限 1280px，窄屏自动铺满；页首透明时请确认首屏背景上的文字仍然可读。',
               )}
             </p>
           </div>
@@ -1445,6 +1469,54 @@ export function ThemesPage() {
               </div>
             </div>
           </section>
+
+          {layout.variant === 'bento' ? (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h3>{t('文章外观')}</h3>
+                  <p>{t('夜航首页的文章卡有两种外观；只改展示，不改文章内容与排序。')}</p>
+                </div>
+                <Badge tone={articleStyle === 'blur' ? 'accent' : 'muted'}>
+                  {articleStyle === 'blur' ? t('模糊背景') : t('封面在上')}
+                </Badge>
+              </div>
+              <div className="panel-body">
+                <div className="article-style-grid" role="radiogroup" aria-label={t('文章外观')}>
+                  {articleStyleOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={articleStyle === option.id}
+                      className={`article-style-card${articleStyle === option.id ? ' is-on' : ''}`}
+                      onClick={() => setLayout({ article_card_style: option.id })}
+                    >
+                      <span className={`article-style-mock is-${option.id}`} aria-hidden>
+                        <span className="article-style-mock-cover" />
+                        <span className="article-style-mock-text">
+                          <i />
+                          <i />
+                        </span>
+                      </span>
+                      <span className="article-style-copy">
+                        <span>
+                          <strong>{option.label}</strong>
+                          <em>{option.note}</em>
+                        </span>
+                        <span className="article-style-dot" aria-hidden />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="field-hint mt-12">
+                  {t(
+                    '作用于「文章卡网格」「文章列表」「精选文章」三个区块；「置顶文章 / 热门文章」网格本来就以封面铺底，保持原样。',
+                  )}
+                </p>
+              </div>
+            </section>
+          ) : null}
 
           <details className="panel advanced-theme">
             <summary className="panel-head">

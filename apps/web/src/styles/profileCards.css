@@ -1,0 +1,34 @@
+/* =========================================================
+   资料页「已发布内容」的紧凑卡片网格
+   ---------------------------------------------------------
+   卡片本体复用「文章组件」的 `.pp-article-card.is-list`（封面缩略图 + 类型 +
+   标题 + 摘要 + 日期），这里只负责列数节奏与两行截断。资料页不新造视觉语言：
+   颜色、圆角、描边都取主题令牌。
+   ========================================================= */
+
+/* 宽屏三列；平板两列与手机单列沿用 `.pp-article-grid` 自带的 900 / 640 断点。 */
+.pp-article-grid.profile-article-grid {
+  --pp-article-columns: 2;
+  margin-top: 4px;
+}
+
+@media (min-width: 1181px) {
+  .pp-article-grid.profile-article-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* 作者明确隐藏封面时 ContentCover 整块不渲染；卡片收起缩略图列，避免正文被挤进
+   120px 的封面格里。 */
+.profile-article-grid .pp-article-card:not(:has(.cover)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 卡片要多、要齐：标题与摘要各收两行，长文不会把某一行撑得比同排高。 */
+.profile-article-grid .pp-article-copy strong,
+.profile-article-grid .pp-article-excerpt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

@@ -29,8 +29,14 @@ const (
 	FieldPublishMode = "publish_mode"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldMediaQuotaBytes holds the string denoting the media_quota_bytes field in the database.
+	FieldMediaQuotaBytes = "media_quota_bytes"
 	// FieldRegistrationOpen holds the string denoting the registration_open field in the database.
 	FieldRegistrationOpen = "registration_open"
+	// FieldCommentsEnabled holds the string denoting the comments_enabled field in the database.
+	FieldCommentsEnabled = "comments_enabled"
+	// FieldCommentsRequireReview holds the string denoting the comments_require_review field in the database.
+	FieldCommentsRequireReview = "comments_require_review"
 	// FieldDisabled holds the string denoting the disabled field in the database.
 	FieldDisabled = "disabled"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -52,7 +58,10 @@ var Columns = []string{
 	FieldVisibilityMode,
 	FieldPublishMode,
 	FieldDescription,
+	FieldMediaQuotaBytes,
 	FieldRegistrationOpen,
+	FieldCommentsEnabled,
+	FieldCommentsRequireReview,
 	FieldDisabled,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -89,6 +98,10 @@ var (
 	DescriptionValidator func(string) error
 	// DefaultRegistrationOpen holds the default value on creation for the "registration_open" field.
 	DefaultRegistrationOpen bool
+	// DefaultCommentsEnabled holds the default value on creation for the "comments_enabled" field.
+	DefaultCommentsEnabled bool
+	// DefaultCommentsRequireReview holds the default value on creation for the "comments_require_review" field.
+	DefaultCommentsRequireReview bool
 	// DefaultDisabled holds the default value on creation for the "disabled" field.
 	DefaultDisabled bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -151,9 +164,24 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
 }
 
+// ByMediaQuotaBytes orders the results by the media_quota_bytes field.
+func ByMediaQuotaBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMediaQuotaBytes, opts...).ToFunc()
+}
+
 // ByRegistrationOpen orders the results by the registration_open field.
 func ByRegistrationOpen(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRegistrationOpen, opts...).ToFunc()
+}
+
+// ByCommentsEnabled orders the results by the comments_enabled field.
+func ByCommentsEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommentsEnabled, opts...).ToFunc()
+}
+
+// ByCommentsRequireReview orders the results by the comments_require_review field.
+func ByCommentsRequireReview(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommentsRequireReview, opts...).ToFunc()
 }
 
 // ByDisabled orders the results by the disabled field.

@@ -18,10 +18,10 @@ import (
 // returns the transcript. It is what proves the package speaks the protocol and not
 // merely builds a nice struct.
 type fakeRelay struct {
-	listener  net.Listener
-	mu        sync.Mutex
+	listener   net.Listener
+	mu         sync.Mutex
 	transcript []string
-	done      chan struct{}
+	done       chan struct{}
 }
 
 func newFakeRelay(t *testing.T) *fakeRelay {

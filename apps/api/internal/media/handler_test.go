@@ -75,6 +75,18 @@ func TestCreateUploadReturnsSession(t *testing.T) {
 	require.NotContains(t, payload["storage_key"], "photo")
 }
 
+func TestCreateUploadQuotaExceededReturns429Problem(t *testing.T) {
+	repo := newFakeRepo()
+	repo.insertErr = ErrQuotaExceeded
+	r := newEngine(repo, &fakeScanner{result: ScanResult{Status: ScanClean}}, ownerActor())
+
+	w := do(r, http.MethodPost, "/media/uploads",
+		`{"file_name":"photo.png","mime_type":"image/png","size":1024,"purpose":"content"}`)
+
+	require.Equal(t, http.StatusTooManyRequests, w.Code, w.Body.String())
+	require.Equal(t, "quota_exceeded", decodeBody(t, w)["code"])
+}
+
 func TestCreateUploadAcceptsSitePurpose(t *testing.T) {
 	repo := newFakeRepo()
 	r := newEngine(repo, &fakeScanner{result: ScanResult{Status: ScanClean}}, ownerActor())

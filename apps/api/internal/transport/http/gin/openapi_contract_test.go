@@ -6,6 +6,8 @@
 package ginrouter_test
 
 import (
+	"context"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,16 +21,25 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/practacu/practacu-press/apps/api/internal/analytics"
+	"github.com/practacu/practacu-press/apps/api/internal/audit"
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/backup"
+	"github.com/practacu/practacu-press/apps/api/internal/captcha"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
+	"github.com/practacu/practacu-press/apps/api/internal/extensions"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/messaging"
+	"github.com/practacu/practacu-press/apps/api/internal/moderation"
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/platformadmin"
+	"github.com/practacu/practacu-press/apps/api/internal/safety"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/system"
 	"github.com/practacu/practacu-press/apps/api/internal/taxonomy"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
@@ -51,10 +62,13 @@ type document struct {
 }
 
 type operation struct {
-	Summary    string              `yaml:"summary"`
-	Responses  map[string]response `yaml:"responses"`
-	Security   *[]any              `yaml:"security"`
-	Deprecated bool                `yaml:"deprecated"`
+	Summary   string              `yaml:"summary"`
+	Responses map[string]response `yaml:"responses"`
+	Security  *[]any              `yaml:"security"`
+	Servers   []struct {
+		URL string `yaml:"url"`
+	} `yaml:"servers"`
+	Deprecated bool `yaml:"deprecated"`
 }
 
 type response struct {
@@ -91,14 +105,16 @@ func loadDocument(t *testing.T) document {
 
 // fullPath maps a document path to the path the router serves.
 //
-// Health endpoints sit at the root; everything else is under the versioned prefix.
-func fullPath(docPathValue string) string {
-	switch docPathValue {
-	case "/healthz", "/readyz":
-		return docPathValue
-	default:
-		return "/api/v1" + docPathValue
+// Most of the contract lives under the `/api/v1` server. Root files (health probes,
+// sitemap.xml, robots.txt and the syndication feeds) declare `servers: [{url: /}]` on
+// their operation, which is how OpenAPI describes a resource outside the API prefix.
+func fullPath(docPathValue string, op operation) string {
+	for _, server := range op.Servers {
+		if server.URL == "/" {
+			return docPathValue
+		}
 	}
+	return "/api/v1" + docPathValue
 }
 
 // routeKey is one method plus one normalised path.
@@ -113,11 +129,20 @@ func buildRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
 	return ginrouter.New(ginrouter.Dependencies{
-		Config:        config.Config{AppEnv: config.EnvTest},
-		Auth:          auth.NewHandler(nil, auth.HandlerConfig{}),
+		Config:       config.Config{AppEnv: config.EnvTest},
+		SiteResolver: contractSiteResolver{},
+		Auth:         auth.NewHandler(nil, auth.HandlerConfig{}),
+		// Third party login is documented, so the partial router mounts it too. The
+		// dependencies are empty on purpose: mounting only registers the two routes.
+		OAuth: auth.NewOAuthHandler(auth.OAuthHandlerDeps{}),
+		// The captcha status endpoint is public but still part of the contract.
+		Captcha:       captcha.NewHandler(captcha.HandlerConfig{}),
+		Audit:         audit.NewHandler(nil, audit.HandlerConfig{}),
 		Sites:         site.NewHandler(nil, site.HandlerConfig{}),
+		Platform:      platformadmin.NewHandler(nil, platformadmin.HandlerConfig{}),
 		Content:       content.NewHandler(nil, content.HandlerConfig{}),
 		Community:     community.NewHandler(nil, community.HandlerConfig{}),
+		Reports:       moderation.NewHandler(nil, moderation.HandlerConfig{}),
 		Media:         media.NewHandler(nil, media.HandlerConfig{}),
 		Events:        outbox.NewEventsHandler(nil, outbox.HandlerConfig{}),
 		Notifications: notifications.NewHandler(nil, notifications.HandlerConfig{}),
@@ -125,8 +150,69 @@ func buildRouter() *gin.Engine {
 		WS:            ws.NewHandler(ws.NewTicketStore(nil), ws.NewHub(), ws.HandlerConfig{}),
 		Analytics:     analytics.NewHandler(nil, analytics.HandlerConfig{}),
 		Taxonomy:      taxonomy.NewHandler(nil, taxonomy.HandlerConfig{}),
+		Safety:        safety.NewHandler(nil, safety.HandlerConfig{}),
+		Backups:       backup.NewHandler(nil, backup.HandlerConfig{}),
+		// The optional resource panel is documented, so the contract router mounts it
+		// with an inert snapshot source; no request reaches it here.
+		System: system.NewHandler(
+			func() system.Snapshot { return system.Snapshot{} },
+			system.HandlerConfig{},
+		),
+		// Extension administration is documented, so the contract router mounts the
+		// routes with an inert service. No request reaches it here either.
+		Extensions: extensions.NewHandler(contractExtensionsService{}, extensions.HandlerConfig{}),
+		// The root syndication routes are part of the contract, so the partial router
+		// this test inspects has to mount them. The readers are inert stubs: no request
+		// reaches them here.
+		Feed: ginrouter.FeedDependencies{
+			Customization: contractCustomization{},
+			Content:       contractContentLister{},
+		},
 	})
 }
+
+type contractSiteResolver struct{}
+
+func (contractSiteResolver) Resolve(context.Context, string) (site.Site, error) {
+	return site.Site{ID: "site_contract", Name: "Contract"}, nil
+}
+
+type contractCustomization struct{}
+
+func (contractCustomization) Customization(context.Context, string) (site.Customization, error) {
+	return site.Customization{}, nil
+}
+
+type contractContentLister struct{}
+
+func (contractContentLister) ListAfterFilter(
+	context.Context,
+	content.Actor,
+	content.Kind,
+	int,
+	page.Cursor,
+	content.ListFilter,
+) ([]content.Content, string, error) {
+	return nil, "", nil
+}
+
+// contractExtensionsService mounts the extension routes without a package
+// directory or a plugin host: the contract test only inspects the route set.
+type contractExtensionsService struct{}
+
+func (contractExtensionsService) List() ([]extensions.Extension, error) {
+	return nil, nil
+}
+
+func (contractExtensionsService) ImportZip(io.Reader, int64) (extensions.Extension, error) {
+	return extensions.Extension{}, nil
+}
+
+func (contractExtensionsService) SetEnabled(string, bool) (extensions.Extension, error) {
+	return extensions.Extension{}, nil
+}
+
+func (contractExtensionsService) Remove(string) error { return nil }
 
 // registeredRoutes returns the routes the router actually serves.
 func registeredRoutes(engine *gin.Engine) map[routeKey]struct{} {
@@ -141,10 +227,10 @@ func registeredRoutes(engine *gin.Engine) map[routeKey]struct{} {
 func documentedRoutes(doc document) map[routeKey]struct{} {
 	routes := make(map[routeKey]struct{})
 	for path, operations := range doc.Paths {
-		for method := range operations {
+		for method, op := range operations {
 			routes[routeKey{
 				Method: strings.ToUpper(method),
-				Path:   fullPath(path),
+				Path:   fullPath(path, op),
 			}] = struct{}{}
 		}
 	}
@@ -168,6 +254,18 @@ func formatKeys(routes map[routeKey]struct{}) []string {
 	return out
 }
 
+// operationalRoutes are served for humans and crawlers rather than being part of
+// the JSON API contract. The contract documents the API under /api/v1; the embedded
+// reference page is static tooling, so adding it to the YAML would pollute every
+// generated client. Sitemap.xml and robots.txt are site-root files and are mounted
+// only when their dependencies are wired, so they are covered by the router tests
+// instead of appearing in this intentionally partial router.
+var operationalRoutes = map[routeKey]struct{}{
+	{Method: http.MethodGet, Path: "/api/v1/docs"}:         {},
+	{Method: http.MethodGet, Path: "/api/v1/docs/app.css"}: {},
+	{Method: http.MethodGet, Path: "/api/v1/docs/app.js"}:  {},
+}
+
 // TestEveryRegisteredRouteIsDocumented fails when the server exposes an endpoint the
 // contract does not describe.
 func TestEveryRegisteredRouteIsDocumented(t *testing.T) {
@@ -177,9 +275,13 @@ func TestEveryRegisteredRouteIsDocumented(t *testing.T) {
 
 	var missing []string
 	for key := range registered {
-		if _, ok := documented[key]; !ok {
-			missing = append(missing, key.Method+" "+key.Path)
+		if _, ok := documented[key]; ok {
+			continue
 		}
+		if _, ok := operationalRoutes[key]; ok {
+			continue
+		}
+		missing = append(missing, key.Method+" "+key.Path)
 	}
 
 	sort.Strings(missing)
@@ -214,9 +316,18 @@ func TestEveryOperationDocumentsResponses(t *testing.T) {
 	valid := map[int]struct{}{
 		http.StatusOK: {}, http.StatusCreated: {}, http.StatusAccepted: {},
 		http.StatusNoContent: {}, http.StatusSwitchingProtocols: {},
-		http.StatusBadRequest: {}, http.StatusUnauthorized: {}, http.StatusForbidden: {},
+		// 302 is the authorization code flow's answer: both third party login endpoints
+		// send the browser on with a Location header instead of a body.
+		http.StatusFound: {},
+		// 304 is the ETag revalidation answer of `GET /sites/{siteID}/site-config`:
+		// the browser keeps its copy instead of downloading the document per boot.
+		http.StatusNotModified: {},
+		http.StatusBadRequest:  {}, http.StatusUnauthorized: {}, http.StatusForbidden: {},
 		http.StatusNotFound: {}, http.StatusConflict: {}, http.StatusUnprocessableEntity: {},
 		http.StatusTooManyRequests: {}, http.StatusInternalServerError: {},
+		// 502 is the OAuth callback's answer when the provider, not this server,
+		// failed the code exchange or the profile request.
+		http.StatusBadGateway:         {},
 		http.StatusServiceUnavailable: {},
 	}
 

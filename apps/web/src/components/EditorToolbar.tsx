@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Asset } from '../types';
 import { useBackend } from '../lib/backend';
+import { useMediaSrc } from '../lib/assetUrl';
 import { useAsync } from '../lib/hooks';
 import { useT } from '../lib/i18n';
 import {
@@ -418,7 +419,8 @@ export function EditorToolbar({
       <p className="rich-toolbar-hint">
         {t(
           '选中文字后再点格式按钮；也可以直接输入 Markdown（`# ` 标题、`- ` 列表、`> ` 引用、`**粗体**`）， 或在新段落输入 / 打开指令面板。',
-        )}
+        )}{' '}
+        {t('也可以直接粘贴或拖入图片，上传后插入正文。')}
       </p>
 
       <LinkDialog
@@ -791,6 +793,12 @@ function FormulaDialog({
   );
 }
 
+/** 素材缩略图走带鉴权的 blob：content 素材用 `<img src>` 匿名读会被挡成 404。 */
+function AssetThumb({ asset }: { asset: Asset }) {
+  const { src } = useMediaSrc(asset.url ?? '');
+  return <img src={src || undefined} alt={asset.file_name ?? ''} />;
+}
+
 function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
   const t = useT();
   const backend = useBackend();
@@ -829,7 +837,7 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
             onClick={() => asset.url && onPick(asset.url)}
             title={asset.file_name ?? asset.id}
           >
-            {asset.url ? <img src={asset.url} alt={asset.file_name ?? ''} /> : <Icon name="file" size={18} />}
+            {asset.url ? <AssetThumb asset={asset} /> : <Icon name="file" size={18} />}
             <span>{asset.file_name ?? asset.storage_key}</span>
           </button>
         ))}

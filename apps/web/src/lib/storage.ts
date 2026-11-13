@@ -1,6 +1,8 @@
 import type {
+  StorageAllocationEntry,
   StorageDriver,
   StorageScope,
+  StorageScopeAllocation,
   StorageSettings,
   StorageStrategy,
   WebConfig,
@@ -40,6 +42,15 @@ export const MAX_STRATEGIES = 8;
 
 /** 策略名称的最大长度（字符数，不是字节数）。 */
 export const MAX_STRATEGY_NAME = 40;
+
+/** 单个用途最多可以排多少套策略；再多会让分配界面难以阅读。 */
+export const MAX_ALLOCATION_ENTRIES = 8;
+
+/** 单套策略在单个用途下的容量上限（GB）；0 表示不限。 */
+export const MAX_ALLOCATION_QUOTA_GB = 1_000_000;
+
+/** 旧配置缺省时应显示的默认容量上限。 */
+const DEFAULT_ALLOCATION_QUOTA_GB = 0;
 
 /** 本地存储的默认目录；与 API 的 STORAGE_DIR 默认值一致。 */
 export const DEFAULT_LOCAL_DIR = './data/media';
@@ -111,15 +122,31 @@ export function defaultLocalStrategy(): StorageStrategy {
   return { ...emptyStrategy(), id: DEFAULT_STRATEGY_ID, name: t('本地储存') };
 }
 
+/** 一个用途的空白分配：一套策略、不限容量、按顺序切换。 */
+export function emptyAllocation(strategyId: string): StorageScopeAllocation {
+  return {
+    mode: 'single',
+    entries: [{ strategy_id: strategyId, quota_gb: DEFAULT_ALLOCATION_QUOTA_GB }],
+    overflow: 'switch',
+  };
+}
+
 /** 全新安装的默认设置：只有一套「本地储存」，四个用途都指向它。 */
 export function defaultStorage(): StorageSettings {
+  const strategy = defaultLocalStrategy();
   return {
-    strategies: [defaultLocalStrategy()],
+    strategies: [strategy],
     scopes: {
-      content: DEFAULT_STRATEGY_ID,
-      site: DEFAULT_STRATEGY_ID,
-      avatar: DEFAULT_STRATEGY_ID,
-      attachment: DEFAULT_STRATEGY_ID,
+      content: strategy.id,
+      site: strategy.id,
+      avatar: strategy.id,
+      attachment: strategy.id,
+    },
+    allocations: {
+      content: emptyAllocation(strategy.id),
+      site: emptyAllocation(strategy.id),
+      avatar: emptyAllocation(strategy.id),
+      attachment: emptyAllocation(strategy.id),
     },
     max_upload_mb: 25,
   };
@@ -171,6 +198,130 @@ export function normalizeStrategy(
     s3_access_key: text(source.s3_access_key, '', 200),
     s3_public_base_url: withoutTrailingSlash(text(source.s3_public_base_url, '', 300)),
   };
+}
+
+/**
+ * 把任意来源的单个用途分配收敛成合法形状。
+ *
+ * - 只保留引用得到、且没有重复的策略；
+ * - `quota_gb` 取值 0–`MAX_ALLOCATION_QUOTA_GB`，0 表示不限；
+ * - 一个合法策略都没有时回落到 `fallbackId`，保证每个用途至少有一套；
+ * - 单策略模式也保留多出来的 entries：切回多策略时不用重新添加。
+ */
+export function normalizeAllocation(
+  raw: unknown,
+  fallbackId: string,
+  strategies: StorageStrategy[],
+): StorageScopeAllocation {
+  const source = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const validIds = new Set(strategies.map((strategy) => strategy.id));
+  const rawEntries = Array.isArray(source.entries) ? source.entries : [];
+  const entries: StorageAllocationEntry[] = [];
+  const seen = new Set<string>();
+
+  for (const item of rawEntries) {
+    if (entries.length >= MAX_ALLOCATION_ENTRIES) break;
+    if (!item || typeof item !== 'object') continue;
+    const entry = item as Record<string, unknown>;
+    const id = typeof entry.strategy_id === 'string' ? entry.strategy_id : '';
+    if (!validIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    entries.push({
+      strategy_id: id,
+      quota_gb: settingInt(
+        entry.quota_gb,
+        DEFAULT_ALLOCATION_QUOTA_GB,
+        0,
+        MAX_ALLOCATION_QUOTA_GB,
+      ),
+    });
+  }
+
+  if (!entries.length) {
+    entries.push({
+      strategy_id: fallbackId,
+      quota_gb: DEFAULT_ALLOCATION_QUOTA_GB,
+    });
+  }
+
+  return {
+    mode: source.mode === 'quota' ? 'quota' : 'single',
+    entries,
+    overflow: source.overflow === 'stop' ? 'stop' : 'switch',
+  };
+}
+
+/** 每个用途的主策略 id（多策略时取排在最前的一套）。 */
+function scopeIdsFromAllocations(
+  allocations: Record<StorageScope, StorageScopeAllocation>,
+): Record<StorageScope, string> {
+  const scopes = {} as Record<StorageScope, string>;
+  for (const scope of STORAGE_SCOPES) {
+    const allocation = allocations[scope];
+    scopes[scope] = allocation?.entries[0]?.strategy_id ?? DEFAULT_STRATEGY_ID;
+  }
+  return scopes;
+}
+
+/** 从旧结构或新结构读取一个用途的完整分配。 */
+function readAllocation(
+  source: Record<string, unknown> | undefined,
+  scope: StorageScope,
+  fallbackId: string,
+  strategies: StorageStrategy[],
+): StorageScopeAllocation {
+  const rawAllocations =
+    source && source.allocations && typeof source.allocations === 'object'
+      ? (source.allocations as Record<string, unknown>)
+      : undefined;
+  return normalizeAllocation(rawAllocations?.[scope], fallbackId, strategies);
+}
+
+/**
+ * 一个用途的完整分配。
+ *
+ * 旧配置（或手写的测试对象）没有 `allocations` 时，按 `scopes` 回退成单策略；
+ * 这样调用方永远不需要判断字段是否存在。
+ */
+export function scopeAllocation(
+  settings: StorageSettings,
+  scope: StorageScope,
+): StorageScopeAllocation {
+  const raw = settings.allocations?.[scope];
+  if (raw && Array.isArray(raw.entries) && raw.entries.length) {
+    return raw;
+  }
+  return emptyAllocation(settings.scopes[scope]);
+}
+
+/**
+ * 一个用途实际会使用的策略 id（按写入顺序）。
+ *
+ * 单策略模式只返回第一套；多策略模式返回整个顺序列表。已经不存在于
+ * `strategies` 里的 id 会被过滤掉，由调用方回落到第一套。
+ */
+export function scopeStrategyIds(
+  settings: StorageSettings,
+  scope: StorageScope,
+): string[] {
+  const allocation = scopeAllocation(settings, scope);
+  const entries =
+    allocation.mode === 'single' ? allocation.entries.slice(0, 1) : allocation.entries;
+  const validIds = new Set(settings.strategies.map((strategy) => strategy.id));
+  const ids = entries
+    .map((entry) => entry.strategy_id)
+    .filter((id) => validIds.size === 0 || validIds.has(id));
+  return ids.length ? ids : [settings.strategies[0]?.id ?? DEFAULT_STRATEGY_ID];
+}
+
+/** 引用了某套策略的所有用途（用于策略卡片与删除确认）。 */
+export function scopesUsingStrategy(
+  settings: StorageSettings,
+  strategyId: string,
+): StorageScope[] {
+  return STORAGE_SCOPES.filter((scope) =>
+    scopeStrategyIds(settings, scope).includes(strategyId),
+  );
 }
 
 /** id 去重：保序，重复的加 `-2`、`-3` 后缀。 */
@@ -234,8 +385,10 @@ export function scopeUsageCounts(settings: StorageSettings): Record<string, numb
   const counts: Record<string, number> = {};
   for (const strategy of settings.strategies) counts[strategy.id] = 0;
   for (const scope of STORAGE_SCOPES) {
-    const id = settings.scopes[scope];
-    counts[id] = (counts[id] ?? 0) + 1;
+    // 同一个用途里可能出现同一套策略（正常 UI 会阻止），只按用途计数一次。
+    for (const id of new Set(scopeStrategyIds(settings, scope))) {
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
   }
   return counts;
 }
@@ -265,15 +418,17 @@ export function globalStrategyOf(settings: StorageSettings): StorageStrategy {
   return best;
 }
 
-/** 实际被用途引用到的策略（按用途顺序去重）。 */
+/** 实际被用途引用到的策略（按用途与分配顺序去重）。 */
 export function usedStrategies(settings: StorageSettings): StorageStrategy[] {
   const seen = new Set<string>();
   const out: StorageStrategy[] = [];
   for (const scope of STORAGE_SCOPES) {
-    const strategy = findStrategy(settings, settings.scopes[scope]);
-    if (seen.has(strategy.id)) continue;
-    seen.add(strategy.id);
-    out.push(strategy);
+    for (const id of scopeStrategyIds(settings, scope)) {
+      const strategy = findStrategy(settings, id);
+      if (seen.has(strategy.id)) continue;
+      seen.add(strategy.id);
+      out.push(strategy);
+    }
   }
   return out;
 }
@@ -356,9 +511,12 @@ function migrateLegacy(source: Record<string, unknown>): StorageSettings {
   }
 
   const settled = settleStrategies(strategies);
+  const scopeIds = fallbackScopeIds(scopes, settled);
+  const allocations = buildAllocations(undefined, settled, scopeIds);
   return {
     strategies: settled,
-    scopes: fallbackScopeIds(scopes, settled),
+    scopes: scopeIdsFromAllocations(allocations),
+    allocations,
     max_upload_mb: 25,
   };
 }
@@ -379,13 +537,32 @@ function fallbackScopeIds(
 }
 
 /**
+ * 组装四个用途的完整分配。
+ *
+ * `source.allocations` 存在且合法时保留多策略与容量上限；否则按传入的
+ * `scopes`（旧配置的主策略）回退成单策略。这样旧配置升级后不会丢掉用途指向。
+ */
+function buildAllocations(
+  source: Record<string, unknown> | undefined,
+  strategies: StorageStrategy[],
+  scopes: Record<StorageScope, string>,
+): Record<StorageScope, StorageScopeAllocation> {
+  const allocations = {} as Record<StorageScope, StorageScopeAllocation>;
+  for (const scope of STORAGE_SCOPES) {
+    allocations[scope] = readAllocation(source, scope, scopes[scope], strategies);
+  }
+  return allocations;
+}
+
+/**
  * 把任意来源（旧配置、导入 JSON、手写对象）收敛成合法的储存设置。
  *
  * 同时接受两种形状：
- * - 新结构：`{ strategies, scopes: { content: id, … }, max_upload_mb }`；
+ * - 新结构：`{ strategies, scopes, allocations?, max_upload_mb }`；
  * - 旧结构：`{ driver, local_dir, s3_*, scopes[scope].driver }`，逐项迁移。
  *
- * 空值、坏数组、没有一套可用策略时整体回退到 `defaultStorage()`。
+ * `allocations` 里的多策略顺序与容量上限会被保留；缺少该字段时按 `scopes`
+ * 回退成单策略。空值、坏数组、没有一套可用策略时整体回退到 `defaultStorage()`。
  */
 export function normalizeStorage(raw: Partial<StorageSettings> | undefined): StorageSettings {
   const fallback = defaultStorage();
@@ -406,14 +583,17 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
     }
     const settled = settleStrategies(strategies);
     if (!settled.length) return { ...fallback, max_upload_mb };
+    const scopes = fallbackScopeIds(
+      (source.scopes && typeof source.scopes === 'object'
+        ? source.scopes
+        : {}) as Record<StorageScope, string>,
+      settled,
+    );
+    const allocations = buildAllocations(source, settled, scopes);
     return {
       strategies: settled,
-      scopes: fallbackScopeIds(
-        (source.scopes && typeof source.scopes === 'object'
-          ? source.scopes
-          : {}) as Record<StorageScope, string>,
-        settled,
-      ),
+      scopes: scopeIdsFromAllocations(allocations),
+      allocations,
       max_upload_mb,
     };
   }

@@ -1,6 +1,11 @@
 import type {
   Asset,
+  AuditLogPage,
+  AuditLogQuery,
+  BackupArtifact,
   BackendMode,
+  CaptchaStatus,
+  ChangePasswordInput,
   CommentModerationAction,
   CommentPage,
   CommentQuery,
@@ -9,34 +14,87 @@ import type {
   ContentAction,
   ContentKind,
   ContentPage,
+  ContentRevision,
+  ContentRevisionPage,
+  ContentUnlockResult,
   Conversation,
+  CreateSiteInput,
+  CreatedSite,
   DraftInput,
+  ExtensionSummary,
+  FollowEntry,
+  InteractionEntry,
+  InteractionState,
+  InteractionStates,
+  ImportConflictStrategy,
   Me,
+  ReadingHistoryEntry,
   Member,
+  MediaQuotaBytes,
   Message,
   NewMemberInput,
   Notification,
+  NotificationPreferences,
+  Page,
+  PasswordLoginResult,
   PasswordResetPolicy,
   PasswordResetTicket,
+  PermissionGroupConfig,
+  PermissionGroupInput,
+  PlatformAccountPage,
+  PlatformAccountQuery,
+  PlatformAuditQuery,
+  PlatformOverview,
+  PlatformSite,
+  PlatformSiteDetail,
+  PlatformSiteEntry,
+  PopularContentPage,
   ProbeResult,
   ProblemBody,
+  ProfileInput,
   PublicProfile,
+  Report,
+  ReportAction,
+  ReportInput,
+  SafetyPolicy,
+  SafetyRateLimit,
+  SensitiveWord,
+  SensitiveWordMode,
+  SiteIPRule,
   Role,
+  SearchQuery,
+  SearchResult,
   Session,
   Site,
   SiteDomainVerification,
   SiteDomainVerificationResult,
+  SiteImportReport,
+  SystemMetrics,
+  StepUpSettings,
+  StepUpSettingsUpdate,
+  StepUpVerifyResult,
   TaxonomySettings,
   TaxonomyTerm,
   TaxonomyTermInput,
   ToggleResult,
+  TwoFactorChallenge,
+  TwoFactorEnrollment,
+  TwoFactorRecoveryCodes,
+  TwoFactorStatus,
+  User,
   Upload,
 } from '../types';
+import { mediaQuotaExceedsSafeInteger, normalizeMediaQuotaDecimal } from './mediaQuota';
 import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
+import { clientSessionId } from './analytics';
+import { readCaptchaStatus } from './captcha';
 import type { ContactPayload } from './contactForm';
 import { t } from './i18n';
 import { currentPerformance } from './performance';
 import { RequestCache } from './requestCache';
+import { withRefreshLock } from './sessionSync';
+import type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
+import { clearStepUpToken, getStepUpToken, STEP_UP_HEADER } from './stepUp';
 
 export class ApiError extends Error {
   readonly problem: ProblemBody;
@@ -104,6 +162,16 @@ export async function problemFromResponse(res: Response): Promise<ProblemBody> {
   return fallbackProblem(res.status);
 }
 
+/**
+ * 这次失败是否等于「会话没了」。
+ *
+ * 只有服务端回 401 才是真退出：403（CSRF 双提交竞态）、0（断网）与 5xx 都可能是
+ * 一时的，把界面切到未登录只会让用户以为掉线了。
+ */
+export function isSessionGoneError(error: unknown): boolean {
+  return error instanceof ApiError && error.problem.status === 401;
+}
+
 export function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
@@ -112,6 +180,7 @@ export function uuid(): string {
 }
 
 export function readCookie(name: string): string {
+  if (typeof document === 'undefined') return '';
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : '';
 }
@@ -126,9 +195,48 @@ export function apiRootOf(base: string): string {
   return `${normalizeOrigin(base)}/api/v1`;
 }
 
+/** 从 Content-Disposition 里取文件名；没有时给一个安全的默认名。 */
+export function filenameFromDisposition(value: string | null, fallback = 'practacu-export.zip'): string {
+  if (!value) return fallback;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1].trim());
+    } catch {
+      return fallback;
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(value);
+  return plain?.[1]?.trim() || fallback;
+}
+
 export function docsUrlOf(base: string): string {
   const origin = normalizeOrigin(base) || window.location.origin;
   return `${origin}/api/v1/docs`;
+}
+
+/**
+ * 判断地址是否指向本站的媒体读取端点。
+ *
+ * 这条路由是 optionalAuth：`purpose=content` 的素材匿名读取会被当成不存在
+ * （见 apps/api/internal/media/service.go 的 authorizeSharedAsset），而 `<img src>`
+ * 带不上 Authorization。真实后端要先自己取字节；data:/blob:/外链不需要走这一步。
+ */
+export function isMediaApiUrl(value: string): boolean {
+  const url = (value ?? '').trim();
+  if (!url) return false;
+  // 浏览器本地资源不需要再请求一次。
+  if (/^(?:data|blob|file):/i.test(url)) return false;
+  try {
+    const base =
+      typeof window !== 'undefined' && window.location
+        ? window.location.href
+        : 'http://localhost/';
+    return new URL(url, base).pathname.startsWith('/api/v1/media/');
+  } catch {
+    // 解析失败（老浏览器或异常地址）时退回字符串判断，宁可漏判也别把明显外链发出去。
+    return /\/api\/v1\/media\//.test(url);
+  }
 }
 
 /** 站点设计的服务端副本。404 表示这个站点从未保存过设计，不是错误。 */
@@ -142,6 +250,52 @@ export interface SiteCustomizationSnapshot {
 export interface SiteCustomizationSaved {
   revision: number;
   updated_at: string;
+}
+
+/** 站点级配置的读取与保存类型；定义在 `siteConfig.ts`，避免两处形状漂移。 */
+export type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
+
+/** 把个人列表的查询参数拼成 URLSearchParams；空值不上线。 */
+function interactionQuery(options: InteractionListOptions): string {
+  const params = new URLSearchParams();
+  params.set('limit', String(options.limit ?? 30));
+  if (options.cursor) params.set('cursor', options.cursor);
+  if (options.targetType) params.set('target_type', options.targetType);
+  if (options.kind) params.set('kind', options.kind);
+  return params.toString();
+}
+
+function quotaPatchBody(patch: object): string {
+  const values = patch as Record<string, unknown>;
+  const quota = values.media_quota_bytes;
+  if (quota === undefined || quota === null) return JSON.stringify(patch);
+  if (typeof quota === 'number') {
+    if (!Number.isSafeInteger(quota) || quota < 0) {
+      throw new RangeError('media_quota_bytes must be a non-negative exact integer');
+    }
+    return JSON.stringify(patch);
+  }
+  if (typeof quota !== 'string') throw new RangeError('media_quota_bytes must be an integer');
+  const normalized = normalizeMediaQuotaDecimal(quota);
+  if (normalized === null) {
+    throw new RangeError('media_quota_bytes must be a non-negative int64');
+  }
+  const rest = { ...values };
+  delete rest.media_quota_bytes;
+  const body = JSON.stringify(rest);
+  const separator = Object.keys(rest).length ? ',' : '';
+  return `${body.slice(0, -1)}${separator}"media_quota_bytes":${normalized}}`;
+}
+
+async function readResponseJson<T>(response: Response): Promise<T> {
+  if (typeof response.text !== 'function') return response.json() as Promise<T>;
+  const text = await response.text();
+  const preserved = text.replace(
+    /((?:^|[{,]\s*)[\"]media_quota_bytes[\"]\s*:\s*)(\d+)(?=\s*[,}])/g,
+    (_match, prefix: string, digits: string) =>
+      mediaQuotaExceedsSafeInteger(digits) ? `${prefix}\"${digits}\"` : _match,
+  );
+  return JSON.parse(preserved) as T;
 }
 
 /**
@@ -167,6 +321,34 @@ export interface ContentListOptions {
   sort?: 'newest' | 'oldest';
 }
 
+/**
+ * 热门内容查询（`GET /content/popular`）。
+ *
+ * `window` 既是参评范围也是时间衰减的尺度：窗口外的旧内容不参与排序，窗口内的
+ * 内容按阅读量与发布时长一起算分。
+ */
+export interface PopularContentOptions {
+  kind?: ContentKind;
+  categoryId?: string;
+  tag?: string;
+  window?: import('../types').PopularWindow;
+  limit?: number;
+}
+
+/** 我的收藏 / 点赞 / 阅读历史列表的查询参数。 */
+export interface InteractionListOptions {  targetType?: string;
+  kind?: 'like' | 'love' | 'insightful';
+  limit?: number;
+  cursor?: string;
+}
+
+/** 成员目录查询；`q` 按昵称模糊匹配。 */
+export interface MemberDirectoryOptions {
+  query?: string;
+  limit?: number;
+  cursor?: string;
+}
+
 interface HttpBackendOptions {
   base: string;
   onExpired: () => void;
@@ -180,6 +362,13 @@ export class HttpBackend {
   private token: string | null = null;
   private csrf: string | null = null;
   private refreshPromise: Promise<Session> | null = null;
+  /**
+   * 会话代号：每次 applySession / clearSession 自增。
+   *
+   * 用来识别「这个 401 说的是哪一代会话」——匿名期间发出的请求可能在登录成功之后
+   * 才回来一个 401，那不能把刚建立的会话打掉。
+   */
+  private sessionEpoch = 0;
   private onExpired: () => void;
   /** GET 去重与短缓存；登录态变化和写入后清空。 */
   private readonly requestCache = new RequestCache();
@@ -193,13 +382,28 @@ export class HttpBackend {
   applySession(session: Session) {
     this.token = session.access_token;
     this.csrf = session.csrf_token || readCookie('pp_csrf');
+    this.sessionEpoch += 1;
     this.requestCache.clear();
   }
 
   clearSession() {
     this.token = null;
     this.csrf = null;
+    this.sessionEpoch += 1;
     this.requestCache.clear();
+    // 二次验证令牌绑定「当前用户 + 站点」，登出后必须一起丢掉。
+    clearStepUpToken();
+  }
+
+  /**
+   * 双提交用的 CSRF 令牌。
+   *
+   * 以浏览器 Cookie 为准：它由服务端在每次刷新轮换时一起改写，**所有标签页共享**。
+   * 内存里那份只在登录那一刻与服务端同步，另一个标签页刷新过之后它就是过期值；
+   * 拿过期值去双提交会被判 `csrf_mismatch`，刷新跟着失败，界面就被误判成「未登录」。
+   */
+  private csrfToken(): string {
+    return readCookie('pp_csrf') || this.csrf || '';
   }
 
   private async request<T>(
@@ -226,7 +430,12 @@ export class HttpBackend {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
     headers.set('X-Request-ID', uuid());
+    /** 这一枪打出去的令牌与会话代号：回来时要判断 401 属于哪一代会话。 */
+    const epoch = this.sessionEpoch;
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    // 高威胁操作：令牌还在有效期内就自动带上，调用方不需要每次自己拼请求头。
+    const stepUpToken = getStepUpToken();
+    if (stepUpToken) headers.set(STEP_UP_HEADER, stepUpToken);
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json');
 
     let res: Response;
@@ -248,19 +457,34 @@ export class HttpBackend {
     }
 
     if (res.status === 401 && retry && this.token && !path.startsWith('/auth/')) {
+      // 会话在请求飞行途中换过（刚登录 / 另一个标签页刷新过）：直接拿新令牌重放，
+      // 不要再去刷新——多余的刷新会消耗一次性刷新令牌，反而把会话撞死。
+      if (epoch !== this.sessionEpoch) return this.performRequest<T>(path, init, false);
       try {
         await this.refresh();
-      } catch {
-        this.clearSession();
-        this.onExpired();
-        throw new ApiError(await problemFromResponse(res));
+      } catch (refreshError) {
+        // 只有服务端明确说「这个会话已经不存在」才算退出登录。CSRF 竞态、断网、
+        // 5xx 都只是这一次请求没成功，界面必须保持登录态，否则用户会莫名其妙
+        // 被踢回登录页——刷新一下页面又好了。
+        if (isSessionGoneError(refreshError)) {
+          this.clearSession();
+          this.onExpired();
+          throw new ApiError(await problemFromResponse(res));
+        }
+        throw refreshError;
       }
       return this.performRequest<T>(path, init, false);
     }
 
     if (!res.ok) {
       const problem = await problemFromResponse(res);
-      if (res.status === 401) {
+      // 服务端说「需要二次验证」：本地令牌已经失效（过期 / 换了账户 / 保护刚被
+      // 打开），清掉它，下一次操作才会重新弹密码框，而不是反复拿废令牌重试。
+      if (problem.status === 403 && problem.details?.reason === 'step_up_required') {
+        clearStepUpToken();
+      }
+      // 同上：匿名期间发出、登录之后才回来的 401 不能清掉新会话。
+      if (res.status === 401 && epoch === this.sessionEpoch) {
         this.clearSession();
         this.onExpired();
       }
@@ -270,8 +494,8 @@ export class HttpBackend {
     // 写入之后不能再读旧缓存；读取请求本身不需要清空。
     if (method !== 'GET') this.requestCache.clear();
     if (res.status === 204) return undefined as T;
-    if (res.status === 202) return (await res.json()) as T;
-    return (await res.json()) as T;
+    if (res.status === 202) return readResponseJson<T>(res);
+    return readResponseJson<T>(res);
   }
 
   async probe(): Promise<ProbeResult> {
@@ -279,7 +503,7 @@ export class HttpBackend {
     // 必须校验 JSON 形状，否则“没有后端”会被误判为健康。
     const readJson = async (res: Response): Promise<Record<string, unknown> | null> => {
       try {
-        return (await res.json()) as Record<string, unknown>;
+        return await readResponseJson<Record<string, unknown>>(res);
       } catch {
         return null;
       }
@@ -328,7 +552,12 @@ export class HttpBackend {
     }
   }
 
-  async register(input: { email: string; password: string; display_name: string }): Promise<Session> {
+  async register(input: {
+    email: string;
+    password: string;
+    display_name: string;
+    captcha_token?: string;
+  }): Promise<Session> {
     const session = await this.request<Session>('/auth/register/email', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -337,47 +566,187 @@ export class HttpBackend {
     return session;
   }
 
-  async login(input: { email: string; password: string }): Promise<Session> {
-    const session = await this.request<Session>('/auth/login/password', {
+  async login(input: {
+    identifier: string;
+    password: string;
+    captcha_token?: string;
+  }): Promise<PasswordLoginResult> {
+    const result = await this.request<Session | TwoFactorChallenge>('/auth/login/password', {
       method: 'POST',
       body: JSON.stringify(input),
+    });
+    // FSD F-04: an account with TOTP enabled gets a challenge and no session. Do not
+    // touch the stored token: the second step is what mints it.
+    if ('two_factor_required' in result && result.two_factor_required) {
+      return { status: 'two_factor_required', challenge: result };
+    }
+    const session = result as Session;
+    this.applySession(session);
+    return { status: 'session', session };
+  }
+
+  /** 兑换密码登录返回的 2FA 挑战；成功后与普通登录一样建立会话。 */
+  async loginTwoFactor(challengeToken: string, code: string): Promise<Session> {
+    const session = await this.request<Session>('/auth/login/2fa', {
+      method: 'POST',
+      body: JSON.stringify({ challenge_token: challengeToken, code }),
     });
     this.applySession(session);
     return session;
   }
 
+  /** 自己的两步验证状态：是否开启、恢复码剩余数量、绑定时间。 */
+  async twoFactorStatus(): Promise<TwoFactorStatus> {
+    return this.performRequest<TwoFactorStatus>('/me/2fa');
+  }
+
+  /** 开始绑定：服务端返回 otpauth URI、base32 密钥与二维码内容。 */
+  async beginTwoFactorEnrollment(password: string): Promise<TwoFactorEnrollment> {
+    return this.request<TwoFactorEnrollment>('/me/2fa/enroll', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  /** 确认绑定；恢复码只在这里返回一次。 */
+  async confirmTwoFactor(code: string): Promise<TwoFactorRecoveryCodes> {
+    return this.request<TwoFactorRecoveryCodes>('/me/2fa/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  /** 关闭两步验证：需要当前密码 + 一次有效验证码或恢复码。 */
+  async disableTwoFactor(input: { password: string; code: string }): Promise<void> {
+    await this.request<void>('/me/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 重新生成恢复码；旧恢复码全部作废。 */
+  async regenerateTwoFactorRecoveryCodes(input: {
+    password: string;
+    code: string;
+  }): Promise<TwoFactorRecoveryCodes> {
+    return this.request<TwoFactorRecoveryCodes>('/me/2fa/recovery-codes', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 平台管理员重置某个成员的两步验证（丢失设备）。 */
+  async resetMemberTwoFactor(siteId: string, userId: string): Promise<void> {
+    await this.request<void>(`/sites/${siteId}/members/${userId}/2fa/reset`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  /**
+   * 站点的高威胁操作保护设置（开关、是否设了专用密码、令牌窗口）。
+   *
+   * 只读接口；服务端不返回专用密码或其哈希。
+   */
+  async stepUpSettings(siteId: string): Promise<StepUpSettings> {
+    return this.request<StepUpSettings>(`/sites/${siteId}/step-up`);
+  }
+
+  /**
+   * 保存保护设置。三个字段都是补丁：省略 `password` / `clear_password` 表示保持原值。
+   *
+   * 首次设置（当前未启用且未设专用密码）允许直接写入；之后再改需要 `X-PP-Step-Up`
+   * 有效令牌，由 `ensureStepUp()` 在调用前拿到。
+   */
+  async saveStepUpSettings(
+    siteId: string,
+    input: StepUpSettingsUpdate,
+  ): Promise<StepUpSettings> {
+    return this.request<StepUpSettings>(`/sites/${siteId}/step-up`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /**
+   * 用密码换一张短时二次验证令牌。
+   *
+   * 密码可以是账户登录密码；站点设置了专用安全密码时只接受专用密码（由服务端判定）。
+   * 失败为 403，`details.reason = step_up_password_rejected`。
+   */
+  async verifyStepUp(password: string): Promise<StepUpVerifyResult> {
+    return this.request<StepUpVerifyResult>('/auth/step-up', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  /**
+   * 用 HttpOnly 刷新 Cookie 换一张新的访问令牌。
+   *
+   * 两个容易踩的点：
+   * 1. 双提交令牌必须取浏览器 Cookie 里那一份（见 `csrfToken`），不能信内存里的旧值；
+   * 2. 刷新令牌是一次性的，同一浏览器的多个标签页必须排队刷新（`withRefreshLock`），
+   *    否则先到的一枚被轮换、后到的被判定为重放，服务端会撤销整个会话家族。
+   */
   async refresh(): Promise<Session> {
     if (!this.refreshPromise) {
-      this.refreshPromise = (async () => {
-        const csrf = this.csrf || readCookie('pp_csrf');
-        const res = await fetch(`${this.root}/auth/token/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            Accept: 'application/json',
-            'X-CSRF-Token': csrf,
-            'X-Request-ID': uuid(),
-          },
-        });
-        if (!res.ok) throw new ApiError(await problemFromResponse(res));
-        const session = (await res.json()) as Session;
-        this.applySession(session);
-        return session;
-      })().finally(() => {
+      this.refreshPromise = withRefreshLock(() => this.performRefresh()).finally(() => {
         this.refreshPromise = null;
       });
     }
     return this.refreshPromise;
   }
 
+  private async performRefresh(): Promise<Session> {
+    for (let attempt = 0; ; attempt += 1) {
+      let res: Response;
+      try {
+        res = await fetch(`${this.root}/auth/token/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Accept: 'application/json',
+            'X-CSRF-Token': this.csrfToken(),
+            'X-Request-ID': uuid(),
+          },
+        });
+      } catch {
+        throw new ApiError({
+          ...fallbackProblem(0),
+          code: 'internal',
+          title: t('无法连接 API'),
+          message: t('无法连接 {origin}，请确认服务已启动。', {
+            origin: this.origin || window.location.origin,
+          }),
+        });
+      }
+      if (res.ok) {
+        const session = await readResponseJson<Session>(res);
+        this.applySession(session);
+        return session;
+      }
+      const problem = await problemFromResponse(res);
+      // 另一个标签页可能恰好在这一刻轮换了 CSRF Cookie：丢掉内存副本、重新读一次
+      // Cookie 再试。这不绕过双提交校验——服务端仍然要求令牌与刷新令牌匹配。
+      const racedCsrf =
+        res.status === 403 && problem.details?.reason === 'csrf_mismatch' && attempt === 0;
+      if (racedCsrf) {
+        this.csrf = null;
+        continue;
+      }
+      throw new ApiError(problem);
+    }
+  }
+
   async logout(): Promise<void> {
     try {
       // 服务端把登出也纳入 CSRF 派生绑定：没有双提交令牌会 403，HttpOnly refresh
-      // cookie 清不掉，下次挂载 refresh() 会把用户静默登回来。这里与 refresh()/login()
-      // 使用同一份令牌（内存里的 csrf，缺省读 cookie 兜底）。
+      // cookie 清不掉，下次挂载 refresh() 会把用户静默登回来。令牌同样以 Cookie 为准：
+      // 内存里那份可能已经被别的标签页刷新换掉了。
       await this.request<void>('/auth/logout', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': this.csrf || readCookie('pp_csrf') },
+        headers: { 'X-CSRF-Token': this.csrfToken() },
       });
     } catch {
       /* 登出失败不阻塞本地清理 */
@@ -387,17 +756,83 @@ export class HttpBackend {
   }
 
   async me(): Promise<Me> {
-    return this.request<Me>('/me');
+    // Always fresh: profile edits, password changes and email verification all
+    // change the payload, and a cached /me would leave the UI on the old state.
+    return this.performRequest<Me>('/me');
+  }
+
+  /** 登录态自助资料编辑。 */
+  async updateProfile(input: ProfileInput): Promise<User> {
+    return this.request<User>('/me/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 登录态改密；成功后其它设备被下线，当前会话保留。 */
+  async changePassword(input: ChangePasswordInput): Promise<void> {
+    await this.request<void>('/auth/password/change', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 重新发送邮箱验证邮件。 */
+  async requestEmailVerification(): Promise<{
+    status: 'accepted' | 'already_verified';
+    delivery: 'email';
+    expires_in: number;
+    already_verified: boolean;
+  }> {
+    return this.request('/me/email/verification', { method: 'POST' });
+  }
+
+  /** 兑换邮箱验证链接；公开端点，不需要登录。 */
+  async verifyEmail(token: string): Promise<void> {
+    await this.request<void>('/auth/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  /** 后台网站日志：服务端审计查询。 */
+  async auditLogs(siteId: string, query: AuditLogQuery = {}): Promise<AuditLogPage> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      params.set(key, String(value));
+    }
+    const suffix = params.toString();
+    return this.performRequest<AuditLogPage>(
+      `/sites/${siteId}/audit-logs${suffix ? `?${suffix}` : ''}`,
+    );
   }
 
   async passwordResetPolicy(): Promise<PasswordResetPolicy> {
     return this.request<PasswordResetPolicy>('/auth/password-reset/policy');
   }
 
-  async requestPasswordReset(email: string): Promise<PasswordResetTicket> {
+  /**
+   * 人机验证的真实状态。
+   *
+   * 这是表单是否渲染组件、设置页状态卡是否显示「生效」的唯一依据：站点设置里的
+   * 开关只是意图，服务端没有 Secret 时不会校验。旧后端没有该路由时按未启用处理。
+   */
+  async captchaStatus(): Promise<CaptchaStatus> {
+    try {
+      return readCaptchaStatus(await this.request<unknown>('/captcha/status'));
+    } catch (err) {
+      if (err instanceof ApiError && (err.problem.status === 404 || err.problem.status === 405)) {
+        return readCaptchaStatus(null);
+      }
+      throw err;
+    }
+  }
+
+  async requestPasswordReset(email: string, captchaToken?: string): Promise<PasswordResetTicket> {
     return this.request<PasswordResetTicket>('/auth/password-reset/request', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(captchaToken ? { email, captcha_token: captchaToken } : { email }),
     });
   }
 
@@ -422,17 +857,87 @@ export class HttpBackend {
       domain: string;
       /** O-3：关闭后注册接口返回 403 registration_closed。 */
       registration_open: boolean;
+      /** 站点级评论开关：关闭后 POST /comments 返回 403 comments_closed。 */
+      comments_enabled: boolean;
+      /** 先审后发：新评论进入 pending_review。 */
+      comments_require_review: boolean;
+      /** 省略表示不修改，null 表示继承部署默认，0 表示无限。 */
+      media_quota_bytes: MediaQuotaBytes;
     }>,
   ): Promise<void> {
     await this.request<void>(`/sites/${siteId}/settings`, {
+      method: 'PATCH',
+      body: quotaPatchBody(patch),
+    });
+  }
+
+  /** 站点内容安全策略：敏感词、IP 黑白名单与评论频率限制。 */
+  async safetyPolicy(siteId: string): Promise<SafetyPolicy> {
+    return this.request<SafetyPolicy>(`/sites/${siteId}/safety`);
+  }
+
+  /** 更新评论频率阈值；省略的字段保持不变。 */
+  async updateSafetyRateLimit(
+    siteId: string,
+    patch: Partial<SafetyRateLimit>,
+  ): Promise<SafetyRateLimit> {
+    return this.request<SafetyRateLimit>(`/sites/${siteId}/safety`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
   }
 
+  /** 新增敏感词；mode 决定拒绝、替换还是标记待审。 */
+  async createSensitiveWord(
+    siteId: string,
+    input: {
+      word: string;
+      mode: SensitiveWordMode;
+      replacement?: string;
+      enabled?: boolean;
+    },
+  ): Promise<SensitiveWord> {
+    return this.request<SensitiveWord>(`/sites/${siteId}/safety/words`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 调整敏感词的动作、占位符或启用状态；词本身不可改名。 */
+  async updateSensitiveWord(
+    siteId: string,
+    wordId: string,
+    patch: Partial<{ mode: SensitiveWordMode; replacement: string; enabled: boolean }>,
+  ): Promise<SensitiveWord> {
+    return this.request<SensitiveWord>(`/sites/${siteId}/safety/words/${wordId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async deleteSensitiveWord(siteId: string, wordId: string): Promise<void> {
+    await this.request<void>(`/sites/${siteId}/safety/words/${wordId}`, { method: 'DELETE' });
+  }
+
+  /** 新增 IP 白名单 / 黑名单条目；value 为地址或 CIDR。 */
+  async createSiteIPRule(
+    siteId: string,
+    input: { kind: 'allow' | 'deny'; value: string; note?: string },
+  ): Promise<SiteIPRule> {
+    return this.request<SiteIPRule>(`/sites/${siteId}/safety/ip-rules`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async deleteSiteIPRule(siteId: string, ruleId: string): Promise<void> {
+    await this.request<void>(`/sites/${siteId}/safety/ip-rules/${ruleId}`, {
+      method: 'DELETE',
+    });
+  }
+
   /** 设置主域名；空字符串表示清除（生产环境将回退到只允许公网 IP）。 */
-  async setSiteDomain(siteId: string, domain: string): Promise<void> {
-    await this.request<void>(`/sites/${siteId}/domain`, {
+  async setSiteDomain(siteId: string, domain: string): Promise<void> {    await this.request<void>(`/sites/${siteId}/domain`, {
       method: 'PUT',
       body: JSON.stringify({ domain }),
     });
@@ -453,6 +958,94 @@ export class HttpBackend {
     return this.request<SiteDomainVerificationResult>(`/sites/${siteId}/domain/verify`, {
       method: 'POST',
     });
+  }
+
+  /** 平台控制台：部署内全部站点（仅平台管理员）。 */
+  async platformSites(): Promise<PlatformSite[]> {
+    const res = await this.request<{ items: PlatformSite[] }>('/platform/sites');
+    return res.items;
+  }
+
+  /** 平台控制台：新建站点、默认设计与第一个管理员。 */
+  async createPlatformSite(input: CreateSiteInput): Promise<CreatedSite> {
+    return this.request<CreatedSite>('/platform/sites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 平台控制台：读取单个站点（平台管理员或该站点管理员）。 */
+  async platformSite(siteId: string): Promise<PlatformSiteDetail> {
+    return this.request<PlatformSiteDetail>(`/platform/sites/${siteId}`);
+  }
+
+  /** 平台控制台：兑换目标站点的主域名 TXT 挑战。 */
+  async verifyPlatformSiteDomain(siteId: string): Promise<SiteDomainVerification> {
+    return this.request<SiteDomainVerification>(`/platform/sites/${siteId}/domain/verify`, {
+      method: 'POST',
+    });
+  }
+
+  /** 平台控制台：申请进入站点，拿到目标源的交接令牌。 */
+  async enterPlatformSite(siteId: string): Promise<PlatformSiteEntry> {
+    return this.request<PlatformSiteEntry>(`/platform/sites/${siteId}/enter`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  /**
+   * 平台总览：部署级计数、异常信号、每站一行与最近的跨站审计行。
+   *
+   * 只对平台管理员开放；`windowDays` 省略时服务端按 7 天统计活动。
+   */
+  async platformOverview(windowDays?: number): Promise<PlatformOverview> {
+    const suffix = windowDays ? `?window_days=${windowDays}` : '';
+    return this.request<PlatformOverview>(`/platform/overview${suffix}`);
+  }
+
+  /**
+   * 跨站审计查询：与站点内审计相同的筛选词，`site_id` 省略表示全部站点。
+   *
+   * 服务端会为这次读取本身写一条 `platform.audit.queried` 审计行。
+   */
+  async platformAuditLogs(query: PlatformAuditQuery = {}): Promise<AuditLogPage> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      params.set(key, String(value));
+    }
+    const suffix = params.toString();
+    return this.performRequest<AuditLogPage>(
+      `/platform/audit-logs${suffix ? `?${suffix}` : ''}`,
+    );
+  }
+
+  /** 平台用户目录：全部署账户，或某个站点的成员（只读）。 */
+  async platformAccounts(query: PlatformAccountQuery = {}): Promise<PlatformAccountPage> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      params.set(key, String(value));
+    }
+    const suffix = params.toString();
+    return this.performRequest<PlatformAccountPage>(
+      `/platform/users${suffix ? `?${suffix}` : ''}`,
+    );
+  }
+
+  /**
+   * 在目标站点源兑换交接令牌。
+   *
+   * 不经过 GET 缓存，也会在成功后换上新的访问令牌与 CSRF；刷新 Cookie 由服务端写入。
+   */
+  async claimSiteSwitch(switchToken: string): Promise<Session> {
+    const session = await this.performRequest<Session>('/platform/enter/claim', {
+      method: 'POST',
+      body: JSON.stringify({ switch_token: switchToken }),
+    });
+    this.applySession(session);
+    return session;
   }
 
   /**
@@ -489,9 +1082,121 @@ export class HttpBackend {
     });
   }
 
+  /**
+   * 站点级配置（访问限制、域名、性能、加载动画、登录方式）。
+   *
+   * 404 表示这个站点还没有保存过配置：返回 null，由调用方继续使用本地缓存。
+   * 访客拿到公开子集，站点管理员拿到完整文档（`scope: admin`）。这里必须绕过
+   * GET 短缓存：冲突重试要用最新的 revision。
+   */
+  async siteConfig(siteId: string): Promise<SiteConfigSnapshot | null> {
+    try {
+      return await this.performRequest<SiteConfigSnapshot>(`/sites/${siteId}/site-config`);
+    } catch (err) {
+      if (err instanceof ApiError && err.problem.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /** 保存站点配置；`revision` 省略表示无条件写入（首次保存）。 */
+  async saveSiteConfig(
+    siteId: string,
+    config: unknown,
+    revision?: number,
+  ): Promise<SiteConfigSaved> {
+    return this.request<SiteConfigSaved>(`/sites/${siteId}/site-config`, {
+      method: 'PUT',
+      body: JSON.stringify(revision === undefined ? { config } : { config, revision }),
+    });
+  }
+
+  /**
+   * 性能面板：本机资源快照。
+   *
+   * 可选模块；部署关掉 `PP_SYSTEM_METRICS` 时路由不存在（404），页面会提示模块未启用。
+   * 只有平台管理员能读，因为响应里包含主机名、路径与进程名。
+   */
+  async systemMetrics(): Promise<SystemMetrics> {
+    return this.performRequest<SystemMetrics>('/system/metrics');
+  }
+
+  /* ------------------------- 服务器扩展管理 ------------------------- */
+
+  /**
+   * 已安装的服务器扩展清单。
+   *
+   * 走 `performRequest` 而不是 `request`：扩展安装状态变化频繁，不适合短缓存；
+   * 且 401 刷新、problem JSON 解析与其它写请求保持一致。
+   */
+  async listExtensions(): Promise<ExtensionSummary[]> {
+    const res = await this.performRequest<{ items: ExtensionSummary[] }>('/extensions');
+    return res.items;
+  }
+
+  /**
+   * 导入一个 zip 扩展包。
+   *
+   * 直接把 `FormData` 交给 `performRequest`：它只在 body 是字符串时手写
+   * `Content-Type`，因此 multipart 的 boundary 由浏览器自动生成，不会被覆盖。
+   */
+  async importExtension(file: File): Promise<ExtensionSummary> {
+    const form = new FormData();
+    form.append('package', file, file.name);
+    const res = await this.request<{ extension: ExtensionSummary }>('/extensions/import', {
+      method: 'POST',
+      body: form,
+    });
+    return res.extension;
+  }
+
+  /** 启用 / 禁用；服务端返回规范化后的扩展快照。 */
+  async setExtensionEnabled(id: string, enabled: boolean): Promise<ExtensionSummary> {
+    const res = await this.request<{ extension: ExtensionSummary }>(
+      `/extensions/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    );
+    return res.extension;
+  }
+
+  /** 删除已安装的扩展包；成功是 204。 */
+  async deleteExtension(id: string): Promise<void> {
+    await this.request<void>(`/extensions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   async members(siteId: string): Promise<Member[]> {
     const res = await this.request<{ items: Member[] }>(`/sites/${siteId}/members`);
     return res.items;
+  }
+
+  /** 能力组列表（内置 + 自定义）。 */
+  async permissionGroups(siteId: string): Promise<PermissionGroupConfig[]> {
+    const res = await this.request<{ items: PermissionGroupConfig[] }>(
+      `/sites/${siteId}/permission-groups`,
+    );
+    return res.items;
+  }
+
+  /** 新建或整组更新能力组。PUT 是整组替换，调用方要发送完整的矩阵。 */
+  async savePermissionGroup(
+    siteId: string,
+    key: string,
+    input: PermissionGroupInput,
+  ): Promise<PermissionGroupConfig> {
+    return this.request<PermissionGroupConfig>(
+      `/sites/${siteId}/permission-groups/${encodeURIComponent(key)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
+  /** 把成员移入能力组；服务端同时把基础角色写回成员。 */
+  async assignMemberGroup(siteId: string, userId: string, groupKey: string): Promise<void> {
+    await this.request<void>(`/sites/${siteId}/members/${userId}/group`, {
+      method: 'PATCH',
+      body: JSON.stringify({ group_key: groupKey }),
+    });
   }
 
   async createMember(siteId: string, input: NewMemberInput): Promise<Member> {
@@ -505,6 +1210,18 @@ export class HttpBackend {
     await this.request<void>(`/sites/${siteId}/members/${userId}/role`, {
       method: 'PATCH',
       body: JSON.stringify({ role }),
+    });
+  }
+
+  /** 设置单个成员的媒体额度；null 清除覆盖值并继承默认额度。 */
+  async setMemberQuota(
+    siteId: string,
+    userId: string,
+    mediaQuotaBytes: MediaQuotaBytes,
+  ): Promise<Member> {
+    return this.request<Member>(`/sites/${siteId}/members/${userId}/quota`, {
+      method: 'PATCH',
+      body: quotaPatchBody({ media_quota_bytes: mediaQuotaBytes }),
     });
   }
 
@@ -555,7 +1272,44 @@ export class HttpBackend {
   }
 
   async getContent(kind: ContentKind, id: string): Promise<Content> {
-    return this.request<Content>(`/${kind}s/${id}`);
+    // 详情读取是服务端累加阅读量的地方（FSD A-16）。带上匿名会话，让同一浏览器
+    // 在短窗口内的刷新、前进后退只算一次；没有会话时服务端退回账号或来源地址。
+    return this.request<Content>(`/${kind}s/${id}`, {
+      headers: { 'X-Visit-Session': clientSessionId() },
+    });
+  }
+
+  /**
+   * 热门内容：按阅读量 + 时间衰减排序的已发布公开内容。
+   *
+   * 与列表分开是因为排序发生在服务端：前端拿不到全站阅读量，本地访问记录只覆盖
+   * 当前浏览器，用它对排序会把「我看过的」当成「大家看过的」。
+   */
+  async popularContent(options: PopularContentOptions = {}): Promise<PopularContentPage> {
+    const params = new URLSearchParams();
+    params.set('limit', String(options.limit ?? 8));
+    if (options.kind) params.set('kind', options.kind);
+    if (options.categoryId) params.set('category_id', options.categoryId);
+    if (options.tag) params.set('tag', options.tag);
+    if (options.window) params.set('window', options.window);
+    return this.request<PopularContentPage>(`/content/popular?${params.toString()}`);
+  }
+
+  /**
+   * 解锁密码文章（C-18）。
+   *
+   * 成功时服务端会写一个 HttpOnly Cookie，后续 getContent 自动带上；这里的返回值只
+   * 用于确认与提示，前端不得依赖它做权限判断。
+   */
+  async unlockContent(
+    kind: ContentKind,
+    id: string,
+    password: string,
+  ): Promise<ContentUnlockResult> {
+    return this.request<ContentUnlockResult>(`/${kind}s/${id}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
   }
 
   async createDraft(kind: ContentKind, input: DraftInput): Promise<Content> {
@@ -586,10 +1340,52 @@ export class HttpBackend {
     });
   }
 
-  async search(q: string, kind?: ContentKind, limit = 20): Promise<ContentPage> {
-    const params = new URLSearchParams({ q, limit: String(limit) });
-    if (kind) params.set('kind', kind);
-    return this.request<ContentPage>(`/search?${params.toString()}`);
+  /** 版本历史列表（最新 20 版）；只有作者与编辑可以读取。 */
+  async contentRevisions(kind: ContentKind, id: string): Promise<ContentRevisionPage> {
+    return this.request<ContentRevisionPage>(`/${kind}s/${id}/revisions`);
+  }
+
+  /** 单个版本的完整内容，包含源文，用于查看与回滚前确认。 */
+  async contentRevision(
+    kind: ContentKind,
+    id: string,
+    revisionId: string,
+  ): Promise<ContentRevision> {
+    return this.request<ContentRevision>(`/${kind}s/${id}/revisions/${revisionId}`);
+  }
+
+  /** 回滚到指定版本；服务端会先备份当前版本。 */
+  async restoreContentRevision(
+    kind: ContentKind,
+    id: string,
+    revisionId: string,
+  ): Promise<Content> {
+    return this.request<Content>(`/${kind}s/${id}/revisions/${revisionId}/restore`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': uuid() },
+      body: JSON.stringify({}),
+    });
+  }
+
+  /**
+   * 全文检索。
+   *
+   * 服务端按相关度排序并返回真实游标：把 `next_cursor` 原样传回 `cursor` 取下一页，
+   * 用 `total` 显示全量命中数。筛选条件全部在服务端完成，非法值会得到 400 而不是
+   * 被静默忽略（被忽略的筛选会把结果集悄悄放大）。
+   */
+  async search(q: string, options: SearchQuery = {}): Promise<SearchResult> {
+    const params = new URLSearchParams({ q, limit: String(options.limit ?? 20) });
+    if (options.kind) params.set('kind', options.kind);
+    if (options.category_id) params.set('category_id', options.category_id);
+    if (options.tag) params.set('tag', options.tag);
+    if (options.author_id) params.set('author_id', options.author_id);
+    if (options.since) params.set('since', options.since);
+    if (options.until) params.set('until', options.until);
+    if (options.cursor) params.set('cursor', options.cursor);
+    // 服务端默认给片段；只有显式关闭才发参数。
+    if (options.highlight === false) params.set('highlight', 'false');
+    return this.request<SearchResult>(`/search?${params.toString()}`);
   }
 
   async comments(targetType: string, targetId: string): Promise<CommentsResult> {
@@ -623,9 +1419,44 @@ export class HttpBackend {
       await this.request<void>(`/comments/${id}`, { method: 'DELETE' });
       return;
     }
+    if (action === 'approve') {
+      await this.request<import('../types').Comment>(`/comments/${id}/approve`, { method: 'POST' });
+      return;
+    }
+    if (action === 'reject') {
+      await this.request<import('../types').Comment>(`/comments/${id}/reject`, { method: 'POST' });
+      return;
+    }
     await this.request<import('../types').Comment>(`/comments/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status: action === 'approve' ? 'visible' : 'hidden' }),
+      body: JSON.stringify({ status: 'hidden' }),
+    });
+  }
+
+  /** 举报一篇内容、一条评论或一个账户。 */
+  async report(input: ReportInput): Promise<Report> {
+    return this.request<Report>('/reports', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 后台举报队列（编辑及以上）。 */
+  async reports(): Promise<Report[]> {
+    const res = await this.request<{ items: Report[] }>('/reports');
+    return res.items;
+  }
+
+  /** 认领举报，之后才能由本人处理。 */
+  async assignReport(id: string): Promise<Report> {
+    return this.request<Report>(`/reports/${id}/assign`, { method: 'POST' });
+  }
+
+  /** 处理举报：忽略 / 下架内容 / 封禁目标。 */
+  async resolveReport(id: string, action: ReportAction, note = ''): Promise<Report> {
+    return this.request<Report>(`/reports/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ action, note }),
     });
   }
 
@@ -635,6 +1466,7 @@ export class HttpBackend {
       target_id: string;
       parent_id?: string;
       body: string;
+      captcha_token?: string;
     },
     _policy?: { require_review?: boolean },
   ) {
@@ -687,9 +1519,102 @@ export class HttpBackend {
     });
   }
 
-  async stateFor(): Promise<{ liked: boolean; bookmarked: boolean; following: boolean }> {
-    // 契约只提供切换结果，不提供批量查询；刷新后回到未选中态。
-    return { liked: false, bookmarked: false, following: false };
+  /**
+   * 读取当前登录用户对一条内容的互动状态。
+   *
+   * 刷新后必须靠它恢复已赞 / 已收藏 / 已关注：切换端点在不带 `active` 时是
+   * “翻转”，若前端把已点赞的内容当成未选中，用户第一次点击反而会取消点赞。
+   * 旧后端没有这个路由时返回全 false，保持降级而不是让页面报错。
+   */
+  async stateFor(
+    targetType: string,
+    targetId: string,
+    userId?: string,
+  ): Promise<InteractionState> {
+    const params = new URLSearchParams({ target_type: targetType, target_id: targetId });
+    if (userId) params.set('author_id', userId);
+    try {
+      return await this.request<InteractionState>(`/interactions/state?${params.toString()}`);
+    } catch (err) {
+      if (err instanceof ApiError && (err.problem.status === 404 || err.problem.status === 405)) {
+        return { liked: false, bookmarked: false, following: false };
+      }
+      throw err;
+    }
+  }
+
+  /** 列表批量状态：归档网格用它一次取回一页卡片的已赞 / 已收藏 / 已关注。 */
+  async interactionStates(
+    targetType: string,
+    targetIds: string[],
+    authorIds: string[] = [],
+  ): Promise<InteractionStates> {
+    const params = new URLSearchParams({ target_type: targetType });
+    if (targetIds.length) params.set('target_ids', targetIds.join(','));
+    if (authorIds.length) params.set('author_ids', authorIds.join(','));
+    try {
+      return await this.request<InteractionStates>(`/interactions/states?${params.toString()}`);
+    } catch (err) {
+      if (err instanceof ApiError && (err.problem.status === 404 || err.problem.status === 405)) {
+        return {
+          items: targetIds.map((id) => ({ target_id: id, liked: false, bookmarked: false })),
+          follows: authorIds.map((id) => ({ user_id: id, following: false })),
+        };
+      }
+      throw err;
+    }
+  }
+
+  /** 我的收藏，新到旧；条目已带标题与作者，不需要逐条再请求。 */
+  async bookmarks(options: InteractionListOptions = {}): Promise<Page<InteractionEntry>> {
+    return this.request<Page<InteractionEntry>>(`/me/bookmarks?${interactionQuery(options)}`);
+  }
+
+  /** 我的点赞，默认只看 like。 */
+  async likes(options: InteractionListOptions = {}): Promise<Page<InteractionEntry>> {
+    return this.request<Page<InteractionEntry>>(`/me/likes?${interactionQuery(options)}`);
+  }
+
+  /** 阅读历史，按最后访问时间排序。 */
+  async readingHistory(options: InteractionListOptions = {}): Promise<Page<ReadingHistoryEntry>> {
+    return this.request<Page<ReadingHistoryEntry>>(`/me/reading-history?${interactionQuery(options)}`);
+  }
+
+  /** 记录一次阅读；失败不影响正文展示。 */
+  async recordReading(targetType: 'article' | 'post', targetId: string): Promise<void> {
+    await this.request<void>('/me/reading-history', {
+      method: 'POST',
+      body: JSON.stringify({ target_type: targetType, target_id: targetId }),
+    });
+  }
+
+  /** 我关注的人。 */
+  async following(options: InteractionListOptions = {}): Promise<Page<FollowEntry>> {
+    return this.request<Page<FollowEntry>>(`/me/following?${interactionQuery(options)}`);
+  }
+
+  /** 关注我的人。 */
+  async followers(options: InteractionListOptions = {}): Promise<Page<FollowEntry>> {
+    return this.request<Page<FollowEntry>>(`/me/followers?${interactionQuery(options)}`);
+  }
+
+  /** 仅登录可见的成员目录；返回公开资料投影。 */
+  async memberDirectory(options: MemberDirectoryOptions = {}): Promise<PublicProfile[]> {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 100) });
+    if (options.query) params.set('q', options.query);
+    if (options.cursor) params.set('cursor', options.cursor);
+    const page = await this.request<{ items: PublicProfile[] }>(
+      `/members?${params.toString()}`,
+    );
+    return page.items;
+  }
+
+  /** 发起私信（一位其他成员）或群聊（多位成员）。 */
+  async createConversation(memberIds: string[]): Promise<Conversation> {
+    return this.request<Conversation>('/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ members: memberIds }),
+    });
   }
 
   async upload(
@@ -762,6 +1687,49 @@ export class HttpBackend {
     return page.items;
   }
 
+  /**
+   * 取一份能直接放进 `<img src>` 的媒体地址。
+   *
+   * 媒体读取端点对 content 素材要求登录，而 `<img>` 不会带 Authorization，匿名
+   * 请求只会拿到 404。这里用带令牌的 fetch 取字节，换成 blob: 地址交给图片元素；
+   * data:/blob:/外链原样返回（浏览器自己就能显示）。任何失败也回退原地址，让
+   * 调用方决定是显示占位还是留空，预览失败不该冒泡成页面错误。
+   */
+  async assetSrc(url: string): Promise<string> {
+    const raw = (url ?? '').trim();
+    if (!raw || !isMediaApiUrl(raw)) return raw;
+    const target = this.assetRequestUrl(raw);
+    if (!target) return raw;
+    try {
+      const headers = new Headers();
+      if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+      const res = await fetch(target, { headers, credentials: 'include' });
+      if (!res.ok) return raw;
+      const blob = await res.blob();
+      // 测试环境或极老的浏览器可能没有 createObjectURL：退回原地址，由 <img> 自己试。
+      if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return raw;
+      return URL.createObjectURL(blob);
+    } catch {
+      return raw;
+    }
+  }
+
+  /**
+   * 把媒体展示地址补成可请求的绝对地址。
+   *
+   * `api_base` 可能为空（同源相对）或只到源站；列表返回的 `url` 是
+   * `/api/v1/media/{id}`，这里只拼 origin，不能再补一次 `/api/v1`。
+   * 指向别的站点的绝对地址返回 null：本站令牌不该发给外链。
+   */
+  private assetRequestUrl(raw: string): string | null {
+    if (raw.startsWith('/') && !raw.startsWith('//')) return `${this.origin}${raw}`;
+    if (!/^https?:\/\//i.test(raw)) return null;
+    const own =
+      this.origin || (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!own) return null;
+    return raw.startsWith(`${own}/`) ? raw : null;
+  }
+
   async conversations(): Promise<Conversation[]> {
     const res = await this.request<{ items: Conversation[] }>('/conversations');
     return res.items;
@@ -805,6 +1773,19 @@ export class HttpBackend {
       method: 'POST',
     });
     return res.updated ?? 0;
+  }
+
+  async notificationPreferences(): Promise<NotificationPreferences> {
+    return this.request<NotificationPreferences>('/notifications/preferences');
+  }
+
+  async updateNotificationPreferences(
+    input: NotificationPreferences,
+  ): Promise<NotificationPreferences> {
+    return this.request<NotificationPreferences>('/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
   }
 
   async recordVisit(input: {
@@ -877,6 +1858,106 @@ export class HttpBackend {
 
   async deleteTaxonomyTerm(siteId: string, termId: string): Promise<void> {
     await this.request<void>(`/sites/${siteId}/taxonomy/${termId}`, { method: 'DELETE' });
+  }
+
+  /**
+   * 管理员触发一次整站备份。
+   *
+   * 备份包含数据库全量、媒体与站点设计，因此服务端只允许平台管理员调用；
+   * 站点管理员会在 403 里拿到普通的 permission_denied。
+   */
+  async createBackup(): Promise<BackupArtifact> {
+    return this.request<BackupArtifact>('/platform/backups', { method: 'POST' });
+  }
+
+  async backups(): Promise<BackupArtifact[]> {
+    const result = await this.request<{ items: BackupArtifact[] }>('/platform/backups');
+    return result.items ?? [];
+  }
+
+  async downloadBackup(id: string): Promise<{ blob: Blob; filename: string }> {
+    return this.download(`/platform/backups/${encodeURIComponent(id)}/download`);
+  }
+
+  /** 全站导出：默认包含草稿，publishedOnly 为真时只导出已发布内容。 */
+  async exportSite(
+    siteId: string,
+    options: { publishedOnly?: boolean } = {},
+  ): Promise<{ blob: Blob; filename: string }> {
+    const suffix = options.publishedOnly ? '?published_only=true' : '';
+    return this.download(`/sites/${encodeURIComponent(siteId)}/export${suffix}`);
+  }
+
+  /** 从导出包导入；每个条目独立落库并逐条报告。 */
+  async importSite(
+    siteId: string,
+    file: File,
+    options: { conflict?: ImportConflictStrategy } = {},
+  ): Promise<SiteImportReport> {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    body.append('conflict', options.conflict ?? 'rename');
+    return this.request<SiteImportReport>(`/sites/${encodeURIComponent(siteId)}/import`, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  /**
+   * 下载一个二进制响应。
+   *
+   * 不能复用 request()：它固定按 JSON 解析，导出包是 zip。鉴权、401 刷新和
+   * problem+json 错误仍与 JSON 请求保持一致，否则大文件下载会退化成另一套登录态。
+   */
+  private async download(path: string): Promise<{ blob: Blob; filename: string }> {
+    const perform = async (retry: boolean): Promise<Response> => {
+      const headers = new Headers();
+      headers.set('Accept', 'application/zip, application/octet-stream, application/json');
+      headers.set('X-Request-ID', uuid());
+      /** 与 performRequest 一样：回来时要判断这个 401 属于哪一代会话。 */
+      const epoch = this.sessionEpoch;
+      if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+      let response: Response;
+      try {
+        response = await fetch(`${this.root}${path}`, { headers, credentials: 'include' });
+      } catch {
+        throw new ApiError({
+          ...fallbackProblem(0),
+          code: 'internal',
+          title: t('无法连接 API'),
+          message: t('无法连接 {origin}，请确认服务已启动。', {
+            origin: this.origin || window.location.origin,
+          }),
+        });
+      }
+      if (response.status === 401 && retry && this.token) {
+        if (epoch !== this.sessionEpoch) return perform(false);
+        try {
+          await this.refresh();
+        } catch (refreshError) {
+          // 与 performRequest 同一套判据：只有 401 才算会话结束。
+          if (isSessionGoneError(refreshError)) {
+            this.clearSession();
+            this.onExpired();
+            throw new ApiError(await problemFromResponse(response));
+          }
+          throw refreshError;
+        }
+        return perform(false);
+      }
+      if (!response.ok) {
+        const problem = await problemFromResponse(response);
+        if (response.status === 401 && epoch === this.sessionEpoch) {
+          this.clearSession();
+          this.onExpired();
+        }
+        throw new ApiError(problem);
+      }
+      return response;
+    };
+    const response = await perform(true);
+    const blob = await response.blob();
+    return { blob, filename: filenameFromDisposition(response.headers.get('Content-Disposition')) };
   }
 
   docsUrl(): string {

@@ -97,9 +97,15 @@ type Site struct {
 	// this site. It is an anti-abuse switch for public sites; the first account of a
 	// desktop install is the bootstrap administrator and is not governed by it.
 	RegistrationOpen bool
-	Disabled         bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// CommentsEnabled closes new comment writes when false. CommentsRequireReview
+	// routes new comments to pending_review instead of visible. Both are enforced by
+	// the community service, so a direct API call obeys the same policy as the UI.
+	CommentsEnabled       bool
+	CommentsRequireReview bool
+	MediaQuotaBytes       *int64
+	Disabled              bool
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 // DomainVerified reports whether the site's domain may be served.

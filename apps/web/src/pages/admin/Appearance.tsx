@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { SiteCustomization } from '../../types';
+import type { SiteCustomization, WebConfig } from '../../types';
 import {
   DEFAULT_HERO,
   DEFAULT_LAYOUT,
@@ -12,9 +12,10 @@ import {
 } from '../../lib/customize';
 import { siteNavTabs } from '../../lib/navigation';
 import { useAuth } from '../../lib/session';
+import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { defaultHomeLayout } from '../../lib/blocks';
 import { templateById } from '../../lib/templates';
-import { APPEARANCE_SECTIONS, activeTheme, themeSections } from '../../lib/themes';
+import { APPEARANCE_SECTIONS, activeTheme, themeSections, variantLabel } from '../../lib/themes';
 import { DEFAULT_LOADING } from '../../lib/loading';
 import { DEFAULT_PERFORMANCE } from '../../lib/performance';
 import { DEFAULT_ACCESS } from '../../lib/access';
@@ -46,7 +47,7 @@ const RESET_SCOPES = [
 
 type ResetScope = (typeof RESET_SCOPES)[number]['id'];
 
-/** 首屏预览：单栏是纸白版式，双栏是夜航的深色黑卡。 */
+/** 首屏预览：单栏是纸白版式，双栏是夜航的深色黑卡，卡片是白昼的明亮卡面。 */
 function HeroPreview({
   kicker,
   title,
@@ -54,6 +55,7 @@ function HeroPreview({
   fallbackKicker,
   fallbackLede,
   bento,
+  daylight,
 }: {
   kicker: string;
   title: string;
@@ -61,11 +63,14 @@ function HeroPreview({
   fallbackKicker: string;
   fallbackLede: string;
   bento: boolean;
+  daylight: boolean;
 }) {
   const t = useT();
   return (
-    <div className={`hero-preview${bento ? ' is-bento' : ''}`}>
-      <span className="hero-preview-tag">{bento ? t('夜航 · 左侧黑卡') : t('原版 · 首屏')}</span>
+    <div className={`hero-preview${bento ? ' is-bento' : ''}${daylight ? ' is-daylight' : ''}`}>
+      <span className="hero-preview-tag">
+        {bento ? t('夜航 · 左侧黑卡') : daylight ? t('白昼 · 卡片首屏') : t('原版 · 首屏')}
+      </span>
       <p className="hero-kicker">{kicker.trim() || fallbackKicker}</p>
       <p className="hero-preview-title">
         {(title.trim() ? title : DEFAULT_HERO.title).split('\n').map((line, index) => (
@@ -90,7 +95,8 @@ function HeroPreview({
 export function AppearancePage() {
   const t = useT();
   useTitle(t('外观'));
-  const { site, updateConfig } = useAuth();
+  const { site } = useAuth();
+  const saveSiteConfig = useSaveSiteConfig();
   const { customization, update } = useCustomization();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -109,6 +115,7 @@ export function AppearancePage() {
 
   const layout = customization.layout;
   const bento = layout.variant === 'bento';
+  const daylight = layout.variant === 'daylight';
   const themeBundle = activeTheme(customization.active_theme, customization.themes ?? []);
   const themeName = themeBundle?.name ?? t('自定义主题');
   const sections = themeSections(themeBundle);
@@ -175,10 +182,14 @@ export function AppearancePage() {
       }));
     }
     if (Object.keys(customizationPatch).length) update(customizationPatch);
-    if (resetScopes.loading) updateConfig({ loading: DEFAULT_LOADING });
-    if (resetScopes.performance) updateConfig({ performance: DEFAULT_PERFORMANCE });
-    if (resetScopes.access) updateConfig({ access: DEFAULT_ACCESS });
-    if (resetScopes.domains) updateConfig({ domains: DEFAULT_DOMAINS });
+    // 加载动画 / 性能 / 访问限制 / 域名都是站点级配置：恢复默认也要落到服务端，
+    // 否则只有这台浏览器回到默认值，访客看到的是另一套。
+    const siteConfigPatch: Partial<WebConfig> = {};
+    if (resetScopes.loading) siteConfigPatch.loading = DEFAULT_LOADING;
+    if (resetScopes.performance) siteConfigPatch.performance = DEFAULT_PERFORMANCE;
+    if (resetScopes.access) siteConfigPatch.access = DEFAULT_ACCESS;
+    if (resetScopes.domains) siteConfigPatch.domains = DEFAULT_DOMAINS;
+    if (Object.keys(siteConfigPatch).length) void saveSiteConfig(siteConfigPatch);
     setResetOpen(false);
     toast.push('ok', t('已恢复选中的默认设置'), t('文章、页面正文、评论、账户与媒体都没有变化。'));
   };
@@ -223,8 +234,7 @@ export function AppearancePage() {
           </span>
           <div>
             <strong>
-              {t('当前主题「{name}」', { name: themeName })}
-              {bento ? t(' · 双栏') : t(' · 单栏')}
+              {t('当前主题「{name}」', { name: themeName })} · {variantLabel(layout.variant)}
             </strong>
             <p>
               {t('这套主题启用了 {enabled}/{total} 个外观分区{tail}', {
@@ -337,6 +347,7 @@ export function AppearancePage() {
                       site?.description || t('一间小而安静的编辑部。写作者拥有自己的稿子，读者被当作邻居。')
                     }
                     bento={bento}
+                    daylight={daylight}
                   />
                 </div>
               </div>
@@ -505,7 +516,7 @@ export function AppearancePage() {
                 </div>
                 <div className="mini-row">
                   <span className="mini-label">{t('当前版式')}</span>
-                  <span className="mini-value">{bento ? t('双栏') : t('单栏')}</span>
+                  <span className="mini-value">{variantLabel(layout.variant)}</span>
                 </div>
                 <div className="mini-row">
                   <span className="mini-label">{t('外观分区')}</span>

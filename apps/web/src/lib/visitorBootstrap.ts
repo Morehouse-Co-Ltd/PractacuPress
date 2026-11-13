@@ -1,6 +1,7 @@
 import type { SiteCustomization, WebConfig } from '../types';
 import { probeSetupStatus, type SetupStatus } from './backend';
 import { readCustomization } from './customize';
+import { readSiteConfig } from './siteConfig';
 
 /**
  * 匿名访客的站点引导（O-1）。
@@ -22,10 +23,15 @@ export type SetupStatusProbe = SetupStatus;
 
 export type VisitorCustomizationOutcome = 'applied' | 'absent' | 'unavailable';
 
+/** 站点级配置是否并入了访客配置。 */
+export type VisitorSiteConfigOutcome = 'applied' | 'absent' | 'unavailable';
+
 export interface VisitorBootstrapResult {
   config: WebConfig;
   /** 服务端设计是否已并入配置；absent / unavailable 表示回退默认设计。 */
   customization: VisitorCustomizationOutcome;
+  /** 服务端站点级配置（访问限制 / 加载动画 / 性能 / 域名 / 后台入口）是否已并入。 */
+  siteConfig: VisitorSiteConfigOutcome;
 }
 
 export interface VisitorBootstrapOptions {
@@ -106,6 +112,40 @@ async function loadVisitorCustomization(
 }
 
 /**
+ * 拉取服务端站点配置（公开子集）。
+ *
+ * 与设计文档同样的降级策略：404 表示站点从未保存过配置（members_only 站点对匿名
+ * 访客同样回 404），回退浏览器默认值；其它失败同样降级，不挡住渲染。
+ *
+ * 这是「访客拿到的都是默认值」的修复点：访问限制、加载动画、首屏性能参数与后台入口
+ * 以前只存在站长的 localStorage 里，访客的浏览器从来没有见过它们。
+ */
+async function loadVisitorSiteConfig(
+  siteId: string,
+  options: VisitorBootstrapOptions,
+): Promise<{ outcome: VisitorSiteConfigOutcome; config: Record<string, unknown> | null }> {
+  const { fetchImpl = fetch, customizationTimeoutMs = 3000 } = options;
+  const origin = resolveOrigin(options.origin);
+  try {
+    const response = await fetchImpl(`${origin}/api/v1/sites/${encodeURIComponent(siteId)}/site-config`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      credentials: 'include',
+      signal: requestSignal(customizationTimeoutMs),
+    });
+    if (response.status === 404) return { outcome: 'absent', config: null };
+    if (!response.ok) return { outcome: 'unavailable', config: null };
+    const body = (await response.json()) as { config?: unknown } | null;
+    if (!body || !body.config || typeof body.config !== 'object' || Array.isArray(body.config)) {
+      return { outcome: 'unavailable', config: null };
+    }
+    return { outcome: 'applied', config: body.config as Record<string, unknown> };
+  } catch {
+    return { outcome: 'unavailable', config: null };
+  }
+}
+
+/**
  * 为匿名访客构造只读 live 配置。
  *
  * 返回 null 表示"这里不是一台装好的站点"（未安装 / 没有管理员 / 探测失败），调用方
@@ -121,7 +161,19 @@ export async function bootstrapVisitorConfig(
   if (typeof status.site_id !== 'string' || !status.site_id) return null;
 
   const origin = resolveOrigin(options.origin);
-  const { outcome, customization } = await loadVisitorCustomization(status.site_id, options);
+  // 设计与配置互不依赖：并发拉取，任一失败都只降级自己，不拖慢开屏。
+  const [customizationResult, siteConfigResult] = await Promise.all([
+    loadVisitorCustomization(status.site_id, options),
+    loadVisitorSiteConfig(status.site_id, options),
+  ]);
+  const { outcome, customization } = customizationResult;
+
+  // 公开子集只覆盖浏览器会执行的字段；visitorBootstrap 不写回 localStorage，
+  // 也不会把未公开的部署参数带进访客配置。
+  const siteConfigPatch = siteConfigResult.config
+    ? readSiteConfig(siteConfigResult.config, 'public', null)
+    : {};
+
   const config: WebConfig = {
     version: 1,
     setup_complete: true,
@@ -139,6 +191,7 @@ export async function bootstrapVisitorConfig(
       ? { visitor_registration_open: status.registration_open }
       : {}),
     ...(customization ? { customization } : {}),
+    ...siteConfigPatch,
   };
-  return { config, customization: outcome };
+  return { config, customization: outcome, siteConfig: siteConfigResult.outcome };
 }

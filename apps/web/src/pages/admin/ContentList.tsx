@@ -255,6 +255,7 @@ export function ContentListPage() {
                   <th>{t('封面')}</th>
                   <th>{t('类型')}</th>
                   <th>{t('状态')}</th>
+                  <th>{t('阅读量')}</th>
                   <th>{t('首页精选')}</th>
                   <th>{t('作者')}</th>
                   <th>{t('更新时间')}</th>
@@ -320,6 +321,20 @@ export function ContentListPage() {
                       </td>
                       <td>
                         <StatusBadge status={item.status} />
+                        {item.status === 'draft' && item.publish_at ? (
+                          <div className="tiny faint nowrap">
+                            {t('预约 {time}', { time: formatDateTime(item.publish_at) })}
+                          </div>
+                        ) : null}
+                        {item.access_mode && item.access_mode !== 'public' ? (
+                          <div className="tiny faint nowrap">
+                            {item.access_mode === 'password' ? t('密码访问') : t('仅登录读者')}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="tiny muted nowrap">
+                        {/* 服务端去重后的单篇阅读量（FSD A-16）；草稿恒为 0。 */}
+                        {item.view_count ?? 0}
                       </td>
                       <td>
                         <div className="pin-cell">

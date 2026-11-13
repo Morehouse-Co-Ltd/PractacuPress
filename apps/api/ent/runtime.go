@@ -9,24 +9,35 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
+	"github.com/practacu/practacu-press/apps/api/ent/contentrevision"
 	"github.com/practacu/practacu-press/apps/api/ent/conversation"
 	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaquotaguard"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
 	"github.com/practacu/practacu-press/apps/api/ent/message"
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/notification"
+	"github.com/practacu/practacu-press/apps/api/ent/notificationpreference"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/pageview"
+	"github.com/practacu/practacu-press/apps/api/ent/permissiongroup"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
+	"github.com/practacu/practacu-press/apps/api/ent/readinghistory"
+	"github.com/practacu/practacu-press/apps/api/ent/recoverycode"
 	"github.com/practacu/practacu-press/apps/api/ent/schema"
+	"github.com/practacu/practacu-press/apps/api/ent/sensitiveword"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
+	"github.com/practacu/practacu-press/apps/api/ent/siteconfig"
 	"github.com/practacu/practacu-press/apps/api/ent/sitecustomization"
+	"github.com/practacu/practacu-press/apps/api/ent/siteiprule"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
+	"github.com/practacu/practacu-press/apps/api/ent/sitesafetysetting"
 	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
+	"github.com/practacu/practacu-press/apps/api/ent/twofactor"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
@@ -376,20 +387,54 @@ func init() {
 	contentitem.DefaultPolicyVersion = contentitemDescPolicyVersion.Default.(string)
 	// contentitem.PolicyVersionValidator is a validator for the "policy_version" field. It is called by the builders before save.
 	contentitem.PolicyVersionValidator = contentitemDescPolicyVersion.Validators[0].(func(string) error)
+	// contentitemDescRevision is the schema descriptor for revision field.
+	contentitemDescRevision := contentitemFields[12].Descriptor()
+	// contentitem.DefaultRevision holds the default value on creation for the revision field.
+	contentitem.DefaultRevision = contentitemDescRevision.Default.(int)
+	// contentitem.RevisionValidator is a validator for the "revision" field. It is called by the builders before save.
+	contentitem.RevisionValidator = contentitemDescRevision.Validators[0].(func(int) error)
 	// contentitemDescCategoryID is the schema descriptor for category_id field.
-	contentitemDescCategoryID := contentitemFields[12].Descriptor()
+	contentitemDescCategoryID := contentitemFields[13].Descriptor()
 	// contentitem.CategoryIDValidator is a validator for the "category_id" field. It is called by the builders before save.
 	contentitem.CategoryIDValidator = contentitemDescCategoryID.Validators[0].(func(string) error)
 	// contentitemDescTags is the schema descriptor for tags field.
-	contentitemDescTags := contentitemFields[13].Descriptor()
+	contentitemDescTags := contentitemFields[14].Descriptor()
 	// contentitem.DefaultTags holds the default value on creation for the tags field.
 	contentitem.DefaultTags = contentitemDescTags.Default.(string)
+	// contentitemDescPublishAttempts is the schema descriptor for publish_attempts field.
+	contentitemDescPublishAttempts := contentitemFields[18].Descriptor()
+	// contentitem.DefaultPublishAttempts holds the default value on creation for the publish_attempts field.
+	contentitem.DefaultPublishAttempts = contentitemDescPublishAttempts.Default.(int)
+	// contentitem.PublishAttemptsValidator is a validator for the "publish_attempts" field. It is called by the builders before save.
+	contentitem.PublishAttemptsValidator = contentitemDescPublishAttempts.Validators[0].(func(int) error)
+	// contentitemDescAccessMode is the schema descriptor for access_mode field.
+	contentitemDescAccessMode := contentitemFields[19].Descriptor()
+	// contentitem.DefaultAccessMode holds the default value on creation for the access_mode field.
+	contentitem.DefaultAccessMode = contentitemDescAccessMode.Default.(string)
+	// contentitem.AccessModeValidator is a validator for the "access_mode" field. It is called by the builders before save.
+	contentitem.AccessModeValidator = contentitemDescAccessMode.Validators[0].(func(string) error)
+	// contentitemDescAccessPasswordHash is the schema descriptor for access_password_hash field.
+	contentitemDescAccessPasswordHash := contentitemFields[20].Descriptor()
+	// contentitem.AccessPasswordHashValidator is a validator for the "access_password_hash" field. It is called by the builders before save.
+	contentitem.AccessPasswordHashValidator = contentitemDescAccessPasswordHash.Validators[0].(func(string) error)
+	// contentitemDescViewCount is the schema descriptor for view_count field.
+	contentitemDescViewCount := contentitemFields[21].Descriptor()
+	// contentitem.DefaultViewCount holds the default value on creation for the view_count field.
+	contentitem.DefaultViewCount = contentitemDescViewCount.Default.(int)
+	// contentitem.ViewCountValidator is a validator for the "view_count" field. It is called by the builders before save.
+	contentitem.ViewCountValidator = contentitemDescViewCount.Validators[0].(func(int) error)
+	// contentitemDescCommentPolicy is the schema descriptor for comment_policy field.
+	contentitemDescCommentPolicy := contentitemFields[22].Descriptor()
+	// contentitem.DefaultCommentPolicy holds the default value on creation for the comment_policy field.
+	contentitem.DefaultCommentPolicy = contentitemDescCommentPolicy.Default.(string)
+	// contentitem.CommentPolicyValidator is a validator for the "comment_policy" field. It is called by the builders before save.
+	contentitem.CommentPolicyValidator = contentitemDescCommentPolicy.Validators[0].(func(string) error)
 	// contentitemDescCreatedAt is the schema descriptor for created_at field.
-	contentitemDescCreatedAt := contentitemFields[16].Descriptor()
+	contentitemDescCreatedAt := contentitemFields[23].Descriptor()
 	// contentitem.DefaultCreatedAt holds the default value on creation for the created_at field.
 	contentitem.DefaultCreatedAt = contentitemDescCreatedAt.Default.(func() time.Time)
 	// contentitemDescUpdatedAt is the schema descriptor for updated_at field.
-	contentitemDescUpdatedAt := contentitemFields[17].Descriptor()
+	contentitemDescUpdatedAt := contentitemFields[24].Descriptor()
 	// contentitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	contentitem.DefaultUpdatedAt = contentitemDescUpdatedAt.Default.(func() time.Time)
 	// contentitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -400,6 +445,142 @@ func init() {
 	contentitem.DefaultID = contentitemDescID.Default.(func() string)
 	// contentitem.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	contentitem.IDValidator = contentitemDescID.Validators[0].(func(string) error)
+	contentrevisionFields := schema.ContentRevision{}.Fields()
+	_ = contentrevisionFields
+	// contentrevisionDescSiteID is the schema descriptor for site_id field.
+	contentrevisionDescSiteID := contentrevisionFields[1].Descriptor()
+	// contentrevision.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	contentrevision.SiteIDValidator = func() func(string) error {
+		validators := contentrevisionDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentrevisionDescContentID is the schema descriptor for content_id field.
+	contentrevisionDescContentID := contentrevisionFields[2].Descriptor()
+	// contentrevision.ContentIDValidator is a validator for the "content_id" field. It is called by the builders before save.
+	contentrevision.ContentIDValidator = func() func(string) error {
+		validators := contentrevisionDescContentID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(content_id string) error {
+			for _, fn := range fns {
+				if err := fn(content_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentrevisionDescVersion is the schema descriptor for version field.
+	contentrevisionDescVersion := contentrevisionFields[3].Descriptor()
+	// contentrevision.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	contentrevision.VersionValidator = contentrevisionDescVersion.Validators[0].(func(int) error)
+	// contentrevisionDescEditorID is the schema descriptor for editor_id field.
+	contentrevisionDescEditorID := contentrevisionFields[4].Descriptor()
+	// contentrevision.EditorIDValidator is a validator for the "editor_id" field. It is called by the builders before save.
+	contentrevision.EditorIDValidator = func() func(string) error {
+		validators := contentrevisionDescEditorID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(editor_id string) error {
+			for _, fn := range fns {
+				if err := fn(editor_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentrevisionDescAction is the schema descriptor for action field.
+	contentrevisionDescAction := contentrevisionFields[5].Descriptor()
+	// contentrevision.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	contentrevision.ActionValidator = func() func(string) error {
+		validators := contentrevisionDescAction.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(action string) error {
+			for _, fn := range fns {
+				if err := fn(action); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// contentrevisionDescStatus is the schema descriptor for status field.
+	contentrevisionDescStatus := contentrevisionFields[6].Descriptor()
+	// contentrevision.DefaultStatus holds the default value on creation for the status field.
+	contentrevision.DefaultStatus = contentrevisionDescStatus.Default.(string)
+	// contentrevision.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	contentrevision.StatusValidator = contentrevisionDescStatus.Validators[0].(func(string) error)
+	// contentrevisionDescTitle is the schema descriptor for title field.
+	contentrevisionDescTitle := contentrevisionFields[7].Descriptor()
+	// contentrevision.DefaultTitle holds the default value on creation for the title field.
+	contentrevision.DefaultTitle = contentrevisionDescTitle.Default.(string)
+	// contentrevision.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	contentrevision.TitleValidator = contentrevisionDescTitle.Validators[0].(func(string) error)
+	// contentrevisionDescSlug is the schema descriptor for slug field.
+	contentrevisionDescSlug := contentrevisionFields[8].Descriptor()
+	// contentrevision.DefaultSlug holds the default value on creation for the slug field.
+	contentrevision.DefaultSlug = contentrevisionDescSlug.Default.(string)
+	// contentrevision.SlugValidator is a validator for the "slug" field. It is called by the builders before save.
+	contentrevision.SlugValidator = contentrevisionDescSlug.Validators[0].(func(string) error)
+	// contentrevisionDescSummary is the schema descriptor for summary field.
+	contentrevisionDescSummary := contentrevisionFields[9].Descriptor()
+	// contentrevision.DefaultSummary holds the default value on creation for the summary field.
+	contentrevision.DefaultSummary = contentrevisionDescSummary.Default.(string)
+	// contentrevision.SummaryValidator is a validator for the "summary" field. It is called by the builders before save.
+	contentrevision.SummaryValidator = contentrevisionDescSummary.Validators[0].(func(string) error)
+	// contentrevisionDescSourceFormat is the schema descriptor for source_format field.
+	contentrevisionDescSourceFormat := contentrevisionFields[10].Descriptor()
+	// contentrevision.DefaultSourceFormat holds the default value on creation for the source_format field.
+	contentrevision.DefaultSourceFormat = contentrevisionDescSourceFormat.Default.(string)
+	// contentrevision.SourceFormatValidator is a validator for the "source_format" field. It is called by the builders before save.
+	contentrevision.SourceFormatValidator = contentrevisionDescSourceFormat.Validators[0].(func(string) error)
+	// contentrevisionDescRenderedHTML is the schema descriptor for rendered_html field.
+	contentrevisionDescRenderedHTML := contentrevisionFields[12].Descriptor()
+	// contentrevision.DefaultRenderedHTML holds the default value on creation for the rendered_html field.
+	contentrevision.DefaultRenderedHTML = contentrevisionDescRenderedHTML.Default.(string)
+	// contentrevisionDescPolicyVersion is the schema descriptor for policy_version field.
+	contentrevisionDescPolicyVersion := contentrevisionFields[13].Descriptor()
+	// contentrevision.DefaultPolicyVersion holds the default value on creation for the policy_version field.
+	contentrevision.DefaultPolicyVersion = contentrevisionDescPolicyVersion.Default.(string)
+	// contentrevision.PolicyVersionValidator is a validator for the "policy_version" field. It is called by the builders before save.
+	contentrevision.PolicyVersionValidator = contentrevisionDescPolicyVersion.Validators[0].(func(string) error)
+	// contentrevisionDescCategoryID is the schema descriptor for category_id field.
+	contentrevisionDescCategoryID := contentrevisionFields[14].Descriptor()
+	// contentrevision.CategoryIDValidator is a validator for the "category_id" field. It is called by the builders before save.
+	contentrevision.CategoryIDValidator = contentrevisionDescCategoryID.Validators[0].(func(string) error)
+	// contentrevisionDescTags is the schema descriptor for tags field.
+	contentrevisionDescTags := contentrevisionFields[15].Descriptor()
+	// contentrevision.DefaultTags holds the default value on creation for the tags field.
+	contentrevision.DefaultTags = contentrevisionDescTags.Default.(string)
+	// contentrevisionDescCreatedAt is the schema descriptor for created_at field.
+	contentrevisionDescCreatedAt := contentrevisionFields[16].Descriptor()
+	// contentrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	contentrevision.DefaultCreatedAt = contentrevisionDescCreatedAt.Default.(func() time.Time)
+	// contentrevisionDescID is the schema descriptor for id field.
+	contentrevisionDescID := contentrevisionFields[0].Descriptor()
+	// contentrevision.DefaultID holds the default value on creation for the id field.
+	contentrevision.DefaultID = contentrevisionDescID.Default.(func() string)
+	// contentrevision.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	contentrevision.IDValidator = contentrevisionDescID.Validators[0].(func(string) error)
 	conversationFields := schema.Conversation{}.Fields()
 	_ = conversationFields
 	// conversationDescSiteID is the schema descriptor for site_id field.
@@ -822,6 +1003,38 @@ func init() {
 	mediaasset.DefaultID = mediaassetDescID.Default.(func() string)
 	// mediaasset.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	mediaasset.IDValidator = mediaassetDescID.Validators[0].(func(string) error)
+	mediaquotaguardFields := schema.MediaQuotaGuard{}.Fields()
+	_ = mediaquotaguardFields
+	// mediaquotaguardDescSiteID is the schema descriptor for site_id field.
+	mediaquotaguardDescSiteID := mediaquotaguardFields[1].Descriptor()
+	// mediaquotaguard.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	mediaquotaguard.SiteIDValidator = func() func(string) error {
+		validators := mediaquotaguardDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mediaquotaguardDescSerial is the schema descriptor for serial field.
+	mediaquotaguardDescSerial := mediaquotaguardFields[2].Descriptor()
+	// mediaquotaguard.DefaultSerial holds the default value on creation for the serial field.
+	mediaquotaguard.DefaultSerial = mediaquotaguardDescSerial.Default.(int64)
+	// mediaquotaguard.SerialValidator is a validator for the "serial" field. It is called by the builders before save.
+	mediaquotaguard.SerialValidator = mediaquotaguardDescSerial.Validators[0].(func(int64) error)
+	// mediaquotaguardDescID is the schema descriptor for id field.
+	mediaquotaguardDescID := mediaquotaguardFields[0].Descriptor()
+	// mediaquotaguard.DefaultID holds the default value on creation for the id field.
+	mediaquotaguard.DefaultID = mediaquotaguardDescID.Default.(func() string)
+	// mediaquotaguard.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	mediaquotaguard.IDValidator = mediaquotaguardDescID.Validators[0].(func(string) error)
 	mediauploadFields := schema.MediaUpload{}.Fields()
 	_ = mediauploadFields
 	// mediauploadDescSiteID is the schema descriptor for site_id field.
@@ -1206,8 +1419,12 @@ func init() {
 	notificationDescSubjectID := notificationFields[5].Descriptor()
 	// notification.SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
 	notification.SubjectIDValidator = notificationDescSubjectID.Validators[0].(func(string) error)
+	// notificationDescDedupeKey is the schema descriptor for dedupe_key field.
+	notificationDescDedupeKey := notificationFields[7].Descriptor()
+	// notification.DedupeKeyValidator is a validator for the "dedupe_key" field. It is called by the builders before save.
+	notification.DedupeKeyValidator = notificationDescDedupeKey.Validators[0].(func(string) error)
 	// notificationDescCreatedAt is the schema descriptor for created_at field.
-	notificationDescCreatedAt := notificationFields[8].Descriptor()
+	notificationDescCreatedAt := notificationFields[9].Descriptor()
 	// notification.DefaultCreatedAt holds the default value on creation for the created_at field.
 	notification.DefaultCreatedAt = notificationDescCreatedAt.Default.(func() time.Time)
 	// notificationDescID is the schema descriptor for id field.
@@ -1216,6 +1433,100 @@ func init() {
 	notification.DefaultID = notificationDescID.Default.(func() string)
 	// notification.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	notification.IDValidator = notificationDescID.Validators[0].(func(string) error)
+	notificationpreferenceFields := schema.NotificationPreference{}.Fields()
+	_ = notificationpreferenceFields
+	// notificationpreferenceDescSiteID is the schema descriptor for site_id field.
+	notificationpreferenceDescSiteID := notificationpreferenceFields[1].Descriptor()
+	// notificationpreference.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	notificationpreference.SiteIDValidator = func() func(string) error {
+		validators := notificationpreferenceDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// notificationpreferenceDescUserID is the schema descriptor for user_id field.
+	notificationpreferenceDescUserID := notificationpreferenceFields[2].Descriptor()
+	// notificationpreference.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	notificationpreference.UserIDValidator = func() func(string) error {
+		validators := notificationpreferenceDescUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(user_id string) error {
+			for _, fn := range fns {
+				if err := fn(user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// notificationpreferenceDescInAppEnabled is the schema descriptor for in_app_enabled field.
+	notificationpreferenceDescInAppEnabled := notificationpreferenceFields[3].Descriptor()
+	// notificationpreference.DefaultInAppEnabled holds the default value on creation for the in_app_enabled field.
+	notificationpreference.DefaultInAppEnabled = notificationpreferenceDescInAppEnabled.Default.(bool)
+	// notificationpreferenceDescEmailEnabled is the schema descriptor for email_enabled field.
+	notificationpreferenceDescEmailEnabled := notificationpreferenceFields[4].Descriptor()
+	// notificationpreference.DefaultEmailEnabled holds the default value on creation for the email_enabled field.
+	notificationpreference.DefaultEmailEnabled = notificationpreferenceDescEmailEnabled.Default.(bool)
+	// notificationpreferenceDescInAppComments is the schema descriptor for in_app_comments field.
+	notificationpreferenceDescInAppComments := notificationpreferenceFields[5].Descriptor()
+	// notificationpreference.DefaultInAppComments holds the default value on creation for the in_app_comments field.
+	notificationpreference.DefaultInAppComments = notificationpreferenceDescInAppComments.Default.(bool)
+	// notificationpreferenceDescInAppReactions is the schema descriptor for in_app_reactions field.
+	notificationpreferenceDescInAppReactions := notificationpreferenceFields[6].Descriptor()
+	// notificationpreference.DefaultInAppReactions holds the default value on creation for the in_app_reactions field.
+	notificationpreference.DefaultInAppReactions = notificationpreferenceDescInAppReactions.Default.(bool)
+	// notificationpreferenceDescInAppFollows is the schema descriptor for in_app_follows field.
+	notificationpreferenceDescInAppFollows := notificationpreferenceFields[7].Descriptor()
+	// notificationpreference.DefaultInAppFollows holds the default value on creation for the in_app_follows field.
+	notificationpreference.DefaultInAppFollows = notificationpreferenceDescInAppFollows.Default.(bool)
+	// notificationpreferenceDescInAppModeration is the schema descriptor for in_app_moderation field.
+	notificationpreferenceDescInAppModeration := notificationpreferenceFields[8].Descriptor()
+	// notificationpreference.DefaultInAppModeration holds the default value on creation for the in_app_moderation field.
+	notificationpreference.DefaultInAppModeration = notificationpreferenceDescInAppModeration.Default.(bool)
+	// notificationpreferenceDescEmailComments is the schema descriptor for email_comments field.
+	notificationpreferenceDescEmailComments := notificationpreferenceFields[9].Descriptor()
+	// notificationpreference.DefaultEmailComments holds the default value on creation for the email_comments field.
+	notificationpreference.DefaultEmailComments = notificationpreferenceDescEmailComments.Default.(bool)
+	// notificationpreferenceDescEmailReactions is the schema descriptor for email_reactions field.
+	notificationpreferenceDescEmailReactions := notificationpreferenceFields[10].Descriptor()
+	// notificationpreference.DefaultEmailReactions holds the default value on creation for the email_reactions field.
+	notificationpreference.DefaultEmailReactions = notificationpreferenceDescEmailReactions.Default.(bool)
+	// notificationpreferenceDescEmailFollows is the schema descriptor for email_follows field.
+	notificationpreferenceDescEmailFollows := notificationpreferenceFields[11].Descriptor()
+	// notificationpreference.DefaultEmailFollows holds the default value on creation for the email_follows field.
+	notificationpreference.DefaultEmailFollows = notificationpreferenceDescEmailFollows.Default.(bool)
+	// notificationpreferenceDescEmailModeration is the schema descriptor for email_moderation field.
+	notificationpreferenceDescEmailModeration := notificationpreferenceFields[12].Descriptor()
+	// notificationpreference.DefaultEmailModeration holds the default value on creation for the email_moderation field.
+	notificationpreference.DefaultEmailModeration = notificationpreferenceDescEmailModeration.Default.(bool)
+	// notificationpreferenceDescCreatedAt is the schema descriptor for created_at field.
+	notificationpreferenceDescCreatedAt := notificationpreferenceFields[13].Descriptor()
+	// notificationpreference.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notificationpreference.DefaultCreatedAt = notificationpreferenceDescCreatedAt.Default.(func() time.Time)
+	// notificationpreferenceDescUpdatedAt is the schema descriptor for updated_at field.
+	notificationpreferenceDescUpdatedAt := notificationpreferenceFields[14].Descriptor()
+	// notificationpreference.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notificationpreference.DefaultUpdatedAt = notificationpreferenceDescUpdatedAt.Default.(func() time.Time)
+	// notificationpreference.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notificationpreference.UpdateDefaultUpdatedAt = notificationpreferenceDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// notificationpreferenceDescID is the schema descriptor for id field.
+	notificationpreferenceDescID := notificationpreferenceFields[0].Descriptor()
+	// notificationpreference.DefaultID holds the default value on creation for the id field.
+	notificationpreference.DefaultID = notificationpreferenceDescID.Default.(func() string)
+	// notificationpreference.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	notificationpreference.IDValidator = notificationpreferenceDescID.Validators[0].(func(string) error)
 	outboxeventFields := schema.OutboxEvent{}.Fields()
 	_ = outboxeventFields
 	// outboxeventDescEventID is the schema descriptor for event_id field.
@@ -1426,6 +1737,80 @@ func init() {
 	pageview.DefaultID = pageviewDescID.Default.(func() string)
 	// pageview.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	pageview.IDValidator = pageviewDescID.Validators[0].(func(string) error)
+	permissiongroupFields := schema.PermissionGroup{}.Fields()
+	_ = permissiongroupFields
+	// permissiongroupDescSiteID is the schema descriptor for site_id field.
+	permissiongroupDescSiteID := permissiongroupFields[1].Descriptor()
+	// permissiongroup.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	permissiongroup.SiteIDValidator = func() func(string) error {
+		validators := permissiongroupDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// permissiongroupDescKey is the schema descriptor for key field.
+	permissiongroupDescKey := permissiongroupFields[2].Descriptor()
+	// permissiongroup.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	permissiongroup.KeyValidator = func() func(string) error {
+		validators := permissiongroupDescKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(key string) error {
+			for _, fn := range fns {
+				if err := fn(key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// permissiongroupDescName is the schema descriptor for name field.
+	permissiongroupDescName := permissiongroupFields[3].Descriptor()
+	// permissiongroup.DefaultName holds the default value on creation for the name field.
+	permissiongroup.DefaultName = permissiongroupDescName.Default.(string)
+	// permissiongroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	permissiongroup.NameValidator = permissiongroupDescName.Validators[0].(func(string) error)
+	// permissiongroupDescBaseRole is the schema descriptor for base_role field.
+	permissiongroupDescBaseRole := permissiongroupFields[4].Descriptor()
+	// permissiongroup.DefaultBaseRole holds the default value on creation for the base_role field.
+	permissiongroup.DefaultBaseRole = permissiongroupDescBaseRole.Default.(string)
+	// permissiongroup.BaseRoleValidator is a validator for the "base_role" field. It is called by the builders before save.
+	permissiongroup.BaseRoleValidator = permissiongroupDescBaseRole.Validators[0].(func(string) error)
+	// permissiongroupDescAdminAccess is the schema descriptor for admin_access field.
+	permissiongroupDescAdminAccess := permissiongroupFields[6].Descriptor()
+	// permissiongroup.DefaultAdminAccess holds the default value on creation for the admin_access field.
+	permissiongroup.DefaultAdminAccess = permissiongroupDescAdminAccess.Default.(bool)
+	// permissiongroupDescBuiltin is the schema descriptor for builtin field.
+	permissiongroupDescBuiltin := permissiongroupFields[7].Descriptor()
+	// permissiongroup.DefaultBuiltin holds the default value on creation for the builtin field.
+	permissiongroup.DefaultBuiltin = permissiongroupDescBuiltin.Default.(bool)
+	// permissiongroupDescCreatedAt is the schema descriptor for created_at field.
+	permissiongroupDescCreatedAt := permissiongroupFields[8].Descriptor()
+	// permissiongroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	permissiongroup.DefaultCreatedAt = permissiongroupDescCreatedAt.Default.(func() time.Time)
+	// permissiongroupDescUpdatedAt is the schema descriptor for updated_at field.
+	permissiongroupDescUpdatedAt := permissiongroupFields[9].Descriptor()
+	// permissiongroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	permissiongroup.DefaultUpdatedAt = permissiongroupDescUpdatedAt.Default.(func() time.Time)
+	// permissiongroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	permissiongroup.UpdateDefaultUpdatedAt = permissiongroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// permissiongroupDescID is the schema descriptor for id field.
+	permissiongroupDescID := permissiongroupFields[0].Descriptor()
+	// permissiongroup.DefaultID holds the default value on creation for the id field.
+	permissiongroup.DefaultID = permissiongroupDescID.Default.(func() string)
+	// permissiongroup.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	permissiongroup.IDValidator = permissiongroupDescID.Validators[0].(func(string) error)
 	reactionFields := schema.Reaction{}.Fields()
 	_ = reactionFields
 	// reactionDescSiteID is the schema descriptor for site_id field.
@@ -1528,6 +1913,214 @@ func init() {
 	reaction.DefaultID = reactionDescID.Default.(func() string)
 	// reaction.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	reaction.IDValidator = reactionDescID.Validators[0].(func(string) error)
+	readinghistoryFields := schema.ReadingHistory{}.Fields()
+	_ = readinghistoryFields
+	// readinghistoryDescSiteID is the schema descriptor for site_id field.
+	readinghistoryDescSiteID := readinghistoryFields[1].Descriptor()
+	// readinghistory.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	readinghistory.SiteIDValidator = func() func(string) error {
+		validators := readinghistoryDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// readinghistoryDescUserID is the schema descriptor for user_id field.
+	readinghistoryDescUserID := readinghistoryFields[2].Descriptor()
+	// readinghistory.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	readinghistory.UserIDValidator = func() func(string) error {
+		validators := readinghistoryDescUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(user_id string) error {
+			for _, fn := range fns {
+				if err := fn(user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// readinghistoryDescTargetType is the schema descriptor for target_type field.
+	readinghistoryDescTargetType := readinghistoryFields[3].Descriptor()
+	// readinghistory.TargetTypeValidator is a validator for the "target_type" field. It is called by the builders before save.
+	readinghistory.TargetTypeValidator = func() func(string) error {
+		validators := readinghistoryDescTargetType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(target_type string) error {
+			for _, fn := range fns {
+				if err := fn(target_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// readinghistoryDescTargetID is the schema descriptor for target_id field.
+	readinghistoryDescTargetID := readinghistoryFields[4].Descriptor()
+	// readinghistory.TargetIDValidator is a validator for the "target_id" field. It is called by the builders before save.
+	readinghistory.TargetIDValidator = func() func(string) error {
+		validators := readinghistoryDescTargetID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(target_id string) error {
+			for _, fn := range fns {
+				if err := fn(target_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// readinghistoryDescViewCount is the schema descriptor for view_count field.
+	readinghistoryDescViewCount := readinghistoryFields[6].Descriptor()
+	// readinghistory.DefaultViewCount holds the default value on creation for the view_count field.
+	readinghistory.DefaultViewCount = readinghistoryDescViewCount.Default.(int)
+	// readinghistory.ViewCountValidator is a validator for the "view_count" field. It is called by the builders before save.
+	readinghistory.ViewCountValidator = readinghistoryDescViewCount.Validators[0].(func(int) error)
+	// readinghistoryDescCreatedAt is the schema descriptor for created_at field.
+	readinghistoryDescCreatedAt := readinghistoryFields[7].Descriptor()
+	// readinghistory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	readinghistory.DefaultCreatedAt = readinghistoryDescCreatedAt.Default.(func() time.Time)
+	// readinghistoryDescID is the schema descriptor for id field.
+	readinghistoryDescID := readinghistoryFields[0].Descriptor()
+	// readinghistory.DefaultID holds the default value on creation for the id field.
+	readinghistory.DefaultID = readinghistoryDescID.Default.(func() string)
+	// readinghistory.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	readinghistory.IDValidator = readinghistoryDescID.Validators[0].(func(string) error)
+	recoverycodeFields := schema.RecoveryCode{}.Fields()
+	_ = recoverycodeFields
+	// recoverycodeDescUserID is the schema descriptor for user_id field.
+	recoverycodeDescUserID := recoverycodeFields[1].Descriptor()
+	// recoverycode.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	recoverycode.UserIDValidator = func() func(string) error {
+		validators := recoverycodeDescUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(user_id string) error {
+			for _, fn := range fns {
+				if err := fn(user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// recoverycodeDescCodeHash is the schema descriptor for code_hash field.
+	recoverycodeDescCodeHash := recoverycodeFields[2].Descriptor()
+	// recoverycode.CodeHashValidator is a validator for the "code_hash" field. It is called by the builders before save.
+	recoverycode.CodeHashValidator = func() func(string) error {
+		validators := recoverycodeDescCodeHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code_hash string) error {
+			for _, fn := range fns {
+				if err := fn(code_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// recoverycodeDescCreatedAt is the schema descriptor for created_at field.
+	recoverycodeDescCreatedAt := recoverycodeFields[4].Descriptor()
+	// recoverycode.DefaultCreatedAt holds the default value on creation for the created_at field.
+	recoverycode.DefaultCreatedAt = recoverycodeDescCreatedAt.Default.(func() time.Time)
+	// recoverycodeDescID is the schema descriptor for id field.
+	recoverycodeDescID := recoverycodeFields[0].Descriptor()
+	// recoverycode.DefaultID holds the default value on creation for the id field.
+	recoverycode.DefaultID = recoverycodeDescID.Default.(func() string)
+	// recoverycode.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	recoverycode.IDValidator = recoverycodeDescID.Validators[0].(func(string) error)
+	sensitivewordFields := schema.SensitiveWord{}.Fields()
+	_ = sensitivewordFields
+	// sensitivewordDescSiteID is the schema descriptor for site_id field.
+	sensitivewordDescSiteID := sensitivewordFields[1].Descriptor()
+	// sensitiveword.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	sensitiveword.SiteIDValidator = func() func(string) error {
+		validators := sensitivewordDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// sensitivewordDescWord is the schema descriptor for word field.
+	sensitivewordDescWord := sensitivewordFields[2].Descriptor()
+	// sensitiveword.WordValidator is a validator for the "word" field. It is called by the builders before save.
+	sensitiveword.WordValidator = func() func(string) error {
+		validators := sensitivewordDescWord.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(word string) error {
+			for _, fn := range fns {
+				if err := fn(word); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// sensitivewordDescMode is the schema descriptor for mode field.
+	sensitivewordDescMode := sensitivewordFields[3].Descriptor()
+	// sensitiveword.DefaultMode holds the default value on creation for the mode field.
+	sensitiveword.DefaultMode = sensitivewordDescMode.Default.(string)
+	// sensitiveword.ModeValidator is a validator for the "mode" field. It is called by the builders before save.
+	sensitiveword.ModeValidator = sensitivewordDescMode.Validators[0].(func(string) error)
+	// sensitivewordDescReplacement is the schema descriptor for replacement field.
+	sensitivewordDescReplacement := sensitivewordFields[4].Descriptor()
+	// sensitiveword.DefaultReplacement holds the default value on creation for the replacement field.
+	sensitiveword.DefaultReplacement = sensitivewordDescReplacement.Default.(string)
+	// sensitiveword.ReplacementValidator is a validator for the "replacement" field. It is called by the builders before save.
+	sensitiveword.ReplacementValidator = sensitivewordDescReplacement.Validators[0].(func(string) error)
+	// sensitivewordDescEnabled is the schema descriptor for enabled field.
+	sensitivewordDescEnabled := sensitivewordFields[5].Descriptor()
+	// sensitiveword.DefaultEnabled holds the default value on creation for the enabled field.
+	sensitiveword.DefaultEnabled = sensitivewordDescEnabled.Default.(bool)
+	// sensitivewordDescCreatedAt is the schema descriptor for created_at field.
+	sensitivewordDescCreatedAt := sensitivewordFields[6].Descriptor()
+	// sensitiveword.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sensitiveword.DefaultCreatedAt = sensitivewordDescCreatedAt.Default.(func() time.Time)
+	// sensitivewordDescUpdatedAt is the schema descriptor for updated_at field.
+	sensitivewordDescUpdatedAt := sensitivewordFields[7].Descriptor()
+	// sensitiveword.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	sensitiveword.DefaultUpdatedAt = sensitivewordDescUpdatedAt.Default.(func() time.Time)
+	// sensitiveword.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	sensitiveword.UpdateDefaultUpdatedAt = sensitivewordDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// sensitivewordDescID is the schema descriptor for id field.
+	sensitivewordDescID := sensitivewordFields[0].Descriptor()
+	// sensitiveword.DefaultID holds the default value on creation for the id field.
+	sensitiveword.DefaultID = sensitivewordDescID.Default.(func() string)
+	// sensitiveword.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	sensitiveword.IDValidator = sensitivewordDescID.Validators[0].(func(string) error)
 	sessionFields := schema.Session{}.Fields()
 	_ = sessionFields
 	// sessionDescUserID is the schema descriptor for user_id field.
@@ -1697,19 +2290,27 @@ func init() {
 	// site.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
 	site.DescriptionValidator = siteDescDescription.Validators[0].(func(string) error)
 	// siteDescRegistrationOpen is the schema descriptor for registration_open field.
-	siteDescRegistrationOpen := siteFields[9].Descriptor()
+	siteDescRegistrationOpen := siteFields[10].Descriptor()
 	// site.DefaultRegistrationOpen holds the default value on creation for the registration_open field.
 	site.DefaultRegistrationOpen = siteDescRegistrationOpen.Default.(bool)
+	// siteDescCommentsEnabled is the schema descriptor for comments_enabled field.
+	siteDescCommentsEnabled := siteFields[11].Descriptor()
+	// site.DefaultCommentsEnabled holds the default value on creation for the comments_enabled field.
+	site.DefaultCommentsEnabled = siteDescCommentsEnabled.Default.(bool)
+	// siteDescCommentsRequireReview is the schema descriptor for comments_require_review field.
+	siteDescCommentsRequireReview := siteFields[12].Descriptor()
+	// site.DefaultCommentsRequireReview holds the default value on creation for the comments_require_review field.
+	site.DefaultCommentsRequireReview = siteDescCommentsRequireReview.Default.(bool)
 	// siteDescDisabled is the schema descriptor for disabled field.
-	siteDescDisabled := siteFields[10].Descriptor()
+	siteDescDisabled := siteFields[13].Descriptor()
 	// site.DefaultDisabled holds the default value on creation for the disabled field.
 	site.DefaultDisabled = siteDescDisabled.Default.(bool)
 	// siteDescCreatedAt is the schema descriptor for created_at field.
-	siteDescCreatedAt := siteFields[11].Descriptor()
+	siteDescCreatedAt := siteFields[14].Descriptor()
 	// site.DefaultCreatedAt holds the default value on creation for the created_at field.
 	site.DefaultCreatedAt = siteDescCreatedAt.Default.(func() time.Time)
 	// siteDescUpdatedAt is the schema descriptor for updated_at field.
-	siteDescUpdatedAt := siteFields[12].Descriptor()
+	siteDescUpdatedAt := siteFields[15].Descriptor()
 	// site.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	site.DefaultUpdatedAt = siteDescUpdatedAt.Default.(func() time.Time)
 	// site.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -1720,6 +2321,46 @@ func init() {
 	site.DefaultID = siteDescID.Default.(func() string)
 	// site.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	site.IDValidator = siteDescID.Validators[0].(func(string) error)
+	siteconfigFields := schema.SiteConfig{}.Fields()
+	_ = siteconfigFields
+	// siteconfigDescSiteID is the schema descriptor for site_id field.
+	siteconfigDescSiteID := siteconfigFields[1].Descriptor()
+	// siteconfig.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	siteconfig.SiteIDValidator = func() func(string) error {
+		validators := siteconfigDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// siteconfigDescRevision is the schema descriptor for revision field.
+	siteconfigDescRevision := siteconfigFields[3].Descriptor()
+	// siteconfig.DefaultRevision holds the default value on creation for the revision field.
+	siteconfig.DefaultRevision = siteconfigDescRevision.Default.(int)
+	// siteconfigDescCreatedAt is the schema descriptor for created_at field.
+	siteconfigDescCreatedAt := siteconfigFields[4].Descriptor()
+	// siteconfig.DefaultCreatedAt holds the default value on creation for the created_at field.
+	siteconfig.DefaultCreatedAt = siteconfigDescCreatedAt.Default.(func() time.Time)
+	// siteconfigDescUpdatedAt is the schema descriptor for updated_at field.
+	siteconfigDescUpdatedAt := siteconfigFields[5].Descriptor()
+	// siteconfig.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	siteconfig.DefaultUpdatedAt = siteconfigDescUpdatedAt.Default.(func() time.Time)
+	// siteconfig.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	siteconfig.UpdateDefaultUpdatedAt = siteconfigDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// siteconfigDescID is the schema descriptor for id field.
+	siteconfigDescID := siteconfigFields[0].Descriptor()
+	// siteconfig.DefaultID holds the default value on creation for the id field.
+	siteconfig.DefaultID = siteconfigDescID.Default.(func() string)
+	// siteconfig.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	siteconfig.IDValidator = siteconfigDescID.Validators[0].(func(string) error)
 	sitecustomizationFields := schema.SiteCustomization{}.Fields()
 	_ = sitecustomizationFields
 	// sitecustomizationDescSiteID is the schema descriptor for site_id field.
@@ -1760,6 +2401,62 @@ func init() {
 	sitecustomization.DefaultID = sitecustomizationDescID.Default.(func() string)
 	// sitecustomization.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	sitecustomization.IDValidator = sitecustomizationDescID.Validators[0].(func(string) error)
+	siteipruleFields := schema.SiteIPRule{}.Fields()
+	_ = siteipruleFields
+	// siteipruleDescSiteID is the schema descriptor for site_id field.
+	siteipruleDescSiteID := siteipruleFields[1].Descriptor()
+	// siteiprule.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	siteiprule.SiteIDValidator = func() func(string) error {
+		validators := siteipruleDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// siteipruleDescKind is the schema descriptor for kind field.
+	siteipruleDescKind := siteipruleFields[2].Descriptor()
+	// siteiprule.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	siteiprule.KindValidator = siteipruleDescKind.Validators[0].(func(string) error)
+	// siteipruleDescValue is the schema descriptor for value field.
+	siteipruleDescValue := siteipruleFields[3].Descriptor()
+	// siteiprule.ValueValidator is a validator for the "value" field. It is called by the builders before save.
+	siteiprule.ValueValidator = func() func(string) error {
+		validators := siteipruleDescValue.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(value string) error {
+			for _, fn := range fns {
+				if err := fn(value); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// siteipruleDescNote is the schema descriptor for note field.
+	siteipruleDescNote := siteipruleFields[4].Descriptor()
+	// siteiprule.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	siteiprule.NoteValidator = siteipruleDescNote.Validators[0].(func(string) error)
+	// siteipruleDescCreatedAt is the schema descriptor for created_at field.
+	siteipruleDescCreatedAt := siteipruleFields[5].Descriptor()
+	// siteiprule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	siteiprule.DefaultCreatedAt = siteipruleDescCreatedAt.Default.(func() time.Time)
+	// siteipruleDescID is the schema descriptor for id field.
+	siteipruleDescID := siteipruleFields[0].Descriptor()
+	// siteiprule.DefaultID holds the default value on creation for the id field.
+	siteiprule.DefaultID = siteipruleDescID.Default.(func() string)
+	// siteiprule.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	siteiprule.IDValidator = siteipruleDescID.Validators[0].(func(string) error)
 	sitememberFields := schema.SiteMember{}.Fields()
 	_ = sitememberFields
 	// sitememberDescSiteID is the schema descriptor for site_id field.
@@ -1810,12 +2507,18 @@ func init() {
 	sitemember.DefaultStatus = sitememberDescStatus.Default.(string)
 	// sitemember.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	sitemember.StatusValidator = sitememberDescStatus.Validators[0].(func(string) error)
+	// sitememberDescGroupKey is the schema descriptor for group_key field.
+	sitememberDescGroupKey := sitememberFields[5].Descriptor()
+	// sitemember.DefaultGroupKey holds the default value on creation for the group_key field.
+	sitemember.DefaultGroupKey = sitememberDescGroupKey.Default.(string)
+	// sitemember.GroupKeyValidator is a validator for the "group_key" field. It is called by the builders before save.
+	sitemember.GroupKeyValidator = sitememberDescGroupKey.Validators[0].(func(string) error)
 	// sitememberDescCreatedAt is the schema descriptor for created_at field.
-	sitememberDescCreatedAt := sitememberFields[5].Descriptor()
+	sitememberDescCreatedAt := sitememberFields[7].Descriptor()
 	// sitemember.DefaultCreatedAt holds the default value on creation for the created_at field.
 	sitemember.DefaultCreatedAt = sitememberDescCreatedAt.Default.(func() time.Time)
 	// sitememberDescUpdatedAt is the schema descriptor for updated_at field.
-	sitememberDescUpdatedAt := sitememberFields[6].Descriptor()
+	sitememberDescUpdatedAt := sitememberFields[8].Descriptor()
 	// sitemember.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	sitemember.DefaultUpdatedAt = sitememberDescUpdatedAt.Default.(func() time.Time)
 	// sitemember.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -1826,6 +2529,60 @@ func init() {
 	sitemember.DefaultID = sitememberDescID.Default.(func() string)
 	// sitemember.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	sitemember.IDValidator = sitememberDescID.Validators[0].(func(string) error)
+	sitesafetysettingFields := schema.SiteSafetySetting{}.Fields()
+	_ = sitesafetysettingFields
+	// sitesafetysettingDescSiteID is the schema descriptor for site_id field.
+	sitesafetysettingDescSiteID := sitesafetysettingFields[1].Descriptor()
+	// sitesafetysetting.SiteIDValidator is a validator for the "site_id" field. It is called by the builders before save.
+	sitesafetysetting.SiteIDValidator = func() func(string) error {
+		validators := sitesafetysettingDescSiteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(site_id string) error {
+			for _, fn := range fns {
+				if err := fn(site_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// sitesafetysettingDescCommentUserLimit is the schema descriptor for comment_user_limit field.
+	sitesafetysettingDescCommentUserLimit := sitesafetysettingFields[2].Descriptor()
+	// sitesafetysetting.DefaultCommentUserLimit holds the default value on creation for the comment_user_limit field.
+	sitesafetysetting.DefaultCommentUserLimit = sitesafetysettingDescCommentUserLimit.Default.(int)
+	// sitesafetysetting.CommentUserLimitValidator is a validator for the "comment_user_limit" field. It is called by the builders before save.
+	sitesafetysetting.CommentUserLimitValidator = sitesafetysettingDescCommentUserLimit.Validators[0].(func(int) error)
+	// sitesafetysettingDescCommentIPLimit is the schema descriptor for comment_ip_limit field.
+	sitesafetysettingDescCommentIPLimit := sitesafetysettingFields[3].Descriptor()
+	// sitesafetysetting.DefaultCommentIPLimit holds the default value on creation for the comment_ip_limit field.
+	sitesafetysetting.DefaultCommentIPLimit = sitesafetysettingDescCommentIPLimit.Default.(int)
+	// sitesafetysetting.CommentIPLimitValidator is a validator for the "comment_ip_limit" field. It is called by the builders before save.
+	sitesafetysetting.CommentIPLimitValidator = sitesafetysettingDescCommentIPLimit.Validators[0].(func(int) error)
+	// sitesafetysettingDescCommentWindowSeconds is the schema descriptor for comment_window_seconds field.
+	sitesafetysettingDescCommentWindowSeconds := sitesafetysettingFields[4].Descriptor()
+	// sitesafetysetting.DefaultCommentWindowSeconds holds the default value on creation for the comment_window_seconds field.
+	sitesafetysetting.DefaultCommentWindowSeconds = sitesafetysettingDescCommentWindowSeconds.Default.(int)
+	// sitesafetysetting.CommentWindowSecondsValidator is a validator for the "comment_window_seconds" field. It is called by the builders before save.
+	sitesafetysetting.CommentWindowSecondsValidator = sitesafetysettingDescCommentWindowSeconds.Validators[0].(func(int) error)
+	// sitesafetysettingDescCreatedAt is the schema descriptor for created_at field.
+	sitesafetysettingDescCreatedAt := sitesafetysettingFields[5].Descriptor()
+	// sitesafetysetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sitesafetysetting.DefaultCreatedAt = sitesafetysettingDescCreatedAt.Default.(func() time.Time)
+	// sitesafetysettingDescUpdatedAt is the schema descriptor for updated_at field.
+	sitesafetysettingDescUpdatedAt := sitesafetysettingFields[6].Descriptor()
+	// sitesafetysetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	sitesafetysetting.DefaultUpdatedAt = sitesafetysettingDescUpdatedAt.Default.(func() time.Time)
+	// sitesafetysetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	sitesafetysetting.UpdateDefaultUpdatedAt = sitesafetysettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// sitesafetysettingDescID is the schema descriptor for id field.
+	sitesafetysettingDescID := sitesafetysettingFields[0].Descriptor()
+	// sitesafetysetting.DefaultID holds the default value on creation for the id field.
+	sitesafetysetting.DefaultID = sitesafetysettingDescID.Default.(func() string)
+	// sitesafetysetting.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	sitesafetysetting.IDValidator = sitesafetysettingDescID.Validators[0].(func(string) error)
 	taxonomytermFields := schema.TaxonomyTerm{}.Fields()
 	_ = taxonomytermFields
 	// taxonomytermDescSiteID is the schema descriptor for site_id field.
@@ -1914,6 +2671,68 @@ func init() {
 	taxonomyterm.DefaultID = taxonomytermDescID.Default.(func() string)
 	// taxonomyterm.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	taxonomyterm.IDValidator = taxonomytermDescID.Validators[0].(func(string) error)
+	twofactorFields := schema.TwoFactor{}.Fields()
+	_ = twofactorFields
+	// twofactorDescUserID is the schema descriptor for user_id field.
+	twofactorDescUserID := twofactorFields[1].Descriptor()
+	// twofactor.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	twofactor.UserIDValidator = func() func(string) error {
+		validators := twofactorDescUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(user_id string) error {
+			for _, fn := range fns {
+				if err := fn(user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// twofactorDescSecret is the schema descriptor for secret field.
+	twofactorDescSecret := twofactorFields[2].Descriptor()
+	// twofactor.SecretValidator is a validator for the "secret" field. It is called by the builders before save.
+	twofactor.SecretValidator = func() func(string) error {
+		validators := twofactorDescSecret.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(secret string) error {
+			for _, fn := range fns {
+				if err := fn(secret); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// twofactorDescEnabled is the schema descriptor for enabled field.
+	twofactorDescEnabled := twofactorFields[3].Descriptor()
+	// twofactor.DefaultEnabled holds the default value on creation for the enabled field.
+	twofactor.DefaultEnabled = twofactorDescEnabled.Default.(bool)
+	// twofactorDescLastUsedStep is the schema descriptor for last_used_step field.
+	twofactorDescLastUsedStep := twofactorFields[5].Descriptor()
+	// twofactor.DefaultLastUsedStep holds the default value on creation for the last_used_step field.
+	twofactor.DefaultLastUsedStep = twofactorDescLastUsedStep.Default.(int64)
+	// twofactorDescCreatedAt is the schema descriptor for created_at field.
+	twofactorDescCreatedAt := twofactorFields[6].Descriptor()
+	// twofactor.DefaultCreatedAt holds the default value on creation for the created_at field.
+	twofactor.DefaultCreatedAt = twofactorDescCreatedAt.Default.(func() time.Time)
+	// twofactorDescUpdatedAt is the schema descriptor for updated_at field.
+	twofactorDescUpdatedAt := twofactorFields[7].Descriptor()
+	// twofactor.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	twofactor.DefaultUpdatedAt = twofactorDescUpdatedAt.Default.(func() time.Time)
+	// twofactor.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	twofactor.UpdateDefaultUpdatedAt = twofactorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// twofactorDescID is the schema descriptor for id field.
+	twofactorDescID := twofactorFields[0].Descriptor()
+	// twofactor.DefaultID holds the default value on creation for the id field.
+	twofactor.DefaultID = twofactorDescID.Default.(func() string)
+	// twofactor.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	twofactor.IDValidator = twofactorDescID.Validators[0].(func(string) error)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescDisplayName is the schema descriptor for display_name field.
@@ -1949,17 +2768,17 @@ func init() {
 	// user.AvatarMediaIDValidator is a validator for the "avatar_media_id" field. It is called by the builders before save.
 	user.AvatarMediaIDValidator = userDescAvatarMediaID.Validators[0].(func(string) error)
 	// userDescLocale is the schema descriptor for locale field.
-	userDescLocale := userFields[5].Descriptor()
+	userDescLocale := userFields[6].Descriptor()
 	// user.DefaultLocale holds the default value on creation for the locale field.
 	user.DefaultLocale = userDescLocale.Default.(string)
 	// user.LocaleValidator is a validator for the "locale" field. It is called by the builders before save.
 	user.LocaleValidator = userDescLocale.Validators[0].(func(string) error)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[6].Descriptor()
+	userDescCreatedAt := userFields[7].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[7].Descriptor()
+	userDescUpdatedAt := userFields[8].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

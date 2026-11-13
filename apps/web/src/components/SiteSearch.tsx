@@ -39,7 +39,7 @@ export function SiteSearch({ placeholder }: { placeholder?: string }) {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       backend
-        .search(keyword, undefined, 6)
+        .search(keyword, { limit: 6 })
         .then((page) => {
           if (cancelled) return;
           setHits(page.items);

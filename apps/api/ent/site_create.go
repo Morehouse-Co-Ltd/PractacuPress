@@ -119,6 +119,20 @@ func (_c *SiteCreate) SetNillableDescription(v *string) *SiteCreate {
 	return _c
 }
 
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (_c *SiteCreate) SetMediaQuotaBytes(v int64) *SiteCreate {
+	_c.mutation.SetMediaQuotaBytes(v)
+	return _c
+}
+
+// SetNillableMediaQuotaBytes sets the "media_quota_bytes" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableMediaQuotaBytes(v *int64) *SiteCreate {
+	if v != nil {
+		_c.SetMediaQuotaBytes(*v)
+	}
+	return _c
+}
+
 // SetRegistrationOpen sets the "registration_open" field.
 func (_c *SiteCreate) SetRegistrationOpen(v bool) *SiteCreate {
 	_c.mutation.SetRegistrationOpen(v)
@@ -129,6 +143,34 @@ func (_c *SiteCreate) SetRegistrationOpen(v bool) *SiteCreate {
 func (_c *SiteCreate) SetNillableRegistrationOpen(v *bool) *SiteCreate {
 	if v != nil {
 		_c.SetRegistrationOpen(*v)
+	}
+	return _c
+}
+
+// SetCommentsEnabled sets the "comments_enabled" field.
+func (_c *SiteCreate) SetCommentsEnabled(v bool) *SiteCreate {
+	_c.mutation.SetCommentsEnabled(v)
+	return _c
+}
+
+// SetNillableCommentsEnabled sets the "comments_enabled" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableCommentsEnabled(v *bool) *SiteCreate {
+	if v != nil {
+		_c.SetCommentsEnabled(*v)
+	}
+	return _c
+}
+
+// SetCommentsRequireReview sets the "comments_require_review" field.
+func (_c *SiteCreate) SetCommentsRequireReview(v bool) *SiteCreate {
+	_c.mutation.SetCommentsRequireReview(v)
+	return _c
+}
+
+// SetNillableCommentsRequireReview sets the "comments_require_review" field if the given value is not nil.
+func (_c *SiteCreate) SetNillableCommentsRequireReview(v *bool) *SiteCreate {
+	if v != nil {
+		_c.SetCommentsRequireReview(*v)
 	}
 	return _c
 }
@@ -236,6 +278,14 @@ func (_c *SiteCreate) defaults() {
 		v := site.DefaultRegistrationOpen
 		_c.mutation.SetRegistrationOpen(v)
 	}
+	if _, ok := _c.mutation.CommentsEnabled(); !ok {
+		v := site.DefaultCommentsEnabled
+		_c.mutation.SetCommentsEnabled(v)
+	}
+	if _, ok := _c.mutation.CommentsRequireReview(); !ok {
+		v := site.DefaultCommentsRequireReview
+		_c.mutation.SetCommentsRequireReview(v)
+	}
 	if _, ok := _c.mutation.Disabled(); !ok {
 		v := site.DefaultDisabled
 		_c.mutation.SetDisabled(v)
@@ -305,6 +355,12 @@ func (_c *SiteCreate) check() error {
 	}
 	if _, ok := _c.mutation.RegistrationOpen(); !ok {
 		return &ValidationError{Name: "registration_open", err: errors.New(`ent: missing required field "Site.registration_open"`)}
+	}
+	if _, ok := _c.mutation.CommentsEnabled(); !ok {
+		return &ValidationError{Name: "comments_enabled", err: errors.New(`ent: missing required field "Site.comments_enabled"`)}
+	}
+	if _, ok := _c.mutation.CommentsRequireReview(); !ok {
+		return &ValidationError{Name: "comments_require_review", err: errors.New(`ent: missing required field "Site.comments_require_review"`)}
 	}
 	if _, ok := _c.mutation.Disabled(); !ok {
 		return &ValidationError{Name: "disabled", err: errors.New(`ent: missing required field "Site.disabled"`)}
@@ -388,9 +444,21 @@ func (_c *SiteCreate) createSpec() (*Site, *sqlgraph.CreateSpec) {
 		_spec.SetField(site.FieldDescription, field.TypeString, value)
 		_node.Description = &value
 	}
+	if value, ok := _c.mutation.MediaQuotaBytes(); ok {
+		_spec.SetField(site.FieldMediaQuotaBytes, field.TypeInt64, value)
+		_node.MediaQuotaBytes = &value
+	}
 	if value, ok := _c.mutation.RegistrationOpen(); ok {
 		_spec.SetField(site.FieldRegistrationOpen, field.TypeBool, value)
 		_node.RegistrationOpen = value
+	}
+	if value, ok := _c.mutation.CommentsEnabled(); ok {
+		_spec.SetField(site.FieldCommentsEnabled, field.TypeBool, value)
+		_node.CommentsEnabled = value
+	}
+	if value, ok := _c.mutation.CommentsRequireReview(); ok {
+		_spec.SetField(site.FieldCommentsRequireReview, field.TypeBool, value)
+		_node.CommentsRequireReview = value
 	}
 	if value, ok := _c.mutation.Disabled(); ok {
 		_spec.SetField(site.FieldDisabled, field.TypeBool, value)
@@ -576,6 +644,30 @@ func (u *SiteUpsert) ClearDescription() *SiteUpsert {
 	return u
 }
 
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (u *SiteUpsert) SetMediaQuotaBytes(v int64) *SiteUpsert {
+	u.Set(site.FieldMediaQuotaBytes, v)
+	return u
+}
+
+// UpdateMediaQuotaBytes sets the "media_quota_bytes" field to the value that was provided on create.
+func (u *SiteUpsert) UpdateMediaQuotaBytes() *SiteUpsert {
+	u.SetExcluded(site.FieldMediaQuotaBytes)
+	return u
+}
+
+// AddMediaQuotaBytes adds v to the "media_quota_bytes" field.
+func (u *SiteUpsert) AddMediaQuotaBytes(v int64) *SiteUpsert {
+	u.Add(site.FieldMediaQuotaBytes, v)
+	return u
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (u *SiteUpsert) ClearMediaQuotaBytes() *SiteUpsert {
+	u.SetNull(site.FieldMediaQuotaBytes)
+	return u
+}
+
 // SetRegistrationOpen sets the "registration_open" field.
 func (u *SiteUpsert) SetRegistrationOpen(v bool) *SiteUpsert {
 	u.Set(site.FieldRegistrationOpen, v)
@@ -585,6 +677,30 @@ func (u *SiteUpsert) SetRegistrationOpen(v bool) *SiteUpsert {
 // UpdateRegistrationOpen sets the "registration_open" field to the value that was provided on create.
 func (u *SiteUpsert) UpdateRegistrationOpen() *SiteUpsert {
 	u.SetExcluded(site.FieldRegistrationOpen)
+	return u
+}
+
+// SetCommentsEnabled sets the "comments_enabled" field.
+func (u *SiteUpsert) SetCommentsEnabled(v bool) *SiteUpsert {
+	u.Set(site.FieldCommentsEnabled, v)
+	return u
+}
+
+// UpdateCommentsEnabled sets the "comments_enabled" field to the value that was provided on create.
+func (u *SiteUpsert) UpdateCommentsEnabled() *SiteUpsert {
+	u.SetExcluded(site.FieldCommentsEnabled)
+	return u
+}
+
+// SetCommentsRequireReview sets the "comments_require_review" field.
+func (u *SiteUpsert) SetCommentsRequireReview(v bool) *SiteUpsert {
+	u.Set(site.FieldCommentsRequireReview, v)
+	return u
+}
+
+// UpdateCommentsRequireReview sets the "comments_require_review" field to the value that was provided on create.
+func (u *SiteUpsert) UpdateCommentsRequireReview() *SiteUpsert {
+	u.SetExcluded(site.FieldCommentsRequireReview)
 	return u
 }
 
@@ -803,6 +919,34 @@ func (u *SiteUpsertOne) ClearDescription() *SiteUpsertOne {
 	})
 }
 
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (u *SiteUpsertOne) SetMediaQuotaBytes(v int64) *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetMediaQuotaBytes(v)
+	})
+}
+
+// AddMediaQuotaBytes adds v to the "media_quota_bytes" field.
+func (u *SiteUpsertOne) AddMediaQuotaBytes(v int64) *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.AddMediaQuotaBytes(v)
+	})
+}
+
+// UpdateMediaQuotaBytes sets the "media_quota_bytes" field to the value that was provided on create.
+func (u *SiteUpsertOne) UpdateMediaQuotaBytes() *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateMediaQuotaBytes()
+	})
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (u *SiteUpsertOne) ClearMediaQuotaBytes() *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.ClearMediaQuotaBytes()
+	})
+}
+
 // SetRegistrationOpen sets the "registration_open" field.
 func (u *SiteUpsertOne) SetRegistrationOpen(v bool) *SiteUpsertOne {
 	return u.Update(func(s *SiteUpsert) {
@@ -814,6 +958,34 @@ func (u *SiteUpsertOne) SetRegistrationOpen(v bool) *SiteUpsertOne {
 func (u *SiteUpsertOne) UpdateRegistrationOpen() *SiteUpsertOne {
 	return u.Update(func(s *SiteUpsert) {
 		s.UpdateRegistrationOpen()
+	})
+}
+
+// SetCommentsEnabled sets the "comments_enabled" field.
+func (u *SiteUpsertOne) SetCommentsEnabled(v bool) *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetCommentsEnabled(v)
+	})
+}
+
+// UpdateCommentsEnabled sets the "comments_enabled" field to the value that was provided on create.
+func (u *SiteUpsertOne) UpdateCommentsEnabled() *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateCommentsEnabled()
+	})
+}
+
+// SetCommentsRequireReview sets the "comments_require_review" field.
+func (u *SiteUpsertOne) SetCommentsRequireReview(v bool) *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetCommentsRequireReview(v)
+	})
+}
+
+// UpdateCommentsRequireReview sets the "comments_require_review" field to the value that was provided on create.
+func (u *SiteUpsertOne) UpdateCommentsRequireReview() *SiteUpsertOne {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateCommentsRequireReview()
 	})
 }
 
@@ -1203,6 +1375,34 @@ func (u *SiteUpsertBulk) ClearDescription() *SiteUpsertBulk {
 	})
 }
 
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (u *SiteUpsertBulk) SetMediaQuotaBytes(v int64) *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetMediaQuotaBytes(v)
+	})
+}
+
+// AddMediaQuotaBytes adds v to the "media_quota_bytes" field.
+func (u *SiteUpsertBulk) AddMediaQuotaBytes(v int64) *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.AddMediaQuotaBytes(v)
+	})
+}
+
+// UpdateMediaQuotaBytes sets the "media_quota_bytes" field to the value that was provided on create.
+func (u *SiteUpsertBulk) UpdateMediaQuotaBytes() *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateMediaQuotaBytes()
+	})
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (u *SiteUpsertBulk) ClearMediaQuotaBytes() *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.ClearMediaQuotaBytes()
+	})
+}
+
 // SetRegistrationOpen sets the "registration_open" field.
 func (u *SiteUpsertBulk) SetRegistrationOpen(v bool) *SiteUpsertBulk {
 	return u.Update(func(s *SiteUpsert) {
@@ -1214,6 +1414,34 @@ func (u *SiteUpsertBulk) SetRegistrationOpen(v bool) *SiteUpsertBulk {
 func (u *SiteUpsertBulk) UpdateRegistrationOpen() *SiteUpsertBulk {
 	return u.Update(func(s *SiteUpsert) {
 		s.UpdateRegistrationOpen()
+	})
+}
+
+// SetCommentsEnabled sets the "comments_enabled" field.
+func (u *SiteUpsertBulk) SetCommentsEnabled(v bool) *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetCommentsEnabled(v)
+	})
+}
+
+// UpdateCommentsEnabled sets the "comments_enabled" field to the value that was provided on create.
+func (u *SiteUpsertBulk) UpdateCommentsEnabled() *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateCommentsEnabled()
+	})
+}
+
+// SetCommentsRequireReview sets the "comments_require_review" field.
+func (u *SiteUpsertBulk) SetCommentsRequireReview(v bool) *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.SetCommentsRequireReview(v)
+	})
+}
+
+// UpdateCommentsRequireReview sets the "comments_require_review" field to the value that was provided on create.
+func (u *SiteUpsertBulk) UpdateCommentsRequireReview() *SiteUpsertBulk {
+	return u.Update(func(s *SiteUpsert) {
+		s.UpdateCommentsRequireReview()
 	})
 }
 

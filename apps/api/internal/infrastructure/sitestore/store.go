@@ -89,12 +89,19 @@ func (s *Store) FindMember(ctx context.Context, siteID, userID string) (site.Mem
 	member := toMember(row)
 	if account, err := s.client.User.Get(ctx, row.UserID); err == nil {
 		member.DisplayName = account.DisplayName
+		if account.Bio != nil {
+			member.Bio = *account.Bio
+		}
+		if account.AvatarMediaID != nil {
+			member.AvatarMediaID = *account.AvatarMediaID
+		}
 	}
 	if identity, err := s.client.UserIdentity.Query().
 		Where(useridentity.UserIDEQ(row.UserID), useridentity.ProviderEQ(providerEmail)).
 		Only(ctx); err == nil {
 		member.Email = identityEmail(identity)
 	}
+	s.applyMemberGroup(ctx, siteID, &member)
 	return member, nil
 }
 
@@ -121,9 +128,9 @@ func (s *Store) ListMembers(ctx context.Context, siteID string, limit int) ([]si
 	if err != nil {
 		return nil, err
 	}
-	names := make(map[string]string, len(accounts))
+	profiles := make(map[string]*entgen.User, len(accounts))
 	for _, account := range accounts {
-		names[account.ID] = account.DisplayName
+		profiles[account.ID] = account
 	}
 
 	// The admin screen shows the login email next to each member, so one extra query
@@ -142,8 +149,99 @@ func (s *Store) ListMembers(ctx context.Context, siteID string, limit int) ([]si
 	members := make([]site.Member, 0, len(rows))
 	for _, row := range rows {
 		member := toMember(row)
-		member.DisplayName = names[row.UserID]
+		if profile := profiles[row.UserID]; profile != nil {
+			member.DisplayName = profile.DisplayName
+			if profile.Bio != nil {
+				member.Bio = *profile.Bio
+			}
+			if profile.AvatarMediaID != nil {
+				member.AvatarMediaID = *profile.AvatarMediaID
+			}
+		}
 		member.Email = emails[row.UserID]
+		s.applyMemberGroup(ctx, siteID, &member)
+		members = append(members, member)
+	}
+	return members, nil
+}
+
+// ListMemberDirectory returns active members for the signed-in member directory.
+//
+// It is a separate query from ListMembers because the directory is paginated by
+// membership creation time and returns the public profile projection; the admin list
+// keeps its email join and is bounded to one page.
+func (s *Store) ListMemberDirectory(
+	ctx context.Context,
+	filter site.MemberDirectoryFilter,
+) ([]site.Member, error) {
+	query := s.client.SiteMember.Query().
+		Where(
+			sitemember.SiteIDEQ(filter.SiteID),
+			sitemember.StatusEQ(site.MemberStatusActive),
+		)
+	if filter.Query != "" {
+		ids, err := s.client.User.Query().
+			Where(user.DisplayNameContainsFold(filter.Query)).
+			IDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) == 0 {
+			return []site.Member{}, nil
+		}
+		query = query.Where(sitemember.UserIDIn(ids...))
+	}
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, site.ErrInvalidInput
+		}
+		query = query.Where(sitemember.Or(
+			sitemember.CreatedAtGT(at),
+			sitemember.And(sitemember.CreatedAtEQ(at), sitemember.UserIDGT(filter.After.ID)),
+		))
+	}
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	rows, err := query.
+		Order(entgen.Asc(sitemember.FieldCreatedAt), entgen.Asc(sitemember.FieldUserID)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []site.Member{}, nil
+	}
+
+	userIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		userIDs = append(userIDs, row.UserID)
+	}
+	accounts, err := s.client.User.Query().Where(user.IDIn(userIDs...)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]*entgen.User, len(accounts))
+	for _, account := range accounts {
+		profiles[account.ID] = account
+	}
+
+	members := make([]site.Member, 0, len(rows))
+	for _, row := range rows {
+		member := toMember(row)
+		if profile := profiles[row.UserID]; profile != nil {
+			member.DisplayName = profile.DisplayName
+			if profile.Bio != nil {
+				member.Bio = *profile.Bio
+			}
+			if profile.AvatarMediaID != nil {
+				member.AvatarMediaID = *profile.AvatarMediaID
+			}
+		}
 		members = append(members, member)
 	}
 	return members, nil
@@ -193,6 +291,11 @@ func (s *Store) UpdateMemberRole(
 	updated, err := tx.SiteMember.Update().
 		Where(sitemember.SiteIDEQ(siteID), sitemember.UserIDEQ(userID)).
 		SetRole(string(role)).
+		// A role change moves the membership back to the built-in group of the new
+		// role. Keeping a custom group key from the old role would leave the member
+		// pointing at a matrix whose base role no longer matches, and the dashboard
+		// would show a group the authorization chain does not actually use.
+		SetGroupKey(site.GroupKeyForRole(role)).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -342,6 +445,49 @@ func (s *Store) UpdateMemberStatus(
 	return nil
 }
 
+// UpdateMemberMediaQuota sets or clears a member override and records the change
+// atomically. The site and user predicates keep the update inside one membership.
+func (s *Store) UpdateMemberMediaQuota(
+	ctx context.Context,
+	siteID, userID string,
+	quota site.QuotaOverride,
+	audit site.AuditEntry,
+) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	update := tx.SiteMember.Update().
+		Where(sitemember.SiteIDEQ(siteID), sitemember.UserIDEQ(userID))
+	if quota.Bytes == nil {
+		update.ClearMediaQuotaBytes()
+	} else {
+		update.SetMediaQuotaBytes(*quota.Bytes)
+	}
+	updated, err := update.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return site.ErrTargetNotFound
+	}
+	if err := insertAudit(ctx, tx.Client(), audit, "site_member", userID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
 // DeleteMember removes the membership and revokes the member's sessions on this site.
 //
 // The account row is intentionally kept: content, comments and other site
@@ -438,6 +584,19 @@ func (s *Store) UpdateSettings(
 		// nil means "leave untouched"; the explicit value is stored as given so a
 		// reopened registration can never be flipped back by a default.
 		update.SetRegistrationOpen(*in.RegistrationOpen)
+	}
+	if in.CommentsEnabled != nil {
+		update.SetCommentsEnabled(*in.CommentsEnabled)
+	}
+	if in.CommentsRequireReview != nil {
+		update.SetCommentsRequireReview(*in.CommentsRequireReview)
+	}
+	if in.MediaQuota.Present {
+		if in.MediaQuota.Bytes == nil {
+			update.ClearMediaQuotaBytes()
+		} else {
+			update.SetMediaQuotaBytes(*in.MediaQuota.Bytes)
+		}
 	}
 	if in.Domain != "" {
 		update.SetDomain(in.Domain)
@@ -560,15 +719,18 @@ func insertAudit(ctx context.Context, client *entgen.Client, entry site.AuditEnt
 
 func toSite(row *entgen.Site) site.Site {
 	result := site.Site{
-		ID:               row.ID,
-		Slug:             row.Slug,
-		Name:             row.Name,
-		VisibilityMode:   site.VisibilityMode(row.VisibilityMode),
-		PublishMode:      site.PublishMode(row.PublishMode),
-		RegistrationOpen: row.RegistrationOpen,
-		Disabled:         row.Disabled,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
+		ID:                    row.ID,
+		Slug:                  row.Slug,
+		Name:                  row.Name,
+		VisibilityMode:        site.VisibilityMode(row.VisibilityMode),
+		PublishMode:           site.PublishMode(row.PublishMode),
+		RegistrationOpen:      row.RegistrationOpen,
+		CommentsEnabled:       row.CommentsEnabled,
+		CommentsRequireReview: row.CommentsRequireReview,
+		MediaQuotaBytes:       row.MediaQuotaBytes,
+		Disabled:              row.Disabled,
+		CreatedAt:             row.CreatedAt,
+		UpdatedAt:             row.UpdatedAt,
 	}
 	if row.Domain != nil {
 		result.Domain = *row.Domain
@@ -585,11 +747,13 @@ func toSite(row *entgen.Site) site.Site {
 
 func toMember(row *entgen.SiteMember) site.Member {
 	return site.Member{
-		ID:        row.ID,
-		SiteID:    row.SiteID,
-		UserID:    row.UserID,
-		Role:      site.Role(row.Role),
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
+		ID:              row.ID,
+		SiteID:          row.SiteID,
+		UserID:          row.UserID,
+		Role:            site.Role(row.Role),
+		Status:          row.Status,
+		MediaQuotaBytes: row.MediaQuotaBytes,
+		CreatedAt:       row.CreatedAt,
+		GroupKey:        row.GroupKey,
 	}
 }

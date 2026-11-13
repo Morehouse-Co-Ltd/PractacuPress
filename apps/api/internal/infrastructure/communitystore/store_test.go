@@ -3,8 +3,8 @@ package communitystore_test
 import (
 	"context"
 	"path/filepath"
-	"time"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 

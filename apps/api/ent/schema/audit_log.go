@@ -34,5 +34,8 @@ func (AuditLog) Indexes() []ent.Index {
 		index.Fields("site_id", "created_at"),
 		index.Fields("actor_id", "created_at"),
 		index.Fields("target_type", "target_id"),
+		// The admin activity page filters by action inside a site and a time range;
+		// without this index that query degrades to a full scan of the audit table.
+		index.Fields("action", "created_at"),
 	}
 }

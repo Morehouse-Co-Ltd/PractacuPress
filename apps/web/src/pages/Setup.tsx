@@ -1,57 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type {
-  AuthProviderId,
   AuthSettings,
-  LayoutVariant,
   ProbeResult,
   Role,
   Site,
-  SiteCustomization,
   SiteKind,
-  ThemeMode,
   WebConfig,
 } from '../types';
 import { HttpBackend, ApiError, normalizeOrigin } from '../lib/api';
-import { DemoBackend } from '../lib/demo';
 import { INSTALL_RESET_KEY, saveConfig } from '../lib/backend';
 import { SITE_KIND_LABEL } from '../lib/site';
 import { passwordProblem, passwordProblemText } from '../lib/passwordPolicy';
-import { createCustomizationWithPages } from '../lib/customize';
-import { DEFAULT_THEME, applyMode, applyPreset } from '../lib/theme';
-import { inferActiveTheme, themeLibrary } from '../lib/themes';
-import { defaultHomeLayout } from '../lib/blocks';
-import {
-  AUTH_PROVIDER_IDS,
-  DEFAULT_AUTH,
-  PROVIDER_BY_ID,
-  providerReady,
-} from '../lib/authProviders';
-import { AuthProvidersEditor } from '../components/AuthProviders';
+import { installCustomization } from '../lib/customize';
+import { DEFAULT_AUTH } from '../lib/authProviders';
 import { errorText, useTitle } from '../lib/hooks';
 import { LOCALES, normalizeLocale, setLocale, useT, type Locale } from '../lib/i18n';
 import { currentPort, readRuntime, type RuntimeInfo } from '../lib/runtime';
 import { PUBLISH_LABEL, ROLE_LABEL, VISIBILITY_LABEL, slugify } from '../lib/format';
 import {
-  Badge,
   Button,
   Callout,
   CopyButton,
   Field,
   Input,
   Textarea,
+  Toggle,
 } from '../components/ui';
 import { Icon, type IconName } from '../components/Icon';
 
 type Database = 'sqlite' | 'mysql' | 'postgres';
 
 interface Draft {
-  mode: 'demo' | 'live';
   apiBase: string;
   database: Database;
   /** 站点语言：先决定界面语言，完成时写进站点设计。 */
   language: Locale;
   db: { host: string; port: string; name: string; user: string; password: string };
   admin: { email: string; display_name: string; password: string; confirm: string };
+  /**
+   * 高威胁操作保护：开关 + 可选的专用安全密码。
+   *
+   * 密码只在内存里走到保存请求；草稿持久化时会清空（和数据库/管理员密码一样），
+   * 不会把口令写进 localStorage。
+   */
+  safety: { enabled: boolean; password: string; confirm: string };
   site: {
     name: string;
     domain: string;
@@ -60,9 +53,6 @@ interface Draft {
     visibility_mode: Site['visibility_mode'];
     publish_mode: Site['publish_mode'];
   };
-  auth: AuthSettings;
-  /** 安装时选一套大主题；之后在「主题设置」里随时改。 */
-  theme: { preset: string; mode: ThemeMode; variant: LayoutVariant };
 }
 
 function cloneAuth(source: AuthSettings): AuthSettings {
@@ -74,79 +64,66 @@ function cloneAuth(source: AuthSettings): AuthSettings {
   };
 }
 
-/** 把安装时选的大主题与语言写成一份完整配置（含默认页面）。 */
-function setupCustomization(theme: Draft['theme'], language: Locale): SiteCustomization {
-  const base = createCustomizationWithPages();
-  const themed = applyMode(applyPreset(DEFAULT_THEME, theme.preset), theme.mode);
-  return {
-    ...base,
-    language,
-    theme: themed,
-    layout: { ...base.layout, variant: theme.variant },
-    active_theme: inferActiveTheme(themed, theme.variant),
-    home: defaultHomeLayout(theme.variant),
-  };
-}
-
 const DRAFT_KEY = 'pp.setup.draft.v1';
 
-const STEPS = ['welcome', 'mode', 'database', 'admin', 'site', 'providers', 'checks'] as const;
+/**
+ * 安装阶段。首次运行只有真实环境：先等后端连上，再确定数据库、管理员、高威胁操作
+ * 保护与站点规则。「连接后端」不是一个可跳过的选项，而是安装链路的第一段，所以它在
+ * 进度里占一格。
+ */
+const STEPS = ['welcome', 'connect', 'database', 'admin', 'safety', 'site', 'checks'] as const;
 
 type StepKey = (typeof STEPS)[number];
 
-function defaultDraft(mode: Draft['mode'] = 'demo'): Draft {
+function defaultDraft(): Draft {
   return {
-    mode,
     apiBase: '',
     database: 'sqlite',
     language: 'zh-CN',
     db: { host: '127.0.0.1', port: '3306', name: 'practacu', user: 'practacu', password: '' },
     admin: { email: '', display_name: '', password: '', confirm: '' },
+    safety: { enabled: true, password: '', confirm: '' },
     site: {
       name: 'Practacu Press',
-      domain: typeof window === 'undefined' ? 'press.local' : window.location.host,
+      // 单站点安装默认留空：服务端会自动匹配本机地址；预填 localhost 反而会解析不到自己。
+      domain: '',
       description: '一间小而安静的编辑部。写作者拥有自己的稿子，读者被当作邻居。',
       kind: 'community',
       visibility_mode: 'public',
       publish_mode: 'review',
     },
-    auth: cloneAuth(DEFAULT_AUTH),
-    theme: { preset: 'paper', mode: 'light', variant: 'classic' },
   };
 }
 
-function loadDraft(forceLive: boolean): Draft {
-  const base = defaultDraft(forceLive ? 'live' : 'demo');
+function loadDraft(): Draft {
+  const base = defaultDraft();
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return base;
     const saved = JSON.parse(raw) as Partial<Draft>;
     const site = { ...base.site, ...saved.site };
+    // 旧草稿可能把安装时访问的 localhost 写了进去。真实环境只信任验证过的域名，
+    // 这里清掉“当前地址”，让单站点安装走自动匹配。
+    if (typeof window !== 'undefined') {
+      const auto = [window.location.host, window.location.hostname].map((value) =>
+        value.toLowerCase(),
+      );
+      if (site.domain && auto.includes(site.domain.trim().toLowerCase())) site.domain = '';
+    }
     if (site.kind === 'personal') {
       site.visibility_mode = 'public';
       site.publish_mode = 'open';
     }
-    const auth = cloneAuth(base.auth);
-    for (const id of AUTH_PROVIDER_IDS) {
-      auth[id] = { ...auth[id], ...(saved.auth?.[id] ?? {}) };
-    }
-    const merged: Draft = {
+    return {
       ...base,
       ...saved,
       // 语言只认两个值：草稿被手改过或来自旧版本时回退简体中文。
       language: normalizeLocale(saved.language),
       db: { ...base.db, ...saved.db, password: '' },
       admin: { ...base.admin, ...saved.admin, password: '', confirm: '' },
+      safety: { ...base.safety, ...saved.safety, password: '', confirm: '' },
       site,
-      auth,
-      theme: { ...base.theme, ...(saved.theme ?? {}) },
     };
-    if (forceLive) {
-      // 一键启动必须进入真实环境：忽略之前保存在草稿里的演示模式选择。
-      merged.mode = 'live';
-      merged.apiBase = '';
-    }
-    return merged;
   } catch {
     return base;
   }
@@ -173,19 +150,42 @@ const DB_LABEL: Record<Database, string> = {
 export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const t = useT();
   useTitle(t('安装引导'));
+  // 安装向导固定是一张浅色纸面：浏览器里可能还留着上一次安装的深色主题变量，
+  // 而向导里的语言切换、选项卡和检查项有硬编码的白底。给 <html> 打上 setup
+  // 标记，让 theme.ts 输出一组固定的浅色令牌，避免白底上的浅色字。
+  // 用 layout effect：标记必须在第一帧绘制前落下，否则会先闪一帧深色。
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const previous = root.dataset.surface;
+    root.dataset.surface = 'setup';
+    return () => {
+      if (previous) root.dataset.surface = previous;
+      else delete root.dataset.surface;
+    };
+  }, []);
+  // 一键启动直接落在连接阶段；普通首次运行从欢迎页开始。
   const [step, setStep] = useState(forceLive ? 1 : 0);
-  const [draft, setDraft] = useState<Draft>(() => loadDraft(forceLive));
+  const [draft, setDraft] = useState<Draft>(loadDraft);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // 创建管理员时用一块不可关闭的遮罩说明“正在写入”，避免慢请求看起来像没反应。
+  const [creating, setCreating] = useState(false);
+  // 阶段切换的方向决定卡片从下方还是上方滑入。
+  const [direction, setDirection] = useState<'forward' | 'back'>('forward');
   const [probe, setProbe] = useState<{ state: 'idle' | 'checking' | 'done' | 'fail'; result?: ProbeResult; message?: string }>({
     state: 'idle',
   });
+  // 自动等待后端时累计尝试次数：超过一轮才展开故障排查提示，避免一进来就吓人。
+  const [attempts, setAttempts] = useState(0);
   const [liveMe, setLiveMe] = useState<{ user_id: string; display_name: string; role: Role; site_id: string } | null>(null);
   const [liveSite, setLiveSite] = useState<Site | null>(null);
-  // 密钥不进入 draft / localStorage，只用于拼接 .env 片段。
-  const [secrets, setSecrets] = useState<Partial<Record<AuthProviderId, string>>>({});
   const [showExisting, setShowExisting] = useState(false);
   const [existing, setExisting] = useState({ email: '', password: '' });
+  // 安装向导里的密码默认隐藏；每个输入区各有一个「查看密码 / 隐藏密码」开关，
+  // 避免把已经输入的口令留在屏幕上。
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [showExistingPassword, setShowExistingPassword] = useState(false);
+  const [showDbPassword, setShowDbPassword] = useState(false);
   const [checks, setChecks] = useState<CheckItem[]>([
     { key: 'ready', label: t('服务就绪'), detail: t('等待检查'), status: 'wait' },
     { key: 'data', label: t('数据存储'), detail: t('等待检查'), status: 'wait' },
@@ -202,9 +202,15 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       return false;
     }
   });
+  /** 高威胁操作保护保存失败时允许跳过：安装不能被一个可选的安全设置卡死。 */
+  const [safetySaveFailed, setSafetySaveFailed] = useState(false);
+  /** 保护设置是否已经写入服务端；跳过之后完成安装时再做一次尽力而为的写入。 */
+  const safetySavedRef = useRef(false);
+  /** 已写入内容的指纹：来回翻页但没改动时不必再写一次（重复写入需要二次验证令牌）。 */
+  const safetyFingerprintRef = useRef('');
   const liveRef = useRef<HttpBackend | null>(null);
-  const autoTriedRef = useRef(false);
   const probingRef = useRef(false);
+  const errorRef = useRef<HTMLDivElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
   // 启动器托管的本机 API 信息；开发服务器与 npm start 没有这个接口，读不到就是 null。
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
@@ -233,6 +239,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       ...draft,
       db: { ...draft.db, password: '' },
       admin: { ...draft.admin, password: '', confirm: '' },
+      safety: { ...draft.safety, password: '', confirm: '' },
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(safe));
   }, [draft]);
@@ -241,6 +248,12 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     if (step === 6) void runChecks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+  // 错误提示在卡片滚动区底部：出现时把它带进视野，避免用户以为按钮没反应。
+  useEffect(() => {
+    if (!error) return;
+    errorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [error]);
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -251,35 +264,14 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const updateAdmin = (patch: Partial<Draft['admin']>) =>
     setDraft((prev) => ({ ...prev, admin: { ...prev.admin, ...patch } }));
 
+  const updateSafety = (patch: Partial<Draft['safety']>) =>
+    setDraft((prev) => ({ ...prev, safety: { ...prev.safety, ...patch } }));
+
   const updateDb = (patch: Partial<Draft['db']>) =>
     setDraft((prev) => ({ ...prev, db: { ...prev.db, ...patch } }));
 
-  const updateTheme = (patch: Partial<Draft['theme']>) =>
-    setDraft((prev) => ({ ...prev, theme: { ...prev.theme, ...patch } }));
-
-  /**
-   * 真实环境不能把「当前地址」默认写成站点域名：服务端只信任完成验证的域名，
-   * 写进去会让站点随后解析不到自己。留空表示单站点自动匹配任意本机地址。
-   */
-  const clearAutoDomain = () => {
-    const current = draft.site.domain.trim().toLowerCase();
-    if (!current) return;
-    const auto = [window.location.host, window.location.hostname].map((value) => value.toLowerCase());
-    if (auto.includes(current)) updateSite({ domain: '' });
-  };
-
-  const continueWithDemo = () => {
-    update('mode', 'demo');
-    resetLive();
-    setManualOpen(false);
-    setError('');
-    if (!draft.site.domain.trim()) updateSite({ domain: window.location.host });
-    go(2);
-  };
-
   const resetLive = () => {
     liveRef.current = null;
-    autoTriedRef.current = false;
     setLiveMe(null);
     setLiveSite(null);
     setProbe({ state: 'idle' });
@@ -287,7 +279,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
 
   const go = (next: number) => {
     setError('');
+    setDirection(next >= step ? 'forward' : 'back');
     setStep(next);
+    // 窄屏是整页滚动：换阶段后回到卡片顶部，避免停在上一步的底部。
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -353,13 +347,38 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     }
   };
 
-  // 进入“运行方式”且已选真实环境时自动连接，不用点“检测连接”。
+  /**
+   * 连接阶段：没有找到后端时不报死，而是停在加载界面持续等待。
+   * 同源与 127.0.0.1:8080 交替探测，成功一次就自动进入数据库设置。
+   */
   useEffect(() => {
-    if (step !== 1 || draft.mode !== 'live' || autoTriedRef.current) return;
-    autoTriedRef.current = true;
-    void connectLive();
+    if (step !== 1 || probe.state === 'done') return;
+    let alive = true;
+    let timer: number | undefined;
+    const loop = async () => {
+      if (!alive) return;
+      const ok = await connectLive();
+      if (!alive) return;
+      setAttempts((count) => count + 1);
+      if (ok) {
+        go(2);
+        return;
+      }
+      timer = window.setTimeout(loop, 3200);
+    };
+    void loop();
+    return () => {
+      alive = false;
+      if (timer) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, draft.mode]);
+  }, [step]);
+
+  const retryConnect = () => {
+    void connectLive().then((ok) => {
+      if (ok) go(2);
+    });
+  };
 
   const dsn = useMemo(() => {
     if (draft.database === 'sqlite') return 'file:./data/practacu.db';
@@ -372,20 +391,13 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
 
   const registerAdmin = async () => {
     setError('');
-    if (draft.mode === 'demo') {
-      const message = validate(3);
-      if (message) {
-        setError(message);
-        return;
-      }
-      setLiveMe({
-        user_id: 'usr_admin',
-        display_name: draft.admin.display_name,
-        role: 'platform_admin',
-        site_id: 'site_main',
-      });
+    const message = validate(3);
+    if (message) {
+      setError(message);
       return;
     }
+    // 慢请求必须给出可见反馈：遮罩 + 旋转图标一直显示到服务端返回。
+    setCreating(true);
     setBusy(true);
     try {
       const backend = liveRef.current ?? new HttpBackend({ base: draft.apiBase, onExpired: () => undefined });
@@ -412,6 +424,8 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           description: site.description ?? draft.site.description,
         });
       }
+      // 创建成功即进入站点设置，不再需要再点一次「继续」。
+      go(4);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'conflict') {
         setShowExisting(true);
@@ -421,16 +435,23 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       }
     } finally {
       setBusy(false);
+      setCreating(false);
     }
   };
 
   const loginExisting = async () => {
     setError('');
+    const message = validate(3);
+    if (message) {
+      setError(message);
+      return;
+    }
+    setCreating(true);
     setBusy(true);
     try {
       const backend = liveRef.current ?? new HttpBackend({ base: draft.apiBase, onExpired: () => undefined });
       liveRef.current = backend;
-      await backend.login(existing);
+      await backend.login({ identifier: existing.email, password: existing.password });
       const me = await backend.me();
       if (me.role !== 'site_admin' && me.role !== 'platform_admin') {
         setError(t('该账户不是站点管理员，无法完成站点配置。'));
@@ -448,10 +469,12 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           description: site.description ?? draft.site.description,
         });
       }
+      go(4);
     } catch (err) {
       setError(errorText(err));
     } finally {
       setBusy(false);
+      setCreating(false);
     }
   };
 
@@ -481,8 +504,49 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     );
   };
 
+  /**
+   * 把高威胁操作保护写入服务端。
+   *
+   * 安装时是「首次配置」，后端允许免二次验证写入；保存失败不能阻塞安装：如实报错，
+   * 用户可以重试，也可以跳过，稍后在站点设置里补上。
+   */
+  const safetyFingerprint = (): string =>
+    JSON.stringify({ enabled: draft.safety.enabled, password: draft.safety.password });
+
+  const saveSafety = async (): Promise<boolean> => {
+    const backend = liveRef.current;
+    if (!backend || !liveMe) return false;
+    setBusy(true);
+    setError('');
+    try {
+      await backend.saveStepUpSettings(liveMe.site_id, {
+        enabled: draft.safety.enabled,
+        ...(draft.safety.enabled && draft.safety.password
+          ? { password: draft.safety.password }
+          : {}),
+      });
+      safetySavedRef.current = true;
+      safetyFingerprintRef.current = safetyFingerprint();
+      setSafetySaveFailed(false);
+      return true;
+    } catch (err) {
+      setSafetySaveFailed(true);
+      setError(errorText(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 安全设置是可选增强：保存失败时允许跳过，不阻塞完成安装。 */
+  const skipSafety = () => {
+    setSafetySaveFailed(false);
+    setError('');
+    go(5);
+  };
+
   const validate = (index: number): string => {
-    // 运行方式不需要手填地址：下一步会先用同源/本地 8080 自动连接。
+    // 连接阶段由自动探测负责，没有需要手填的字段。
     if (index === 1) return '';
     if (index === 2 && draft.database !== 'sqlite') {
       if (!draft.db.host.trim()) return t('请填写数据库主机。');
@@ -492,7 +556,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     }
     if (index === 3) {
       if (liveMe) return '';
-      if (draft.mode === 'live' && showExisting) {
+      if (showExisting) {
         if (!isEmail(existing.email)) return t('请填写管理员邮箱。');
         if (!existing.password) return t('请填写密码。');
         return '';
@@ -508,22 +572,18 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       return '';
     }
     if (index === 4) {
-      if (!draft.site.name.trim()) return t('站点名称不能为空。');
-      if (draft.site.name.length > 160) return t('站点名称不能超过 160 个字符。');
-      // 真实环境留空表示单站点自动匹配任意本机地址；填了未验证的域名，站点会解析不到自己。
-      if (draft.mode !== 'live' && !draft.site.domain.trim()) return t('请填写访问域名。');
-      if (draft.site.description.length > 2000) return t('站点简介不能超过 2000 个字符。');
+      // 专用安全密码是可选的：留空表示验证时使用账户登录密码。
+      if (!draft.safety.enabled || !draft.safety.password) return '';
+      if (draft.safety.password.length < 8) return t('专用安全密码至少 8 位。');
+      if (draft.safety.password !== draft.safety.confirm) {
+        return t('两次输入的安全密码不一致。');
+      }
       return '';
     }
     if (index === 5) {
-      const incomplete = AUTH_PROVIDER_IDS.filter(
-        (id) => draft.auth[id].enabled && !providerReady(id, draft.auth[id]),
-      );
-      if (incomplete.length) {
-        return t('请补齐{providers}的必填项，或者先关闭该方式。', {
-          providers: incomplete.map((id) => PROVIDER_BY_ID[id].name).join(t('、')),
-        });
-      }
+      if (!draft.site.name.trim()) return t('站点名称不能为空。');
+      if (draft.site.name.length > 160) return t('站点名称不能超过 160 个字符。');
+      if (draft.site.description.length > 2000) return t('站点简介不能超过 2000 个字符。');
       return '';
     }
     return '';
@@ -537,23 +597,34 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     }
     setError('');
     if (step === 1) {
-      if (draft.mode === 'live') {
-        const ok = probe.state === 'done' || (await connectLive());
-        // 连接失败时由连接卡片说明原因；这里停在当前步骤，避免进入注册才报错。
-        if (!ok) return;
-        // 数据库由后端配置，真实环境不再询问 DSN。
-        go(3);
+      if (probe.state === 'done') {
+        go(2);
         return;
       }
-      go(2);
+      // 连接阶段没有「继续」按钮；这里只处理手动点重试的情况。
+      retryConnect();
       return;
     }
-    if (step === 3 && draft.mode === 'live' && !liveMe) {
+    if (step === 3 && !liveMe) {
       if (showExisting) await loginExisting();
       else await registerAdmin();
       return;
     }
-    if (step === 4 && draft.mode === 'live') {
+    if (step === 4) {
+      // 已经保存过且内容没变：直接前进，避免重复写入触发服务端的二次验证要求。
+      if (
+        safetySavedRef.current &&
+        safetyFingerprintRef.current === safetyFingerprint()
+      ) {
+        go(5);
+        return;
+      }
+      // 保存失败时停在安全检查页：错误提示里可以重试或跳过，不阻塞后续步骤。
+      if (!(await saveSafety())) return;
+      go(5);
+      return;
+    }
+    if (step === 5) {
       setBusy(true);
       try {
         await saveLiveSite();
@@ -572,61 +643,12 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   };
 
   const prev = () => {
-    // 真实环境跳过了数据库步骤，上一步直接回到运行方式。
-    if (draft.mode === 'live' && step === 3) {
-      go(1);
-      return;
-    }
     go(Math.max(0, step - 1));
   };
 
   const runChecks = async () => {
     const openapiUrl = `${normalizeOrigin(draft.apiBase)}/api/v1/openapi.json`;
     const nextChecks: CheckItem[] = [];
-    if (draft.mode === 'demo') {
-      let storageOk = true;
-      try {
-        localStorage.setItem('pp.setup.probe', String(Date.now()));
-        localStorage.removeItem('pp.setup.probe');
-      } catch {
-        storageOk = false;
-      }
-      nextChecks.push({
-        key: 'ready',
-        label: t('本地演示环境'),
-        detail: storageOk
-          ? t('不需要后端服务，数据写入浏览器 localStorage。')
-          : t('浏览器禁用了 localStorage。'),
-        status: storageOk ? 'ok' : 'fail',
-      });
-      nextChecks.push({
-        key: 'data',
-        label: t('数据存储'),
-        detail: storageOk ? t('演示数据可以持久化到本机。') : t('无法持久化，刷新后会丢失。'),
-        status: storageOk ? 'ok' : 'fail',
-      });
-      nextChecks.push({
-        key: 'security',
-        label: t('安全服务'),
-        detail: t('演示模式不调用 Rust 安全服务；真实发布与上传需要它可用。'),
-        status: 'warn',
-      });
-      nextChecks.push({
-        key: 'site',
-        label: t('站点可访问'),
-        detail: t('演示站点将在此浏览器内立即生效。'),
-        status: 'ok',
-      });
-      nextChecks.push({
-        key: 'openapi',
-        label: t('OpenAPI 文档'),
-        detail: t('接口契约版本 0.1.0（演示模式不提供在线文档）。'),
-        status: 'warn',
-      });
-      setChecks(nextChecks);
-      return;
-    }
-
     const backend = liveRef.current ?? new HttpBackend({ base: draft.apiBase, onExpired: () => undefined });
     liveRef.current = backend;
     const result = await backend.probe().catch(() => null);
@@ -689,52 +711,36 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     setBusy(true);
     setError('');
     try {
-      let config: WebConfig;
-      if (draft.mode === 'demo') {
-        const backend = new DemoBackend();
-        backend.configure({
-          admin: {
-            email: draft.admin.email || 'admin@practacu.local',
-            display_name: draft.admin.display_name || '林知远',
-            password: draft.admin.password || 'practacu',
-          },
-          site: {
-            ...draft.site,
-            visibility_mode: draft.site.kind === 'personal' ? 'public' : draft.site.visibility_mode,
-            publish_mode: draft.site.kind === 'personal' ? 'open' : draft.site.publish_mode,
-          },
-        });
-        config = {
-          version: 1,
-          setup_complete: true,
-          mode: 'demo',
-          api_base: '',
-          site_id: 'site_main',
-          database: draft.database,
-          created_at: new Date().toISOString(),
-          docs_url: '',
-          site_kind: draft.site.kind,
-          owner_email: (draft.admin.email || 'admin@practacu.local').trim().toLowerCase(),
-          customization: setupCustomization(draft.theme, draft.language),
-          auth: cloneAuth(draft.auth),
-        };
-      } else {
-        if (!liveMe) throw new Error(t('尚未完成管理员登录。'));
-        config = {
-          version: 1,
-          setup_complete: true,
-          mode: 'live',
-          api_base: normalizeOrigin(draft.apiBase),
-          site_id: liveMe.site_id,
-          database: draft.database,
-          created_at: new Date().toISOString(),
-          docs_url: `${normalizeOrigin(draft.apiBase) || window.location.origin}/api/v1/docs`,
-          site_kind: draft.site.kind,
-          owner_email: (showExisting ? existing.email : draft.admin.email).trim().toLowerCase(),
-          customization: setupCustomization(draft.theme, draft.language),
-          auth: cloneAuth(draft.auth),
-        };
+      if (!liveMe) throw new Error(t('尚未完成管理员登录。'));
+      // 用户在安全检查页选择「跳过」时，完成安装前再尽力写一次；失败不阻塞安装，
+      // 也不会把用户困在向导里（站点设置里可以随时重新配置）。
+      if (!safetySavedRef.current && liveRef.current) {
+        try {
+          await liveRef.current.saveStepUpSettings(liveMe.site_id, {
+            enabled: draft.safety.enabled,
+            ...(draft.safety.enabled && draft.safety.password
+              ? { password: draft.safety.password }
+              : {}),
+          });
+          safetySavedRef.current = true;
+        } catch {
+          /* 可选的安全设置写入失败时，安装照常完成。 */
+        }
       }
+      const config: WebConfig = {
+        version: 1,
+        setup_complete: true,
+        mode: 'live',
+        api_base: normalizeOrigin(draft.apiBase),
+        site_id: liveMe.site_id,
+        database: draft.database,
+        created_at: new Date().toISOString(),
+        docs_url: `${normalizeOrigin(draft.apiBase) || window.location.origin}/api/v1/docs`,
+        site_kind: draft.site.kind,
+        owner_email: (showExisting ? existing.email : draft.admin.email).trim().toLowerCase(),
+        customization: installCustomization(draft.language),
+        auth: cloneAuth(DEFAULT_AUTH),
+      };
       localStorage.removeItem(DRAFT_KEY);
       try {
         sessionStorage.removeItem(INSTALL_RESET_KEY);
@@ -751,7 +757,15 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     }
   };
 
-  const origin = draft.mode === 'demo' ? window.location.origin : normalizeOrigin(draft.apiBase) || window.location.origin;
+  const origin = normalizeOrigin(draft.apiBase) || window.location.origin;
+  // 桌面 / localhost 用 http 访问时，服务端对绝对链接的默认假设（https）不成立。
+  // PUBLIC_BASE_URL 指向站点前台的地址，所以取浏览器当前 origin；引导不能写服务端
+  // 环境变量，因此把需要粘贴的那一行直接给出。
+  const httpPublicBaseURL = (() => {
+    if (typeof window === 'undefined') return '';
+    if (window.location.protocol !== 'http:') return '';
+    return `PUBLIC_BASE_URL=${window.location.origin}`;
+  })();
 
   if (done) {
     return (
@@ -776,9 +790,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
               </span>
               <h1>{t('{name} 已经准备好了', { name: draft.site.name })}</h1>
               <p>
-                {draft.mode === 'demo'
-                  ? t('演示数据已写入此浏览器。你可以随时在「站点设置」里重新运行安装引导或重置数据。')
-                  : t('管理员账户与站点规则已写入服务端。下面的地址可以用来访问站点和接口文档。')}
+                {t('管理员账户与站点规则已写入服务端。下面的地址可以用来访问站点和接口文档。')}
                 {draft.site.kind === 'personal'
                   ? ` ${t('个人博客不开放注册，访客无需账户即可阅读全部已发布内容。')}`
                   : ''}
@@ -795,11 +807,11 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                 </div>
                 <div className="address-card">
                   <span>{t('API 根路径')}</span>
-                  <code>{draft.mode === 'demo' ? t('演示模式 · 无远程 API') : `${origin}/api/v1`}</code>
+                  <code>{`${origin}/api/v1`}</code>
                 </div>
                 <div className="address-card">
                   <span>{t('OpenAPI 文档')}</span>
-                  <code>{draft.mode === 'demo' ? t('契约 0.1.0 · 演示模式') : `${origin}/api/v1/docs`}</code>
+                  <code>{`${origin}/api/v1/docs`}</code>
                 </div>
               </div>
 
@@ -808,14 +820,12 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   <span className="mini-label">{t('管理员')}</span>
                   <span className="mini-value">
                     {draft.admin.display_name || (liveMe?.display_name ?? '林知远')} ·{' '}
-                    {draft.admin.email || 'admin@practacu.local'}
+                    {showExisting ? existing.email : draft.admin.email || 'admin@practacu.local'}
                   </span>
                 </div>
                 <div className="mini-row">
                   <span className="mini-label">{t('数据库')}</span>
-                  <span className="mini-value">
-                    {draft.mode === 'live' ? t('由后端配置') : DB_LABEL[draft.database]}
-                  </span>
+                  <span className="mini-value">{DB_LABEL[draft.database]}</span>
                 </div>
                 <div className="mini-row">
                   <span className="mini-label">{t('站点形态')}</span>
@@ -828,17 +838,6 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   <span className="mini-label">{t('站点规则')}</span>
                   <span className="mini-value">
                     {VISIBILITY_LABEL[draft.site.visibility_mode]} · {PUBLISH_LABEL[draft.site.publish_mode]}
-                  </span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('登录方式')}</span>
-                  <span className="mini-value">
-                    {[
-                      t('邮箱密码'),
-                      ...AUTH_PROVIDER_IDS.filter((id) => draft.auth[id].enabled).map(
-                        (id) => PROVIDER_BY_ID[id].name,
-                      ),
-                    ].join(' · ')}
                   </span>
                 </div>
                 <div className="mini-row">
@@ -858,16 +857,14 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                 <a href="/" className="btn btn-secondary btn-lg">
                   {t('查看站点')}
                 </a>
-                {draft.mode === 'live' ? (
-                  <a
-                    href={`${origin}/api/v1/docs`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-ghost btn-lg"
-                  >
-                    {t('OpenAPI 文档')} <Icon name="external" size={14} />
-                  </a>
-                ) : null}
+                <a
+                  href={`${origin}/api/v1/docs`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-ghost btn-lg"
+                >
+                  {t('OpenAPI 文档')} <Icon name="external" size={14} />
+                </a>
               </div>
             </div>
           </div>
@@ -878,29 +875,32 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
 
   const stepLabel: Record<StepKey, string> = {
     welcome: t('欢迎'),
-    mode: t('运行方式'),
+    connect: t('连接后端'),
     database: t('数据库'),
     admin: t('管理员'),
+    safety: t('安全'),
     site: t('默认站点'),
-    providers: t('登录方式'),
     checks: t('检查与完成'),
   };
   const stepHint: Record<StepKey, string> = {
     welcome: t('从这里开始'),
-    mode: t('连接后端或演示'),
+    connect: t('等待本机 API'),
     database: 'SQLite / MySQL / PostgreSQL',
     admin: t('第一个账户'),
+    safety: t('高威胁操作保护'),
     site: t('名称、域名与规则'),
-    providers: t('邮箱、手机、OAuth'),
     checks: t('迁移、健康检查'),
   };
   const currentKey = STEPS[step];
+  const prevKey = step > 0 ? STEPS[step - 1] : null;
+  const nextKey = step < STEPS.length - 1 ? STEPS[step + 1] : null;
   const isLast = step === STEPS.length - 1;
+  const connected = probe.state === 'done';
   const healthReady = checks.find((c) => c.key === 'ready')?.status === 'ok';
   const canFinish = checks.every((c) => c.status !== 'fail') && healthReady;
 
   return (
-    <div className="wiz">
+    <div className="wiz is-stage-page">
       <div className="wiz-top">
         <div className="shell">
           <div className="brand">
@@ -931,26 +931,26 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
         </div>
       </div>
 
-      <div className="wiz-body">
+      <div className="wiz-body is-stage">
         <aside className="wiz-rail">
           <div className="wiz-rail-inner">
             <p className="wiz-rail-label">{t('安装进度')}</p>
-            <ol className="wiz-steps">
+            <ol
+              className="wiz-steps"
+              style={{ '--wiz-ratio': step / (STEPS.length - 1) } as CSSProperties}
+            >
               {STEPS.map((key, index) => (
                 <li
                   key={key}
                   className={`wiz-step${index === step ? ' is-current' : ''}${index < step ? ' is-done' : ''}`}
+                  aria-current={index === step ? 'step' : undefined}
                 >
                   <span className="wiz-step-num">
                     {index < step ? <Icon name="check" size={11} /> : index + 1}
                   </span>
                   <span className="wiz-step-text">
                     <strong>{stepLabel[key]}</strong>
-                    <span>
-                      {key === 'database' && draft.mode === 'live'
-                        ? t('由后端配置 · 已跳过')
-                        : stepHint[key]}
-                    </span>
+                    <span>{stepHint[key]}</span>
                   </span>
                 </li>
               ))}
@@ -962,6 +962,30 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
         </aside>
 
         <div className="wiz-main">
+          <div className="wiz-stage">
+            <div
+              className={`wiz-peek is-prev${prevKey ? '' : ' is-empty'}${
+                direction === 'back' ? ' is-back' : ''
+              }`}
+              aria-hidden="true"
+            >
+              {prevKey ? (
+                <>
+                  <span className="wiz-peek-arrow" aria-hidden="true">
+                    <Icon name="arrow-up" size={12} />
+                  </span>
+                  <span className="wiz-peek-label">{stepLabel[prevKey]}</span>
+                  <span className="wiz-peek-hint">{stepHint[prevKey]}</span>
+                </>
+              ) : null}
+            </div>
+            <div
+              className={`wiz-pane is-${direction}`}
+              key={step}
+              role="group"
+              aria-label={stepLabel[currentKey]}
+            >
+              <div className="wiz-pane-scroll">
           {resetNotice ? (
             <div className="mb-24">
               <Callout tone="warn" icon="alert" title={t('服务端的站点已经不在了')}>
@@ -979,7 +1003,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   {t('盖一座房子。')}
                 </h1>
                 <p>
-                  {t('接下来六步会创建第一个管理员、一个默认站点和它的发布规则。所有选项之后都能在管理后台修改。')}
+                  {t('接下来几步会连上后端、创建第一个管理员、设置高威胁操作保护，再创建默认站点和发布规则。所有选项之后都能在管理后台修改。')}
                 </p>
                 <div className="wiz-features">
                   <div className="wiz-feature">
@@ -999,69 +1023,12 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   </div>
                   <div>
                     <span>{t('阶段')}</span>
-                    <b>{t('6 步')}</b>
+                    <b>{t('{count} 步', { count: STEPS.length })}</b>
                   </div>
                   <div>
                     <span>{t('契约')}</span>
                     <b>0.1.0</b>
                   </div>
-                </div>
-
-                <div className="wiz-theme">
-                  <p className="wiz-theme-label">
-                    <Icon name="palette" size={14} />{' '}
-                    {t('先选一套大主题：配色、排版和单栏 / 双栏版式会一起切换。 之后可在「主题设置」里微调、导入或删除自定义主题。')}
-                  </p>
-                  <div className="builtin-theme-grid">
-                    {themeLibrary().map((bundle) => {
-                      const selected =
-                        draft.theme.preset === bundle.theme.preset &&
-                        draft.theme.variant === bundle.variant;
-                      return (
-                        <button
-                          key={bundle.id}
-                          type="button"
-                          className={`builtin-theme-card${selected ? ' is-selected' : ''}`}
-                          onClick={() =>
-                            updateTheme({
-                              preset: bundle.theme.preset,
-                              mode: bundle.theme.mode,
-                              variant: bundle.variant,
-                            })
-                          }
-                          aria-pressed={selected}
-                        >
-                          <span
-                            className="builtin-theme-preview"
-                            style={{
-                              background: bundle.theme.background,
-                              color: bundle.theme.ink,
-                            }}
-                          >
-                            <span style={{ background: bundle.theme.accent }} />
-                            Aa
-                          </span>
-                          <span>
-                            <strong>{bundle.name}</strong>
-                            <span>
-                              {bundle.note} · {bundle.variant === 'bento' ? t('双栏') : t('单栏')}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="field-hint mt-8">
-                    {t('当前：{theme}· {mode}。页面编排与主题微调在后台「主题设置」里。', {
-                      theme:
-                        themeLibrary().find(
-                          (bundle) =>
-                            bundle.theme.preset === draft.theme.preset &&
-                            bundle.variant === draft.theme.variant,
-                        )?.name ?? t('自定义'),
-                      mode: draft.theme.mode === 'dark' ? t('深色') : t('浅色'),
-                    })}
-                  </p>
                 </div>
               </div>
               <div className="wiz-art" aria-hidden>
@@ -1100,236 +1067,187 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
           ) : null}
 
           {step === 1 ? (
-            <>
-              <p className="wiz-eyebrow">Runtime</p>
-              <h1 className="wiz-title">{t('先决定这间房子接在哪里。')}</h1>
-              <p className="wiz-lede">
-                {t('连接真实后端时，所有写入都会经过 Go API 与 Rust 安全服务；演示模式不需要启动任何服务，数据只保存在此浏览器。')}
-              </p>
+            <div className="wiz-connect">
+              <div className="wiz-connect-hero">
+                <span className={`wiz-connect-orb${connected ? ' is-done' : ''}`}>
+                  {connected ? <Icon name="check" size={24} /> : <span className="spinner" aria-hidden />}
+                </span>
+                <p className="wiz-eyebrow">Connection</p>
+                <h1 className="wiz-title">{connected ? t('后端已经连上。') : t('正在等待后端链接')}</h1>
+                <p className="wiz-lede">
+                  {connected
+                    ? t('健康检查已经通过，正在进入数据库设置。')
+                    : t('正在尝试同源接口与本机 8080。启动后端后会自动继续，不需要手动操作。')}
+                </p>
+              </div>
 
-              <div className="wiz-content">
-                <div className="option-grid">
-                  <button
-                    type="button"
-                    className={`option${draft.mode === 'demo' ? ' is-selected' : ''}`}
-                    onClick={() => {
-                      update('mode', 'demo');
-                      resetLive();
-                      setManualOpen(false);
-                    }}
-                    aria-pressed={draft.mode === 'demo'}
-                  >
-                    <span className="option-icon">
-                      <Icon name="database" size={17} />
-                    </span>
-                    <span className="option-body">
-                      <strong>{t('演示数据（本地）')}</strong>
-                      <p>{t('无需后端。内置一组文章、成员、评论与通知，适合先看完整界面和审核流程。')}</p>
-                      <span className="option-tag">{t('推荐 · 立即可用')}</span>
-                    </span>
-                    <span className="option-radio" />
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`option${draft.mode === 'live' ? ' is-selected' : ''}`}
-                    onClick={() => {
-                      update('mode', 'live');
-                      resetLive();
-                      setManualOpen(false);
-                      clearAutoDomain();
-                    }}
-                    aria-pressed={draft.mode === 'live'}
-                  >
-                    <span className="option-icon">
-                      <Icon name="server" size={17} />
-                    </span>
-                    <span className="option-body">
-                      <strong>{t('真实环境')}</strong>
-                      <p>
-                        {launcherLive
-                          ? t('启动器已经在本机跑起 Go API 与 SQLite，直接连接同源接口，不需要填写地址。')
-                          : t('自动连接同源接口或本机 8080 的 Go API，不需要填写地址。')}
-                      </p>
-                      <span className="option-tag">
-                        {launcherLive ? t('本机 API 已就绪 · 零配置') : t('零配置 · 自动检测')}
-                      </span>
-                    </span>
-                    <span className="option-radio" />
-                  </button>
+              <div className="wiz-connect-body">
+                <div className={`connect-card is-${probe.state}`}>
+                  <span className="connect-mark">
+                    {probe.state === 'checking' ? (
+                      <span className="spinner" aria-hidden />
+                    ) : (
+                      <Icon
+                        name={
+                          probe.state === 'done'
+                            ? 'check-circle'
+                            : probe.state === 'fail'
+                              ? 'x-circle'
+                              : 'server'
+                        }
+                        size={18}
+                      />
+                    )}
+                  </span>
+                  <div className="connect-body">
+                    <strong>
+                      {probe.state === 'checking'
+                        ? t('正在检测后端')
+                        : probe.state === 'done'
+                          ? t('已连接到后端')
+                          : probe.state === 'fail'
+                            ? probe.result?.health === 'ok'
+                              ? t('后端已找到，等待数据库就绪')
+                              : t('暂时没有找到后端')
+                            : t('准备连接')}
+                    </strong>
+                    <p>
+                      {probe.state === 'checking'
+                        ? t('正在依次探测同源接口与本机 127.0.0.1:8080。')
+                        : probe.state === 'done'
+                          ? `${displayBase(draft.apiBase)} · healthz ${probe.result?.health} · readyz ${probe.result?.ready}`
+                          : probe.state === 'fail'
+                            ? probe.message ?? t('连接失败。')
+                            : t('后端一旦可用，这里会自动继续。')}
+                    </p>
+                  </div>
+                  <div className="connect-actions">
+                    {connected ? (
+                      <Button size="sm" onClick={() => go(2)} iconRight="arrow-right">
+                        {t('继续')}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={retryConnect}
+                        loading={probe.state === 'checking'}
+                        icon="refresh"
+                      >
+                        {t('立即重试')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
-                {draft.mode === 'live' ? (
-                  <div className="mt-24">
-                    <div className={`connect-card is-${probe.state}`}>
-                      <span className="connect-mark">
-                        <Icon
-                          name={
-                            probe.state === 'done'
-                              ? 'check-circle'
-                              : probe.state === 'fail'
-                                ? 'x-circle'
-                                : probe.state === 'checking'
-                                  ? 'clock'
-                                  : 'server'
-                          }
-                          size={18}
-                        />
-                      </span>
-                      <div className="connect-body">
-                        <strong>
-                          {probe.state === 'checking'
-                            ? t('正在自动寻找后端…')
-                            : probe.state === 'done'
-                              ? t('已连接到后端')
-                              : probe.state === 'fail'
-                                ? t('没有发现可用的后端')
-                                : t('等待自动连接')}
-                        </strong>
-                        <p>
-                          {probe.state === 'checking'
-                            ? t('依次尝试同源接口与本机 127.0.0.1:8080，不需要填写地址。')
-                            : probe.state === 'done'
-                              ? `${displayBase(draft.apiBase)} · healthz ${probe.result?.health} · readyz ${probe.result?.ready}`
-                              : probe.state === 'fail'
-                                ? probe.message ?? t('连接失败。')
-                                : t('选中真实环境后会自动连接，不需要手动检测。')}
-                        </p>
-                      </div>
-                      <div className="connect-actions">
-                        {probe.state === 'done' ? (
-                          <>
-                            <button type="button" className="link-btn" onClick={() => void connectLive()}>
-                              {t('重新检测')}
-                            </button>
-                            <button type="button" className="link-btn" onClick={() => setManualOpen(true)}>
-                              {t('更换地址')}
-                            </button>
-                          </>
-                        ) : probe.state === 'fail' ? (
-                          <Button size="sm" variant="secondary" onClick={() => void connectLive()} icon="refresh">
-                            {t('重试')}
-                          </Button>
-                        ) : probe.state === 'idle' ? (
-                          <Button size="sm" variant="secondary" onClick={() => void connectLive()} icon="refresh">
-                            {t('连接')}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {probe.state === 'fail' ? (
-                      <div className="mt-16">
-                        {launcherLive ? (
-                          <Callout tone="warn" icon="alert" title={t('本机 API 没有通过就绪检查')}>
-                            {t('启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在')}
-                            <code className="mono"> {launcherApi?.log ?? 'data/api.err.log'}</code>
-                            {t('。')}
-                            {launcherApi?.error ? (
-                              <pre className="connect-commands">{launcherApi.error}</pre>
-                            ) : null}
-                          </Callout>
-                        ) : runtime ? (
-                          <Callout tone="warn" icon="alert" title={t('这个启动器没有运行本机 API')}>
-                            {launcherApi?.error
-                              ? t('启动器尝试启动本机 API 失败了，原因如下：')
-                              : t('启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。')}
-                            {launcherApi?.error ? (
-                              <pre className="connect-commands">{launcherApi.error}</pre>
-                            ) : (
-                              <p>
-                                {t('请使用完整的 Windows 压缩包重新解压（里面应同时有')}
-                                <code className="mono"> PractacuPress.exe </code>
-                                {t('与')}
-                                <code className="mono"> PractacuPressAPI.exe</code>
-                                {t('），或按下面的命令手动启动 Go API。')}
-                              </p>
-                            )}
-                            {launcherApi?.error ? null : (
-                              <pre className="connect-commands">{`go run ./apps/api/cmd/migrate
-go run ./apps/api/cmd/seed -driver sqlite -dsn ./data/practacu.db
-go run ./apps/api/cmd/server`}</pre>
-                            )}
-                          </Callout>
-                        ) : (
-                          <Callout tone="warn" icon="alert" title={t('不用填地址，但后端需要先启动')}>
-                            {t('前端会自动尝试同源与')} <code className="mono">http://127.0.0.1:8080</code>
-                            {t('。在仓库根目录启动 Go API 后点「重试」即可；如果只是想先看界面，可以直接切到演示数据。 后端已启动仍失败时，多半是跨域限制：开发时用')}{' '}
-                            <code className="mono">npm run dev</code>
-                            {t('（')}
-                            <code className="mono">/api</code>{' '}
-                            {t('会代理到 8080），生产用同域反向代理。')}
-                            <pre className="connect-commands">{`go run ./apps/api/cmd/migrate
-go run ./apps/api/cmd/seed -driver sqlite -dsn ./data/practacu.db
-go run ./apps/api/cmd/server`}</pre>
-                          </Callout>
-                        )}
-                        <div className="row gap-8 mt-12" style={{ flexWrap: 'wrap' }}>
-                          <Button size="sm" icon="arrow-right" onClick={continueWithDemo}>
-                            {t('先以演示数据继续')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon="refresh"
-                            onClick={() => void connectLive()}
-                          >
-                            {t('重试连接')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon="settings"
-                            onClick={() => setManualOpen((value) => !value)}
-                          >
-                            {manualOpen ? t('收起手动设置') : t('手动指定地址')}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {manualOpen ? (
-                      <div className="connect-manual">
-                        <Field
-                          label={t('API 地址')}
-                          hint={t('只有后端不在同源、也不在本机 8080 时才需要填写。')}
-                          htmlFor="api-base"
-                        >
-                          <div className="row gap-8">
-                            <Input
-                              id="api-base"
-                              value={draft.apiBase}
-                              placeholder="https://press.example.com"
-                              onChange={(e) => {
-                                update('apiBase', e.target.value);
-                                resetLive();
-                              }}
-                              autoComplete="off"
-                            />
-                            <Button
-                              variant="secondary"
-                              onClick={() => void connectLive([normalizeOrigin(draft.apiBase)])}
-                              disabled={!normalizeOrigin(draft.apiBase)}
-                            >
-                              {t('使用这个地址')}
-                            </Button>
-                          </div>
-                        </Field>
-                        <p className="field-hint mt-8">
-                          {t('跨域部署需要在服务端设置')} <code className="mono">CORS_ALLOWED_ORIGINS</code>{' '}
-                          {t('并允许凭据； 推荐把前端与 API 放在同一域名下由反向代理转发。')}
-                        </p>
-                      </div>
-                    ) : null}
+                {!connected ? (
+                  <div className="wiz-wait-line">
+                    <span className="spinner spinner-sm" aria-hidden />
+                    <span>{t('已自动尝试 {count} 次，后端启动后会自动继续。', { count: attempts })}</span>
                   </div>
-                ) : (
-                  <Callout tone="info" icon="info" title={t('演示模式写入哪里？')}>
-                    {t('站点、文章、评论与上传的图片都保存在')} <code className="mono">localStorage</code>
-                    {t('。清除浏览器数据会一并清空； 可在「站点设置 → 重新运行安装引导」里重置。')}
-                  </Callout>
-                )}
+                ) : null}
+
+                {!connected && attempts >= 2 ? (
+                  <div className="mt-16">
+                    {launcherLive ? (
+                      <Callout tone="warn" icon="alert" title={t('本机 API 没有通过就绪检查')}>
+                        {t('启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在')}
+                        <code className="mono"> {launcherApi?.log ?? 'data/api.err.log'}</code>
+                        {t('。')}
+                        {launcherApi?.error ? (
+                          <pre className="connect-commands">{launcherApi.error}</pre>
+                        ) : null}
+                      </Callout>
+                    ) : runtime ? (
+                      <Callout tone="warn" icon="alert" title={t('这个启动器没有运行本机 API')}>
+                        {launcherApi?.error
+                          ? t('启动器尝试启动本机 API 失败了，原因如下：')
+                          : t('启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。')}
+                        {launcherApi?.error ? (
+                          <pre className="connect-commands">{launcherApi.error}</pre>
+                        ) : (
+                          <p>
+                            {t('请使用完整的 Windows 压缩包重新解压（里面应同时有')}
+                            <code className="mono"> PractacuPress.exe </code>
+                            {t('与')}
+                            <code className="mono"> PractacuPressAPI.exe</code>
+                            {t('），或按下面的命令手动启动 Go API。')}
+                          </p>
+                        )}
+                        {launcherApi?.error ? null : (
+                          <pre className="connect-commands">{`go run ./apps/api/cmd/migrate
+go run ./apps/api/cmd/seed -driver sqlite -dsn ./data/practacu.db
+go run ./apps/api/cmd/server`}</pre>
+                        )}
+                      </Callout>
+                    ) : (
+                      <Callout tone="warn" icon="alert" title={t('后端还没有启动')}>
+                        {t('前端会自动尝试同源与')} <code className="mono">http://127.0.0.1:8080</code>
+                        {t('。在仓库根目录启动 Go API 后会自动连上；开发时用')}{' '}
+                        <code className="mono">npm run dev</code>
+                        {t('（')}
+                        <code className="mono">/api</code>{' '}
+                        {t('会代理到 8080），生产用同域反向代理。')}
+                        <pre className="connect-commands">{`go run ./apps/api/cmd/migrate
+go run ./apps/api/cmd/seed -driver sqlite -dsn ./data/practacu.db
+go run ./apps/api/cmd/server`}</pre>
+                      </Callout>
+                    )}
+                  </div>
+                ) : null}
+
+                {!connected ? (
+                  <div className="wiz-connect-tools">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="settings"
+                      onClick={() => setManualOpen((value) => !value)}
+                    >
+                      {manualOpen ? t('收起手动设置') : t('手动指定地址')}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {manualOpen ? (
+                  <div className="connect-manual">
+                    <Field
+                      label={t('API 地址')}
+                      hint={t('只有后端不在同源、也不在本机 8080 时才需要填写。')}
+                      htmlFor="api-base"
+                    >
+                      <div className="row gap-8">
+                        <Input
+                          id="api-base"
+                          value={draft.apiBase}
+                          placeholder="https://press.example.com"
+                          onChange={(e) => {
+                            update('apiBase', e.target.value);
+                            resetLive();
+                          }}
+                          autoComplete="off"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            void connectLive([normalizeOrigin(draft.apiBase)]).then((ok) => {
+                              if (ok) go(2);
+                            });
+                          }}
+                          disabled={!normalizeOrigin(draft.apiBase)}
+                        >
+                          {t('使用这个地址')}
+                        </Button>
+                      </div>
+                    </Field>
+                    <p className="field-hint mt-8">
+                      {t('跨域部署需要在服务端设置')} <code className="mono">CORS_ALLOWED_ORIGINS</code>{' '}
+                      {t('并允许凭据； 推荐把前端与 API 放在同一域名下由反向代理转发。')}
+                    </p>
+                  </div>
+                ) : null}
               </div>
-            </>
+            </div>
           ) : null}
 
           {step === 2 ? (
@@ -1429,10 +1347,21 @@ go run ./apps/api/cmd/server`}</pre>
                       label={t('密码')}
                       htmlFor="db-pass"
                       hint={t('只用于生成本地配置片段，不会发送到任何地方。')}
+                      aside={
+                        <button
+                          type="button"
+                          className="link-btn"
+                          aria-pressed={showDbPassword}
+                          aria-controls="db-pass"
+                          onClick={() => setShowDbPassword((value) => !value)}
+                        >
+                          {showDbPassword ? t('隐藏密码') : t('查看密码')}
+                        </button>
+                      }
                     >
                       <Input
                         id="db-pass"
-                        type="password"
+                        type={showDbPassword ? 'text' : 'password'}
                         value={draft.db.password}
                         onChange={(e) => updateDb({ password: e.target.value })}
                         autoComplete="new-password"
@@ -1454,8 +1383,7 @@ go run ./apps/api/cmd/server`}</pre>
                     {t('把这两行写入服务端的')} <code className="mono">.env</code>{' '}
                     {t('或环境变量，然后执行')}
                     <code className="mono"> go run ./apps/api/cmd/migrate</code>
-                    {t('。')}
-                    {draft.mode === 'demo' ? ` ${t('演示模式不会真正连接数据库。')}` : ''}
+                    {t('。这段配置要重启 API 才会生效；安装引导只记录你的选择。')}
                   </p>
                 </div>
               </div>
@@ -1483,7 +1411,7 @@ go run ./apps/api/cmd/server`}</pre>
                   </div>
                 ) : (
                   <>
-                    {draft.mode === 'live' && showExisting ? (
+                    {showExisting ? (
                       <div className="form-stack">
                         <Field label={t('管理员邮箱')} htmlFor="exist-email">
                           <Input
@@ -1494,10 +1422,24 @@ go run ./apps/api/cmd/server`}</pre>
                             autoComplete="username"
                           />
                         </Field>
-                        <Field label={t('密码')} htmlFor="exist-pass">
+                        <Field
+                          label={t('密码')}
+                          htmlFor="exist-pass"
+                          aside={
+                            <button
+                              type="button"
+                              className="link-btn"
+                              aria-pressed={showExistingPassword}
+                              aria-controls="exist-pass"
+                              onClick={() => setShowExistingPassword((value) => !value)}
+                            >
+                              {showExistingPassword ? t('隐藏密码') : t('查看密码')}
+                            </button>
+                          }
+                        >
                           <Input
                             id="exist-pass"
-                            type="password"
+                            type={showExistingPassword ? 'text' : 'password'}
                             value={existing.password}
                             onChange={(e) => setExisting({ ...existing, password: e.target.value })}
                             autoComplete="current-password"
@@ -1540,10 +1482,25 @@ go run ./apps/api/cmd/server`}</pre>
                               autoComplete="email"
                             />
                           </Field>
-                          <Field label={t('密码')} htmlFor="admin-pass" hint={t('8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。')}>
+                          <Field
+                            label={t('密码')}
+                            htmlFor="admin-pass"
+                            hint={t('8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。')}
+                            aside={
+                              <button
+                                type="button"
+                                className="link-btn"
+                                aria-pressed={showAdminPassword}
+                                aria-controls="admin-pass admin-confirm"
+                                onClick={() => setShowAdminPassword((value) => !value)}
+                              >
+                                {showAdminPassword ? t('隐藏密码') : t('查看密码')}
+                              </button>
+                            }
+                          >
                             <Input
                               id="admin-pass"
-                              type="password"
+                              type={showAdminPassword ? 'text' : 'password'}
                               value={draft.admin.password}
                               onChange={(e) => updateAdmin({ password: e.target.value })}
                               autoComplete="new-password"
@@ -1552,7 +1509,7 @@ go run ./apps/api/cmd/server`}</pre>
                           <Field label={t('确认密码')} htmlFor="admin-confirm">
                             <Input
                               id="admin-confirm"
-                              type="password"
+                              type={showAdminPassword ? 'text' : 'password'}
                               value={draft.admin.confirm}
                               onChange={(e) => updateAdmin({ confirm: e.target.value })}
                               autoComplete="new-password"
@@ -1560,35 +1517,90 @@ go run ./apps/api/cmd/server`}</pre>
                           </Field>
                         </div>
                         <div className="form-hint-row">
-                          <span>
-                            {draft.mode === 'demo'
-                              ? t('演示模式：账户只保存在此浏览器，密码不会上传。')
-                              : t('创建后会立即建立会话，并写入 Refresh Cookie。')}
-                          </span>
-                          {draft.mode === 'live' ? (
-                            <button type="button" className="link-btn" onClick={() => setShowExisting(true)}>
-                              {t('已有管理员账户？')}
-                            </button>
-                          ) : null}
-                        </div>
-                        <div>
-                          <Button variant="secondary" onClick={registerAdmin} loading={busy}>
-                            {draft.mode === 'demo' ? t('记录管理员账户') : t('创建管理员并继续')}
-                          </Button>
+                          <span>{t('创建后会立即建立会话，并写入 Refresh Cookie。')}</span>
+                          <button type="button" className="link-btn" onClick={() => setShowExisting(true)}>
+                            {t('已有管理员账户？')}
+                          </button>
                         </div>
                       </div>
                     )}
                   </>
                 )}
 
-                <Callout tone="info" icon="shield" title={t('权限在服务端强制校验')}>
-                  {t('角色一旦建立，所有查询与写入都会检查站点、身份、资源所有权和角色。前端隐藏按钮只改善体验，不构成安全边界。')}
-                </Callout>
+                {!liveMe ? (
+                  <p className="wiz-submit-note">
+                    {showExisting
+                      ? t('填写已有的管理员账户后点「登录」，验证通过会自动进入下一步。')
+                      : t('填好上面的信息后，点右下角「创建管理员」即可；创建过程会显示进度，完成后自动进入下一步。')}
+                  </p>
+                ) : null}
               </div>
             </>
           ) : null}
 
           {step === 4 ? (
+            <>
+              <p className="wiz-eyebrow">Safety</p>
+              <h1 className="wiz-title">{t('给高危操作加一道门。')}</h1>
+              <p className="wiz-lede">
+                {t('删除用户、修改别人的账户、覆盖导入这类操作一旦点错就很难挽回。开启保护后，执行前需要再输入一次密码。')}
+              </p>
+
+              <div className="wiz-content">
+                <div className="form-stack">
+                  <Toggle
+                    checked={draft.safety.enabled}
+                    onChange={(next) => updateSafety({ enabled: next })}
+                    label={t('开启高威胁操作保护')}
+                    description={t('默认开启。关闭后，高危操作会直接执行，不再要求二次验证。')}
+                  />
+                  {draft.safety.enabled ? (
+                    <>
+                      <Field
+                        label={t('专用安全密码（可选）')}
+                        htmlFor="safety-password"
+                        hint={t('留空则使用你的账户登录密码。设置后验证只接受这个专用密码；至少 8 位。')}
+                      >
+                        <Input
+                          id="safety-password"
+                          type="password"
+                          value={draft.safety.password}
+                          autoComplete="new-password"
+                          onChange={(event) => updateSafety({ password: event.target.value })}
+                        />
+                      </Field>
+                      <Field label={t('确认专用安全密码')} htmlFor="safety-password-confirm">
+                        <Input
+                          id="safety-password-confirm"
+                          type="password"
+                          value={draft.safety.confirm}
+                          autoComplete="new-password"
+                          onChange={(event) => updateSafety({ confirm: event.target.value })}
+                        />
+                      </Field>
+                    </>
+                  ) : null}
+                </div>
+
+                <Callout tone="info" icon="shield" title={t('这个设置之后可以修改')}>
+                  {t('安装完成后，可以在「站点设置 → 高威胁操作保护」里开关保护、设置或清除专用密码。')}
+                </Callout>
+
+                {safetySaveFailed ? (
+                  <div className="mt-16">
+                    <Callout tone="warn" icon="alert" title={t('保护设置没有保存成功')}>
+                      {t('可以重试；也可以先跳过这一步完成安装，之后在站点设置里重新配置。')}
+                    </Callout>
+                    <Button className="mt-12" variant="secondary" size="sm" onClick={skipSafety}>
+                      {t('跳过这一步，稍后配置')}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+
+          {step === 5 ? (
             <>
               <p className="wiz-eyebrow">Default site</p>
               <h1 className="wiz-title">{t('给站点起一个名字，然后开门。')}</h1>
@@ -1608,19 +1620,15 @@ go run ./apps/api/cmd/server`}</pre>
                       />
                     </Field>
                     <Field
-                      label={draft.mode === 'live' ? t('访问域名（选填）') : t('访问域名')}
+                      label={t('访问域名（选填）')}
                       htmlFor="site-domain"
-                      hint={
-                        draft.mode === 'live'
-                          ? t('留空即可：单站点安装会自动匹配所有本机地址。填写自定义域名需要先完成域名验证，当前版本请留空。')
-                          : t('公开访问时按域名解析站点，例如 press.example.com。')
-                      }
+                      hint={t('留空即可：单站点安装会自动匹配所有本机地址。填写自定义域名需要先完成域名验证，当前版本请留空。')}
                     >
                       <Input
                         id="site-domain"
                         value={draft.site.domain}
                         onChange={(e) => updateSite({ domain: e.target.value })}
-                        placeholder={draft.mode === 'live' ? t('留空 = 自动') : 'press.example.com'}
+                        placeholder={t('留空 = 自动')}
                       />
                     </Field>
                   </div>
@@ -1715,7 +1723,7 @@ go run ./apps/api/cmd/server`}</pre>
 
                       <div>
                         <p className="field-label mb-8">{t('发布模式')}</p>
-                        <div className="option-grid">
+                        <div className="option-grid three">
                           {(['open', 'review', 'role_based'] as const).map((mode) => (
                             <label
                               key={mode}
@@ -1776,50 +1784,6 @@ go run ./apps/api/cmd/server`}</pre>
             </>
           ) : null}
 
-          {step === 5 ? (
-            <>
-              <p className="wiz-eyebrow">Sign-in</p>
-              <h1 className="wiz-title">{t('开门的方式，由你决定。')}</h1>
-              <p className="wiz-lede">
-                {draft.site.kind === 'personal'
-                  ? t('个人博客只保留一个账户：注册关闭，邮箱与密码用于站长登录后台。手机验证码与第三方登录可以在这里打开，但登录页仍只接受站长账户。')
-                  : t('邮箱与密码始终可用。手机验证码与第三方登录可以在这里直接选择并填写参数；密钥只写进服务端环境变量，不会保存在浏览器。')}
-              </p>
-
-              <div className="wiz-content">
-                <div className="panel">
-                  <div className="panel-body" style={{ paddingTop: 6, paddingBottom: 6 }}>
-                    <div className="provider-row">
-                      <span className="provider-icon">
-                        <Icon name="mail" size={17} />
-                      </span>
-                      <span className="provider-body">
-                        <strong>{t('邮箱与密码')}</strong>
-                      </span>
-                      <Badge tone="ok" dot>
-                        {t('已启用')}
-                      </Badge>
-                    </div>
-
-                    <AuthProvidersEditor
-                      value={draft.auth}
-                      onChange={(auth) => update('auth', auth)}
-                      secrets={secrets}
-                      onSecretChange={(id, secret) => setSecrets((prev) => ({ ...prev, [id]: secret }))}
-                      idPrefix="setup-auth"
-                      demo={draft.mode === 'demo'}
-                    />
-                  </div>
-                </div>
-
-                <Callout tone="info" icon="info" title={t('配置完成后会出现在登录页')}>
-                  {t('填写完整的方式会显示在')} <code className="mono">/login</code>{' '}
-                  {t('的邮箱表单下方。演示模式可以模拟这些入口； 连接真实后端时，需要服务端实现对应的短信或 OAuth 端点——契约 v0.1.0 尚未包含它们。')}
-                </Callout>
-              </div>
-            </>
-          ) : null}
-
           {step === 6 ? (
             <>
               <p className="wiz-eyebrow">Checks</p>
@@ -1862,13 +1826,25 @@ go run ./apps/api/cmd/server`}</pre>
                     {t('重新检查')}
                   </Button>
                   <span className="field-hint">
-                    {draft.mode === 'demo' ? t('演示模式') : normalizeOrigin(draft.apiBase) || window.location.origin}
+                    {normalizeOrigin(draft.apiBase) || window.location.origin}
                   </span>
                 </div>
 
+                {httpPublicBaseURL ? (
+                  <div className="mt-20">
+                    <Callout tone="warn" icon="alert" title={t('http 访问要显式设置 PUBLIC_BASE_URL')}>
+                      {t('未设置时服务端会按 https 推导第三方登录回调等绝对链接；通知邮件里的站内地址也依赖它。当前站点通过 http 访问，请把这一行加进 API 的环境变量后重启：')}
+                      <pre className="code-block mt-12">{httpPublicBaseURL}</pre>
+                      <div className="row gap-8 mt-8">
+                        <CopyButton value={httpPublicBaseURL} label={t('复制')} />
+                      </div>
+                    </Callout>
+                  </div>
+                ) : null}
+
                 {!canFinish ? (
                   <Callout tone="danger" icon="alert" title={t('还有会阻塞安装的检查')}>
-                    {t('服务就绪或数据存储未通过。请先启动后端、执行迁移，或改用演示模式。')}
+                    {t('服务就绪或数据存储未通过。请先启动后端并执行迁移，然后重新检查。')}
                   </Callout>
                 ) : (
                   <Callout tone="ok" icon="check-circle" title={t('可以完成安装')}>
@@ -1881,7 +1857,7 @@ go run ./apps/api/cmd/server`}</pre>
                     <span className="mini-label">{t('管理员')}</span>
                     <span className="mini-value">
                       {draft.admin.display_name || liveMe?.display_name || '林知远'} ·{' '}
-                      {draft.admin.email || 'admin@practacu.local'}
+                      {showExisting ? existing.email : draft.admin.email || 'admin@practacu.local'}
                     </span>
                   </div>
                   <div className="mini-row">
@@ -1889,14 +1865,20 @@ go run ./apps/api/cmd/server`}</pre>
                     <span className="mini-value">{draft.site.name}</span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">{t('数据库（记录）')}</span>
+                    <span className="mini-label">{t('高威胁操作保护')}</span>
                     <span className="mini-value">
-                      {draft.mode === 'live' ? t('由后端配置') : DB_LABEL[draft.database]}
+                      {draft.safety.enabled
+                        ? safetySavedRef.current
+                          ? draft.safety.password
+                            ? t('已开启（专用安全密码）')
+                            : t('已开启（账户登录密码）')
+                          : t('已开启（稍后写入）')
+                        : t('已关闭')}
                     </span>
                   </div>
                   <div className="mini-row">
-                    <span className="mini-label">{t('模式')}</span>
-                    <span className="mini-value">{draft.mode === 'demo' ? t('演示数据') : t('真实环境')}</span>
+                    <span className="mini-label">{t('数据库（记录）')}</span>
+                    <span className="mini-value">{DB_LABEL[draft.database]}</span>
                   </div>
                 </div>
               </div>
@@ -1904,20 +1886,42 @@ go run ./apps/api/cmd/server`}</pre>
           ) : null}
 
           {error ? (
-            <div className="mt-20">
+            <div className="mt-20" ref={errorRef}>
               <Callout tone="danger" icon="alert" title={t('无法继续')}>
                 {error}
               </Callout>
             </div>
           ) : null}
+              </div>
+
+          {creating
+            ? createPortal(
+                <div
+                  className="wiz-busy-layer"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-live="polite"
+                  aria-label={showExisting ? t('正在登录管理员账户') : t('正在创建管理员')}
+                >
+                  <div className="wiz-busy-card">
+                    <span className="spinner" aria-hidden />
+                    <strong>{showExisting ? t('正在登录管理员账户') : t('正在创建管理员')}</strong>
+                    <p>
+                      {showExisting
+                        ? t('正在验证账户并建立会话，请稍候。')
+                        : t('正在写入账户与站点权限，请稍候。')}
+                    </p>
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
 
           <div className="wiz-foot">
             <span className="wiz-foot-note">
               {step === 0
                 ? t('所有设置都可以在安装后修改。')
-                : draft.mode === 'live' && step >= 3
-                  ? t('第 {step} 步，共 {total} 步 · 数据库由后端配置', { step: step + 1, total: STEPS.length })
-                  : t('第 {step} 步，共 {total} 步', { step: step + 1, total: STEPS.length })}
+                : t('第 {step} 步，共 {total} 步', { step: step + 1, total: STEPS.length })}
             </span>
             <div className="wiz-actions">
               {step > 0 ? (
@@ -1929,25 +1933,43 @@ go run ./apps/api/cmd/server`}</pre>
                 <Button size="lg" onClick={() => go(1)} iconRight="arrow-right">
                   {t('开始配置')}
                 </Button>
+              ) : step === 1 ? (
+                connected ? (
+                  <Button size="lg" onClick={() => go(2)} iconRight="arrow-right">
+                    {t('继续')}
+                  </Button>
+                ) : null
               ) : isLast ? (
                 <Button size="lg" onClick={() => void next()} loading={busy} disabled={!canFinish} iconRight="check">
                   {t('完成安装')}
                 </Button>
               ) : (
-                <Button
-                  size="lg"
-                  onClick={() => void next()}
-                  loading={busy}
-                  disabled={draft.mode === 'live' && step === 1 && probe.state !== 'done'}
-                  iconRight="arrow-right"
-                >
-                  {step === 3 && draft.mode === 'live' && !liveMe
+                <Button size="lg" onClick={() => void next()} loading={busy} iconRight="arrow-right">
+                  {step === 3 && !liveMe
                     ? showExisting
                       ? t('登录')
                       : t('创建管理员')
                     : t('继续')}
                 </Button>
               )}
+            </div>
+          </div>
+            </div>
+            <div
+              className={`wiz-peek is-next${nextKey ? '' : ' is-empty'}${
+                direction === 'back' ? ' is-back' : ''
+              }`}
+              aria-hidden="true"
+            >
+              {nextKey ? (
+                <>
+                  <span className="wiz-peek-arrow" aria-hidden="true">
+                    <Icon name="arrow-up" size={12} />
+                  </span>
+                  <span className="wiz-peek-label">{stepLabel[nextKey]}</span>
+                  <span className="wiz-peek-hint">{stepHint[nextKey]}</span>
+                </>
+              ) : null}
             </div>
           </div>
         </div>

@@ -48,6 +48,7 @@ type Entry struct {
 type Writer interface {
 	Append(ctx context.Context, entry Entry) (Event, error)
 }
+
 // Repository is the persistence contract for the outbox.
 type Repository interface {
 	// Claim locks up to limit due events for this worker.
@@ -101,9 +102,9 @@ type Worker struct {
 
 // Config configures a Worker.
 type Config struct {
-	Repository Repository
-	Handler    Handler
-	Now        func() time.Time
+	Repository  Repository
+	Handler     Handler
+	Now         func() time.Time
 	MaxAttempts int
 }
 

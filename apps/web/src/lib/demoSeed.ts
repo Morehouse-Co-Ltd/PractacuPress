@@ -2,10 +2,13 @@ import type {
   Asset,
   Comment,
   Content,
+  ContentRevision,
   Conversation,
   Member,
+  MediaQuotaBytes,
   Message,
   Notification,
+  Report,
   Role,
   Site,
   User,
@@ -13,10 +16,22 @@ import type {
 import type { ActivityEntry } from '../types';
 import { renderSource } from './markdown';
 
+/** 演示模式的两步验证状态（FSD F-04）。真实后端把密钥加密后落库，这里只留在浏览器。 */
+export interface DemoTwoFactor {
+  enabled: boolean;
+  /** 演示用密钥，仅用于展示手动录入串；真实后端不会把明文返回第二次。 */
+  secret?: string;
+  confirmed_at?: string;
+  /** 恢复码：演示模式保存明文，方便演示"一次性"行为；真实后端只存哈希。 */
+  recovery_codes: { code: string; used: boolean }[];
+}
+
 export interface DemoUser extends User {
   email: string;
   password: string;
   role: Role;
+  media_quota_bytes?: MediaQuotaBytes;
+  two_factor?: DemoTwoFactor;
 }
 
 export interface DemoContent extends Content {
@@ -31,9 +46,20 @@ export interface DemoComment extends Comment {
   created_at: string;
 }
 
+/** 演示模式的版本快照与真实服务端同形，源文必填。 */
+export interface DemoRevision extends ContentRevision {
+  source_body: string;
+  rendered_html: string;
+}
+
+/** 演示模式的社区举报；早期数据没有这个数组，读取时按空处理。 */
+export type DemoReport = Report;
+
 export interface DemoState {
   version: 1;
   site: Site;
+  /** 社区举报队列（可选，早期演示数据没有）。 */
+  reports?: DemoReport[];
   /**
    * 演示后端的主域名验证状态：修改域名后置 false，点「立即验证」后置 true。
    * 缺失按已验证处理（早期演示数据），避免升级后让老用户面对"待验证"。
@@ -41,12 +67,22 @@ export interface DemoState {
   domain_verified?: boolean;
   users: DemoUser[];
   contents: DemoContent[];
+  /** 早期演示数据没有版本表：读取时按需补一条 v1，避免升级后历史为空。 */
+  revisions?: DemoRevision[];
   comments: DemoComment[];
   reactions: { user_id: string; target_type: string; target_id: string; kind: string }[];
   bookmarks: { user_id: string; target_type: string; target_id: string }[];
   follows: { follower_id: string; followee_id: string }[];
   conversations: Conversation[];
   messages: Message[];
+  /** 演示模式阅读历史；早期演示数据没有这个数组，读取时按空处理。 */
+  reading_history?: {
+    user_id: string;
+    target_type: string;
+    target_id: string;
+    last_viewed_at: string;
+    view_count: number;
+  }[];
   notifications: Notification[];
   assets: Asset[];
   activity: ActivityEntry[];
@@ -1084,6 +1120,7 @@ export function createSeed(options: SeedOptions): DemoState {
     version: 1,
     site,
     domain_verified: true,
+    reports: [],
     users,
     contents: [...contents, ...posts],
     comments,
@@ -1117,6 +1154,10 @@ export function toPublicUser(user: DemoUser): User {
     locale: user.locale,
     status: user.status,
     created_at: user.created_at,
+    email: user.email,
+    email_verified: user.email_verified ?? false,
+    ...(user.bio ? { bio: user.bio } : {}),
+    ...(user.avatar_media_id ? { avatar_media_id: user.avatar_media_id } : {}),
   };
 }
 
@@ -1127,5 +1168,6 @@ export function toMember(user: DemoUser): Member {
     role: user.role,
     status: user.status === 'active' ? 'active' : 'suspended',
     email: user.email,
+    media_quota_bytes: user.media_quota_bytes ?? null,
   };
 }

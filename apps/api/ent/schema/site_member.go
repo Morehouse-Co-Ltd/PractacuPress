@@ -40,6 +40,11 @@ func (SiteMember) Fields() []ent.Field {
 		field.String("status").
 			Default(MemberStatusActive).
 			Validate(oneOf(MemberStatusActive, MemberStatusInvited, MemberStatusSuspended)),
+		// GroupKey is the capability group the member belongs to. Empty means
+		// "derive the group from the role", which is how every existing row keeps
+		// working after the permission groups migration.
+		field.String("group_key").MaxLen(40).Default(""),
+		field.Int64("media_quota_bytes").Optional().Nillable(),
 		createdField(),
 		updatedField(),
 	}

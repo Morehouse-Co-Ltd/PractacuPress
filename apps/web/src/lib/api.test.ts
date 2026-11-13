@@ -10,6 +10,14 @@ function jsonResponse(body: unknown): Response {
   } as unknown as Response;
 }
 
+function textJsonResponse(body: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => body,
+  } as unknown as Response;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   configurePerformance(DEFAULT_PERFORMANCE);
@@ -107,6 +115,119 @@ describe('HttpBackend domain verification and registration settings', () => {
     expect(calls[2].url).toBe('http://api.test/api/v1/sites/site_1/domain/verify');
     expect((calls[2].init.method ?? 'GET').toUpperCase()).toBe('POST');
   });
+
+  it('sends site media quota bytes without changing the documented payload', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: typeof input === 'string' ? input : input.toString(), init: init ?? {} });
+      return jsonResponse({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    await backend.updateSite('site_1', { media_quota_bytes: 0 });
+
+    expect(calls[0].url).toBe('http://api.test/api/v1/sites/site_1/settings');
+    expect((calls[0].init.method ?? 'GET').toUpperCase()).toBe('PATCH');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ media_quota_bytes: 0 });
+  });
+
+  it('sets a member media quota and returns the updated member', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const updated = {
+      user_id: 'usr_1',
+      display_name: '作者',
+      role: 'member',
+      status: 'active',
+      media_quota_bytes: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: typeof input === 'string' ? input : input.toString(), init: init ?? {} });
+      return jsonResponse(updated);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    const result = await backend.setMemberQuota('site_1', 'usr_1', null);
+
+    expect(calls[0].url).toBe('http://api.test/api/v1/sites/site_1/members/usr_1/quota');
+    expect((calls[0].init.method ?? 'GET').toUpperCase()).toBe('PATCH');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ media_quota_bytes: null });
+    expect(result).toEqual(updated);
+  });
+
+  it('preserves large int64 quota values in request and response JSON', async () => {
+    const largeQuota = '9007199254740993';
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: typeof input === 'string' ? input : input.toString(), init: init ?? {} });
+      if (calls[calls.length - 1].url.endsWith('/settings')) return jsonResponse({});
+      return textJsonResponse(
+        `{"user_id":"usr_1","display_name":"作者","role":"member","status":"active","media_quota_bytes":${largeQuota}}`,
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    await backend.updateSite('site_1', { media_quota_bytes: largeQuota });
+    const member = await backend.setMemberQuota('site_1', 'usr_1', largeQuota);
+
+    expect(String(calls[0].init.body)).toBe(`{"media_quota_bytes":${largeQuota}}`);
+    expect(String(calls[1].init.body)).toBe(`{"media_quota_bytes":${largeQuota}}`);
+    expect(member.media_quota_bytes).toBe(largeQuota);
+  });
+
+  it('rejects oversized quota strings before integer conversion or sending a request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+    const bigInt = vi.spyOn(globalThis, 'BigInt');
+
+    try {
+      await expect(
+        backend.updateSite('site_1', { media_quota_bytes: '9'.repeat(64) }),
+      ).rejects.toThrow(RangeError);
+      expect(bigInt).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      bigInt.mockRestore();
+    }
+  });
+
+  it('preserves large site quota response values exactly', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => textJsonResponse(
+        '{"id":"site_1","slug":"press","name":"Press","domain":"","description":"literal \\"media_quota_bytes\\":9007199254740993","visibility_mode":"public","publish_mode":"review","disabled":false,"media_quota_bytes":9223372036854775807}',
+      )),
+    );
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    const site = await backend.site('site_1');
+
+    expect(site.media_quota_bytes).toBe('9223372036854775807');
+    expect(site.description).toBe('literal "media_quota_bytes":9007199254740993');
+  });
+
+  it('preserves unusually long quota response digits without integer conversion', async () => {
+    const digits = '9'.repeat(64);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => textJsonResponse(
+        `{"id":"site_1","slug":"press","name":"Press","domain":"","visibility_mode":"public","publish_mode":"review","disabled":false,"media_quota_bytes":${digits}}`,
+      )),
+    );
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+    const bigInt = vi.spyOn(globalThis, 'BigInt');
+
+    try {
+      const site = await backend.site('site_1');
+      expect(site.media_quota_bytes).toBe(digits);
+      expect(bigInt).not.toHaveBeenCalled();
+    } finally {
+      bigInt.mockRestore();
+    }
+  });
 });
 
 // V-27：登出也必须带 CSRF 双提交令牌，否则服务端 403、HttpOnly refresh cookie
@@ -176,3 +297,69 @@ describe('HttpBackend logout CSRF', () => {
     document.cookie = 'pp_csrf=; max-age=0';
   });
 });
+
+// FSD F-04: a password login for a TOTP protected account answers with a challenge
+// instead of a Session, and the challenge is redeemed by a separate endpoint.
+describe('HttpBackend two-factor login', () => {
+  const session = {
+    user: {
+      id: 'usr_1',
+      display_name: 'Alice',
+      locale: 'zh-CN',
+      status: 'active',
+      created_at: '2026-11-16T00:00:00Z',
+    },
+    token_type: 'Bearer',
+    access_token: 'access-1',
+    access_expires_at: '2026-11-16T00:15:00Z',
+    refresh_expires_at: '2026-12-16T00:00:00Z',
+    csrf_token: 'csrf-1',
+  };
+
+  it('returns the challenge and does not apply a session', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return jsonResponse({
+        two_factor_required: true,
+        challenge_token: 'challenge-1',
+        expires_in: 300,
+        expires_at: '2026-11-16T00:05:00Z',
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    const result = await backend.login({ identifier: 'alice@example.com', password: 'x' });
+
+    expect(result.status).toBe('two_factor_required');
+    if (result.status === 'two_factor_required') {
+      expect(result.challenge.challenge_token).toBe('challenge-1');
+    }
+    // No bearer token was stored: the next request must not carry Authorization.
+    await backend.me();
+    const meCall = calls.find((call) => call.url.endsWith('/me'));
+    expect(new Headers(meCall!.init.headers).get('Authorization')).toBeNull();
+  });
+
+  it('redeems the challenge and applies the session', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return jsonResponse(session);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    const result = await backend.loginTwoFactor('challenge-1', '123456');
+
+    expect(result.access_token).toBe('access-1');
+    const call = calls.find((entry) => entry.url.endsWith('/auth/login/2fa'));
+    expect(call).toBeTruthy();
+    expect(JSON.parse(String(call!.init.body))).toEqual({
+      challenge_token: 'challenge-1',
+      code: '123456',
+    });
+  });
+});
+

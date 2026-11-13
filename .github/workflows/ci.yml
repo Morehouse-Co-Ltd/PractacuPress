@@ -1,0 +1,206 @@
+# Quality gate for Practacu Press.
+#
+# Everything here can be reproduced locally:
+#   Linux/macOS: bash scripts/ci/verify.sh all
+#   Windows:     powershell -ExecutionPolicy Bypass -File scripts/verify.ps1
+#   or:          make verify
+#
+# The Go job runs on both target families (Windows is the primary distribution
+# target, Linux is what Docker deploys), the web job matches the Node version in
+# deploy/docker/web.Dockerfile, and the migrations job uses disposable MySQL and
+# PostgreSQL service containers to exercise the reviewed SQL change sets up and
+# down.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify Go (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          bash scripts/ci/verify.sh go 2>&1 | tee .ci-logs/go-linux.log
+
+      - name: Verify Go (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 25
+        run: |
+          New-Item -ItemType Directory -Force .ci-logs | Out-Null
+          powershell -ExecutionPolicy Bypass -File scripts/verify.ps1 -Task go 2>&1 | Tee-Object -FilePath .ci-logs/go-windows.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: go-logs-${{ matrix.os }}
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  web:
+    name: Web (build, typecheck, vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Verify web
+        timeout-minutes: 20
+        env:
+          PP_WEB_INSTALL: ci
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          bash scripts/ci/verify.sh web 2>&1 | tee .ci-logs/web.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: web-logs
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  migrations:
+    name: Migrations (SQLite, MySQL, PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: practacu_test
+        ports:
+          - "3306:3306"
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: practacu_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d practacu_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PP_TEST_MYSQL_DSN: "root:root@tcp(127.0.0.1:3306)/practacu_test?parseTime=true&loc=UTC"
+      PP_TEST_POSTGRES_DSN: "postgres://postgres:postgres@127.0.0.1:5432/practacu_test?sslmode=disable"
+      PP_MIGRATE_MYSQL_DSN: "root:root@tcp(127.0.0.1:3306)/practacu_test?parseTime=true&loc=UTC"
+      PP_MIGRATE_POSTGRES_DSN: "postgres://postgres:postgres@127.0.0.1:5432/practacu_test?sslmode=disable"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Migration up/down and idempotent schema apply
+        timeout-minutes: 30
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          bash scripts/ci/verify.sh migrations 2>&1 | tee .ci-logs/migrations.log
+
+      - name: Dump service container logs
+        if: failure()
+        run: |
+          mkdir -p .ci-logs
+          for container in $(docker ps -q); do
+            name=$(docker inspect -f '{{.Name}}' "$container")
+            docker logs "$container" > ".ci-logs/${name#/}.log" 2>&1 || true
+          done
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: migration-logs
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  config:
+    name: Delivery config
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate workflows, Compose files and scripts
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          bash scripts/ci/verify.sh config 2>&1 | tee .ci-logs/config.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: config-logs
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14

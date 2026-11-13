@@ -9,6 +9,7 @@ const fragment: Dictionary = {
   灰绿: 'Sage',
   陶土: 'Clay',
   夜航: 'Night flight',
+  白昼: 'Daylight',
   '夜航 · 浅色': 'Night flight · Light',
 
   // ---- 主题预设：说明 ----
@@ -17,8 +18,16 @@ const fragment: Dictionary = {
   '偏冷的灰蓝底，安静的技术刊物。': 'A cool grey-blue ground for a quiet technical journal.',
   '带一点草色的纸面，温和的读感。': 'Paper with a touch of grass green and a gentle reading feel.',
   '暖红强调色，适合随笔与摄影。': 'A warm red accent; made for essays and photography.',
+  '暖纸、信号红与编号网格：把站点当成一册可以翻阅的索引。':
+    'Warm paper, signal red and a numbered grid: the site as an index you can leaf through.',
+  '白底与电光蓝：卡片化现代编辑主题，文章页沿用夜航的封面式阅读体验。':
+    'White ground and electric blue: a card-based modern editorial theme that keeps Night flight’s cover-led reading experience on article pages.',
+  '白底日报：分栏头版、三列故事与单栏文章；电光蓝强调。':
+    'A white daily front page: split lead, three-column stories and a single-column article, with an electric-blue accent.',
   '深色杂志风：暖黑底、薰衣草主色、封面图组织内容。':
     'Dark magazine style: warm black ground, lavender accent, cover images organising the content.',
+  '冷石墨与电光蓝：深色为主、浅色为同一套设计的明亮重配。':
+    'Cold graphite and electric blue: dark by default, with a bright light-mode remix of the same design.',
   '夜航的浅色重配：冷白纸与电光蓝，结构不变。':
     'Night flight in light mode: cold white paper and electric blue, same structure.',
 

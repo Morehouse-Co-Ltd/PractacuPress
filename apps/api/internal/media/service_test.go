@@ -22,11 +22,15 @@ type fakeRepo struct {
 	assets    []Asset
 	seq       int
 	listCalls []listCall
+	insertErr error
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{uploads: map[string]Upload{}} }
 
 func (f *fakeRepo) InsertUpload(_ context.Context, upload Upload) (Upload, error) {
+	if f.insertErr != nil {
+		return Upload{}, f.insertErr
+	}
 	f.seq++
 	upload.ID = fmt.Sprintf("u%d", f.seq)
 	f.uploads[upload.ID] = upload
@@ -170,6 +174,40 @@ func newService(t *testing.T, repo Repository, scanner Scanner) *Service {
 
 func owner() Actor { return Actor{UserID: "u1", SiteID: "s1", Role: site.RoleEditor} }
 
+type quotaCaptureRepo struct {
+	*fakeRepo
+	userLimit int64
+	siteLimit int64
+	calls     int
+}
+
+func (f *quotaCaptureRepo) InsertUploadWithinQuota(
+	ctx context.Context,
+	upload Upload,
+	userLimitBytes, siteLimitBytes int64,
+) (Upload, error) {
+	f.calls++
+	f.userLimit = userLimitBytes
+	f.siteLimit = siteLimitBytes
+	if userLimitBytes > 0 && upload.Size > userLimitBytes || siteLimitBytes > 0 && upload.Size > siteLimitBytes {
+		return Upload{}, ErrQuotaExceeded
+	}
+	return f.fakeRepo.InsertUpload(ctx, upload)
+}
+
+type fakeQuotaReader struct {
+	overrides QuotaOverrides
+	calls     int
+	err       error
+}
+
+func (f *fakeQuotaReader) MediaQuotaOverrides(context.Context, string, string) (QuotaOverrides, error) {
+	f.calls++
+	return f.overrides, f.err
+}
+
+func quotaBytes(value int64) *int64 { return &value }
+
 // member is a non-privileged caller: it may act on its own uploads but the site wide
 // library and other people's private assets stay closed.
 func member() Actor { return Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember} }
@@ -196,6 +234,70 @@ func TestCreateUploadAssignsOpaqueKey(t *testing.T) {
 	require.NotEmpty(t, upload.StorageKey)
 	require.NotContains(t, upload.StorageKey, "photo")
 	require.True(t, upload.ExpiresAt.After(upload.CreatedAt))
+}
+
+func TestCreateUploadUsesDeploymentQuotaDefaults(t *testing.T) {
+	repo := &quotaCaptureRepo{fakeRepo: newFakeRepo()}
+	service, err := NewService(ServiceConfig{
+		Repository:    repo,
+		Scanner:       &fakeScanner{result: ScanResult{Status: ScanClean}},
+		QuotaDefaults: QuotaDefaults{UserBytes: 2048, SiteBytes: 4096},
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateUpload(context.Background(), owner(), imageRequest())
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.calls)
+	require.EqualValues(t, 2048, repo.userLimit)
+	require.EqualValues(t, 4096, repo.siteLimit)
+}
+
+func TestCreateUploadAppliesOverridesWhenDeploymentDefaultsAreUnlimited(t *testing.T) {
+	repo := &quotaCaptureRepo{fakeRepo: newFakeRepo()}
+	reader := &fakeQuotaReader{overrides: QuotaOverrides{UserBytes: quotaBytes(2048)}}
+	service, err := NewService(ServiceConfig{
+		Repository:     repo,
+		Scanner:        &fakeScanner{result: ScanResult{Status: ScanClean}},
+		QuotaOverrides: reader,
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateUpload(context.Background(), owner(), imageRequest())
+	require.NoError(t, err)
+	require.Equal(t, 1, reader.calls)
+	require.Equal(t, 1, repo.calls)
+	require.EqualValues(t, 2048, repo.userLimit)
+	require.Zero(t, repo.siteLimit, "an unset site limit inherits the unlimited deployment default")
+}
+
+func TestCreateUploadHonorsExplicitUnlimitedOverride(t *testing.T) {
+	repo := &quotaCaptureRepo{fakeRepo: newFakeRepo()}
+	reader := &fakeQuotaReader{overrides: QuotaOverrides{UserBytes: quotaBytes(0)}}
+	service, err := NewService(ServiceConfig{
+		Repository:     repo,
+		Scanner:        &fakeScanner{result: ScanResult{Status: ScanClean}},
+		QuotaDefaults:  QuotaDefaults{UserBytes: 2048, SiteBytes: 4096},
+		QuotaOverrides: reader,
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateUpload(context.Background(), owner(), imageRequest())
+	require.NoError(t, err)
+	require.EqualValues(t, 0, repo.userLimit, "an explicit zero override means unlimited for this member")
+	require.EqualValues(t, 4096, repo.siteLimit, "the site limit remains independent")
+}
+
+func TestCreateUploadReturnsQuotaExceeded(t *testing.T) {
+	repo := &quotaCaptureRepo{fakeRepo: newFakeRepo()}
+	service, err := NewService(ServiceConfig{
+		Repository:    repo,
+		Scanner:       &fakeScanner{result: ScanResult{Status: ScanClean}},
+		QuotaDefaults: QuotaDefaults{UserBytes: 512, SiteBytes: 4096},
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateUpload(context.Background(), owner(), imageRequest())
+	require.ErrorIs(t, err, ErrQuotaExceeded)
 }
 
 func TestCreateUploadValidatesRequest(t *testing.T) {
@@ -646,7 +748,8 @@ func TestDeleteAssetUsesRecordedPurpose(t *testing.T) {
 	require.Zero(t, global.deletes)
 
 	require.NoError(t, service.DeleteAsset(ctx, owner(), asset.ID))
-	require.Equal(t, 1, siteStore.deletes, "delete must use the adapter recorded on the asset")
+	require.Equal(t, 1+len(VariantWidths), siteStore.deletes,
+		"delete must clear the three image variants and the original through the recorded adapter")
 	require.Zero(t, global.deletes)
 
 	_, err = repo.FindAsset(ctx, "s1", asset.ID)

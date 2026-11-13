@@ -16,7 +16,7 @@ import (
 // competing writer wait instead of failing with "database is locked".
 func TestEnsureSQLitePragmasAddsRuntimeDefaults(t *testing.T) {
 	for name, dsn := range map[string]string{
-		"plain":    "file:./data/practacu.db",
+		"plain":     "file:./data/practacu.db",
 		"with args": "file:./data/practacu.db?cache=shared",
 	} {
 		augmented := db.EnsureSQLitePragmas(dsn)

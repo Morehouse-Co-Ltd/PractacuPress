@@ -59,6 +59,11 @@ const fragment: Dictionary = {
   '四个用途各自从已有策略里选一套：图片可以放图床，附件可以继续留在本地。':
     'Each of the four scopes picks one existing strategy: images can live on a CDN bucket while attachments stay local.',
   '{count} 套在用': { one: '1 in use', other: '{count} in use' },
+  '{count} 套策略': { one: '1 strategy', other: '{count} strategies' },
+  '查看「{scope}」的储存策略': 'View the storage strategy for “{scope}”',
+  '「{scope}」的储存策略': 'Storage strategies for “{scope}”',
+  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；点「完成」后记得保存修改。':
+    'This scope can use one strategy, or several in order with capacity caps; click Done, then save the page changes.',
   '位置：{path}': 'Location: {path}',
   '有用途指向云策略，但全局策略还是本地储存':
     'A scope points at a cloud strategy, but the global strategy is still local storage',
@@ -213,6 +218,77 @@ const fragment: Dictionary = {
   '已恢复默认储存策略': 'Default storage strategies restored',
   '回到一套「本地储存」（./data/media），四个用途都指向它；不会删除任何文件，也不会修改服务器的 .env。':
     'Back to a single “Local storage” strategy (./data/media) that all four scopes point at; no files are deleted and the server .env is untouched.',
+
+  // ---- 用途分配：单策略 / 多策略 ----
+  '每个用途可以只用一套策略，也可以分配多套并设置各自的容量上限。':
+    'Each scope can use one strategy, or several with individual capacity caps.',
+  '再为每个用途分配一套或多套；多套时按顺序使用，并可在达到容量上限后自动切换。':
+    'Then assign one or more strategies to each scope; with several, they are used in order and can switch automatically when a capacity cap is reached.',
+  '分配方式': 'Allocation mode',
+  '单策略': 'Single strategy',
+  '多策略': 'Multiple',
+  '多策略 · 容量切换': 'Multiple · capacity switch',
+  '只使用一套策略，最省心。': 'Use one strategy; the simplest option.',
+  '按顺序使用多套策略；前一套达到容量上限后，按「写满后」的规则处理。':
+    'Use several strategies in order; when one reaches its cap, the “When full” rule decides what happens.',
+  '策略顺序': 'Strategy order',
+  '容量上限': 'Capacity cap',
+  '写满后': 'When full',
+  '自动切换到下一套': 'Switch to the next automatically',
+  '停止写入并提示': 'Stop writing and warn',
+  '按顺序写入；前面的策略写满后才会使用下一套。容量上限只作用于这个用途。':
+    'Writes in order; the next strategy is used only after the previous one is full. The cap applies to this scope only.',
+  '第 {index} 套策略': 'Strategy {index}',
+  '上移': 'Move up',
+  '下移': 'Move down',
+  '移除这套策略': 'Remove this strategy',
+  '添加一套策略': 'Add a strategy',
+  '0 表示不限容量': '0 means unlimited',
+  '合计 {size} GB': 'Total {size} GB',
+  '含不限容量': 'Includes unlimited capacity',
+  '当前顺序：{order}': 'Current order: {order}',
+  '{count} 套策略 · {multi} 个用途多策略':
+    '{count} strategies · {multi} scopes with multiple strategies',
+  '这套策略已经在当前用途里了。': 'This strategy is already in this scope.',
+  '同一个用途里每套策略只能出现一次，可以先用上移 / 下移调整顺序。':
+    'Each strategy can appear only once per scope; use Move up / Move down to reorder them first.',
+  '至少保留一套策略。': 'Keep at least one strategy.',
+  '要把这个用途改回单策略，可以切换「分配方式」。':
+    'To switch this scope back to a single strategy, change “Allocation mode”.',
+  '这个用途已经分配了 {max} 套策略': 'This scope already has {max} strategies',
+  '移除一套不再使用的策略后再添加。': 'Remove a strategy you no longer use, then add another.',
+  '当前用途没有可添加的策略了。': 'No more strategies can be added to this scope.',
+  '先新建一套储存策略，或移除一套已有的策略。':
+    'Create a new storage strategy first, or remove one already assigned.',
+  '多策略按顺序切换': 'Multiple strategies switch in order',
+  '每个用途的第一套是主策略；达到容量上限后，按「写满后」的规则切换到下一套或停止。':
+    'The first strategy in each scope is the primary one; when it reaches its cap, the “When full” rule switches to the next or stops.',
+  '容量上限按用途单独记录，不改变策略本身的存储位置。':
+    'Capacity caps are recorded per scope and do not change where a strategy stores files.',
+  '每套策略就是一个存储目标；被最多用途使用的那套会标记为全局策略。':
+    'Each strategy is one storage target; the one used by the most scopes is marked as the global strategy.',
+  '本页只写入这台电脑的本地安装配置，不会改动服务器上的文件或凭据。':
+    'This page only writes the local install config on this computer; it does not touch files or credentials on the server.',
+  '服务器最终使用哪套存储，仍由部署时的存储配置决定；演示模式与真实后端行为一致。':
+    'Which storage the server actually uses is still decided by the storage config at deployment time; demo mode behaves like a real backend.',
+  '服务器目前只支持一套云凭据；多套云策略需要部署方另行提供 endpoint、区域与 Access Key。':
+    'The server currently supports one set of cloud credentials; multiple cloud strategies need the deployer to provide the endpoint, region, and Access Key separately.',
+  '已写入这台电脑的本地安装配置；用途分配、容量上限与切换顺序都会一并保存。':
+    'Written to this computer’s local install config; scope assignments, capacity caps, and switching order are saved together.',
+  '引用它的用途已经从分配里移除，空出来的位置回落到第一套策略，点「保存修改」后生效；不会删除任何文件。':
+    'The scopes using it have removed it from their assignments and the freed slots fall back to the first strategy; this takes effect after “Save changes” and no files are deleted.',
+  '没有用途在使用这套策略，删除不会改变上传位置，也不会删除任何文件。':
+    'No scope uses this strategy; deleting it changes no upload location and removes no files.',
+  '删除后这些用途里的这套策略会被移除，空出来的位置回落到第一套策略「{name}」：':
+    'After deleting, this strategy is removed from these scopes and the freed slot falls back to the first strategy “{name}”:',
+  '删除只改这台电脑的配置，不会删除任何文件，也不会修改服务器的存储配置；已经上传的文件仍留在原位置。':
+    'Deleting only changes this computer’s config: no files are removed, the server storage config is untouched, and uploaded files stay where they are.',
+  '点右上角「保存修改」写入这台电脑的本地安装配置。':
+    'Click “Save changes” in the top right to write it to this computer’s local install config.',
+  '策略名会出现在用途分配里；密钥不在这个弹窗保存。':
+    'The strategy name appears in scope assignments; the secret is not saved from this dialog.',
+  '回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。':
+    'Back to a single “Local storage” strategy (./data/media) that all four scopes use in single-strategy mode; no files are deleted and the server storage config is untouched.',
 };
 
 export default fragment;

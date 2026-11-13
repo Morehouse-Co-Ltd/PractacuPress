@@ -180,7 +180,7 @@ export function MailSettingsEditor({
               <Field
                 label={t('站点地址')}
                 htmlFor={`${idPrefix}-base`}
-                hint={t('重置链接的前缀；留空时使用用户访问的域名。')}
+                hint={t('绝对链接的前缀；留空时服务端按 https 假定，桌面 / localhost（http）请显式填写。')}
               >
                 <Input
                   id={`${idPrefix}-base`}

@@ -35,6 +35,8 @@ const (
 	FieldRenderedHTML = "rendered_html"
 	// FieldPolicyVersion holds the string denoting the policy_version field in the database.
 	FieldPolicyVersion = "policy_version"
+	// FieldRevision holds the string denoting the revision field in the database.
+	FieldRevision = "revision"
 	// FieldCategoryID holds the string denoting the category_id field in the database.
 	FieldCategoryID = "category_id"
 	// FieldTags holds the string denoting the tags field in the database.
@@ -43,6 +45,18 @@ const (
 	FieldPublishedAt = "published_at"
 	// FieldArchivedAt holds the string denoting the archived_at field in the database.
 	FieldArchivedAt = "archived_at"
+	// FieldPublishAt holds the string denoting the publish_at field in the database.
+	FieldPublishAt = "publish_at"
+	// FieldPublishAttempts holds the string denoting the publish_attempts field in the database.
+	FieldPublishAttempts = "publish_attempts"
+	// FieldAccessMode holds the string denoting the access_mode field in the database.
+	FieldAccessMode = "access_mode"
+	// FieldAccessPasswordHash holds the string denoting the access_password_hash field in the database.
+	FieldAccessPasswordHash = "access_password_hash"
+	// FieldViewCount holds the string denoting the view_count field in the database.
+	FieldViewCount = "view_count"
+	// FieldCommentPolicy holds the string denoting the comment_policy field in the database.
+	FieldCommentPolicy = "comment_policy"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -65,10 +79,17 @@ var Columns = []string{
 	FieldSourceBody,
 	FieldRenderedHTML,
 	FieldPolicyVersion,
+	FieldRevision,
 	FieldCategoryID,
 	FieldTags,
 	FieldPublishedAt,
 	FieldArchivedAt,
+	FieldPublishAt,
+	FieldPublishAttempts,
+	FieldAccessMode,
+	FieldAccessPasswordHash,
+	FieldViewCount,
+	FieldCommentPolicy,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -114,10 +135,32 @@ var (
 	DefaultPolicyVersion string
 	// PolicyVersionValidator is a validator for the "policy_version" field. It is called by the builders before save.
 	PolicyVersionValidator func(string) error
+	// DefaultRevision holds the default value on creation for the "revision" field.
+	DefaultRevision int
+	// RevisionValidator is a validator for the "revision" field. It is called by the builders before save.
+	RevisionValidator func(int) error
 	// CategoryIDValidator is a validator for the "category_id" field. It is called by the builders before save.
 	CategoryIDValidator func(string) error
 	// DefaultTags holds the default value on creation for the "tags" field.
 	DefaultTags string
+	// DefaultPublishAttempts holds the default value on creation for the "publish_attempts" field.
+	DefaultPublishAttempts int
+	// PublishAttemptsValidator is a validator for the "publish_attempts" field. It is called by the builders before save.
+	PublishAttemptsValidator func(int) error
+	// DefaultAccessMode holds the default value on creation for the "access_mode" field.
+	DefaultAccessMode string
+	// AccessModeValidator is a validator for the "access_mode" field. It is called by the builders before save.
+	AccessModeValidator func(string) error
+	// AccessPasswordHashValidator is a validator for the "access_password_hash" field. It is called by the builders before save.
+	AccessPasswordHashValidator func(string) error
+	// DefaultViewCount holds the default value on creation for the "view_count" field.
+	DefaultViewCount int
+	// ViewCountValidator is a validator for the "view_count" field. It is called by the builders before save.
+	ViewCountValidator func(int) error
+	// DefaultCommentPolicy holds the default value on creation for the "comment_policy" field.
+	DefaultCommentPolicy string
+	// CommentPolicyValidator is a validator for the "comment_policy" field. It is called by the builders before save.
+	CommentPolicyValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -193,6 +236,11 @@ func ByPolicyVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPolicyVersion, opts...).ToFunc()
 }
 
+// ByRevision orders the results by the revision field.
+func ByRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRevision, opts...).ToFunc()
+}
+
 // ByCategoryID orders the results by the category_id field.
 func ByCategoryID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCategoryID, opts...).ToFunc()
@@ -211,6 +259,36 @@ func ByPublishedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByArchivedAt orders the results by the archived_at field.
 func ByArchivedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArchivedAt, opts...).ToFunc()
+}
+
+// ByPublishAt orders the results by the publish_at field.
+func ByPublishAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPublishAt, opts...).ToFunc()
+}
+
+// ByPublishAttempts orders the results by the publish_attempts field.
+func ByPublishAttempts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPublishAttempts, opts...).ToFunc()
+}
+
+// ByAccessMode orders the results by the access_mode field.
+func ByAccessMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessMode, opts...).ToFunc()
+}
+
+// ByAccessPasswordHash orders the results by the access_password_hash field.
+func ByAccessPasswordHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccessPasswordHash, opts...).ToFunc()
+}
+
+// ByViewCount orders the results by the view_count field.
+func ByViewCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldViewCount, opts...).ToFunc()
+}
+
+// ByCommentPolicy orders the results by the comment_policy field.
+func ByCommentPolicy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommentPolicy, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -2,14 +2,14 @@
 /**
  * Practacu Press 静态站点服务器。
  *
- * - 默认监听 80 端口，浏览器直接打开 http://localhost 即可；
+ * - 默认监听 8080 端口（启动器与生产打包也用这个默认值）；
  * - 端口可以在管理后台「站点设置 → 访问端口」里热切换，不需要重启进程；
  * - 选定的端口写入 apps/web/.runtime/web.json，下次启动沿用。
  *
  * 用法：
- *   npm start                  # 默认 80
- *   npm start -- --port 8080   # 临时换一个端口
- *   PP_WEB_PORT=8080 npm start # 也可以用环境变量
+ *   npm start                  # 默认 8080
+ *   npm start -- --port 9090   # 临时换一个端口
+ *   PP_WEB_PORT=8081 npm start # 也可以用环境变量
  *
  * 只做静态文件与运行时端口接口；/api、/healthz、/readyz 仍然交给反向代理或 Go API，
  * 这里会明确返回 JSON 404，避免 SPA 的 HTML 回退被误判成后端可用。
@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const DIST = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const RUNTIME_DIR = resolve(fileURLToPath(new URL('../.runtime/', import.meta.url)));
 const RUNTIME_FILE = join(RUNTIME_DIR, 'web.json');
-const DEFAULT_PORT = 80;
+const DEFAULT_PORT = 8080;
 const STARTED_AT = new Date().toISOString();
 
 const HOSTS = process.env.PP_WEB_HOST
@@ -435,9 +435,9 @@ async function main() {
   if (process.argv.includes('--help') || process.argv.includes('-h')) {
     process.stdout.write(
       'Practacu Press 静态站点服务器\n\n' +
-        '  npm start                  默认 80 端口\n' +
-        '  npm start -- --port 8080   指定端口\n' +
-        '  PP_WEB_PORT=8080 npm start 环境变量指定端口\n' +
+        '  npm start                  默认 8080 端口\n' +
+        '  npm start -- --port 9090   指定端口\n' +
+        '  PP_WEB_PORT=8081 npm start 环境变量指定端口\n' +
         '  PP_WEB_HOST=0.0.0.0        允许局域网访问（默认仅本机）\n',
     );
     return;
@@ -459,9 +459,9 @@ async function main() {
     process.stderr.write(
       `\n无法在端口 ${requested} 启动：` +
         (code === 'EADDRINUSE'
-          ? '端口已被占用。\n  · 关掉占用它的程序，或运行 npm start -- --port 8080\n'
+          ? '端口已被占用。\n  · 关掉占用它的程序，或运行 npm start -- --port 8081\n'
           : code === 'EACCES'
-            ? '没有权限。\n  · 1024 以下的端口需要管理员权限，或改用 npm start -- --port 8080\n'
+            ? '没有权限。\n  · 1024 以下的端口需要管理员权限，或改用 npm start -- --port 8081\n'
             : `${err?.message || '未知错误'}\n`) +
         '\n',
     );
@@ -479,7 +479,7 @@ async function main() {
   process.stdout.write(
     '\n  Practacu Press\n' +
       `  地址    ${formatOrigin(requested)}\n` +
-      `  端口    ${requested}${requested === 80 ? '（默认，可在后台修改）' : ''}\n` +
+      `  端口    ${requested}${requested === DEFAULT_PORT ? '（默认，可在后台修改）' : ''}\n` +
       `  产物    ${DIST}\n` +
       '  停止    Ctrl+C\n\n',
   );

@@ -56,6 +56,47 @@ func (_u *SiteMemberUpdate) SetNillableStatus(v *string) *SiteMemberUpdate {
 	return _u
 }
 
+// SetGroupKey sets the "group_key" field.
+func (_u *SiteMemberUpdate) SetGroupKey(v string) *SiteMemberUpdate {
+	_u.mutation.SetGroupKey(v)
+	return _u
+}
+
+// SetNillableGroupKey sets the "group_key" field if the given value is not nil.
+func (_u *SiteMemberUpdate) SetNillableGroupKey(v *string) *SiteMemberUpdate {
+	if v != nil {
+		_u.SetGroupKey(*v)
+	}
+	return _u
+}
+
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (_u *SiteMemberUpdate) SetMediaQuotaBytes(v int64) *SiteMemberUpdate {
+	_u.mutation.ResetMediaQuotaBytes()
+	_u.mutation.SetMediaQuotaBytes(v)
+	return _u
+}
+
+// SetNillableMediaQuotaBytes sets the "media_quota_bytes" field if the given value is not nil.
+func (_u *SiteMemberUpdate) SetNillableMediaQuotaBytes(v *int64) *SiteMemberUpdate {
+	if v != nil {
+		_u.SetMediaQuotaBytes(*v)
+	}
+	return _u
+}
+
+// AddMediaQuotaBytes adds value to the "media_quota_bytes" field.
+func (_u *SiteMemberUpdate) AddMediaQuotaBytes(v int64) *SiteMemberUpdate {
+	_u.mutation.AddMediaQuotaBytes(v)
+	return _u
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (_u *SiteMemberUpdate) ClearMediaQuotaBytes() *SiteMemberUpdate {
+	_u.mutation.ClearMediaQuotaBytes()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *SiteMemberUpdate) SetUpdatedAt(v time.Time) *SiteMemberUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -115,6 +156,11 @@ func (_u *SiteMemberUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "SiteMember.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GroupKey(); ok {
+		if err := sitemember.GroupKeyValidator(v); err != nil {
+			return &ValidationError{Name: "group_key", err: fmt.Errorf(`ent: validator failed for field "SiteMember.group_key": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -135,6 +181,18 @@ func (_u *SiteMemberUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(sitemember.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupKey(); ok {
+		_spec.SetField(sitemember.FieldGroupKey, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MediaQuotaBytes(); ok {
+		_spec.SetField(sitemember.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedMediaQuotaBytes(); ok {
+		_spec.AddField(sitemember.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.MediaQuotaBytesCleared() {
+		_spec.ClearField(sitemember.FieldMediaQuotaBytes, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(sitemember.FieldUpdatedAt, field.TypeTime, value)
@@ -184,6 +242,47 @@ func (_u *SiteMemberUpdateOne) SetNillableStatus(v *string) *SiteMemberUpdateOne
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetGroupKey sets the "group_key" field.
+func (_u *SiteMemberUpdateOne) SetGroupKey(v string) *SiteMemberUpdateOne {
+	_u.mutation.SetGroupKey(v)
+	return _u
+}
+
+// SetNillableGroupKey sets the "group_key" field if the given value is not nil.
+func (_u *SiteMemberUpdateOne) SetNillableGroupKey(v *string) *SiteMemberUpdateOne {
+	if v != nil {
+		_u.SetGroupKey(*v)
+	}
+	return _u
+}
+
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (_u *SiteMemberUpdateOne) SetMediaQuotaBytes(v int64) *SiteMemberUpdateOne {
+	_u.mutation.ResetMediaQuotaBytes()
+	_u.mutation.SetMediaQuotaBytes(v)
+	return _u
+}
+
+// SetNillableMediaQuotaBytes sets the "media_quota_bytes" field if the given value is not nil.
+func (_u *SiteMemberUpdateOne) SetNillableMediaQuotaBytes(v *int64) *SiteMemberUpdateOne {
+	if v != nil {
+		_u.SetMediaQuotaBytes(*v)
+	}
+	return _u
+}
+
+// AddMediaQuotaBytes adds value to the "media_quota_bytes" field.
+func (_u *SiteMemberUpdateOne) AddMediaQuotaBytes(v int64) *SiteMemberUpdateOne {
+	_u.mutation.AddMediaQuotaBytes(v)
+	return _u
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (_u *SiteMemberUpdateOne) ClearMediaQuotaBytes() *SiteMemberUpdateOne {
+	_u.mutation.ClearMediaQuotaBytes()
 	return _u
 }
 
@@ -259,6 +358,11 @@ func (_u *SiteMemberUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "SiteMember.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GroupKey(); ok {
+		if err := sitemember.GroupKeyValidator(v); err != nil {
+			return &ValidationError{Name: "group_key", err: fmt.Errorf(`ent: validator failed for field "SiteMember.group_key": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -296,6 +400,18 @@ func (_u *SiteMemberUpdateOne) sqlSave(ctx context.Context) (_node *SiteMember, 
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(sitemember.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupKey(); ok {
+		_spec.SetField(sitemember.FieldGroupKey, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MediaQuotaBytes(); ok {
+		_spec.SetField(sitemember.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedMediaQuotaBytes(); ok {
+		_spec.AddField(sitemember.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.MediaQuotaBytesCleared() {
+		_spec.ClearField(sitemember.FieldMediaQuotaBytes, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(sitemember.FieldUpdatedAt, field.TypeTime, value)

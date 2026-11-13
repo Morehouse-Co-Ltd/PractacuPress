@@ -59,6 +59,7 @@ export type IconName =
   | 'moon'
   | 'tag'
   | 'chart'
+  | 'activity'
   | 'command'
   | 'video'
   | 'link'
@@ -82,6 +83,11 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M4 20h16" />
       <path d="M7 16V9M12 16V5.5M17 16v-4.5" />
+    </>
+  ),
+  activity: (
+    <>
+      <path d="M3.5 12.5h4l2.2-6 3.4 11 2.3-6.2 2.1 3.2h3" />
     </>
   ),
   command: (

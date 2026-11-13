@@ -37,6 +37,8 @@ const fragment: Dictionary = {
     'Colours, typography and the {layout} layout all switched together, and the home page now uses this theme’s default arrangement.',
   '双栏': 'two-column',
   '单栏': 'single-column',
+  '配色、排版与{layout}版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。':
+    'Colours, typography and the {layout} layout all switched together; your existing home page arrangement is kept and can be adjusted in Page layout.',
   '配色、排版与双栏版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。':
     'Colours, typography and the two-column layout all switched together; your existing home page arrangement is kept and can be adjusted in Page layout.',
   '配色、排版与单栏版式已一起切换；已有首页编排不会删除。':
@@ -81,8 +83,8 @@ const fragment: Dictionary = {
   '背景高斯模糊': 'Background gaussian blur',
   '开启后页头背景半透明并做高斯模糊；关闭则使用实色背景。悬浮胶囊只在滚动后才出现模糊层。':
     'When on, the header background becomes translucent with a gaussian blur; when off it stays a solid colour. The floating pill only blurs after you scroll.',
-  '三个样式都会在滚动后变化：经典加阴影、顶部透明补底色、悬浮胶囊收缩成一条圆角栏（参考截图里的 效果）。悬浮胶囊宽度上限 1280px，窄屏自动铺满；页首透明时请确认首屏背景上的文字仍然可读。':
-    'All three styles change on scroll: classic adds a shadow, transparent top restores the background colour, and the floating pill shrinks into a rounded bar (see the effect in the screenshot). The floating pill is capped at 1280px wide and fills narrow screens; with a transparent top, check that text over the first screen is still readable.',
+  '三个样式都会在滚动后变化：经典加阴影、顶部透明补底色、悬浮胶囊收缩成一条圆角栏。悬浮胶囊宽度上限 1280px，窄屏自动铺满；页首透明时请确认首屏背景上的文字仍然可读。':
+    'All three styles change on scroll: classic adds a shadow, transparent top restores the background colour, and the floating pill shrinks into a rounded bar. The floating pill is capped at 1280px wide and fills narrow screens; with a transparent top, check that text over the first screen is still readable.',
   '顶部导航 Tab': 'Top navigation tabs',
   '页头显示哪些入口、叫什么名字、指向哪个页面，都在这里决定。':
     'Which entries the header shows, what they are called, and which page they point to are all decided here.',
@@ -365,8 +367,8 @@ const fragment: Dictionary = {
   '填入地址，并实现列表拉取。': 'and implement the list fetch.',
   '导入主题「{name}」？': 'Import the theme “{name}”?',
   '导入主题？': 'Import theme?',
-  '主题只包含配色、排版与单栏/双栏版式；不会导入文章、页面或自定义 CSS。':
-    'A theme only contains colours, typography and a single/two-column layout; it never imports articles, pages or custom CSS.',
+  '主题只包含配色、排版与单栏 / 卡片 / 双栏版式；不会导入文章、页面或自定义 CSS。':
+    'A theme only contains colours, typography and a single-column / cards / two-column layout; it never imports articles, pages or custom CSS.',
   '导入并应用': 'Import and apply',
   '没有备注。': 'No note.',
   '导入后会立即应用。当前主题与配色会被替换；文章、页面正文与账户不受影响。':
@@ -388,6 +390,17 @@ const fragment: Dictionary = {
   '暖色双栏，适合摄影站。': 'Warm two-column palette, suited to photography sites.',
   '当前主题：': 'Current theme: ',
   '当前站点': 'this site',
+  '文章外观': 'Article appearance',
+  '夜航首页的文章卡有两种外观；只改展示，不改文章内容与排序。':
+    'Articles on the Night flight home page can use one of two appearances; only the presentation changes, never the content or order.',
+  '封面在上': 'Cover on top',
+  '现在的外观：封面在卡片上方，标题与简介在下方。':
+    'The current look: the cover sits above the card content, with the title and summary below.',
+  '模糊背景': 'Blurred background',
+  '封面铺满整张卡片并高斯模糊，标题与简介压在图上。':
+    'The cover fills the whole card with a gaussian blur, and the title and summary sit over the image.',
+  '作用于「文章卡网格」「文章列表」「精选文章」三个区块；「置顶文章 / 热门文章」网格本来就以封面铺底，保持原样。':
+    'Applies to the article grid, article list and featured article blocks; the pinned / popular grid already uses covers as its background and stays as is.',
 };
 
 export default fragment;

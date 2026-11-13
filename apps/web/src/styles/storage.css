@@ -1,8 +1,8 @@
 /* ---------- 储存策略页（apps/web/src/pages/admin/Storage.tsx） ---------- */
 /*
- * 只补后台「储存策略」页自己的结构：策略卡片、用途分配网格与右侧摘要。
- * 其余排版（panel / form-grid / mini-list / danger-zone 等）沿用全局样式，
- * 颜色一律走主题令牌，深浅色主题都会自动跟随。
+ * 只补后台「储存策略」页自己的结构：策略卡片、用途分配网格、多策略分配
+ * 与底部的恢复默认区。其余排版（panel / form-grid / danger-zone 等）沿用
+ * 全局样式，颜色一律走主题令牌，深浅色主题都会自动跟随。
  */
 
 /* ---------------- 面板头部的徽标 + 新建按钮 ---------------- */
@@ -104,11 +104,12 @@
 
 .storage-scope-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
 
+/* 卡片保持两列网格：多策略的编辑都放进弹窗，切模式时不会把整行撑开。 */
 .storage-scope {
   display: flex;
   flex-direction: column;
@@ -156,9 +157,223 @@
   color: var(--muted);
 }
 
-/* 选择器上方的留白由 .field 自己给，这里只保证网格底部对齐。 */
+/* 摘要按钮贴到卡片底部，同一行的用途卡片即使描述长短不同也能对齐。 */
 .storage-scope .field {
   margin-top: auto;
+}
+
+/*
+ * 当前策略摘要：外层只读，点击后在弹窗里改分配方式。
+ * 做成整块按钮，视觉上仍像原来的下拉框，但文字层级完全可控。
+ */
+.storage-current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.storage-current:hover {
+  border-color: var(--accent);
+  background: var(--bg-subtle);
+}
+
+.storage-current:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.storage-current-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+  color: var(--ink-soft);
+}
+
+.storage-current-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-current-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.storage-current-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.storage-current-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.storage-current-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  color: var(--faint);
+}
+
+.storage-current-side .tiny {
+  font-size: 11px;
+}
+
+.storage-current:hover .storage-current-side {
+  color: var(--accent);
+}
+
+/* ---------------- 分配方式弹窗 ---------------- */
+
+.storage-allocation-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/*
+ * 单策略：把可选策略直接列出来，名称、类型和落点一眼能对比，
+ * 不经过浏览器原生的下拉列表，字体和状态色都由页面控制。
+ */
+.storage-strategy-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.storage-strategy-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.storage-strategy-option:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-subtle);
+}
+
+.storage-strategy-option.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.storage-strategy-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink-soft);
+}
+
+.storage-strategy-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-strategy-option-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.storage-strategy-option-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.storage-strategy-option-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  font-family: var(--mono);
+  letter-spacing: -0.01em;
+}
+
+.storage-strategy-option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--bg);
+}
+
+.storage-strategy-option-check.is-checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/*
+ * 原生下拉列表按页面字体渲染。不指定时 Windows 的菜单字体会比触发器更大、
+ * 选中项又没有稳定的文字颜色，和页面其它控件对不上。
+ */
+.storage-strategy-select option {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.storage-strategy-select option:checked {
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 
 /* 用途分配下方的一组说明（警告 + 规则说明），彼此留出间距。 */
@@ -168,46 +383,102 @@
   gap: 10px;
 }
 
-/* ---------------- 部署片段里的密钥输入 ---------------- */
+/* ---------------- 多策略分配 ---------------- */
 
-.storage-secret {
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--bg-subtle);
-}
-
-/* ---------------- 右侧「当前配置」摘要 ---------------- */
-
-.storage-side-strategies {
+.storage-allocation {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--bg-subtle);
+  background: var(--bg);
 }
 
-.storage-side-strategy {
+.storage-allocation-caption {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.storage-allocation-caption > .tiny {
+  text-align: right;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.storage-allocation-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 7px;
+}
+
+.storage-allocation-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 104px auto;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
 }
 
-.storage-side-strategy-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink);
+.storage-allocation-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-sunken);
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
-.storage-side-strategy-meta {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--muted);
-  word-break: break-all;
+.storage-allocation-row .select-wrap,
+.storage-allocation-row .select {
+  min-width: 0;
+}
+
+.input-suffix.storage-allocation-quota .input {
+  padding-right: 30px;
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-allocation-quota > span {
+  right: 10px;
+  font-size: 10.5px;
+}
+
+.storage-allocation-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.storage-allocation-actions .btn {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.storage-allocation-down svg {
+  transform: rotate(180deg);
+}
+
+.storage-allocation-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.storage-allocation .field {
+  margin-top: 2px;
 }
 
 /* ---------------- 窄屏：用途分配改为单列 ---------------- */
@@ -223,6 +494,29 @@
 
   .storage-strategy-actions {
     width: 100%;
+    justify-content: flex-end;
+  }
+
+  .storage-allocation-caption {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .storage-allocation-caption > span:first-child,
+  .storage-allocation-caption > span:nth-child(2) {
+    display: none;
+  }
+
+  .storage-allocation-caption > .tiny {
+    text-align: right;
+  }
+
+  .storage-allocation-row {
+    grid-template-columns: 18px minmax(0, 1fr) 100px;
+  }
+
+  .storage-allocation-actions {
+    grid-column: 2 / -1;
     justify-content: flex-end;
   }
 }

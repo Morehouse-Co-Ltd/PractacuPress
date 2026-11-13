@@ -1,17 +1,28 @@
-import { useEffect, useState } from 'react';
-import type { PublishMode, Role, SiteKind, VisibilityMode } from '../../types';
+import { useCallback, useEffect, useState } from 'react';
+import type {
+  PublishMode,
+  Role,
+  SiteKind,
+  StepUpSettings,
+  StepUpSettingsUpdate,
+  VisibilityMode,
+} from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useTitle } from '../../lib/hooks';
 import { SITE_KIND_LABEL, siteKindOf } from '../../lib/site';
+import { adminPathError, adminPathOf } from '../../lib/siteConfig';
+import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { noteActivity } from '../../lib/activity';
 import { useCustomization } from '../../lib/customize';
-import { useT } from '../../lib/i18n';
+import { errorText, useT } from '../../lib/i18n';
+import { parseMediaQuotaInput } from '../../lib/mediaQuota';
 import {
   PUBLISH_LABEL,
   VISIBILITY_LABEL,
 } from '../../lib/format';
 import {
+  Badge,
   Button,
   Callout,
   Field,
@@ -22,6 +33,7 @@ import {
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
+import { useStepUp } from '../../lib/stepUp';
 import { useToast } from '../../lib/toast';
 
 export function SettingsPage() {
@@ -38,13 +50,25 @@ export function SettingsPage() {
   const [publishMode, setPublishMode] = useState<PublishMode>(site?.publish_mode ?? 'review');
   /** O-3：站点是否开放自助注册；旧后端没有该字段时按开放处理。 */
   const [registrationOpen, setRegistrationOpen] = useState(site?.registration_open !== false);
+  const [mediaQuotaDraft, setMediaQuotaDraft] = useState(
+    site?.media_quota_bytes == null ? '' : String(site.media_quota_bytes),
+  );
   const [kind, setKind] = useState<SiteKind>(siteKindOf(config));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [descriptionTouched, setDescriptionTouched] = useState(false);
   const [adminPath, setAdminPath] = useState(config.admin_path ?? '/admin');
+  const saveSiteConfig = useSaveSiteConfig();
   const [resetOpen, setResetOpen] = useState(false);
   const [kindConfirmOpen, setKindConfirmOpen] = useState(false);
+  const { ensureStepUp, applySettings: applyStepUpSettings } = useStepUp();
+  /** 高威胁操作保护（step-up）的设置与表单状态。 */
+  const [stepUpSettings, setStepUpSettings] = useState<StepUpSettings | null>(null);
+  const [stepUpLoading, setStepUpLoading] = useState(true);
+  const [stepUpError, setStepUpError] = useState('');
+  const [stepUpBusy, setStepUpBusy] = useState(false);
+  const [stepUpPassword, setStepUpPassword] = useState('');
+  const [stepUpPasswordConfirm, setStepUpPasswordConfirm] = useState('');
   useTitle(t('站点设置'));
 
   useEffect(() => {
@@ -55,6 +79,7 @@ export function SettingsPage() {
     setVisibility(site.visibility_mode);
     setPublishMode(site.publish_mode);
     setRegistrationOpen(site.registration_open !== false);
+    setMediaQuotaDraft(site.media_quota_bytes == null ? '' : String(site.media_quota_bytes));
     setDescriptionTouched(false);
   }, [site]);
 
@@ -62,7 +87,97 @@ export function SettingsPage() {
     setKind(siteKindOf(config));
   }, [config]);
 
+  const loadStepUpSettings = useCallback(async () => {
+    if (!site) return;
+    setStepUpLoading(true);
+    setStepUpError('');
+    try {
+      const found = await backend.stepUpSettings(site.id);
+      setStepUpSettings(found);
+      applyStepUpSettings(found);
+    } catch (err) {
+      // 旧后端 / 后端未就绪：如实说明并允许重试，不阻塞页面上的其它设置。
+      setStepUpSettings(null);
+      setStepUpError(errorText(err));
+    } finally {
+      setStepUpLoading(false);
+    }
+  }, [applyStepUpSettings, backend, site]);
+
+  useEffect(() => {
+    void loadStepUpSettings();
+  }, [loadStepUpSettings]);
+
+  /**
+   * 保存保护设置。
+   *
+   * 已启用或已设置专用密码之后再修改，服务端要求先通过二次验证，所以这里先
+   * `ensureStepUp()`：取消或验证失败就什么也不写。返回值表示是否真的保存成功
+   * （用于决定要不要清空密码输入框）。
+   */
+  const saveStepUp = async (patch: StepUpSettingsUpdate, action: string): Promise<boolean> => {
+    if (!site) return false;
+    // 设置未知时按“已配置”处理（fail-closed），不要让一次读失败绕过二次验证。
+    const configured = stepUpSettings
+      ? stepUpSettings.enabled || stepUpSettings.password_set
+      : true;
+    if (configured) {
+      const ok = await ensureStepUp(action);
+      if (!ok) return false;
+    }
+    setStepUpBusy(true);
+    setStepUpError('');
+    try {
+      const updated = await backend.saveStepUpSettings(site.id, patch);
+      setStepUpSettings(updated);
+      applyStepUpSettings(updated);
+      toast.push(
+        'ok',
+        t('高威胁操作保护已更新'),
+        updated.enabled
+          ? t('保护已开启：高危操作前会要求再次输入密码。')
+          : t('保护已关闭：高危操作会直接执行。'),
+      );
+      return true;
+    } catch (err) {
+      const message = errorText(err);
+      setStepUpError(message);
+      toast.push('error', t('无法保存高威胁操作保护'), message);
+      return false;
+    } finally {
+      setStepUpBusy(false);
+    }
+  };
+
+  const saveStepUpPassword = async () => {
+    if (!stepUpPassword) {
+      setStepUpError(t('请填写专用安全密码。'));
+      return;
+    }
+    if (stepUpPassword !== stepUpPasswordConfirm) {
+      setStepUpError(t('两次输入的密码不一致。'));
+      return;
+    }
+    const saved = await saveStepUp(
+      { password: stepUpPassword },
+      stepUpSettings?.password_set ? t('更换专用安全密码') : t('设置专用安全密码'),
+    );
+    if (saved) {
+      setStepUpPassword('');
+      setStepUpPasswordConfirm('');
+    }
+  };
+
+  const clearStepUpPassword = async () => {
+    const saved = await saveStepUp({ clear_password: true }, t('清除专用安全密码'));
+    if (saved) {
+      setStepUpPassword('');
+      setStepUpPasswordConfirm('');
+    }
+  };
+
   const kindChanged = kind !== siteKindOf(config);
+  const mediaQuota = parseMediaQuotaInput(mediaQuotaDraft);
   const dirty =
     !!site &&
     (name !== site.name ||
@@ -71,6 +186,7 @@ export function SettingsPage() {
       visibility !== site.visibility_mode ||
       publishMode !== site.publish_mode ||
       registrationOpen !== (site.registration_open !== false) ||
+      mediaQuotaDraft !== (site.media_quota_bytes == null ? '' : String(site.media_quota_bytes)) ||
       kindChanged ||
       adminPath !== (config.admin_path ?? '/admin'));
 
@@ -80,9 +196,15 @@ export function SettingsPage() {
       setError(t('站点名称不能为空。'));
       return;
     }
+    if (!mediaQuota.valid) {
+      setError(t('媒体额度必须是非负整数，且不能超过可存储上限。'));
+      return;
+    }
     const normalizedAdminPath = (adminPath.trim() || '/admin').replace(/\/+$/, '');
-    if (!normalizedAdminPath.startsWith('/') || /\s/.test(normalizedAdminPath)) {
-      setError(t('后台入口地址必须是以 / 开头且不含空格的路径。'));
+    // 与服务端同一套规则：提前拦住只会被拒绝的保存（占用站点路径、带查询参数等）。
+    const pathIssue = adminPathError(normalizedAdminPath);
+    if (pathIssue) {
+      setError(pathIssue);
       return;
     }
     setAdminPath(normalizedAdminPath);
@@ -128,8 +250,18 @@ export function SettingsPage() {
 
   const commit = async () => {
     if (!me || !site) return;
+    if (!mediaQuota.valid) {
+      setError(t('媒体额度必须是非负整数，且不能超过可存储上限。'));
+      return;
+    }
     const normalizedAdminPath = (adminPath.trim() || '/admin').replace(/\/+$/, '');
     setError('');
+    if (kindChanged) {
+      // 切换站点形态会批量修改成员角色（服务端的受保护路由），先通过二次验证；
+      // 取消或验证失败就什么都不提交。
+      const ok = await ensureStepUp(t('切换站点形态'));
+      if (!ok) return;
+    }
     setBusy(true);
     // 个人博客固定公开阅读、直接发布：没有需要审核的其他成员。
     const nextVisibility: VisibilityMode = kind === 'personal' ? 'public' : visibility;
@@ -145,6 +277,9 @@ export function SettingsPage() {
         publish_mode: nextPublish,
         // O-3：个人博客固定关闭注册，不把开关的旧值写回去。
         registration_open: kind === 'personal' ? false : registrationOpen,
+        ...(mediaQuotaDraft !== (site.media_quota_bytes == null ? '' : String(site.media_quota_bytes))
+          ? { media_quota_bytes: mediaQuota.value }
+          : {}),
       });
       if (trimmedDomain !== site.domain) {
         await backend.setSiteDomain(site.id, trimmedDomain);
@@ -157,12 +292,23 @@ export function SettingsPage() {
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
         registration_open: kind === 'personal' ? false : registrationOpen,
+        ...(mediaQuotaDraft !== (site.media_quota_bytes == null ? '' : String(site.media_quota_bytes))
+          ? { media_quota_bytes: mediaQuota.value }
+          : {}),
       });
       if (kindChanged) {
         updateConfig({ site_kind: kind });
         await syncRoles(kind);
       }
-      updateConfig({ admin_path: normalizedAdminPath === '/admin' ? undefined : normalizedAdminPath });
+      // 后台入口进站点级配置：换设备、换浏览器都要从同一个地址进后台。保存成功后
+      // 地址栏会立刻切到新入口，`/admin` 不再能进后台（见 lib/adminPathRoute.ts）。
+      const adminPathSaved = await saveSiteConfig({
+        admin_path: adminPathOf({ admin_path: normalizedAdminPath }),
+      });
+      if (!adminPathSaved) {
+        setError(t('后台入口没有保存到服务端，仍在使用原来的入口。'));
+        return;
+      }
       setDescriptionTouched(false);
       noteActivity(
         backend,
@@ -298,7 +444,9 @@ export function SettingsPage() {
                 <Field
                   label={t('后台入口地址')}
                   htmlFor="setting-admin-path"
-                  hint={t('自定义后台登录入口路径，例如 /manage。保存后下次从该地址进入后台。')}
+                  hint={t(
+                    '自定义后台登录入口路径，例如 /manage。保存后地址栏会立刻改到这个入口，所有访客与设备都从它进后台；原来的 /admin 不再能进入后台。',
+                  )}
                 >
                   <Input
                     id="setting-admin-path"
@@ -379,6 +527,31 @@ export function SettingsPage() {
                   <Input value={site?.slug ?? ''} readOnly disabled />
                 </Field>
               </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{t('媒体额度')}</h3>
+              </div>
+            </div>
+            <div className="panel-body">
+              <Field
+                label={t('本站媒体额度（字节）')}
+                htmlFor="setting-media-quota"
+                hint={t('留空表示继承部署默认，0 表示无限；正整数按字节计算。')}
+              >
+                <Input
+                  id="setting-media-quota"
+                  aria-label={t('本站媒体额度（字节）')}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={mediaQuotaDraft}
+                  onChange={(event) => setMediaQuotaDraft(event.target.value)}
+                />
+              </Field>
             </div>
           </section>
 
@@ -504,7 +677,7 @@ export function SettingsPage() {
               </div>
             </div>
             <div className="panel-body">
-              <div className="option-grid">
+              <div className="option-grid three">
                 {(['open', 'review', 'role_based'] as const).map((mode) => (
                   <label key={mode} className={`setting-option${publishMode === mode ? ' is-selected' : ''}`}>
                     <input
@@ -533,6 +706,121 @@ export function SettingsPage() {
               {t('个人博客固定为公开阅读与直接发布：没有其他成员，也没有需要审核的稿件。')}
             </Callout>
           )}
+
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{t('高威胁操作保护')}</h3>
+                <p>{t('删除用户、修改别人的账户、覆盖导入等重要操作前，需要再输入一次密码。')}</p>
+              </div>
+            </div>
+            <div className="panel-body">
+              {stepUpLoading ? (
+                <p className="stepup-status-note">{t('正在读取保护设置…')}</p>
+              ) : null}
+              {stepUpError ? (
+                <div className="mb-16">
+                  <Callout tone="danger" icon="alert" title={t('无法读取或保存保护设置')}>
+                    {stepUpError}
+                  </Callout>
+                  <Button
+                    className="mt-12"
+                    variant="secondary"
+                    size="sm"
+                    icon="refresh"
+                    onClick={() => void loadStepUpSettings()}
+                  >
+                    {t('重新读取')}
+                  </Button>
+                </div>
+              ) : null}
+              {stepUpSettings ? (
+                <>
+                  <div className="stepup-status">
+                    <Badge tone={stepUpSettings.enabled ? 'ok' : 'muted'} dot>
+                      {stepUpSettings.enabled ? t('已开启') : t('已关闭')}
+                    </Badge>
+                    <span className="stepup-status-note">
+                      {t('验证窗口 {seconds} 秒', { seconds: stepUpSettings.window_seconds })}
+                    </span>
+                    <span className="stepup-status-note">
+                      {stepUpSettings.password_set
+                        ? t('已设置专用安全密码')
+                        : t('验证使用账户登录密码')}
+                    </span>
+                  </div>
+                  <Toggle
+                    checked={stepUpSettings.enabled}
+                    disabled={stepUpBusy}
+                    onChange={(next) =>
+                      void saveStepUp(
+                        { enabled: next },
+                        next ? t('开启高威胁操作保护') : t('关闭高威胁操作保护'),
+                      )
+                    }
+                    label={t('开启高威胁操作保护')}
+                    description={t('开启后，删除账户、修改其他成员、覆盖导入等操作前会要求再次输入密码；关闭后这些操作直接执行。')}
+                  />
+                  {demo ? (
+                    <Callout tone="info" icon="info" title={t('演示模式不校验二次密码')}>
+                      {t('演示模式没有服务端安全校验：开关会保存在本地，高危操作会直接执行；专用密码不可用。连接真实后端后才会真正校验。')}
+                    </Callout>
+                  ) : stepUpSettings.enabled ? (
+                    <div className="form-stack mt-16">
+                      <Field
+                        label={t('专用安全密码（可选）')}
+                        htmlFor="stepup-password-new"
+                        hint={t('留空表示不修改。设置后验证只接受这个专用密码；清除后恢复使用账户登录密码。至少 8 位。')}
+                      >
+                        <Input
+                          id="stepup-password-new"
+                          type="password"
+                          autoComplete="new-password"
+                          value={stepUpPassword}
+                          onChange={(event) => {
+                            setStepUpPassword(event.target.value);
+                            if (stepUpError) setStepUpError('');
+                          }}
+                        />
+                      </Field>
+                      <Field label={t('确认专用安全密码')} htmlFor="stepup-password-confirm">
+                        <Input
+                          id="stepup-password-confirm"
+                          type="password"
+                          autoComplete="new-password"
+                          value={stepUpPasswordConfirm}
+                          onChange={(event) => {
+                            setStepUpPasswordConfirm(event.target.value);
+                            if (stepUpError) setStepUpError('');
+                          }}
+                        />
+                      </Field>
+                      <div className="row gap-8">
+                        <Button
+                          size="sm"
+                          icon="lock"
+                          loading={stepUpBusy}
+                          onClick={() => void saveStepUpPassword()}
+                        >
+                          {stepUpSettings.password_set ? t('更换专用密码') : t('设置专用密码')}
+                        </Button>
+                        {stepUpSettings.password_set ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={stepUpBusy}
+                            onClick={() => void clearStepUpPassword()}
+                          >
+                            {t('清除专用密码')}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </section>
 
           <div className="row gap-8">
             <Button loading={busy} disabled={!dirty} onClick={save} icon="check">

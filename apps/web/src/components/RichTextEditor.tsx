@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import type {
   ClipboardEvent as ReactClipboardEvent,
+  DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from 'react';
@@ -9,6 +10,8 @@ import { escapeHtml, renderMarkdown } from '../lib/markdown';
 import { htmlToMarkdown } from '../lib/htmlToMarkdown';
 import { decorateEditorDiagrams, findDiagramBlock } from '../lib/diagramHydrate';
 import type { DiagramSpec } from '../lib/diagramSpec';
+import { useBackend } from '../lib/backend';
+import { errorText } from '../lib/hooks';
 import {
   detectBlockPrefix,
   detectInlineClosure,
@@ -18,7 +21,7 @@ import type { BlockKind, InlineClosureMatch } from '../lib/markdownInput';
 import { blockMarkerFor } from '../lib/editorBlockMarker';
 import { caretAnchor, firstLineAnchor } from '../lib/caretRect';
 import type { CaretAnchor } from '../lib/caretRect';
-import { noteBlock } from '../lib/richBlocks';
+import { imageBlock, noteBlock } from '../lib/richBlocks';
 import { useT } from '../lib/i18n';
 import { EditorToolbar } from './EditorToolbar';
 import { SlashMenu } from './SlashMenu';
@@ -95,6 +98,67 @@ function sameAnchor(a: CaretAnchor | null, b: CaretAnchor | null): boolean {
     Math.abs(a.bottom - b.bottom) < 0.5 &&
     Math.abs(a.height - b.height) < 0.5
   );
+}
+
+/** 与后端媒体白名单一致的图片类型；截图、拖拽文件都走这里判断。 */
+const UPLOAD_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
+const IMAGE_EXTENSION_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+/**
+ * 把剪贴板 / 拖拽里的文件归一成可上传的图片。
+ *
+ * 有些来源（尤其是从浏览器里拖出的图片）不给 MIME，只能按扩展名补一个；
+ * 补不出来的文件直接忽略，交给后面的可读提示，而不是把二进制塞进正文。
+ */
+function uploadableImage(file: File): File | null {
+  if (UPLOAD_IMAGE_TYPES.has(file.type)) return file;
+  const extension = (file.name.split('.').pop() ?? '').toLowerCase();
+  const inferred = IMAGE_EXTENSION_MIME[extension];
+  if (!inferred) return null;
+  return new File([file], file.name || `pasted.${extension}`, {
+    type: inferred,
+    lastModified: file.lastModified,
+  });
+}
+
+/** 从 DataTransfer 里收集图片文件；`files` 与 `items` 可能重复，按内容去重。 */
+function imageFilesFromTransfer(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const collected = new Map<string, File>();
+  const add = (file: File | null) => {
+    if (!file) return;
+    const normalized = uploadableImage(file);
+    if (!normalized) return;
+    const key = `${normalized.name}:${normalized.size}:${normalized.lastModified}:${normalized.type}`;
+    if (!collected.has(key)) collected.set(key, normalized);
+  };
+  for (const file of Array.from(data.files ?? [])) add(file);
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind === 'file') add(item.getAsFile());
+  }
+  return [...collected.values()];
+}
+
+/** 把鼠标落点换算成编辑区里的光标；不支持该 API 的浏览器返回 null。 */
+function rangeAtPoint(x: number, y: number): Range | null {
+  const doc = document as unknown as {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  if (doc.caretRangeFromPoint) return doc.caretRangeFromPoint(x, y);
+  const position = doc.caretPositionFromPoint?.(x, y);
+  if (!position) return null;
+  const range = document.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  range.collapse(true);
+  return range;
 }
 
 /**
@@ -252,6 +316,7 @@ export function RichTextEditor({
   onRequestDialog?: (kind: EditorDialogKind) => void;
 }) {
   const t = useT();
+  const backend = useBackend();
   const placeholderText =
     placeholder ?? t('从这里开始写。选中文字可以加粗、加链接，工具栏能插入图片、表格与分栏。');
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -265,6 +330,9 @@ export function RichTextEditor({
   const toolbarOpen = useRef<((kind: EditorDialogKind) => void) | null>(null);
   const hintTimer = useRef<number | null>(null);
   const [hint, setHint] = useState('');
+  /** 上传失败的持久提示：几秒就消失的 toast 不足以让作者看清原因。 */
+  const [uploadError, setUploadError] = useState('');
+  const uploading = useRef(false);
   const [marker, setMarker] = useState<{
     text: string;
     /** 相对 shell 的坐标，不是视口坐标。 */
@@ -465,6 +533,35 @@ export function RichTextEditor({
     [disabled, emit, restoreSelection],
   );
 
+  /**
+   * 粘贴 / 拖拽上传完成后插到「事件发生时的光标处」。
+   *
+   * 上传是异步的，中间作者可能点过别处；工具栏的 `insertHtml` 用的是上次保存的选区，
+   * 在这里不适用。调用方在 paste / drop 当下克隆 Range，完成后再恢复。
+   */
+  const insertHtmlAtRange = useCallback(
+    (html: string, range: Range | null) => {
+      if (disabled) return;
+      const root = surfaceRef.current;
+      if (!root) return;
+      root.focus();
+      const selection = window.getSelection();
+      let target = range && root.contains(range.commonAncestorContainer) ? range : null;
+      if (!target) {
+        // 找不到落点就放到正文末尾，至少不会插到文档开头。
+        target = document.createRange();
+        target.selectNodeContents(root);
+        target.collapse(false);
+      }
+      selection?.removeAllRanges();
+      selection?.addRange(target);
+      const payload = `<p data-pp-spacer="1"><br></p>${html}<p data-pp-spacer="1"><br></p>`;
+      document.execCommand('insertHTML', false, payload);
+      emit();
+    },
+    [disabled, emit],
+  );
+
   const commands = useMemo<EditorCommands>(
     () => ({
       saveSelection,
@@ -550,13 +647,70 @@ export function RichTextEditor({
 
   /* ------------------------- Markdown 输入增强 ------------------------- */
 
-  const flashHint = (message: string) => {
+  /** `holdMs = 0` 表示不自动消失（上传进度用），下一次提示或完成时再收掉。 */
+  const flashHint = (message: string, holdMs = 1800) => {
     setHint(message);
     if (hintTimer.current !== null) window.clearTimeout(hintTimer.current);
+    hintTimer.current = null;
+    if (holdMs <= 0) return;
     hintTimer.current = window.setTimeout(() => {
       hintTimer.current = null;
       setHint('');
-    }, 1800);
+    }, holdMs);
+  };
+
+  /**
+   * 粘贴 / 拖拽图片：走现有两阶段上传（创建会话 → 传字节 → 完成），
+   * 成功后插到正文里；失败把原因留在编辑区下方，而不是只闪一下。
+   */
+  const uploadImages = async (files: File[], range: Range | null) => {
+    if (!files.length || disabled) return;
+    if (uploading.current) {
+      flashHint(t('正在上传图片，请稍候…'), 1800);
+      return;
+    }
+    uploading.current = true;
+    setUploadError('');
+    const snippets: string[] = [];
+    const failures: string[] = [];
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        try {
+          const asset = await backend.upload(file, 'content', (percent) => {
+            const overall = Math.round(((index + percent / 100) / files.length) * 100);
+            flashHint(t('正在上传图片… {percent}%', { percent: overall }), 0);
+          });
+          if (!asset.url) throw new Error(t('上传结果里没有可用的图片地址。'));
+          snippets.push(imageBlock({ src: asset.url, alt: escapeHtml(file.name) }));
+          flashHint(
+            t('正在上传图片… {percent}%', {
+              percent: Math.round(((index + 1) / files.length) * 100),
+            }),
+            0,
+          );
+        } catch (err) {
+          failures.push(
+            `${file.name || t('粘贴的图片')}: ${errorText(err) || t('上传失败。')}`,
+          );
+        }
+      }
+      if (snippets.length) {
+        insertHtmlAtRange(snippets.join(''), range);
+        flashHint(
+          snippets.length === 1
+            ? t('图片已插入正文')
+            : t('已插入 {count} 张图片', { count: snippets.length }),
+          2400,
+        );
+      }
+      if (failures.length) {
+        setUploadError(`${t('图片上传失败')}：${failures.join('；')}`);
+        if (!snippets.length) flashHint(t('图片上传失败，请重试。'), 3200);
+      }
+    } finally {
+      uploading.current = false;
+    }
   };
 
   useEffect(
@@ -893,6 +1047,17 @@ export function RichTextEditor({
   };
 
   const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    // 截图 / 复制的图片文件优先：先上传，插入位置就是粘贴当下的光标。
+    const images = disabled ? [] : imageFilesFromTransfer(event.clipboardData);
+    if (images.length) {
+      event.preventDefault();
+      const selection = window.getSelection();
+      const range =
+        selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+      void uploadImages(images, range);
+      return;
+    }
+
     event.preventDefault();
     const text = event.clipboardData.getData('text/plain').replace(/\r\n/g, '\n');
     if (!text) return;
@@ -909,6 +1074,21 @@ export function RichTextEditor({
       document.execCommand('insertHTML', false, blocks);
     }
     emit();
+  };
+
+  /** 拖入图片：按落点插到正文里；非图片文件给出可读提示，不让浏览器把文件当文本丢进来。 */
+  const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (disabled) return;
+    const images = imageFilesFromTransfer(event.dataTransfer);
+    if (!images.length) {
+      if (event.dataTransfer?.files?.length) {
+        setUploadError(t('只能上传 PNG / JPEG / WebP / GIF 图片。'));
+      }
+      return;
+    }
+    const range = rangeAtPoint(event.clientX, event.clientY);
+    void uploadImages(images, range);
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1003,7 +1183,11 @@ export function RichTextEditor({
           onCompositionEnd={handleCompositionEnd}
           onClick={handleSurfaceClick}
           onPaste={handlePaste}
-          onDrop={(event) => event.preventDefault()}
+          onDragOver={(event) => {
+            // 不拦截 dragover 的话，部分浏览器不会把文件拖放交给编辑器。
+            if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+          }}
+          onDrop={handleDrop}
         />
         {marker ? (
           // 与编辑区同级而不是放在里面：标记一旦进了 contenteditable 子树，
@@ -1042,11 +1226,18 @@ export function RichTextEditor({
             document.body,
           )
         : null}
+      {uploadError ? (
+        <p className="rich-editor-note" role="alert" style={{ color: 'var(--danger, #b4322b)' }}>
+          {uploadError}
+        </p>
+      ) : null}
       {disabled ? (
         <p className="rich-editor-note">{t('只读：当前状态不允许修改正文。')}</p>
       ) : (
         <p className="rich-editor-note">
           {t('所见即所得编辑；保存时序列化为 Markdown，公开页由服务端渲染并清洗。')}
+          {' '}
+          {t('也可以直接粘贴或拖入图片，上传后插入正文。')}
         </p>
       )}
     </div>

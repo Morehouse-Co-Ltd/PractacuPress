@@ -20,6 +20,13 @@ describe('theme switching', () => {
     expect(sameLayout(patch.home, defaultHomeLayout('bento'))).toBe(true);
   });
 
+  it('no longer offers the retired daylight theme', () => {
+    expect(builtinThemeBundle('daylight')).toBeNull();
+    const night = builtinThemeBundle('night')!;
+    expect(night.variant).toBe('bento');
+    expect(night.theme.preset).toBe('night');
+  });
+
   it('keeps a hand-built home layout when the variant changes', () => {
     const custom = {
       ...base,

@@ -10,7 +10,7 @@ import { useT } from '../../lib/i18n';
 
 /**
  * 首页：不再手写任何 markup，全部由「外观 → 页面编排」里的
- * 区块画出来。变体（classic / bento）写在容器上，样式在 styles.css 里按
+ * 区块画出来。变体（classic / bento / daylight）写在容器上，样式在 styles.css 里按
  * [data-variant] 作用域切换；组件本身不关心当前是哪套主题。
  */
 

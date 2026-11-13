@@ -25,6 +25,10 @@ type SiteMember struct {
 	Role string `json:"role,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// GroupKey holds the value of the "group_key" field.
+	GroupKey string `json:"group_key,omitempty"`
+	// MediaQuotaBytes holds the value of the "media_quota_bytes" field.
+	MediaQuotaBytes *int64 `json:"media_quota_bytes,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -37,7 +41,9 @@ func (*SiteMember) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case sitemember.FieldID, sitemember.FieldSiteID, sitemember.FieldUserID, sitemember.FieldRole, sitemember.FieldStatus:
+		case sitemember.FieldMediaQuotaBytes:
+			values[i] = new(sql.NullInt64)
+		case sitemember.FieldID, sitemember.FieldSiteID, sitemember.FieldUserID, sitemember.FieldRole, sitemember.FieldStatus, sitemember.FieldGroupKey:
 			values[i] = new(sql.NullString)
 		case sitemember.FieldCreatedAt, sitemember.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -85,6 +91,19 @@ func (_m *SiteMember) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case sitemember.FieldGroupKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field group_key", values[i])
+			} else if value.Valid {
+				_m.GroupKey = value.String
+			}
+		case sitemember.FieldMediaQuotaBytes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field media_quota_bytes", values[i])
+			} else if value.Valid {
+				_m.MediaQuotaBytes = new(int64)
+				*_m.MediaQuotaBytes = value.Int64
 			}
 		case sitemember.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -145,6 +164,14 @@ func (_m *SiteMember) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("group_key=")
+	builder.WriteString(_m.GroupKey)
+	builder.WriteString(", ")
+	if v := _m.MediaQuotaBytes; v != nil {
+		builder.WriteString("media_quota_bytes=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

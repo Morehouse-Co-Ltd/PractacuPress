@@ -4,6 +4,7 @@ import { blockProp } from '../../lib/blocks';
 import { useCustomization } from '../../lib/customize';
 import { useT } from '../../lib/i18n';
 import { ArticleToc, useArticleToc } from '../ArticleTools';
+import { ResponsiveHtml } from '../ResponsiveHtml';
 import { useArticleSurface } from './ArticleContext';
 
 /**
@@ -70,11 +71,11 @@ export function ArticleContentBlock({ block }: { block: BlockInstance }): ReactE
   return (
     <div className={`pp-article-content${preview ? ' is-preview' : ''}`}>
       {showTocHere ? <ArticleToc items={toc} /> : null}
-      <div
+      <ResponsiveHtml
         className="article-body"
         data-pp-article-body={surface.article.id}
         // 契约规定：只渲染服务端清洗后产生的 rendered_html。
-        dangerouslySetInnerHTML={{ __html: html }}
+        html={html}
       />
       {preview ? (
         <span className="pp-article-badge" aria-hidden>

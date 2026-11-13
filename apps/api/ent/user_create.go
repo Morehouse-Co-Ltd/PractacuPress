@@ -71,6 +71,20 @@ func (_c *UserCreate) SetNillableAvatarMediaID(v *string) *UserCreate {
 	return _c
 }
 
+// SetEmailVerifiedAt sets the "email_verified_at" field.
+func (_c *UserCreate) SetEmailVerifiedAt(v time.Time) *UserCreate {
+	_c.mutation.SetEmailVerifiedAt(v)
+	return _c
+}
+
+// SetNillableEmailVerifiedAt sets the "email_verified_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableEmailVerifiedAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetEmailVerifiedAt(*v)
+	}
+	return _c
+}
+
 // SetLocale sets the "locale" field.
 func (_c *UserCreate) SetLocale(v string) *UserCreate {
 	_c.mutation.SetLocale(v)
@@ -283,6 +297,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldAvatarMediaID, field.TypeString, value)
 		_node.AvatarMediaID = &value
 	}
+	if value, ok := _c.mutation.EmailVerifiedAt(); ok {
+		_spec.SetField(user.FieldEmailVerifiedAt, field.TypeTime, value)
+		_node.EmailVerifiedAt = &value
+	}
 	if value, ok := _c.mutation.Locale(); ok {
 		_spec.SetField(user.FieldLocale, field.TypeString, value)
 		_node.Locale = value
@@ -404,6 +422,24 @@ func (u *UserUpsert) UpdateAvatarMediaID() *UserUpsert {
 // ClearAvatarMediaID clears the value of the "avatar_media_id" field.
 func (u *UserUpsert) ClearAvatarMediaID() *UserUpsert {
 	u.SetNull(user.FieldAvatarMediaID)
+	return u
+}
+
+// SetEmailVerifiedAt sets the "email_verified_at" field.
+func (u *UserUpsert) SetEmailVerifiedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldEmailVerifiedAt, v)
+	return u
+}
+
+// UpdateEmailVerifiedAt sets the "email_verified_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateEmailVerifiedAt() *UserUpsert {
+	u.SetExcluded(user.FieldEmailVerifiedAt)
+	return u
+}
+
+// ClearEmailVerifiedAt clears the value of the "email_verified_at" field.
+func (u *UserUpsert) ClearEmailVerifiedAt() *UserUpsert {
+	u.SetNull(user.FieldEmailVerifiedAt)
 	return u
 }
 
@@ -549,6 +585,27 @@ func (u *UserUpsertOne) UpdateAvatarMediaID() *UserUpsertOne {
 func (u *UserUpsertOne) ClearAvatarMediaID() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearAvatarMediaID()
+	})
+}
+
+// SetEmailVerifiedAt sets the "email_verified_at" field.
+func (u *UserUpsertOne) SetEmailVerifiedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetEmailVerifiedAt(v)
+	})
+}
+
+// UpdateEmailVerifiedAt sets the "email_verified_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateEmailVerifiedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateEmailVerifiedAt()
+	})
+}
+
+// ClearEmailVerifiedAt clears the value of the "email_verified_at" field.
+func (u *UserUpsertOne) ClearEmailVerifiedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearEmailVerifiedAt()
 	})
 }
 
@@ -865,6 +922,27 @@ func (u *UserUpsertBulk) UpdateAvatarMediaID() *UserUpsertBulk {
 func (u *UserUpsertBulk) ClearAvatarMediaID() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearAvatarMediaID()
+	})
+}
+
+// SetEmailVerifiedAt sets the "email_verified_at" field.
+func (u *UserUpsertBulk) SetEmailVerifiedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetEmailVerifiedAt(v)
+	})
+}
+
+// UpdateEmailVerifiedAt sets the "email_verified_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateEmailVerifiedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateEmailVerifiedAt()
+	})
+}
+
+// ClearEmailVerifiedAt clears the value of the "email_verified_at" field.
+func (u *UserUpsertBulk) ClearEmailVerifiedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearEmailVerifiedAt()
 	})
 }
 

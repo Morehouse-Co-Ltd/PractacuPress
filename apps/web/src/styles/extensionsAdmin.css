@@ -1,0 +1,410 @@
+/* ==========================================================================
+   扩展管理页（服务器扩展横条列表 + 右侧 sticky 详情）
+   ==========================================================================
+   类名前缀 extm-（extensions manager）。只作用于「扩展」页的新管理区，
+   不碰 extensions.css 里的 .ppe-*（创作者扩展）与 .ext-*（内置扩展开关）。
+   颜色全部走后台主题令牌，暗色后台下自动跟随。 */
+
+/* ---------- 页面骨架：列表 + 详情 ---------- */
+.extm-showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  align-items: start;
+  margin-top: 4px;
+}
+
+.extm-list-panel { min-width: 0; }
+.extm-list-panel .callout { margin-bottom: 10px; }
+
+/* ---------- 加载 / 空状态提示 ---------- */
+.extm-list-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ---------- 横条列表 ---------- */
+.extm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.extm-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 12px;
+  background: var(--admin-panel, var(--bg));
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.extm-row:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 10px 26px -24px rgb(20 20 15 / .55);
+}
+
+.extm-row.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.extm-row.is-failed { border-left: 3px solid var(--danger, #b23a32); }
+
+/* 行内选中按钮：图标 + 名称/描述/徽标 */
+.extm-row-select {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 12px 0 0 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.extm-row-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.extm-row-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  color: var(--ink-soft);
+}
+
+.extm-row.is-on .extm-row-icon {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.extm-row.is-selected .extm-row-icon {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.extm-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.extm-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.extm-row-title strong {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extm-row-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.extm-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+}
+
+/* 行右侧：启用开关 / 状态徽标 / 选中指示 */
+.extm-row-side {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px 0 4px;
+}
+
+.extm-row-side .switch { flex: none; }
+
+.extm-row-chevron {
+  display: inline-flex;
+  color: var(--faint);
+  transition: transform 160ms ease, color 160ms ease;
+}
+
+.extm-row.is-selected .extm-row-chevron {
+  color: var(--accent);
+  transform: translateX(1px);
+}
+
+/* ---------- 右侧详情面板 ---------- */
+.extm-detail {
+  position: sticky;
+  top: 96px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: calc(100vh - 116px);
+  overflow-y: auto;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 16px;
+  background: var(--admin-panel, var(--bg));
+  box-shadow:
+    0 1px 2px rgb(20 20 15 / .04),
+    0 24px 60px -46px rgb(20 20 15 / .4);
+  scrollbar-width: thin;
+}
+
+.extm-detail-empty { padding: 18px; }
+
+.extm-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+
+.extm-detail-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.extm-detail-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.extm-detail-title-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.extm-detail-title-copy h3 {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extm-detail-sub {
+  margin: 3px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: .03em;
+}
+
+.extm-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.extm-detail-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 11px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extm-detail-home:hover { text-decoration: underline; }
+
+.extm-detail-desc {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.75;
+  white-space: pre-line;
+}
+
+.extm-detail .callout { margin: 0; }
+
+.extm-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.extm-meta > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11.5px;
+}
+
+.extm-meta dt { flex: none; color: var(--faint); }
+.extm-meta dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 能力 / 权限分区 ---------- */
+.extm-section h4 {
+  margin: 0 0 8px;
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.extm-kv {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.extm-kv > span:first-child {
+  flex: none;
+  width: 78px;
+  color: var(--faint);
+}
+
+.extm-kv code {
+  overflow-wrap: anywhere;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg-subtle);
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  word-break: break-all;
+}
+
+.extm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.extm-chip {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.extm-chip.is-permission {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.extm-routes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extm-routes li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.extm-empty-value {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.extm-detail-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.extm-readonly-hint { margin: 0; }
+
+/* ---------- 窄屏：详情移到列表下方 ---------- */
+@media (max-width: 900px) {
+  .extm-showcase { grid-template-columns: minmax(0, 1fr); }
+  .extm-detail {
+    position: static;
+    max-height: none;
+  }
+  .extm-row-desc { -webkit-line-clamp: 2; }
+  .extm-meta { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .extm-row-select { gap: 10px; padding: 10px; }
+  .extm-row-icon { width: 34px; height: 34px; }
+  .extm-row-side { gap: 6px; padding: 0 10px 0 0; }
+  .extm-row-chevron { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .extm-row,
+  .extm-row-chevron { transition: none; }
+}

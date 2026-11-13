@@ -11,6 +11,7 @@ import type {
   SocialPlatform,
 } from '../types';
 import type { IconName } from '../components/Icon';
+import { isAdminHref } from './adminAccess';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 
@@ -370,7 +371,12 @@ export function normalizeFooterColumns(value: unknown): FooterColumn[] {
   return columns;
 }
 
-/** 出厂页脚：两栏，够用又不喧闹。 */
+/**
+ * 出厂页脚：两栏，够用又不喧闹。
+ *
+ * 这里刻意不放「管理后台」：页脚是给所有读者看的，后台入口只该出现在能进后台的
+ * 账户菜单里。旧安装里已经保存的这类链接由 `footerColumnsForReader` 在渲染时过滤。
+ */
 export function defaultFooterColumns(): FooterColumn[] {
   return [
     {
@@ -385,12 +391,52 @@ export function defaultFooterColumns(): FooterColumn[] {
     {
       id: 'fcol_site',
       title: t('站点'),
-      links: [
-        { id: 'flink_about', label: t('关于本站'), href: '/about' },
-        { id: 'flink_admin', label: t('管理后台'), href: '/admin' },
-      ],
+      links: [{ id: 'flink_about', label: t('关于本站'), href: '/about' }],
     },
   ];
+}
+
+/**
+ * 页脚里只保留当前读者能去的地方。
+ *
+ * 页脚栏目是站长自由编辑的内容，旧安装的默认值里带着一条「管理后台」。普通成员
+ * 不该在页脚里看到后台入口，更不该被引到拒绝页；这里按后台地址把它摘掉。过滤后
+ * 只剩空壳的栏目也一并去掉，免得留下一个只有标题的空列。
+ */
+export function footerColumnsForReader(
+  columns: FooterColumn[],
+  adminPath: string,
+): FooterColumn[] {
+  const visible: FooterColumn[] = [];
+  for (const column of columns) {
+    const links = column.links.filter((link) => !isAdminHref(link.href, adminPath));
+    if (links.length !== column.links.length) {
+      if (!links.length) continue;
+      visible.push({ ...column, links });
+      continue;
+    }
+    visible.push(column);
+  }
+  return visible;
+}
+
+/**
+ * 顶部导航里同样拿掉后台入口。
+ *
+ * 只处理「整条 Tab 指向后台」与「二级入口指向后台」两种情况；纯文字分组的子项
+ * 全部被过滤后，这个分组本身也就没有意义了。
+ */
+export function navTabsForReader(tabs: NavTab[], adminPath: string): NavTab[] {
+  const visible: NavTab[] = [];
+  for (const tab of tabs) {
+    if (isAdminHref(tab.href, adminPath)) continue;
+    const children = tab.children?.filter((child) => !isAdminHref(child.href, adminPath));
+    const hadChildren = !!tab.children?.length;
+    const keptChildren = hadChildren ? children : undefined;
+    if (hadChildren && !keptChildren?.length && navHrefKind(tab.href) === 'plain') continue;
+    visible.push({ ...tab, children: keptChildren?.length ? keptChildren : undefined });
+  }
+  return visible;
 }
 
 export interface FooterBrand {

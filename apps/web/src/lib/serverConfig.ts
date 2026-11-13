@@ -238,6 +238,7 @@ export function buildDomainEnvSnippet(
       ? `PUBLIC_BASE_URL=${scheme}://${primary}`
       : `${t('# 还没有设置主域名：生产环境只允许公网 IP 直连')}\n# PUBLIC_BASE_URL=http://${t('<服务器公网IP>')}`,
   );
+  lines.push(t('# 未设置时服务端按 https 推导绝对链接；桌面 / localhost（http）请显式写成 http://127.0.0.1:<端口>'));
   if (domains.cookie_domain.trim()) {
     lines.push(`COOKIE_DOMAIN=${domains.cookie_domain.trim()}`);
   } else {

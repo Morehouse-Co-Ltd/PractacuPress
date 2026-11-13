@@ -35,7 +35,7 @@ const SESSION: Session = {
 
 const ME: Me = { user: USER, role: 'platform_admin', site_id: 'site_1' };
 
-function siteOf(registrationOpen: boolean): Site {
+function siteOf(registrationOpen: boolean, mediaQuotaBytes?: number | null): Site {
   return {
     id: 'site_1',
     slug: 'practacu',
@@ -46,6 +46,7 @@ function siteOf(registrationOpen: boolean): Site {
     disabled: false,
     description: '',
     registration_open: registrationOpen,
+    media_quota_bytes: mediaQuotaBytes,
   };
 }
 
@@ -116,6 +117,12 @@ function buttonsWithText(text: string): HTMLButtonElement[] {
   );
 }
 
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 async function renderSettings(backend: Backend): Promise<void> {
   await act(async () => {
     root = createRoot(container);
@@ -176,3 +183,64 @@ describe('站点设置页的注册开关', () => {
     expect(updateSite).not.toHaveBeenCalled();
   });
 });
+
+describe('站点设置页的媒体额度', () => {
+  it('shows byte semantics and sends zero for unlimited quota', async () => {
+    const { backend, updateSite } = fakeBackend(siteOf(true, null));
+
+    await renderSettings(backend);
+
+    const input = await waitForInput('本站媒体额度（字节）');
+    expect(input.value).toBe('');
+    expect(container.textContent).toContain('留空表示继承部署默认，0 表示无限；正整数按字节计算。');
+    await act(async () => {
+      setInputValue(input, '0');
+    });
+
+    const saveButton = buttonsWithText('保存修改')[0];
+    expect(saveButton.disabled).toBe(false);
+    await act(async () => {
+      saveButton.click();
+    });
+
+    await waitFor(() => updateSite.mock.calls.length > 0);
+    expect(updateSite).toHaveBeenCalledWith(
+      'site_1',
+      expect.objectContaining({ media_quota_bytes: 0 }),
+    );
+  });
+
+  it('sends null when clearing an explicit quota to inherit the deployment default', async () => {
+    const { backend, updateSite } = fakeBackend(siteOf(true, 4096));
+
+    await renderSettings(backend);
+
+    const input = await waitForInput('本站媒体额度（字节）');
+    expect(input.value).toBe('4096');
+    await act(async () => {
+      setInputValue(input, '');
+    });
+
+    await act(async () => {
+      buttonsWithText('保存修改')[0].click();
+    });
+
+    await waitFor(() => updateSite.mock.calls.length > 0);
+    expect(updateSite).toHaveBeenCalledWith(
+      'site_1',
+      expect.objectContaining({ media_quota_bytes: null }),
+    );
+  });
+});
+
+async function waitForInput(label: string): Promise<HTMLInputElement> {
+  const start = Date.now();
+  while (Date.now() - start < 3000) {
+    const input = container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+    if (input) return input;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+  throw new Error(`等待输入框 ${label} 超时`);
+}

@@ -48,7 +48,60 @@ var (
 	// ErrInstallRequiresLocalAccess means the install's first account (which becomes
 	// the platform administrator) may only be created from a loopback host.
 	ErrInstallRequiresLocalAccess = errors.New("auth: first administrator requires local access")
+	// ErrCurrentPasswordInvalid means the authenticated caller did not prove the
+	// current password when changing it.
+	ErrCurrentPasswordInvalid = errors.New("auth: current password is invalid")
+	// ErrPasswordUnchanged rejects a "change" that would set the same password.
+	ErrPasswordUnchanged = errors.New("auth: new password must differ from the current one")
+	// ErrAvatarInvalid means the referenced media asset is not a clean avatar owned
+	// by the caller on the current site.
+	ErrAvatarInvalid = errors.New("auth: avatar asset is invalid")
+	// ErrEmailVerificationTokenInvalid covers unknown, expired and already redeemed
+	// email verification tokens.
+	ErrEmailVerificationTokenInvalid = errors.New("auth: email verification token is invalid or expired")
+
+	// ErrTwoFactorAlreadyEnabled rejects a new enrollment while one is active; the
+	// caller has to disable the current authenticator first so a stale secret cannot
+	// be replaced silently.
+	ErrTwoFactorAlreadyEnabled = errors.New("auth: two-factor authentication is already enabled")
+	// ErrTwoFactorNotEnabled means the account has no active authenticator.
+	ErrTwoFactorNotEnabled = errors.New("auth: two-factor authentication is not enabled")
+	// ErrTwoFactorNotEnrolled means there is no pending enrollment to confirm.
+	ErrTwoFactorNotEnrolled = errors.New("auth: no pending two-factor enrollment")
+	// ErrInvalidTwoFactorCode covers a wrong TOTP code and an unknown or already
+	// consumed recovery code: they are the same answer on purpose.
+	ErrInvalidTwoFactorCode = errors.New("auth: two-factor code is invalid")
+	// ErrTwoFactorReplayed means the submitted code belongs to a time step that has
+	// already been accepted. One code is usable exactly once.
+	ErrTwoFactorReplayed = errors.New("auth: two-factor code was already used")
+	// ErrTwoFactorChallengeInvalid covers an expired, forged, already redeemed or
+	// wrong-site challenge token.
+	ErrTwoFactorChallengeInvalid = errors.New("auth: two-factor challenge is invalid or expired")
+	// ErrTwoFactorUnavailable means the encryption envelope of a stored secret
+	// cannot be opened, which normally means the signing key was rotated. The
+	// account has to enroll again.
+	ErrTwoFactorUnavailable = errors.New("auth: stored two-factor secret cannot be read")
+	// ErrTwoFactorRequired is the sentinel matched by TwoFactorRequiredError.
+	ErrTwoFactorRequired = errors.New("auth: two-factor verification required")
 )
+
+// TwoFactorRequiredError is the result of a password login for an account that has
+// 2FA enabled: no session is issued, and the caller must prove the second factor
+// with the short lived challenge token instead.
+//
+// It is an error so LoginPassword keeps its (Session, error) shape; the transport
+// layer recognises it and answers 200 with the challenge body rather than a
+// failure status.
+type TwoFactorRequiredError struct {
+	ChallengeToken string
+	ExpiresAt      time.Time
+}
+
+// Error implements the error interface.
+func (e *TwoFactorRequiredError) Error() string { return "auth: two-factor verification required" }
+
+// Is makes errors.Is(err, ErrTwoFactorRequired) true for the typed marker.
+func (e *TwoFactorRequiredError) Is(target error) bool { return target == ErrTwoFactorRequired }
 
 // Account status values mirrored from the persistence schema.
 const (
@@ -71,11 +124,25 @@ func (p Principal) AtLeast(role site.Role) bool { return p.Role.AtLeast(role) }
 
 // UserView is the user representation returned to clients.
 type UserView struct {
-	ID          string
-	DisplayName string
-	Locale      string
-	Status      string
-	CreatedAt   time.Time
+	ID            string
+	DisplayName   string
+	Email         string
+	EmailVerified bool
+	Bio           string
+	AvatarMediaID string
+	Locale        string
+	Status        string
+	CreatedAt     time.Time
+}
+
+// ProfileInput is a partial self-service profile update.
+//
+// Nil means "leave unchanged", so an empty string pointer deliberately clears a
+// field (empty bio, no avatar). DisplayName, when present, must be non-empty.
+type ProfileInput struct {
+	DisplayName   *string
+	Bio           *string
+	AvatarMediaID *string
 }
 
 // Session is the result of a successful registration, login or refresh.

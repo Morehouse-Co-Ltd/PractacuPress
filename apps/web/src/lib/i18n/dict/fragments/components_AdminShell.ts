@@ -51,6 +51,14 @@ const fragment: Dictionary = {
   查看站点: 'View site',
   最高管理员: 'Super admin',
 
+  // 后台明暗模式
+  后台明暗模式: 'Admin color mode',
+  亮色: 'Light',
+  暗色: 'Dark',
+  亮色模式: 'Light mode',
+  暗色模式: 'Dark mode',
+  '暗色模式（Shift+D）': 'Dark mode (Shift+D)',
+
   // 侧栏上的说明
   后台导航: 'Admin navigation',
   站点设置导航: 'Site settings navigation',

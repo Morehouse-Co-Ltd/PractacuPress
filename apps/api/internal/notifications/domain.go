@@ -57,6 +57,9 @@ const (
 	MaxPayloadKeys = 20
 	// MaxPayloadValueLength bounds one payload string value.
 	MaxPayloadValueLength = 200
+	// MaxDedupeKeyLength matches the notification column. A producer builds it
+	// from ids, so anything longer is a bug rather than user input.
+	MaxDedupeKeyLength = 120
 )
 
 // Notification is one message for one user.
@@ -68,6 +71,8 @@ type Notification struct {
 	ActorID   string
 	SubjectID string
 	Payload   map[string]string
+	// DedupeKey is the producer supplied collapse key, when there is one.
+	DedupeKey string
 	ReadAt    *time.Time
 	CreatedAt time.Time
 }
@@ -83,6 +88,10 @@ type NewInput struct {
 	ActorID   string
 	SubjectID string
 	Payload   map[string]string
+	// DedupeKey, when set, collapses a repeat of the same interaction inside
+	// DedupeWindow. Producers use it for toggleable interactions (a like, a
+	// follow); a comment leaves it empty because every comment is a new event.
+	DedupeKey string
 }
 
 // Validate checks a create request.
@@ -105,6 +114,9 @@ func Validate(in NewInput) (NewInput, error) {
 	}
 	if len(in.Payload) > MaxPayloadKeys {
 		return NewInput{}, fmt.Errorf("%w: payload has too many keys", ErrInvalidInput)
+	}
+	if len(in.DedupeKey) > MaxDedupeKeyLength {
+		return NewInput{}, fmt.Errorf("%w: dedupe key is too long", ErrInvalidInput)
 	}
 	for key, value := range in.Payload {
 		if len(key) > 40 {

@@ -33,8 +33,14 @@ type Site struct {
 	PublishMode string `json:"publish_mode,omitempty"`
 	// Description holds the value of the "description" field.
 	Description *string `json:"description,omitempty"`
+	// MediaQuotaBytes holds the value of the "media_quota_bytes" field.
+	MediaQuotaBytes *int64 `json:"media_quota_bytes,omitempty"`
 	// RegistrationOpen holds the value of the "registration_open" field.
 	RegistrationOpen bool `json:"registration_open,omitempty"`
+	// CommentsEnabled holds the value of the "comments_enabled" field.
+	CommentsEnabled bool `json:"comments_enabled,omitempty"`
+	// CommentsRequireReview holds the value of the "comments_require_review" field.
+	CommentsRequireReview bool `json:"comments_require_review,omitempty"`
 	// Disabled holds the value of the "disabled" field.
 	Disabled bool `json:"disabled,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -49,8 +55,10 @@ func (*Site) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case site.FieldRegistrationOpen, site.FieldDisabled:
+		case site.FieldRegistrationOpen, site.FieldCommentsEnabled, site.FieldCommentsRequireReview, site.FieldDisabled:
 			values[i] = new(sql.NullBool)
+		case site.FieldMediaQuotaBytes:
+			values[i] = new(sql.NullInt64)
 		case site.FieldID, site.FieldSlug, site.FieldName, site.FieldDomain, site.FieldDomainVerificationToken, site.FieldVisibilityMode, site.FieldPublishMode, site.FieldDescription:
 			values[i] = new(sql.NullString)
 		case site.FieldDomainVerifiedAt, site.FieldCreatedAt, site.FieldUpdatedAt:
@@ -128,11 +136,30 @@ func (_m *Site) assignValues(columns []string, values []any) error {
 				_m.Description = new(string)
 				*_m.Description = value.String
 			}
+		case site.FieldMediaQuotaBytes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field media_quota_bytes", values[i])
+			} else if value.Valid {
+				_m.MediaQuotaBytes = new(int64)
+				*_m.MediaQuotaBytes = value.Int64
+			}
 		case site.FieldRegistrationOpen:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field registration_open", values[i])
 			} else if value.Valid {
 				_m.RegistrationOpen = value.Bool
+			}
+		case site.FieldCommentsEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field comments_enabled", values[i])
+			} else if value.Valid {
+				_m.CommentsEnabled = value.Bool
+			}
+		case site.FieldCommentsRequireReview:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field comments_require_review", values[i])
+			} else if value.Valid {
+				_m.CommentsRequireReview = value.Bool
 			}
 		case site.FieldDisabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -220,8 +247,19 @@ func (_m *Site) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	if v := _m.MediaQuotaBytes; v != nil {
+		builder.WriteString("media_quota_bytes=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("registration_open=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RegistrationOpen))
+	builder.WriteString(", ")
+	builder.WriteString("comments_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CommentsEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("comments_require_review=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CommentsRequireReview))
 	builder.WriteString(", ")
 	builder.WriteString("disabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Disabled))

@@ -1,0 +1,342 @@
+/* =========================================================
+   性能面板（内置扩展 pp.performance 注册的后台页）
+   页面：pages/admin/SystemMonitor.tsx
+   入口：/admin/ext/system（旧 /admin/system 重定向）
+   ---------------------------------------------------------
+   卡片改用后台令牌（--admin-panel / --admin-border），不再写死 #fff，
+   深色后台（data-admin-theme="dark"）下自动跟随；圆环颜色见 --ring-color。
+   ========================================================= */
+
+.sysmon-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sysmon-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 16px;
+  background: var(--admin-panel, var(--bg-subtle));
+  box-shadow:
+    0 1px 2px rgba(20, 20, 15, 0.03),
+    0 22px 46px -38px rgba(20, 20, 15, 0.4);
+}
+
+.sysmon-card-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.sysmon-card-label svg { color: var(--muted); }
+
+.sysmon-card-value {
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.sysmon-card-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sysmon-card-extra {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.sysmon-model,
+.sysmon-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 圆环仪表盘（CPU / 内存 / 磁盘） ---------- */
+
+.sysmon-ring-card {
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.sysmon-ring-wrap {
+  position: relative;
+  width: min(148px, 100%);
+  aspect-ratio: 1;
+  margin: 2px auto 8px;
+}
+
+.sysmon-ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.sysmon-ring-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 10;
+  opacity: 0.55;
+}
+
+.sysmon-ring-value {
+  fill: none;
+  stroke: var(--ring-color, var(--accent));
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 700ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.sysmon-ring-card.is-cpu {
+  --ring-color: var(--accent);
+}
+
+.sysmon-ring-card.is-memory {
+  --ring-color: #b07a2a;
+}
+
+.sysmon-ring-card.is-disk {
+  --ring-color: #2f6f9a;
+}
+
+.sysmon-ring-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sysmon-ring-card .sysmon-card-label {
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.sysmon-ring-card .sysmon-card-sub {
+  white-space: normal;
+  text-align: center;
+}
+
+.sysmon-ring-card .sysmon-card-extra {
+  text-align: center;
+}
+
+/* 深色后台：赭黄 / 蓝在石墨底上亮度不够，按同一色系提亮。 */
+html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-card.is-memory {
+  --ring-color: #e0bd6b;
+}
+
+html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-card.is-disk {
+  --ring-color: #7fb2d8;
+}
+
+html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-track {
+  stroke: var(--line-strong, var(--line));
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sysmon-ring-value {
+    transition: none;
+  }
+}
+
+.sysmon-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sysmon-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sysmon-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.sysmon-dot.is-app { background: var(--accent); }
+.sysmon-dot.is-other { background: #c9a468; }
+.sysmon-dot.is-database { background: var(--accent); }
+.sysmon-dot.is-media { background: #2f6f9a; }
+.sysmon-dot.is-backup { background: #8a6d3b; }
+
+.sysmon-split {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sysmon-split-row { display: flex; flex-direction: column; gap: 6px; }
+
+.sysmon-split-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sysmon-split-labels b { color: var(--ink); font-weight: 500; }
+
+.sysmon-sep { margin: 0 6px; font-style: normal; color: var(--faint); }
+
+.sysmon-split-bar {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sysmon-split-app { background: var(--accent); }
+.sysmon-split-other { background: #c9a468; }
+
+.sysmon-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.sysmon-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-subtle);
+}
+
+.sysmon-panel .panel-head.compact { padding: 0; margin: 0; }
+.sysmon-panel .panel-head.compact h3 { font-size: 14px; }
+.sysmon-panel .panel-head.compact p { font-size: 11.5px; }
+
+.sysmon-panel .table-wrap {
+  border-radius: 10px;
+  background: var(--admin-panel, var(--bg));
+}
+
+.sysmon-panel .table th { font-size: 10.5px; }
+.sysmon-panel .table td { font-size: 12px; }
+
+.sysmon-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.sysmon-storage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sysmon-storage-head strong { font-size: 14px; color: var(--ink); font-weight: 500; }
+
+.sysmon-storage-bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--admin-panel, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.sysmon-storage-seg.is-database { background: var(--accent); }
+.sysmon-storage-seg.is-media { background: #2f6f9a; }
+.sysmon-storage-seg.is-backup { background: #8a6d3b; }
+.sysmon-storage-seg.is-other { background: #c9c8bd; }
+
+.sysmon-storage-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.sysmon-storage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sysmon-storage-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sysmon-storage-row em { font-style: normal; color: var(--faint); }
+
+.sysmon-note {
+  margin-top: auto;
+  padding-top: 6px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--faint);
+}
+
+@media (max-width: 1200px) {
+  .sysmon-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .sysmon-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sysmon-columns { grid-template-columns: minmax(0, 1fr); }
+  .sysmon-card-value { font-size: 24px; }
+  .sysmon-ring-center { font-size: 22px; }
+  .sysmon-split-labels { flex-direction: column; gap: 2px; }
+}
+
+@media (max-width: 520px) {
+  .sysmon-cards { grid-template-columns: minmax(0, 1fr); }
+  .sysmon-storage-list { grid-template-columns: minmax(0, 1fr); }
+  .sysmon-ring-wrap { width: min(132px, 100%); }
+}

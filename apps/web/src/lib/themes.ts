@@ -4,7 +4,10 @@ import { applyPreset, DEFAULT_THEME, normalizeThemeSettings } from './theme';
 import { liveCatalog } from './i18n/live';
 
 /**
- * “大主题”：一次切换配色、排版与布局变体（原版单栏 / 夜航双栏）。
+ * “大主题”：一次切换配色、排版与布局变体（原版 / 夜航）。
+ *
+ * 2026-11 起「白昼」作为独立主题下架，它的明亮观感并入夜航的浅色重配。
+ * 旧配置里的 `daylight` 版式仍被 `normalizeVariant` 接受，已有站点不会塌版。
  *
  * 内置主题写在代码里，不可删除；导入、创建或另存的主题存在 `customization.themes`。
  * 主题可以声明自己需要哪些外观分区（`appearance`）：外观页只渲染这些分区，
@@ -19,6 +22,13 @@ export interface BuiltinThemeDefinition {
   note: string;
   preset: string;
   variant: LayoutVariant;
+  /**
+   * 版式自带、但与配色预设无关的排版默认值。
+   *
+   * 纸白与夜航沿用主题默认的衬线标题和圆角；需要更现代的版式时在这里加字重、
+   * 圆角与正文栏宽。这些值在套用主题时一起写入，站长仍可在外观页微调。
+   */
+  style?: Partial<ThemeSettings>;
 }
 
 /** 外观分区清单：id、名称与用途说明。顺序即外观页的显示顺序。 */
@@ -53,7 +63,7 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
   {
     id: 'night',
     name: t('夜航'),
-    note: t('暖黑暗色 · 双栏杂志布局，适合社区与图片较多的站点。'),
+    note: t('冷石墨与电光蓝 · 深色杂志布局；切到浅色会得到同一套设计的冷白重配。'),
     preset: 'night',
     variant: 'bento',
   },
@@ -72,7 +82,19 @@ export const BUILTIN_THEME_IDS = new Set(BUILTIN_THEMES.map((item) => item.id));
 export const THEME_MARKETPLACE_URL = '';
 
 export function variantLabel(variant: LayoutVariant): string {
-  return variant === 'bento' ? t('双栏') : t('单栏');
+  if (variant === 'bento') return t('双栏');
+  if (variant === 'daylight') return t('卡片');
+  return t('单栏');
+}
+
+/**
+ * 读取布局变体：只接受三个内置值，其余（旧配置、手改文件）一律回退单栏。
+ *
+ * 导入主题和读取站内配置都走这里，避免每处各写一份 `variant === 'bento'`
+ * 让新变体在某个角落悄悄丢失。
+ */
+export function normalizeVariant(value: unknown): LayoutVariant {
+  return value === 'bento' || value === 'daylight' ? value : 'classic';
 }
 
 export function builtinThemeBundle(id: string): SiteTheme | null {
@@ -83,7 +105,7 @@ export function builtinThemeBundle(id: string): SiteTheme | null {
     name: definition.name,
     note: definition.note,
     variant: definition.variant,
-    theme: applyPreset(DEFAULT_THEME, definition.preset),
+    theme: { ...applyPreset(DEFAULT_THEME, definition.preset), ...definition.style },
     appearance: { sections: [...DEFAULT_APPEARANCE_SECTIONS] },
   };
 }
@@ -196,7 +218,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
     id,
     name,
     note: themeText(raw.note, '', 160),
-    variant: raw.variant === 'bento' ? 'bento' : 'classic',
+    variant: normalizeVariant(raw.variant),
     theme: normalizeThemeSettings(raw.theme),
     ...(appearance ? { appearance } : {}),
   };
@@ -233,7 +255,7 @@ export function parseThemeFile(raw: string): SiteTheme {
         ? (customization.layout as Record<string, unknown>)
         : null;
   const rawVariant = record.variant ?? record.layout_variant ?? layoutSource?.variant;
-  const variant: LayoutVariant = rawVariant === 'bento' ? 'bento' : 'classic';
+  const variant = normalizeVariant(rawVariant);
   const name = themeText(record.name ?? record.site, t('导入的主题'), 40).trim() || t('导入的主题');
   const note = themeText(record.note ?? record.summary, '', 160);
   const appearance = normalizeAppearance(record.appearance);

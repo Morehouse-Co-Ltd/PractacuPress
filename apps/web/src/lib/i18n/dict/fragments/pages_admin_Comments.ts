@@ -69,8 +69,16 @@ const fragment: Dictionary = {
 
   // ---- 操作反馈 ----
   '评论已通过': 'Comment approved',
+  '评论已驳回': 'Comment rejected',
   '评论已隐藏': 'Comment hidden',
   '评论已删除': 'Comment deleted',
+  '驳回': 'Reject',
+  '评论策略已保存': 'Comment policy saved',
+  '评论策略由服务端执行': 'The server enforces the comment policy',
+  '关闭评论后，即使直接调用接口也会被拒绝；先审后发时新评论进入待审核队列。':
+    'With comments off, even direct API calls are refused; in review mode new comments wait in the queue.',
+  '立即生效，由服务端强制执行。':
+    'Applied immediately and enforced by the server.',
   '删除这条评论？': 'Delete this comment?',
   '评论会被标记为已删除，作者与审核员仍能看到占位，回复保持完整。':
     'The comment is marked as deleted; the author and reviewers still see a placeholder, and replies stay intact.',
@@ -81,6 +89,69 @@ const fragment: Dictionary = {
     'In demo mode comments are stored in the browser; with a real backend, listing and moderating comments go through',
   '与': 'and',
   '。': '.',
+
+  // ---- 内容安全 ----
+  '内容安全': 'Content safety',
+  '敏感词、评论频率与 IP 黑白名单均由服务端执行，命中会写入站点日志。':
+    'Sensitive words, comment frequency limits and IP allow/deny lists are enforced by the server; matches are written to the site audit log.',
+  '服务端执行': 'Server enforced',
+  '敏感词': 'Sensitive word',
+  '评论频率': 'Comment frequency',
+  'IP 名单': 'IP lists',
+  '正在载入内容安全策略': 'Loading content safety policy',
+  '内容安全策略加载失败。': 'Could not load the content safety policy.',
+  '至少 2 个字符；英文匹配不区分大小写。':
+    'At least 2 characters; English matching is case-insensitive.',
+  '例如：违禁词': 'For example: banned phrase',
+  '命中动作': 'When matched',
+  '拒绝提交': 'Reject submission',
+  '替换为占位符': 'Replace with placeholder',
+  '标记待审': 'Hold for review',
+  '占位符': 'Placeholder',
+  '添加敏感词': 'Add sensitive word',
+  '还没有敏感词': 'No sensitive words yet',
+  '添加后，评论与内容提交会在服务端执行这里配置的动作。':
+    'Once added, comment and content submissions run the configured action on the server.',
+  '敏感词至少需要 2 个字符': 'A sensitive word needs at least 2 characters',
+  '敏感词已添加': 'Sensitive word added',
+  '添加失败': 'Could not add',
+  '敏感词规则已更新': 'Sensitive word rule updated',
+  '更新失败': 'Could not update',
+  '敏感词已删除': 'Sensitive word deleted',
+  '删除失败': 'Could not delete',
+  '每位用户 / 窗口': 'Per member / window',
+  '登录用户在该窗口内最多发表的评论数，0 表示停用。':
+    'Comments a signed-in member may write in one window; 0 disables the counter.',
+  '每个 IP / 窗口': 'Per IP / window',
+  '匿名与登录评论都按来源地址计数，0 表示停用。':
+    'Anonymous and signed-in comments are both counted by source address; 0 disables the counter.',
+  '窗口秒数': 'Window seconds',
+  '保存频率限制': 'Save frequency limits',
+  '评论频率已保存': 'Comment frequency saved',
+  '超限会返回 429': 'Over the limit answers 429',
+  '超过窗口阈值时，评论接口返回 problem+json 429，并带 Retry-After 与 details.retry_after_seconds。':
+    'Beyond the window threshold the comment endpoint answers problem+json 429 with Retry-After and details.retry_after_seconds.',
+  '类型': 'Type',
+  '黑名单（拒绝）': 'Deny list',
+  '白名单（放行）': 'Allow list',
+  '地址或网段': 'Address or network',
+  '支持单个 IPv4 / IPv6 地址或 CIDR，例如 203.0.113.0/24。':
+    'Accepts a single IPv4/IPv6 address or a CIDR block, for example 203.0.113.0/24.',
+  '例如：203.0.113.0/24': 'For example: 203.0.113.0/24',
+  '请填写 IP 地址或 CIDR 网段': 'Enter an IP address or CIDR block',
+  '备注（可选）': 'Note (optional)',
+  '备注': 'Note',
+  '添加 IP 规则': 'Add IP rule',
+  'IP 规则已添加': 'IP rule added',
+  'IP 规则已删除': 'IP rule deleted',
+  '黑名单优先': 'Deny rules win',
+  '只要存在白名单，站点就只放行名单内的地址；黑名单始终优先。本机回环地址始终放行，避免把自己锁在管理页之外。':
+    'As soon as an allow rule exists the site only accepts listed addresses; deny rules always win. Loopback is always allowed so you cannot lock yourself out of the admin screen.',
+  '白名单': 'Allow',
+  '黑名单': 'Deny',
+  '还没有 IP 规则': 'No IP rules yet',
+  '添加黑名单可拒绝特定来源；添加白名单后仅放行名单内地址。':
+    'Add a deny rule to refuse a source, or an allow rule to serve only listed addresses.',
 };
 
 export default fragment;

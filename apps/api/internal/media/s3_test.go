@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 )
 
 // s3Endpoint returns the configured S3 test endpoint, or skips.

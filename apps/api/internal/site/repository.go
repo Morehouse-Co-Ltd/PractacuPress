@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 )
 
 // Sentinel errors for the site module.
@@ -51,6 +53,15 @@ var (
 	ErrCustomizationConflict = errors.New("site: customization revision conflict")
 	// ErrCustomizationTooLarge means the design document exceeds MaxCustomizationBytes.
 	ErrCustomizationTooLarge = errors.New("site: customization document too large")
+	// ErrSiteConfigNotFound means the site has never saved a site configuration. It is
+	// not an error condition for readers: the browser falls back to its defaults.
+	ErrSiteConfigNotFound = errors.New("site: config not found")
+	// ErrSiteConfigConflict means the stored configuration changed since the caller
+	// last read it, so the write was refused instead of silently overwriting an edit
+	// made on another device or in another tab.
+	ErrSiteConfigConflict = errors.New("site: config revision conflict")
+	// ErrSiteConfigTooLarge means the configuration document exceeds MaxSiteConfigBytes.
+	ErrSiteConfigTooLarge = errors.New("site: config document too large")
 )
 
 // Member is one user's membership of a site.
@@ -61,10 +72,48 @@ type Member struct {
 	DisplayName string
 	// Email is the account's email login identity. It is empty for accounts that
 	// only have a provider identity (for example a pure OAuth account).
-	Email     string
-	Role      Role
-	Status    string
-	CreatedAt time.Time
+	Email string
+	// Bio and AvatarMediaID are the public profile fields of the account. They are
+	// loaded with the membership so the author archive can render them without a
+	// second request.
+	Bio             string
+	AvatarMediaID   string
+	Role            Role
+	Status          string
+	MediaQuotaBytes *int64
+	CreatedAt       time.Time
+	// GroupKey is the capability group the member belongs to. It is always
+	// populated by the store: an unassigned member falls back to the built-in
+	// group of its role.
+	GroupKey string
+	// GroupName is the operator visible label of that group, when one was set.
+	GroupName string
+	// Permissions is the expanded capability matrix of the group. Nil means the
+	// membership was built without persistence (tests, migrations) and the role
+	// defaults apply.
+	Permissions PermissionSet
+	// AdminAccess mirrors the group's "enter the dashboard" switch.
+	AdminAccess bool
+}
+
+// Allows reports whether the membership's matrix enables capability.
+//
+// A nil matrix falls back to the server role, which is the behaviour every
+// membership had before permission groups existed. An explicit matrix is
+// authoritative: a capability switched off in the dashboard is off here too.
+func (m Member) Allows(capability Capability) bool {
+	if m.Permissions == nil {
+		return DefaultCapabilities(m.Role).Allows(capability)
+	}
+	return m.Permissions.Allows(capability)
+}
+
+// QuotaOverride distinguishes an omitted field from an explicit null value.
+// Present=false leaves the stored value unchanged; Present=true and Bytes=nil
+// clears the override; a non-nil Bytes value sets it.
+type QuotaOverride struct {
+	Present bool
+	Bytes   *int64
 }
 
 // IsActive reports whether the membership may be used.
@@ -105,6 +154,11 @@ type SettingsInput struct {
 	// RegistrationOpen is nil when the caller did not touch the registration switch.
 	// A non-nil value is stored as given: there is no default for an explicit update.
 	RegistrationOpen *bool
+	// CommentsEnabled and CommentsRequireReview are nil when the caller did not touch
+	// the comment policy. Non-nil values are stored as given.
+	CommentsEnabled       *bool
+	CommentsRequireReview *bool
+	MediaQuota            QuotaOverride
 }
 
 // DomainInput is a primary domain change.
@@ -126,6 +180,23 @@ type DomainInput struct {
 type MemberProfile struct {
 	DisplayName *string
 	Email       *string
+}
+
+// MemberDirectoryFilter narrows the authenticated member directory.
+//
+// Query matches the display name. After is the opaque position of the last row of
+// the previous page; an empty cursor starts at the beginning.
+type MemberDirectoryFilter struct {
+	SiteID string
+	Query  string
+	Limit  int
+	After  page.Cursor
+}
+
+// MemberDirectoryRepository is the optional persistence port behind the member
+// directory. It is split from Repository so existing fakes keep compiling.
+type MemberDirectoryRepository interface {
+	ListMemberDirectory(ctx context.Context, filter MemberDirectoryFilter) ([]Member, error)
 }
 
 // Repository is the persistence contract for the site module.
@@ -158,6 +229,9 @@ type Repository interface {
 	UpdateMemberProfile(ctx context.Context, siteID, userID string, in MemberProfile, audit AuditEntry) error
 	// UpdateMemberStatus changes a membership status and records the audit entry.
 	UpdateMemberStatus(ctx context.Context, siteID, userID, status string, audit AuditEntry) error
+	// UpdateMemberMediaQuota sets or clears a member's storage override and writes the
+	// audit entry in the same transaction.
+	UpdateMemberMediaQuota(ctx context.Context, siteID, userID string, quota QuotaOverride, audit AuditEntry) error
 	// DeleteMember removes the membership and records the audit entry.
 	//
 	// Only the membership is removed; the account itself, its content and its other
@@ -178,6 +252,16 @@ type Repository interface {
 		in CustomizationInput,
 		audit AuditEntry,
 	) (Customization, error)
+	// SiteConfig returns the saved site configuration of a site.
+	SiteConfig(ctx context.Context, siteID string) (SiteConfig, error)
+	// SaveSiteConfig upserts the site configuration and records the audit entry in the
+	// same transaction, refusing the write when the stored revision moved on.
+	SaveSiteConfig(
+		ctx context.Context,
+		siteID string,
+		in SiteConfigInput,
+		audit AuditEntry,
+	) (SiteConfig, error)
 }
 
 // Customization is one site's saved design document.
@@ -196,6 +280,28 @@ type Customization struct {
 // ExpectedRevision is the revision the caller last read. Zero means "no precondition",
 // which is what the first save of a fresh install sends.
 type CustomizationInput struct {
+	Document         []byte
+	ExpectedRevision int
+}
+
+// SiteConfig is one site's saved runtime configuration.
+//
+// Document is the JSON the browser sent, byte for byte. Like the design document it is
+// opaque to the API on the way to storage: the service validates a known set of fields
+// (bounds, the admin path, the loading screen CSS) but never re-encodes the payload, so
+// a property added to the frontend does not need an API change. The public projection a
+// visitor receives is built from the same bytes (see publicSiteConfigDocument).
+type SiteConfig struct {
+	Document  []byte
+	Revision  int
+	UpdatedAt time.Time
+}
+
+// SiteConfigInput is one write of the runtime configuration.
+//
+// ExpectedRevision has the same meaning as in CustomizationInput: the revision the caller
+// last read, zero for the first save of a fresh install.
+type SiteConfigInput struct {
 	Document         []byte
 	ExpectedRevision int
 }

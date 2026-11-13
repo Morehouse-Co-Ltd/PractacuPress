@@ -120,8 +120,8 @@ const fragment: Dictionary = {
   '阶段': 'Phases',
   '6 步': '6 steps',
   '契约': 'Contract',
-  '先选一套大主题：配色、排版和单栏 / 双栏版式会一起切换。 之后可在「主题设置」里微调、导入或删除自定义主题。':
-    'Pick a theme first: colors, typography, and the single- or two-column layout switch together. You can fine-tune, import, or delete custom themes in Theme settings later.',
+  '先选一套大主题：配色、排版和单栏 / 卡片 / 双栏版式会一起切换。 之后可在「主题设置」里微调、导入或删除自定义主题。':
+    'Pick a theme first: colours, typography, and the single-column / cards / two-column layout switch together. You can fine-tune, import, or delete custom themes in Theme settings later.',
   '双栏': 'Two-column',
   '单栏': 'Single column',
   '当前：{theme}· {mode}。页面编排与主题微调在后台「主题设置」里。':
@@ -217,6 +217,8 @@ const fragment: Dictionary = {
   '数据库名': 'Database name',
   '用户名': 'Username',
   '密码': 'Password',
+  '查看密码': 'Show password',
+  '隐藏密码': 'Hide password',
   '只用于生成本地配置片段，不会发送到任何地方。':
     'Only used to build the local config snippet; it is never sent anywhere.',
   '字符集 / 时区': 'Charset / time zone',
@@ -308,6 +310,9 @@ const fragment: Dictionary = {
     'The checks only read health endpoints and public APIs and change no data. The security service has no standalone probe; the publish and upload flows verify it fail-closed.',
   '重新检查': 'Re-run checks',
   '演示模式': 'Demo mode',
+  'http 访问要显式设置 PUBLIC_BASE_URL': 'An http site must set PUBLIC_BASE_URL explicitly',
+  '未设置时服务端会按 https 推导第三方登录回调等绝对链接；通知邮件里的站内地址也依赖它。当前站点通过 http 访问，请把这一行加进 API 的环境变量后重启：':
+    'When it is unset the server assumes https for absolute links such as third-party sign-in callbacks, and notification mail relies on it for its in-site link. This site is reached over http; add the line below to the API environment variables and restart:',
   '还有会阻塞安装的检查': 'Some checks still block setup',
   '服务就绪或数据存储未通过。请先启动后端、执行迁移，或改用演示模式。':
     'The service or data storage check failed. Start the backend, run migrations, or switch to demo mode.',
@@ -329,6 +334,45 @@ const fragment: Dictionary = {
   '、': ', ',
   '8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。':
     '8–128 characters, combining at least two of: lowercase, uppercase, digits, symbols. A long passphrase is best.',
+  // ---- 真实环境：连接阶段 ----
+  '连接后端': 'Backend connection',
+  '等待本机 API': 'Waiting for the local API',
+  '正在等待后端链接': 'Waiting for the backend connection',
+  '正在尝试同源接口与本机 8080。启动后端后会自动继续，不需要手动操作。':
+    'Trying the same-origin API and local 8080. Setup continues automatically once the backend starts; no manual action is needed.',
+  '后端已经连上。': 'The backend is connected.',
+  '健康检查已经通过，正在进入数据库设置。':
+    'The health check passed; moving on to database settings.',
+  '正在检测后端': 'Checking the backend',
+  '暂时没有找到后端': 'No backend found yet',
+  '后端已找到，等待数据库就绪': 'Backend found; waiting for the database to become ready',
+  '准备连接': 'Ready to connect',
+  '正在依次探测同源接口与本机 127.0.0.1:8080。':
+    'Probing the same-origin API and 127.0.0.1:8080 in turn.',
+  '后端一旦可用，这里会自动继续。': 'Setup continues automatically once the backend is available.',
+  '立即重试': 'Retry now',
+  '已自动尝试 {count} 次，后端启动后会自动继续。':
+    'Automatic attempts: {count}. Setup continues as soon as the backend starts.',
+  '后端还没有启动': 'The backend is not running yet',
+  '。在仓库根目录启动 Go API 后会自动连上；开发时用':
+    '. Start the Go API from the repository root and setup connects automatically; in development use',
+  // ---- 真实环境：只保留数据库、管理员与站点 ----
+  '接下来五步会连上后端、创建第一个管理员、一个默认站点和它的发布规则。所有选项之后都能在管理后台修改。':
+    'The next five steps connect the backend, create the first administrator, and define a default site with its publishing rules. Everything can be changed later in the dashboard.',
+  '。这段配置要重启 API 才会生效；安装引导只记录你的选择。':
+    '. The API must be restarted for this configuration to take effect; setup only records your choice.',
+  '填写已有的管理员账户后点「登录」，验证通过会自动进入下一步。':
+    'Enter an existing administrator account and choose Sign in; setup advances automatically after it is verified.',
+  '填好上面的信息后，点右下角「创建管理员」即可；创建过程会显示进度，完成后自动进入下一步。':
+    'Fill in the fields above, then choose Create administrator in the lower right. Progress is shown while the account is created, and setup advances automatically when it finishes.',
+  '正在创建管理员': 'Creating the administrator',
+  '正在登录管理员账户': 'Signing in the administrator',
+  '正在写入账户与站点权限，请稍候。':
+    'Writing the account and site permissions. This may take a moment.',
+  '正在验证账户并建立会话，请稍候。':
+    'Verifying the account and creating a session. This may take a moment.',
+  '服务就绪或数据存储未通过。请先启动后端并执行迁移，然后重新检查。':
+    'The service or data storage check did not pass. Start the backend, run migrations, and check again.',
 };
 
 export default fragment;

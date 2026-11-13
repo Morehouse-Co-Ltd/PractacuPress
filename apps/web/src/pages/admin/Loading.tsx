@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import type { LoadingPreset, LoadingSettings } from '../../types';
 import { useAuth } from '../../lib/session';
+import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { useBackend } from '../../lib/backend';
 import { useCustomization } from '../../lib/customize';
 import { useTitle } from '../../lib/hooks';
@@ -37,7 +38,8 @@ import { RoleGate } from '../../components/Guards';
 export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   useTitle(embedded ? t('主题设置') : t('加载动画'));
-  const { config, site, me, updateConfig } = useAuth();
+  const { config, site, me } = useAuth();
+  const saveSiteConfig = useSaveSiteConfig();
   const backend = useBackend();
   const { customization } = useCustomization();
   const toast = useToast();
@@ -114,18 +116,19 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
     );
   };
 
-  const save = () => {
+  const save = async () => {
     const next = readLoading({ loading: draft });
     const nextSkeleton = isSkeletonPreset(next.preset);
-    updateConfig({ loading: next });
+    const ok = await saveSiteConfig({ loading: next });
     setDraft(next);
+    if (!ok) return;
     toast.push(
       'ok',
       t('加载动画已保存'),
       next.enabled
         ? nextSkeleton
-          ? t('前台等待内容时会显示原位骨架。')
-          : t('前台刷新或切换页面时会按设置显示。')
+          ? t('已写入站点服务端配置：访客等待内容时会看到原位骨架。')
+          : t('已写入站点服务端配置：访客刷新或切换页面时会看到这段动画。')
         : t('加载动画当前关闭。'),
     );
     if (me) {
@@ -143,9 +146,10 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
-  const reset = () => {
-    updateConfig({ loading: DEFAULT_LOADING });
+  const reset = async () => {
+    const ok = await saveSiteConfig({ loading: DEFAULT_LOADING });
     setDraft(DEFAULT_LOADING);
+    if (!ok) return;
     toast.push('ok', t('已恢复默认加载动画'), t('加载画面关闭，图形回到圆环。'));
   };
 

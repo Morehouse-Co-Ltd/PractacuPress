@@ -1,0 +1,605 @@
+/* =========================================================
+   2026-11 阅读与主题修订
+   ---------------------------------------------------------
+   1. 明暗切换的颜色过渡
+   2. 路由切换的淡入
+   3. 居中页脚（沿用白昼的报头尾结构，品牌标记不变）
+   4. 居中文章栏 + 左侧悬浮目录
+   5. 文章列表的列表 / 卡片切换
+   6. 后台「访问与域名」的两个 Tab 与系统页面卡
+   ========================================================= */
+
+/* ----------------------------- 1. 明暗切换 ----------------------------- */
+
+html.pp-theme-tween,
+html.pp-theme-tween *,
+html.pp-theme-tween *::before,
+html.pp-theme-tween *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 420ms !important;
+  transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1) !important;
+}
+
+html.pp-theme-tween .mode-toggle svg,
+html.pp-theme-tween .read-tool svg {
+  transition: transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1) !important;
+}
+
+/* ----------------------------- 2. 路由切换 ----------------------------- */
+
+@keyframes pp-route-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.route-transition {
+  animation: pp-route-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-transition {
+    animation: none;
+  }
+}
+
+/* 登录 / 退出 / 进出后台时的整页交叉淡化（View Transition API）。 */
+@keyframes pp-page-vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pp-page-vt-in {
+  from {
+    opacity: 0;
+  }
+}
+
+::view-transition-old(root) {
+  animation: pp-page-vt-out 220ms ease both;
+}
+
+::view-transition-new(root) {
+  animation: pp-page-vt-in 300ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-group(root) {
+    animation: none !important;
+  }
+}
+
+/* ----------------------------- 3. 居中页脚 ----------------------------- */
+
+html[data-surface='site'] .site-footer {
+  margin-top: clamp(64px, 8vw, 104px);
+  padding: 0 0 10px;
+  border-top: 0;
+  border-radius: clamp(22px, 3vw, 34px) clamp(22px, 3vw, 34px) 0 0;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-subtle) 82%, transparent), var(--bg-subtle)),
+    var(--bg-subtle);
+  box-shadow: 0 -1px 0 var(--line) inset;
+}
+
+html[data-surface='site'] .footer-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(var(--footer-cols, 3), minmax(0, 180px)) minmax(0, 1fr);
+  justify-items: center;
+  gap: 30px clamp(28px, 4vw, 56px);
+  padding: clamp(38px, 5vw, 56px) 0 clamp(26px, 3vw, 36px);
+  text-align: center;
+}
+
+html[data-surface='site'] .footer-inner.is-brand-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-surface='site'] .footer-brand {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-self: center;
+  max-width: 520px;
+}
+
+html[data-surface='site'] .footer-brand .brand {
+  justify-content: center;
+}
+
+html[data-surface='site'] .footer-brand p {
+  max-width: 440px;
+  margin-top: 14px;
+  text-align: center;
+}
+
+html[data-surface='site'] .footer-brand .row {
+  justify-content: center;
+}
+
+html[data-surface='site'] .footer-col {
+  text-align: center;
+}
+
+/* 页脚第一行是横跨整行的品牌块；栏目必须显式落在中间那几列，
+   否则自动排版会把它们塞进左右两边的 1fr 空白列。 */
+html[data-surface='site'] .footer-inner > .footer-col {
+  grid-row: 2;
+}
+
+html[data-surface='site'] .footer-inner > .footer-col:nth-child(2) {
+  grid-column: 2;
+}
+
+html[data-surface='site'] .footer-inner > .footer-col:nth-child(3) {
+  grid-column: 3;
+}
+
+html[data-surface='site'] .footer-inner > .footer-col:nth-child(4) {
+  grid-column: 4;
+}
+
+html[data-surface='site'] .footer-inner > .footer-col:nth-child(5) {
+  grid-column: 5;
+}
+
+html[data-surface='site'] .footer-inner > .footer-col:nth-child(6) {
+  grid-column: 6;
+}
+
+html[data-surface='site'] .footer-inner > .footer-col:nth-child(7) {
+  grid-column: 7;
+}
+
+html[data-surface='site'] .footer-col h4 {
+  margin-bottom: 10px;
+}
+
+html[data-surface='site'] .footer-shortcuts {
+  justify-content: center;
+  padding: 4px 0 16px;
+}
+
+html[data-surface='site'] .footer-bottom {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 0 24px;
+  text-align: center;
+}
+
+html[data-surface='site'] .footer-bottom > .row {
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  html[data-surface='site'] .footer-inner {
+    grid-template-columns: 1fr 1fr;
+    gap: 26px 20px;
+  }
+
+  html[data-surface='site'] .footer-inner > .footer-col {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+
+/* ----------------------------- 4. 居中文章栏 + 左侧悬浮目录 ----------------------------- */
+
+.article-layout {
+  display: block;
+  max-width: var(--article-width, 720px);
+  margin-inline: auto;
+}
+
+.article-layout > .article {
+  width: 100%;
+  max-width: var(--article-width, 720px);
+  margin-inline: auto;
+}
+
+/* 右侧栏已从文章页移除；保留选择器只是为了让旧缓存里的样式不再撑开正文。 */
+.article-layout > .article-side {
+  display: none;
+}
+
+.article-float-toc {
+  position: sticky;
+  top: clamp(96px, 13vh, 128px);
+  align-self: start;
+  width: 100%;
+  max-height: min(64vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 2px 16px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+}
+
+/* 只在宽屏启用「左侧目录 + 中央正文 + 右侧留白」的三列；左右留白等宽，
+   正文仍然保持在视口正中，不会因为目录而向右偏。 */
+@media (min-width: 1181px) {
+  .article-layout:has(> .article-float-toc) {
+    display: grid;
+    grid-template-columns: 196px minmax(0, var(--article-width, 720px)) 196px;
+    column-gap: clamp(20px, 2.4vw, 32px);
+    justify-content: center;
+    align-items: start;
+    max-width: none;
+  }
+
+  .article-layout:has(> .article-float-toc) > .article-float-toc {
+    grid-column: 1;
+  }
+
+  .article-layout:has(> .article-float-toc) > .article {
+    grid-column: 2;
+    max-width: var(--article-width, 720px);
+    margin-inline: 0;
+  }
+}
+
+.article-float-toc-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.article-float-toc-label::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.article-float-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.article-float-toc a {
+  display: block;
+  padding: 5px 8px 5px 10px;
+  border-left: 2px solid transparent;
+  margin-left: -17px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  border-radius: 0 6px 6px 0;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.article-float-toc a:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.article-float-toc a.is-sub {
+  padding-left: 22px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.article-float-toc a.is-active {
+  color: var(--ink);
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-weight: 500;
+}
+
+.article-toc--inline {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  .article-float-toc {
+    display: none;
+  }
+
+  .article-toc--inline {
+    display: block;
+  }
+}
+
+/* 不支持 :has() 的旧浏览器退回单栏正文，隐藏左侧目录，避免它跑到正文上方。 */
+@supports not selector(:has(*)) {
+  .article-float-toc {
+    display: none;
+  }
+
+  .article-toc--inline {
+    display: block;
+  }
+}
+
+/* 文章页的正文、元信息、翻页与评论都已经在 720px 列里；这里只保证短页面
+   不会被页脚顶到屏幕左上角。 */
+.article-stage > .shell {
+  width: 100%;
+}
+
+.article-related {
+  margin-inline: auto;
+}
+
+/* ----------------------------- 5. 列表 / 卡片切换 ----------------------------- */
+
+.archive-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+}
+
+.archive-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.archive-view-switch button:hover {
+  color: var(--ink);
+}
+
+.archive-view-switch button.is-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.archive-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: clamp(16px, 2.2vw, 24px);
+  margin-top: 18px;
+}
+
+.archive-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: clamp(14px, 1.8vw, 20px);
+  background: var(--bg-subtle);
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1), border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.archive-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
+  box-shadow: 0 22px 48px -34px rgb(0 0 0 / 0.45);
+}
+
+.archive-card-cover {
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+
+.archive-card-cover .cover {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.archive-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 9px;
+  padding: 18px 18px 20px;
+}
+
+.archive-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.archive-card-body h2 {
+  font-family: var(--serif);
+  font-size: clamp(19px, 2.1vw, 23px);
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+.archive-card-body h2 a:hover {
+  color: var(--accent);
+}
+
+.archive-card-body p {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.72;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.archive-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+@media (max-width: 640px) {
+  .page-head-row {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .page-head-row .inline-search {
+    width: 100% !important;
+  }
+
+  .archive-view-switch {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .archive-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ----------------------------- 6. 后台 Tab / 系统页面 ----------------------------- */
+
+/* 安装向导永远使用浅色控件（滚动条、输入框、下拉菜单）。
+   这里写死纸白令牌，而不是等 themeCss：首次安装时还没有任何配置，
+   main.tsx 不会注入主题样式，只能靠这份兜底。 */
+html[data-surface='setup'] {
+  color-scheme: light !important;
+  --bg: #ffffff;
+  --bg-subtle: #fafaf7;
+  --bg-sunken: #f5f5f0;
+  --ink: #14140f;
+  --ink-soft: #4f4f47;
+  --muted: #83837a;
+  --faint: #a8a89f;
+  --line: #e7e7e1;
+  --line-strong: #d3d3ca;
+  --accent: #1f5c4a;
+  --accent-soft: #eef4f0;
+  --accent-ink: #ffffff;
+  --prose: #26261f;
+}
+
+html[data-surface='setup'] body {
+  background: #ffffff;
+  color: #14140f;
+}
+
+.admin-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 20px 0 26px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.admin-tab {
+  position: relative;
+  padding: 11px 16px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.admin-tab:hover {
+  color: var(--ink);
+}
+
+.admin-tab.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.system-page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.system-page-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.system-page-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.system-page-card .system-page-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  color: var(--accent);
+}
+
+.system-page-card strong {
+  display: block;
+  font-size: 13.5px;
+}
+
+.system-page-card span {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.system-page-card em {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--accent);
+}

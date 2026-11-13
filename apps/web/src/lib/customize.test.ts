@@ -327,3 +327,25 @@ describe('版面迁移报告', () => {
     expect(takeMigrationReport()).toEqual([]);
   });
 });
+
+describe('夜航文章外观', () => {
+  it('旧配置没有这个字段时保持原来的封面在上', () => {
+    const customization = readCustomization({
+      customization: { layout: { variant: 'bento' } },
+    } as never);
+
+    expect(customization.layout.article_card_style).toBe('cover');
+  });
+
+  it('保留 blur，未知值回退到 cover', () => {
+    const blur = readCustomization({
+      customization: { layout: { variant: 'bento', article_card_style: 'blur' } },
+    } as never);
+    expect(blur.layout.article_card_style).toBe('blur');
+
+    const unknown = readCustomization({
+      customization: { layout: { variant: 'bento', article_card_style: 'glass' } },
+    } as never);
+    expect(unknown.layout.article_card_style).toBe('cover');
+  });
+});

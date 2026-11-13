@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/practacu/practacu-press/apps/api/internal/audit"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
@@ -37,7 +39,23 @@ type Service struct {
 	// publicBaseURL overrides the origin of reset links. Empty means the origin of
 	// the request that asked for the reset is used.
 	publicBaseURL string
-	logger        *slog.Logger
+	// audit records security relevant account events. Nil disables recording; the
+	// change itself still succeeds, because an audit outage must not lock users out.
+	audit audit.Recorder
+	// avatars validates a referenced media asset before it becomes a profile image.
+	// Nil rejects every non-empty avatar id (the safe default for tests that do not
+	// model the media module).
+	avatars AvatarValidator
+	// secrets seals the TOTP shared secrets at rest. It is derived from the token
+	// issuer's signing seed, so it never has to be configured separately.
+	secrets *secretBox
+	// stepUpSigner mints the short lived grants high threat operations require.
+	// Nil means the feature is not wired; the verify endpoint then fails closed.
+	stepUpSigner *StepUpSigner
+	// stepUpConfig reads the site's optional dedicated security password. Nil means
+	// only account login passwords can authorize a step-up.
+	stepUpConfig StepUpConfigReader
+	logger       *slog.Logger
 }
 
 // ServiceConfig configures a Service.
@@ -72,6 +90,18 @@ type ServiceConfig struct {
 	// PublicBaseURL is the origin used in reset links, for example
 	// "https://press.example.com". Empty falls back to the request origin.
 	PublicBaseURL string
+	// Audit records account security events. Nil records nothing.
+	Audit audit.Recorder
+	// AvatarValidator checks an avatar media reference. Nil means no avatar may be
+	// set, which keeps a service wired without the media module honest.
+	AvatarValidator AvatarValidator
+	// StepUpSigner mints the grants a high threat operation requires. Nil disables
+	// the step-up verification endpoint (it answers an internal error rather than
+	// handing out a grant it cannot verify).
+	StepUpSigner *StepUpSigner
+	// StepUpConfig reads each site's dedicated security password. Nil means only the
+	// caller's account login password can authorize a step-up.
+	StepUpConfig StepUpConfigReader
 	// Logger records delivery failures. Nil discards them.
 	Logger *slog.Logger
 }
@@ -99,6 +129,10 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		registrationPolicy:  cfg.RegistrationPolicy,
 		mailer:              cfg.Mailer,
 		publicBaseURL:       cfg.PublicBaseURL,
+		audit:               cfg.Audit,
+		avatars:             cfg.AvatarValidator,
+		stepUpSigner:        cfg.StepUpSigner,
+		stepUpConfig:        cfg.StepUpConfig,
 		logger:              cfg.Logger,
 	}
 	if s.refreshTTL <= 0 {
@@ -110,6 +144,11 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if s.now == nil {
 		s.now = func() time.Time { return time.Now().UTC() }
 	}
+	secrets, err := cfg.Tokens.secretBox()
+	if err != nil {
+		return nil, err
+	}
+	s.secrets = secrets
 	s.loginFailures = newLoginThrottle(s.now)
 	return s, nil
 }
@@ -131,13 +170,20 @@ type RegisterEmailInput struct {
 	// request host: only a loopback caller may become the first platform administrator
 	// (an exposed, not yet installed instance must not be claimable over the network).
 	AllowFirstAdmin bool
+	// BaseURL is the browser origin used in the verification link. Empty falls back
+	// to PublicBaseURL; if both are empty the link is relative.
+	BaseURL string
 	ClientMeta
 }
 
-// LoginInput is an email and password login request.
+// LoginInput is a password login request.
+//
+// Identifier is the account email or the account display name; Email is kept for
+// clients built against the older contract (it is only read when Identifier is empty).
 type LoginInput struct {
-	Email    string
-	Password string
+	Identifier string
+	Email      string
+	Password   string
 	ClientMeta
 }
 
@@ -204,11 +250,24 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 		Email:        email,
 		DisplayName:  displayName,
 		PasswordHash: passwordHash,
-		Verified:     !s.requireVerification,
-		Role:         role,
+		// An install without SMTP cannot prove an address, so it keeps the legacy
+		// behaviour and treats the account as verified. When mail works, the account
+		// starts unverified and a verification link is sent; login is still allowed
+		// (soft verification), because locking every new account out of a working
+		// deployment until it clicks a mail would be a worse failure mode.
+		Verified: !s.mailReady(),
+		Role:     role,
 	})
 	if err != nil {
 		return Session{}, err
+	}
+
+	if s.mailReady() && user.EmailVerifiedAt == nil {
+		if _, sendErr := s.sendEmailVerification(ctx, user.ID, siteID, email, in.BaseURL); sendErr != nil {
+			// A delivery failure must not fail registration: the account exists and the
+			// owner can ask for another link from the profile page.
+			s.logError("registration verification mail failed", "error", sendErr, "user_id", user.ID)
+		}
 	}
 
 	session, record, err := s.buildSession(ctx, user, siteID, "", "", in.ClientMeta, time.Time{})
@@ -218,6 +277,14 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 	if err := s.repo.CreateSession(ctx, record); err != nil {
 		return Session{}, err
 	}
+	s.recordAudit(ctx, audit.Entry{
+		SiteID:     siteID,
+		ActorID:    user.ID,
+		Action:     "auth.registered",
+		TargetType: "user",
+		TargetID:   user.ID,
+		Detail:     map[string]any{"email_verified": user.EmailVerifiedAt != nil},
+	})
 	return session, nil
 }
 
@@ -262,6 +329,36 @@ func (s *Service) CreateMember(
 		return UserView{}, ErrActionNotAllowed
 	}
 
+	return s.createAccount(ctx, siteID, in, role)
+}
+
+// ProvisionSiteOwner creates the first administrator account of a site that was just
+// created by the platform console.
+//
+// It performs no actor check by design: the platform service has already verified that
+// the caller is a deployment level administrator, and there is no membership on the new
+// site yet to authorize against. The account is always a site administrator (the owner
+// of that site), never a platform administrator, so creating a site cannot mint another
+// deployment owner.
+func (s *Service) ProvisionSiteOwner(
+	ctx context.Context,
+	siteID string,
+	in CreateMemberInput,
+) (UserView, error) {
+	if siteID == "" {
+		return UserView{}, fmt.Errorf("%w: site is required", ErrInvalidInput)
+	}
+	return s.createAccount(ctx, siteID, in, site.RoleSiteAdmin)
+}
+
+// createAccount validates the input, hashes the password and creates the account with
+// its membership. The role has already been authorised by the caller.
+func (s *Service) createAccount(
+	ctx context.Context,
+	siteID string,
+	in CreateMemberInput,
+	role site.Role,
+) (UserView, error) {
 	email, err := NormalizeEmail(in.Email)
 	if err != nil {
 		return UserView{}, err
@@ -293,52 +390,55 @@ func (s *Service) CreateMember(
 	return user.View(), nil
 }
 
-// LoginPassword verifies an email and password and starts a session.
+// maxLoginIdentifierBytes bounds the submitted identifier before any lookup. An
+// identifier is an email or a display name (at most 120 runes), so 512 bytes is
+// generous and still rejects absurd payloads before they reach the database.
+const maxLoginIdentifierBytes = 512
+
+// LoginPassword verifies an email or username plus password and starts a session.
+//
+// The identifier may be the account email or the account display name. Display names
+// are not unique; when two accounts share one, that identifier cannot log in (the
+// caller has to use an email) and the answer stays the generic credentials error.
 //
 // An unknown account, a wrong password and a disabled account all return
 // ErrInvalidCredentials with identical shape and, crucially, identical cost: when no
 // account (or no password credential) matches, the submitted password is still run
 // through a dummy verification against a fixed PHC string, so the response time does
-// not reveal whether the address is registered.
+// not reveal whether the identifier is registered.
 //
-// Repeated failures for one address are counted in-process and the account is
-// temporarily locked with exponential backoff (see loginThrottle). The transport
+// Repeated failures for one account are counted in-process and the account is
+// temporarily locked with exponential backoff (see loginThrottle). Username and email
+// attempts resolve to the same account key, so they share one streak. The transport
 // layer's credential rate limiter stays as the independent IP scoped half.
 func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInput) (Session, error) {
 	if siteID == "" {
 		return Session{}, fmt.Errorf("%w: site is required", ErrInvalidInput)
 	}
-
-	email, err := NormalizeEmail(in.Email)
-	if err != nil {
-		return Session{}, ErrInvalidCredentials
-	}
 	if in.Password == "" {
 		return Session{}, ErrInvalidCredentials
 	}
 
-	if retryAfter, locked := s.loginFailures.blocked(email); locked {
-		return Session{}, &TooManyAttemptsError{RetryAfter: retryAfter}
+	identifier := strings.TrimSpace(in.Identifier)
+	if identifier == "" {
+		// Backward compatible: older clients only sent `email`.
+		identifier = strings.TrimSpace(in.Email)
+	}
+	throttleKey := normalizeLoginKey(identifier)
+	if identifier == "" || len(identifier) > maxLoginIdentifierBytes {
+		return Session{}, s.rejectUnknownIdentifier(ctx, in.Password, throttleKey)
 	}
 
-	identity, err := s.repo.FindEmailIdentity(ctx, email)
+	identity, err := s.resolveLoginIdentity(ctx, identifier)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
-			// Spend the same hashing work as an existing account would. A failure of
-			// the hasher is propagated, not swallowed: otherwise an unknown address
-			// would answer 401 while a known one answers 5xx when the security service
-			// is down, which is itself an existence oracle.
-			if _, verifyErr := s.hasher.Verify(ctx, in.Password, dummyPasswordHash); verifyErr != nil {
-				return Session{}, verifyErr
-			}
-			// Count the failure as if the account existed. The lockout must not become
-			// a faster enumeration oracle than the timing it replaced: "5x 401 then
-			// 429" has to look identical for registered and unknown addresses.
-			s.loginFailures.failure(email)
-			return Session{}, ErrInvalidCredentials
+			return Session{}, s.rejectUnknownIdentifier(ctx, in.Password, throttleKey)
 		}
 		return Session{}, err
 	}
+	// A resolved identity is always bound to a normalised email; counting failures
+	// against it keeps a username attempt and an email attempt in one lockout streak.
+	throttleKey = normalizeLoginKey(identity.Email)
 
 	if identity.PasswordHash == "" {
 		// A provider-only identity has no password to compare. Do the same dummy work
@@ -346,8 +446,7 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 		if _, verifyErr := s.hasher.Verify(ctx, in.Password, dummyPasswordHash); verifyErr != nil {
 			return Session{}, verifyErr
 		}
-		s.loginFailures.failure(email)
-		return Session{}, ErrInvalidCredentials
+		return Session{}, s.invalidLogin(throttleKey)
 	}
 
 	if s.requireVerification && !identity.IsVerified() {
@@ -359,15 +458,13 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 		return Session{}, err
 	}
 	if !matches {
-		s.loginFailures.failure(email)
-		return Session{}, ErrInvalidCredentials
+		return Session{}, s.invalidLogin(throttleKey)
 	}
 
 	user, err := s.repo.FindUser(ctx, identity.UserID)
 	if err != nil {
 		if errors.Is(err, ErrAccountNotFound) {
-			s.loginFailures.failure(email)
-			return Session{}, ErrInvalidCredentials
+			return Session{}, s.invalidLogin(throttleKey)
 		}
 		return Session{}, err
 	}
@@ -377,8 +474,16 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 		// wrong password: a distinct "account disabled" code would be an enumeration
 		// channel (a refresh of an existing session may still surface the disabled
 		// state, because there the caller already proved possession of a token).
-		s.loginFailures.success(email)
+		s.loginFailures.success(throttleKey)
 		return Session{}, ErrInvalidCredentials
+	}
+
+	// FSD F-04: an account with an active authenticator does not get a session from
+	// the password alone. The password was correct, so the failure streak is cleared
+	// first; the challenge is a success of the first factor, not a failed attempt.
+	if err := s.startTwoFactorChallenge(ctx, user, siteID); err != nil {
+		s.loginFailures.success(throttleKey)
+		return Session{}, err
 	}
 
 	session, record, err := s.buildSession(ctx, user, siteID, "", "", in.ClientMeta, time.Time{})
@@ -389,8 +494,75 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 		return Session{}, err
 	}
 
-	s.loginFailures.success(email)
+	s.loginFailures.success(throttleKey)
+	s.recordAudit(ctx, audit.Entry{
+		SiteID:     siteID,
+		ActorID:    user.ID,
+		Action:     "auth.login",
+		TargetType: "user",
+		TargetID:   user.ID,
+	})
 	return session, nil
+}
+
+// rejectUnknownIdentifier spends one dummy verification and records the failure.
+//
+// It is the single path for "no usable identity": an unknown email, an unknown
+// username, an ambiguous display name or a malformed identifier. The hasher error is
+// propagated, not swallowed: otherwise an unknown identifier would answer 401 while a
+// known one answers 5xx when the security service is down, which is itself an
+// existence oracle.
+func (s *Service) rejectUnknownIdentifier(
+	ctx context.Context,
+	password string,
+	throttleKey string,
+) error {
+	if _, verifyErr := s.hasher.Verify(ctx, password, dummyPasswordHash); verifyErr != nil {
+		return verifyErr
+	}
+	// Count the failure as if the account existed. The lockout must not become a
+	// faster enumeration oracle than the timing it replaced: "5x 401 then 429" has to
+	// look identical for registered and unknown identifiers.
+	return s.invalidLogin(throttleKey)
+}
+
+// resolveLoginIdentity maps a login identifier to exactly one password identity.
+//
+// Anything containing "@" is treated as an email; everything else is a display name.
+// Zero matches and ambiguous display names both answer ErrAccountNotFound so the
+// caller spends identical work and returns the same generic error.
+func (s *Service) resolveLoginIdentity(ctx context.Context, identifier string) (Identity, error) {
+	if strings.Contains(identifier, "@") {
+		email, err := NormalizeEmail(identifier)
+		if err != nil {
+			return Identity{}, ErrAccountNotFound
+		}
+		return s.repo.FindEmailIdentity(ctx, email)
+	}
+	identities, err := s.repo.FindEmailIdentitiesByDisplayName(ctx, identifier)
+	if err != nil {
+		return Identity{}, err
+	}
+	if len(identities) != 1 {
+		return Identity{}, ErrAccountNotFound
+	}
+	return identities[0], nil
+}
+
+// normalizeLoginKey folds an identifier for the in-process failure throttle.
+func normalizeLoginKey(identifier string) string {
+	return strings.ToLower(strings.TrimSpace(identifier))
+}
+
+// invalidLogin preserves failure backoff without making it an account lockout.
+// Password verification has already run (against the real or dummy hash), so a
+// correct password can still clear the streak while invalid attempts receive 429.
+func (s *Service) invalidLogin(email string) error {
+	if retryAfter, locked := s.loginFailures.blocked(email); locked {
+		return &TooManyAttemptsError{RetryAfter: retryAfter}
+	}
+	s.loginFailures.failure(email)
+	return ErrInvalidCredentials
 }
 
 // Refresh rotates a refresh token and issues a new access token.
@@ -514,7 +686,17 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 
-	return s.repo.RevokeSession(ctx, record.ID, "logout", s.now())
+	if err := s.repo.RevokeSession(ctx, record.ID, "logout", s.now()); err != nil {
+		return err
+	}
+	s.recordAudit(ctx, audit.Entry{
+		SiteID:     record.SiteID,
+		ActorID:    record.UserID,
+		Action:     "auth.logout",
+		TargetType: "user",
+		TargetID:   record.UserID,
+	})
+	return nil
 }
 
 // Me returns the account behind an authenticated principal.
@@ -523,7 +705,18 @@ func (s *Service) Me(ctx context.Context, userID string) (UserView, error) {
 	if err != nil {
 		return UserView{}, err
 	}
-	return user.View(), nil
+	view := user.View()
+	// A pure OAuth account has no email identity; that is not an error here.
+	if identity, identityErr := s.repo.FindEmailIdentityByUser(ctx, userID); identityErr == nil {
+		view.Email = identity.Email
+		// The identity is authoritative. An account that was verified before the
+		// account level mirror existed (or before a deployment ran the backfill
+		// migration) still reports its true state.
+		if identity.VerifiedAt != nil {
+			view.EmailVerified = true
+		}
+	}
+	return view, nil
 }
 
 // CSRFToken returns the double submit token bound to one refresh token.
@@ -533,6 +726,42 @@ func (s *Service) Me(ctx context.Context, userID string) (UserView, error) {
 // fails (it was not derived from that token).
 func (s *Service) CSRFToken(refreshPlain string) string {
 	return s.tokens.CSRFToken(refreshPlain)
+}
+
+// IssueSwitchSession mints and persists a session for an account that has just
+// redeemed a valid site handoff token.
+//
+// Authorization is the caller's responsibility: the platform console verifies the
+// handoff token and the live membership before calling this method. The method still
+// runs the normal session build, which re-reads the membership role from the database
+// and refuses an account that is not an active member of siteID.
+func (s *Service) IssueSwitchSession(
+	ctx context.Context,
+	siteID, userID string,
+	meta ClientMeta,
+) (Session, error) {
+	if siteID == "" || userID == "" {
+		return Session{}, ErrPermissionToSite
+	}
+	user, err := s.repo.FindUser(ctx, userID)
+	if err != nil {
+		if errors.Is(err, ErrAccountNotFound) {
+			return Session{}, ErrPermissionToSite
+		}
+		return Session{}, err
+	}
+	if user.Status != AccountStatusActive {
+		return Session{}, ErrAccountDisabled
+	}
+
+	session, record, err := s.buildSession(ctx, user, siteID, "", "", meta, time.Time{})
+	if err != nil {
+		return Session{}, err
+	}
+	if err := s.repo.CreateSession(ctx, record); err != nil {
+		return Session{}, err
+	}
+	return session, nil
 }
 
 // buildSession mints the token material for a session but does not persist it, so

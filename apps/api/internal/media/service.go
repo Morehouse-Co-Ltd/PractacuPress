@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
@@ -73,13 +74,24 @@ type Repository interface {
 
 // Service implements the two phase upload flow.
 type Service struct {
-	repo       Repository
-	scanner    Scanner
-	storage    Storage
-	storages   map[Purpose]Storage
-	references PublishedReferenceChecker
-	design     DesignReferenceChecker
-	now        func() time.Time
+	repo          Repository
+	quotaRepo     QuotaReservationRepository
+	quota         QuotaOverrideReader
+	quotaDefaults QuotaDefaults
+	scanner       Scanner
+	storage       Storage
+	storages      map[Purpose]Storage
+	references    PublishedReferenceChecker
+	design        DesignReferenceChecker
+	now           func() time.Time
+	// derivativeLocks serialises variant generation per object key. It is a map rather
+	// than a single lock so two different images do not wait for each other, and it is
+	// keyed by the derived key because that is the object being written.
+	derivativeLocks sync.Map
+	// derivativeSlots bounds how many images are decoded at once. A decoder holds the
+	// whole bitmap in memory, so without a global ceiling a burst of first requests for
+	// different images could exhaust the process even though each one is small on disk.
+	derivativeSlots chan struct{}
 }
 
 // ServiceConfig configures a Service.
@@ -98,8 +110,10 @@ type ServiceConfig struct {
 	References PublishedReferenceChecker
 	// Design lets a content image referenced only by the page builder load for an
 	// anonymous visitor. Nil keeps the previous behaviour.
-	Design DesignReferenceChecker
-	Now    func() time.Time
+	Design         DesignReferenceChecker
+	QuotaDefaults  QuotaDefaults
+	QuotaOverrides QuotaOverrideReader
+	Now            func() time.Time
 }
 
 // NewService builds a Service.
@@ -110,6 +124,13 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if cfg.Scanner == nil {
 		return nil, errors.New("media: scanner is required")
 	}
+	if cfg.QuotaDefaults.UserBytes < 0 || cfg.QuotaDefaults.SiteBytes < 0 {
+		return nil, errors.New("media: quota limits cannot be negative")
+	}
+	quotaRepo, hasQuotaRepository := cfg.Repository.(QuotaReservationRepository)
+	if (cfg.QuotaDefaults.UserBytes > 0 || cfg.QuotaDefaults.SiteBytes > 0 || cfg.QuotaOverrides != nil) && !hasQuotaRepository {
+		return nil, errors.New("media: quota-enabled repository must support atomic reservations")
+	}
 
 	storages := make(map[Purpose]Storage, len(cfg.Storages))
 	for purpose, storage := range cfg.Storages {
@@ -119,13 +140,17 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	}
 
 	service := &Service{
-		repo:       cfg.Repository,
-		scanner:    cfg.Scanner,
-		storage:    cfg.Storage,
-		storages:   storages,
-		references: cfg.References,
-		design:     cfg.Design,
-		now:        cfg.Now,
+		repo:            cfg.Repository,
+		quotaRepo:       quotaRepo,
+		quota:           cfg.QuotaOverrides,
+		quotaDefaults:   cfg.QuotaDefaults,
+		scanner:         cfg.Scanner,
+		storage:         cfg.Storage,
+		storages:        storages,
+		references:      cfg.References,
+		design:          cfg.Design,
+		now:             cfg.Now,
+		derivativeSlots: make(chan struct{}, derivativeConcurrency),
 	}
 	if service.now == nil {
 		service.now = func() time.Time { return time.Now().UTC() }
@@ -170,7 +195,26 @@ func (s *Service) CreateUpload(ctx context.Context, actor Actor, req UploadReque
 		CreatedAt:    now,
 	}
 
-	return s.repo.InsertUpload(ctx, upload)
+	userLimit, siteLimit := s.quotaDefaults.UserBytes, s.quotaDefaults.SiteBytes
+	if s.quota != nil {
+		overrides, err := s.quota.MediaQuotaOverrides(ctx, actor.SiteID, actor.UserID)
+		if err != nil {
+			return Upload{}, err
+		}
+		if overrides.UserBytes != nil && *overrides.UserBytes < 0 || overrides.SiteBytes != nil && *overrides.SiteBytes < 0 {
+			return Upload{}, ErrInvalidInput
+		}
+		if overrides.UserBytes != nil {
+			userLimit = *overrides.UserBytes
+		}
+		if overrides.SiteBytes != nil {
+			siteLimit = *overrides.SiteBytes
+		}
+	}
+	if userLimit == 0 && siteLimit == 0 {
+		return s.repo.InsertUpload(ctx, upload)
+	}
+	return s.quotaRepo.InsertUploadWithinQuota(ctx, upload, userLimit, siteLimit)
 }
 
 // StoreContent accepts the bytes a client uploads for a session.
@@ -325,6 +369,26 @@ func (s *Service) OpenAssetInSite(
 	})
 }
 
+// ValidateAvatar checks that assetID is a clean avatar owned by the caller.
+//
+// The profile update path calls this before storing avatar_media_id. A member may
+// only point their profile at an image they uploaded on this site: another
+// member's clearance, another site's asset, a non-avatar purpose and a rejected
+// upload all answer the same "not found", so the check is not an existence oracle.
+func (s *Service) ValidateAvatar(ctx context.Context, actor Actor, assetID string) error {
+	if actor.SiteID == "" || actor.UserID == "" || assetID == "" {
+		return ErrNotFound
+	}
+	asset, err := s.repo.FindAsset(ctx, actor.SiteID, assetID)
+	if err != nil {
+		return err
+	}
+	if !asset.Referenceable() || asset.Purpose != PurposeAvatar || asset.OwnerID != actor.UserID {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // authorizeSharedAsset is the read rule for assets the caller does not own.
 //
 // Site images and avatars are public by design. A content asset is only public once a
@@ -453,6 +517,12 @@ func (s *Service) DeleteAsset(ctx context.Context, actor Actor, assetID string) 
 	storage := s.storageFor(asset.Purpose)
 	if storage == nil {
 		return ErrStorageMissing
+	}
+	// Variants go first: the record is still present, so a retry after a storage
+	// failure can find the key again. A variant that outlives its asset is otherwise
+	// only reachable through the orphan collector.
+	if err := s.deleteDerivatives(ctx, storage, asset); err != nil {
+		return err
 	}
 	if err := storage.Delete(ctx, asset.StorageKey); err != nil {
 		return err

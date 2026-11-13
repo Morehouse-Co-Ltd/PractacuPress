@@ -29,12 +29,16 @@
 少减一位（审计 W-4）。
 
 **Files:**
-- Modify: `apps/web/src/lib/blockTree.ts:10-11,132-144`
+- Modify: `apps/web/src/lib/blockTree.ts:10-11,132-144`（常量 + `moveBlock` + 新增 `stepTarget`）
+- Modify: `apps/web/src/components/builder/BlockTreeEditor.tsx:214-227`（上下移动按钮改用 `stepTarget`）
+- Modify: `apps/web/src/lib/blockTree.test.ts:35-46`（把落点字面量 1 改成 2，见 Step 6）
 - Test: `apps/web/src/lib/blockTreeMove.test.ts`（新建）
 
 **Interfaces:**
 - Produces: `MAX_CHILDREN_PER_CONTAINER: number`（值为 80），供 Task 2 的归一化引用。
-- Produces: `moveBlock(blocks, id, target)` 的语义校正——`target.index` 现在是"移除后应插入的下标"，
+- Produces: `stepTarget(location: Pick<BlockLocation, 'parent' | 'index' | 'column'>, direction: 1 | -1): DropTarget`——
+  把「上移/下移一格」翻译成 `moveBlock` 要求的移除前边界下标。
+- Produces: `moveBlock(blocks, id, target)` 的语义校正——`target.index` 现在是"移除前应插入的边界下标"，
   同一父级向下移动时自动补偿。签名不变。
 
 - [ ] **Step 1: 写失败测试**
@@ -129,15 +133,77 @@ export const MAX_CHILDREN_PER_CONTAINER = 80;
 - [ ] **Step 4: 跑测试确认通过**
 
 ```bash
-npx vitest run src/lib/blockTreeMove.test.ts && npx vitest run src/lib/blockTree.test.ts
+npx vitest run src/lib/blockTreeMove.test.ts
 ```
 
-Expected: 两个文件全部 PASS（含既有的 `blockTree.test.ts`，证明没有回归）。
+Expected: 新文件 4 个用例全 PASS。
 
-- [ ] **Step 5: 提交**
+此时 `npx vitest run src/lib/blockTree.test.ts` 会红：既有用例
+`moves a block between columns and reorders siblings` 断言的是**修正前**的下标约定
+（把 `index` 当成移除后的下标）。这不是回归，是契约变更——调用方
+`ThemeBuilder.tsx:245` 与 `BlockTreeEditor.tsx:446/485` 传的都是**移除前**的边界下标
+（审计 `docs/audit/web-findings.md:376-390` / W-4 说的就是这个差一格）。
+
+- [ ] **Step 5: 把既有用例的落点改成新约定**
+
+在 `apps/web/src/lib/blockTree.test.ts` 的 `moves a block between columns and reorders siblings`
+里，把 `index: 1` 改成 `index: 2`，并加一行注释说明：
+
+```ts
+      // 落点是「放到 second 之后」的边界下标（移除前的兄弟数组），移除后要减一位。
+      index: 2,
+```
+
+断言（`[second.id, first.id]` 与 `column === 2`）**一个字都不要改**——意图不变，只换约定。
+
+- [ ] **Step 6: 修上下移动按钮**
+
+`moveBlock` 语义改变后，`BlockTreeEditor.tsx:214-227` 的 「↓ 下移」会把 `location.index + 1`
+当成边界下标传给 `moveBlock`，补偿之后正好抵消，**按钮变成空操作**。给按钮一个纯函数翻译层：
+
+在 `apps/web/src/lib/blockTree.ts` 里追加：
+
+```ts
+/**
+ * 「上移 / 下移一格」按钮对应的投放目标。
+ *
+ * `moveBlock` 的 `target.index` 是「移除前的边界下标」，所以向下移动一格要多加一：
+ * 想落到原下标 `i + 1` 的元素之后，边界下标就是 `i + 2`。
+ */
+export function stepTarget(
+  location: Pick<BlockLocation, 'parent' | 'index' | 'column'>,
+  direction: 1 | -1,
+): DropTarget {
+  return {
+    parentId: location.parent?.id ?? null,
+    ...(location.parent ? { column: location.column } : {}),
+    index: location.index + direction + (direction > 0 ? 1 : 0),
+  };
+}
+```
+
+在 `apps/web/src/components/builder/BlockTreeEditor.tsx` 的 `move` 里，把构造 `{ parentId, column, index }`
+再调 `moveBlock` 的那几行换成：
+
+```ts
+onChange(moveBlock(blocks, id, stepTarget(location, direction)));
+```
+
+原有的边界守卫（`location.index + direction` 判断是否越界）保留不动——那只用于"能不能动"。
+
+- [ ] **Step 7: 跑测试确认通过**
 
 ```bash
-git add apps/web/src/lib/blockTree.ts apps/web/src/lib/blockTreeMove.test.ts
+npx vitest run src/lib/blockTreeMove.test.ts src/lib/blockTree.test.ts && npm run typecheck
+```
+
+Expected: 两个文件全 PASS，`typecheck` 0 错误。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add apps/web/src/lib/blockTree.ts apps/web/src/lib/blockTree.test.ts \
+  apps/web/src/lib/blockTreeMove.test.ts apps/web/src/components/builder/BlockTreeEditor.tsx
 git commit -m "fix(web): compensate the drop index when a block moves down inside one parent"
 ```
 

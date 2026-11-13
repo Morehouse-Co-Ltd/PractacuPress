@@ -4,6 +4,7 @@ import { bootstrapVisitorConfig, probeServerInstall } from './visitorBootstrap';
 const ORIGIN = 'http://localhost:18083';
 const STATUS_URL = `${ORIGIN}/api/v1/setup/status`;
 const CUSTOMIZATION_URL = `${ORIGIN}/api/v1/sites/site_visitor/customization`;
+const SITE_CONFIG_URL = `${ORIGIN}/api/v1/sites/site_visitor/site-config`;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -20,6 +21,9 @@ interface FetchPlan {
   customizationStatus?: number;
   /** 让设计请求直接抛网络错误。 */
   customizationNetworkError?: boolean;
+  /** 站点级配置的公开子集；`siteConfigStatus` 用来模拟「从未保存过」（404）。 */
+  siteConfig?: unknown;
+  siteConfigStatus?: number;
   /** 让探测请求直接抛网络错误。 */
   statusNetworkError?: boolean;
 }
@@ -48,6 +52,17 @@ function stubFetch(plan: FetchPlan): { fetchImpl: typeof fetch; urls: string[] }
           customization: { theme: { preset: 'night' }, custom_css: '.hero{color:#fff}' },
         },
       );
+    }
+    if (url === SITE_CONFIG_URL) {
+      const status = plan.siteConfigStatus ?? (plan.siteConfig === undefined ? 404 : 200);
+      if (status !== 200) return jsonResponse({ status }, status);
+      return jsonResponse({
+        site_id: 'site_visitor',
+        revision: 2,
+        updated_at: '2026-11-02T04:40:00Z',
+        scope: 'public',
+        config: plan.siteConfig,
+      });
     }
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
@@ -79,12 +94,20 @@ describe('bootstrapVisitorConfig', () => {
   it('builds a read-only live config when the site is installed and has an admin', async () => {
     const { fetchImpl, urls } = stubFetch({
       status: { installed: true, has_admin: true, site_id: 'site_visitor', site_name: '侧耳倾听' },
+      siteConfig: {
+        admin_path: '/manage',
+        access: { enabled: true, page_switch: { enabled: true, limit: 12, window_seconds: 60, block_seconds: 30 } },
+        performance: { feed_limit: 6, disable_animations: true },
+        loading: { enabled: true, preset: 'dots' },
+        auth: { google: { enabled: true } },
+      },
     });
 
     const boot = await bootstrapVisitorConfig({ origin: ORIGIN, fetchImpl });
 
     expect(boot).not.toBeNull();
     expect(boot?.customization).toBe('applied');
+    expect(boot?.siteConfig).toBe('applied');
     expect(boot?.config).toMatchObject({
       version: 1,
       setup_complete: true,
@@ -96,8 +119,18 @@ describe('bootstrapVisitorConfig', () => {
     });
     // 设计在渲染前就已经拉取并归一化完成。
     expect(boot?.config.customization?.theme.preset).toBe('night');
-    // 探测 → 设计，顺序与地址都正确。
-    expect(urls).toEqual([STATUS_URL, CUSTOMIZATION_URL]);
+    // 站点级配置（访问限制 / 性能 / 加载动画 / 后台入口 / 登录方式开关）也来自服务端：
+    // 这正是「站长看到生效、访客拿到默认值」那个 bug 的修复点。
+    expect(boot?.config.admin_path).toBe('/manage');
+    expect(boot?.config.access?.enabled).toBe(true);
+    expect(boot?.config.access?.page_switch.limit).toBe(12);
+    expect(boot?.config.performance?.feed_limit).toBe(6);
+    expect(boot?.config.performance?.disable_animations).toBe(true);
+    expect(boot?.config.loading?.preset).toBe('dots');
+    expect(boot?.config.auth?.google.enabled).toBe(true);
+    // 探测 → 设计 + 站点配置，地址都正确（两者并发拉取，顺序不固定）。
+    expect(urls[0]).toBe(STATUS_URL);
+    expect(urls.slice(1).sort()).toEqual([CUSTOMIZATION_URL, SITE_CONFIG_URL].sort());
     // 绝不能把访客状态写成"已安装"：那是站长浏览器的安装配置。
     expect(localStorage.getItem('pp.web.config.v1')).toBeNull();
   });

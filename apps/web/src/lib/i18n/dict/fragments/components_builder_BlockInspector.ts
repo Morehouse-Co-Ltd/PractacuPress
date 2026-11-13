@@ -25,8 +25,8 @@ const fragment: Dictionary = {
   // ---- 落位 ----
   所在栏: 'Column',
   '第 {index} 栏': 'Column {index}',
-  夜航布局落位: 'Nightflight placement',
-  '只在夜航（bento）布局下生效。': 'Only applies in the Nightflight (bento) layout.',
+  卡片布局落位: 'Card layout placement',
+  '只在双栏、卡片等分栏布局下生效。': 'Only applies in two-column and other split card layouts.',
   整幅: 'Full width',
   主栏: 'Main column',
   侧栏: 'Sidebar',

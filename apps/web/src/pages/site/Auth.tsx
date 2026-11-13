@@ -1,6 +1,6 @@
-﻿import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import type { AuthProviderId } from '../../types';
+import type { AuthProviderId, CaptchaScene, TwoFactorChallenge } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
@@ -9,6 +9,7 @@ import { ApiError } from '../../lib/api';
 import { PUBLISH_LABEL, VISIBILITY_LABEL } from '../../lib/format';
 import { isPersonalSite } from '../../lib/site';
 import { isRegistrationClosedError, registrationOpen } from '../../lib/registration';
+import { navigateWithTransition } from '../../lib/themeTransition';
 import {
   AUTH_PROVIDER_IDS,
   PROVIDER_BY_ID,
@@ -18,16 +19,18 @@ import {
 } from '../../lib/authProviders';
 import { copyText } from '../../lib/clipboard';
 import { recordActivity } from '../../lib/activity';
+import { captchaReasonText, captchaSceneRequired } from '../../lib/captcha';
 import { useToast } from '../../lib/toast';
 import { useT } from '../../lib/i18n';
 import { Button, Callout, Field, Input, Modal } from '../../components/ui';
+import { CaptchaField, useCaptchaStatus } from '../../components/Captcha';
 import { Icon } from '../../components/Icon';
 
 const DEMO_CODE = '246810';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const t = useT();
-  const { login, providerLogin, register, site, status, config } = useAuth();
+  const { login, verifyTwoFactor, providerLogin, register, site, status, config } = useAuth();
   const personal = isPersonalSite(config);
   // O-3：站长可以在站点设置里关闭自助注册；服务端拒绝时（403 registration_closed）
   // 与提前知道关闭时（Site.registration_open / 访客引导）都走同一张关闭提示卡。
@@ -54,6 +57,20 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [codeSent, setCodeSent] = useState(false);
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerError, setProviderError] = useState('');
+  // FSD F-04 第二步：密码正确但账户开启了两步验证时，服务端只给挑战令牌。
+  const [challenge, setChallenge] = useState<TwoFactorChallenge | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState('');
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  // 人机验证：是否显示组件由服务端的 effective 决定，站点设置只是意图。
+  const captcha = useCaptchaStatus();
+  const captchaScene: CaptchaScene = mode === 'login' ? 'login' : 'register';
+  const captchaRequired = captchaSceneRequired(captcha.status, captchaScene);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaFailure, setCaptchaFailure] = useState('');
+  const recaptchaVersion = config.customization?.verification.recaptcha_version ?? 'v2';
   useTitle(
     mode === 'login'
       ? personal
@@ -70,10 +87,32 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const resetPolicy = useAsync(async () => backend.passwordResetPolicy(), [backend]);
   const canReset = resetPolicy.data ? resetPolicy.data.enabled : true;
 
+  /** 重新验证：清掉旧 token 并重挂组件（token 只能用一次）。 */
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaFailure('');
+    setCaptchaNonce((value) => value + 1);
+  };
+
+  /**
+   * 登录成功后的唯一跳转入口。
+   *
+   * 之前这里同时有「status 变 ready 的 effect」和提交函数里的 navigate 两条路径：
+   * 一条先跳到 /admin、另一条又 replace 一次，页面在站点外壳和后台之间闪一下。
+   * 用一个 ref 把跳转锁成一次，并且等提交结束（busy 落回 false）再交给 effect，
+   * 避免 React 在提交过程中重渲染把登录页重新挂载。
+   */
+  const navigatedRef = useRef(false);
+  const goNext = () => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    navigateWithTransition(() => navigate(next, { replace: true }));
+  };
+
   useEffect(() => {
-    if (status === 'ready') navigate(next, { replace: true });
+    if (status === 'ready' && !busy) goNext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, busy]);
 
   if (mode === 'register' && (personal || registrationClosed)) {
     return (
@@ -131,6 +170,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
+    if (mode === 'login' && !email.trim()) {
+      setError(t('请输入邮箱或用户名。'));
+      return;
+    }
     if (mode === 'register') {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
         setError(t('请填写有效的邮箱地址。'));
@@ -154,26 +197,48 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     setBusy(true);
     try {
       if (mode === 'login') {
-        await login(email.trim(), password);
+        const result = await login(email.trim(), password, captchaToken || undefined);
+        if (result.status === 'two_factor_required') {
+          // 密码只是第一因素：不跳转，留在本页输入 6 位验证码或恢复码。
+          setChallenge(result.challenge);
+          setTwoFactorCode('');
+          setTwoFactorError('');
+          setUseRecoveryCode(false);
+          return;
+        }
         recordActivity({
           actor: email.trim() || '访客',
           action: '登录',
           target: '管理后台',
-          detail: '邮箱 + 密码',
+          detail: '邮箱/用户名 + 密码',
         });
       } else {
-        await register({ email: email.trim(), password, display_name: displayName.trim() });
+        await register({
+          email: email.trim(),
+          password,
+          display_name: displayName.trim(),
+          captcha_token: captchaToken || undefined,
+        });
       }
-      navigate(next, { replace: true });
+      goNext();
     } catch (err) {
+      // token 一次性：无论失败原因，下一次提交都要重新验证。
+      resetCaptcha();
+      const reason =
+        err instanceof ApiError
+          ? (err.problem.details as { reason?: string } | undefined)?.reason
+          : undefined;
+      const captchaText = captchaReasonText(reason, t);
       if (mode === 'register' && isRegistrationClosedError(err)) {
         // O-3：服务端关闭注册时给访客一条可读提示，而不是 403 problem 原文。
         setError(t('本站暂未开放注册。'));
+      } else if (captchaText) {
+        setError(captchaText);
       } else {
         setError(
           err instanceof ApiError
             ? err.code === 'unauthenticated'
-              ? t('邮箱或密码不正确。')
+              ? t('邮箱/用户名或密码不正确。')
               : err.message
             : err instanceof Error
               ? err.message
@@ -182,6 +247,50 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitTwoFactor = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!challenge) return;
+    const value = twoFactorCode.trim();
+    if (!value) {
+      setTwoFactorError(
+        useRecoveryCode ? t('请输入一个恢复码。') : t('请输入 6 位验证码。'),
+      );
+      return;
+    }
+    if (!useRecoveryCode && !/^\d{6}$/.test(value)) {
+      setTwoFactorError(t('验证码是 6 位数字。'));
+      return;
+    }
+    setTwoFactorBusy(true);
+    setTwoFactorError('');
+    try {
+      await verifyTwoFactor(challenge.challenge_token, value);
+      recordActivity({
+        actor: email.trim() || '访客',
+        action: '登录',
+        target: '管理后台',
+        detail: useRecoveryCode ? '邮箱/用户名 + 恢复码' : '邮箱/用户名 + 两步验证',
+      });
+      goNext();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'unauthenticated') {
+        // 挑战过期或已被使用：回到第一步重新输入密码。
+        setChallenge(null);
+        setError(t('验证已过期，请重新登录。'));
+      } else {
+        setTwoFactorError(
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : t('验证失败。'),
+        );
+      }
+    } finally {
+      setTwoFactorBusy(false);
     }
   };
 
@@ -237,7 +346,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     setProviderBusy(true);
     try {
       await providerLogin(provider);
-      navigate(next, { replace: true });
+      goNext();
     } catch (err) {
       setProviderError(err instanceof Error ? err.message : t('登录失败。'));
     } finally {
@@ -257,23 +366,96 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <div className="auth-card">
           <p className="eyebrow">{mode === 'login' ? 'Sign in' : 'Join'}</p>
           <h1>
-            {mode === 'login'
-              ? personal
-                ? t('回到书房。')
-                : t('回到这间房子。')
-              : t('领一把自己的钥匙。')}
+            {challenge
+              ? t('两步验证')
+              : mode === 'login'
+                ? personal
+                  ? t('回到书房。')
+                  : t('回到这间房子。')
+                : t('领一把自己的钥匙。')}
           </h1>
           <p className="auth-lede">
-            {mode === 'login'
-              ? personal
-                ? t('这是 {site} 的管理员入口。站长创建的账户都可以登录；访客不需要登录就能阅读。', {
-                    site: site?.name ?? t('本站'),
-                  })
-                : t('登录 {site}，继续阅读、评论与写作。', { site: site?.name ?? t('本站') })
-              : t('注册后可以评论、收藏与投稿。') +
-                (site ? t('本站的发布模式是「{mode}」。', { mode: PUBLISH_LABEL[site.publish_mode] }) : '')}
+            {challenge
+              ? t('{site} 的这项账户开启了两步验证。打开身份验证器，输入当前的 6 位验证码；也可以用一次性恢复码。', {
+                  site: site?.name ?? t('本站'),
+                })
+              : mode === 'login'
+                ? personal
+                  ? t('这是 {site} 的管理员入口。站长创建的账户都可以登录；访客不需要登录就能阅读。', {
+                      site: site?.name ?? t('本站'),
+                    })
+                  : t('登录 {site}，继续阅读、评论与写作。', { site: site?.name ?? t('本站') })
+                : t('注册后可以评论、收藏与投稿。') +
+                  (site ? t('本站的发布模式是「{mode}」。', { mode: PUBLISH_LABEL[site.publish_mode] }) : '')}
           </p>
 
+          {challenge ? (
+            <form className="auth-form" onSubmit={submitTwoFactor}>
+              <Field
+                label={useRecoveryCode ? t('恢复码') : t('6 位验证码')}
+                htmlFor="auth-two-factor-code"
+                hint={
+                  useRecoveryCode
+                    ? t('每个恢复码只能使用一次，字母不区分大小写。')
+                    : demo
+                      ? t('演示模式固定使用 {code}。', { code: '123456' })
+                      : t('验证码每 30 秒变化；同一个验证码只能使用一次。')
+                }
+                aside={
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setUseRecoveryCode((value) => !value);
+                      setTwoFactorCode('');
+                      setTwoFactorError('');
+                    }}
+                  >
+                    {useRecoveryCode ? t('使用验证器') : t('使用恢复码')}
+                  </button>
+                }
+              >
+                <Input
+                  id="auth-two-factor-code"
+                  value={twoFactorCode}
+                  inputMode={useRecoveryCode ? 'text' : 'numeric'}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={useRecoveryCode ? 32 : 6}
+                  placeholder={useRecoveryCode ? t('XXXXXX-XXXXXX') : '000000'}
+                  onChange={(event) => setTwoFactorCode(event.target.value)}
+                  required
+                />
+              </Field>
+
+              {twoFactorError ? (
+                <Callout tone="danger" icon="alert">
+                  {twoFactorError}
+                </Callout>
+              ) : null}
+
+              <Button type="submit" size="lg" loading={twoFactorBusy} iconRight="arrow-right">
+                {t('验证并登录')}
+              </Button>
+
+              <p className="auth-switch">
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => {
+                    setChallenge(null);
+                    setTwoFactorError('');
+                    setError('');
+                    // 密码那一步用掉的 token 已经作废，回到第一步要重新验证。
+                    resetCaptcha();
+                  }}
+                >
+                  {t('返回上一步')}
+                </button>
+              </p>
+            </form>
+          ) : (
+            <>
           <form className="auth-form" onSubmit={submit}>
             {mode === 'register' ? (
               <Field label={t('显示名称')} htmlFor="auth-name" hint={t('会出现在文章署名与评论里。')}>
@@ -289,17 +471,17 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             ) : null}
 
             <Field
-              label={t('邮箱')}
+              label={mode === 'login' ? t('邮箱或用户名') : t('邮箱')}
               htmlFor="auth-email"
-              hint={personal ? t('站长创建的账户都可以登录。') : undefined}
+              hint={personal ? t('站长创建的账户都可以登录；用户名或邮箱均可。') : undefined}
             >
               <Input
                 id="auth-email"
-                type="email"
+                type={mode === 'login' ? 'text' : 'email'}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                placeholder="you@example.com"
+                autoComplete={mode === 'login' ? 'username' : 'email'}
+                placeholder={mode === 'login' ? t('邮箱或用户名') : 'you@example.com'}
                 required
               />
             </Field>
@@ -347,13 +529,28 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               </Field>
             ) : null}
 
+            <CaptchaField
+              scene={captchaScene}
+              status={captcha.status}
+              onToken={setCaptchaToken}
+              recaptchaVersion={recaptchaVersion}
+              resetKey={captchaNonce}
+              onFailure={setCaptchaFailure}
+            />
+
             {error ? (
               <Callout tone="danger" icon="alert">
                 {error}
               </Callout>
             ) : null}
 
-            <Button type="submit" size="lg" loading={busy} iconRight="arrow-right">
+            <Button
+              type="submit"
+              size="lg"
+              loading={busy}
+              disabled={captchaRequired && !!captchaFailure}
+              iconRight="arrow-right"
+            >
               {mode === 'login' ? (personal ? t('管理员登录') : t('登录')) : t('创建账户')}
             </Button>
           </form>
@@ -444,6 +641,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 </>
               )}
             </p>
+          )}
+            </>
           )}
         </div>
       </div>

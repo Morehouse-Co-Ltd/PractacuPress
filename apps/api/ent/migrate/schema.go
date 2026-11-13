@@ -42,6 +42,11 @@ var (
 				Unique:  false,
 				Columns: []*schema.Column{AuditLogsColumns[4], AuditLogsColumns[5]},
 			},
+			{
+				Name:    "auditlog_action_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AuditLogsColumns[3], AuditLogsColumns[9]},
+			},
 		},
 	}
 	// BookmarksColumns holds the columns for the "bookmarks" table.
@@ -122,10 +127,17 @@ var (
 		{Name: "source_body", Type: field.TypeString, Size: 2147483647},
 		{Name: "rendered_html", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "policy_version", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "revision", Type: field.TypeInt, Default: 0},
 		{Name: "category_id", Type: field.TypeString, Nullable: true, Size: 36},
 		{Name: "tags", Type: field.TypeString, Size: 2147483647, Default: "[]"},
 		{Name: "published_at", Type: field.TypeTime, Nullable: true},
 		{Name: "archived_at", Type: field.TypeTime, Nullable: true},
+		{Name: "publish_at", Type: field.TypeTime, Nullable: true},
+		{Name: "publish_attempts", Type: field.TypeInt, Default: 0},
+		{Name: "access_mode", Type: field.TypeString, Default: "public"},
+		{Name: "access_password_hash", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "view_count", Type: field.TypeInt, Default: 0},
+		{Name: "comment_policy", Type: field.TypeString, Default: "inherit"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -138,7 +150,7 @@ var (
 			{
 				Name:    "contentitem_site_id_status_published_at",
 				Unique:  false,
-				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[14]},
+				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[15]},
 			},
 			{
 				Name:    "contentitem_author_id_status",
@@ -149,6 +161,54 @@ var (
 				Name:    "contentitem_site_id_slug",
 				Unique:  false,
 				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[6]},
+			},
+			{
+				Name:    "contentitem_publish_at",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[17]},
+			},
+			{
+				Name:    "contentitem_site_id_status_view_count",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[21]},
+			},
+		},
+	}
+	// ContentRevisionsColumns holds the columns for the "content_revisions" table.
+	ContentRevisionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "content_id", Type: field.TypeString, Size: 36},
+		{Name: "version", Type: field.TypeInt},
+		{Name: "editor_id", Type: field.TypeString, Size: 36},
+		{Name: "action", Type: field.TypeString, Size: 32},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "title", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "slug", Type: field.TypeString, Size: 120, Default: ""},
+		{Name: "summary", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "source_format", Type: field.TypeString, Default: "markdown"},
+		{Name: "source_body", Type: field.TypeString, Size: 2147483647},
+		{Name: "rendered_html", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "policy_version", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "category_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "tags", Type: field.TypeString, Size: 2147483647, Default: "[]"},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ContentRevisionsTable holds the schema information for the "content_revisions" table.
+	ContentRevisionsTable = &schema.Table{
+		Name:       "content_revisions",
+		Columns:    ContentRevisionsColumns,
+		PrimaryKey: []*schema.Column{ContentRevisionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "contentrevision_content_id_version",
+				Unique:  true,
+				Columns: []*schema.Column{ContentRevisionsColumns[2], ContentRevisionsColumns[3]},
+			},
+			{
+				Name:    "contentrevision_site_id_content_id_version",
+				Unique:  false,
+				Columns: []*schema.Column{ContentRevisionsColumns[1], ContentRevisionsColumns[2], ContentRevisionsColumns[3]},
 			},
 		},
 	}
@@ -295,6 +355,25 @@ var (
 			},
 		},
 	}
+	// MediaQuotaGuardsColumns holds the columns for the "media_quota_guards" table.
+	MediaQuotaGuardsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "serial", Type: field.TypeInt64, Default: 0},
+	}
+	// MediaQuotaGuardsTable holds the schema information for the "media_quota_guards" table.
+	MediaQuotaGuardsTable = &schema.Table{
+		Name:       "media_quota_guards",
+		Columns:    MediaQuotaGuardsColumns,
+		PrimaryKey: []*schema.Column{MediaQuotaGuardsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mediaquotaguard_site_id",
+				Unique:  true,
+				Columns: []*schema.Column{MediaQuotaGuardsColumns[1]},
+			},
+		},
+	}
 	// MediaUploadsColumns holds the columns for the "media_uploads" table.
 	MediaUploadsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -406,6 +485,7 @@ var (
 		{Name: "actor_id", Type: field.TypeString, Nullable: true, Size: 36},
 		{Name: "subject_id", Type: field.TypeString, Nullable: true, Size: 36},
 		{Name: "payload", Type: field.TypeJSON, Nullable: true},
+		{Name: "dedupe_key", Type: field.TypeString, Nullable: true, Size: 120},
 		{Name: "read_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 	}
@@ -418,12 +498,48 @@ var (
 			{
 				Name:    "notification_site_id_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationsColumns[1], NotificationsColumns[2], NotificationsColumns[8]},
+				Columns: []*schema.Column{NotificationsColumns[1], NotificationsColumns[2], NotificationsColumns[9]},
 			},
 			{
 				Name:    "notification_site_id_user_id_read_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationsColumns[1], NotificationsColumns[2], NotificationsColumns[7]},
+				Columns: []*schema.Column{NotificationsColumns[1], NotificationsColumns[2], NotificationsColumns[8]},
+			},
+			{
+				Name:    "notification_site_id_user_id_dedupe_key_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationsColumns[1], NotificationsColumns[2], NotificationsColumns[7], NotificationsColumns[9]},
+			},
+		},
+	}
+	// NotificationPreferencesColumns holds the columns for the "notification_preferences" table.
+	NotificationPreferencesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "user_id", Type: field.TypeString, Size: 36},
+		{Name: "in_app_enabled", Type: field.TypeBool, Default: true},
+		{Name: "email_enabled", Type: field.TypeBool, Default: false},
+		{Name: "in_app_comments", Type: field.TypeBool, Default: true},
+		{Name: "in_app_reactions", Type: field.TypeBool, Default: true},
+		{Name: "in_app_follows", Type: field.TypeBool, Default: true},
+		{Name: "in_app_moderation", Type: field.TypeBool, Default: true},
+		{Name: "email_comments", Type: field.TypeBool, Default: true},
+		{Name: "email_reactions", Type: field.TypeBool, Default: true},
+		{Name: "email_follows", Type: field.TypeBool, Default: true},
+		{Name: "email_moderation", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotificationPreferencesTable holds the schema information for the "notification_preferences" table.
+	NotificationPreferencesTable = &schema.Table{
+		Name:       "notification_preferences",
+		Columns:    NotificationPreferencesColumns,
+		PrimaryKey: []*schema.Column{NotificationPreferencesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notificationpreference_site_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{NotificationPreferencesColumns[1], NotificationPreferencesColumns[2]},
 			},
 		},
 	}
@@ -503,6 +619,37 @@ var (
 			},
 		},
 	}
+	// PermissionGroupsColumns holds the columns for the "permission_groups" table.
+	PermissionGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "key", Type: field.TypeString, Size: 40},
+		{Name: "name", Type: field.TypeString, Size: 60, Default: ""},
+		{Name: "base_role", Type: field.TypeString, Default: "member"},
+		{Name: "capabilities", Type: field.TypeJSON, Nullable: true},
+		{Name: "admin_access", Type: field.TypeBool, Default: false},
+		{Name: "builtin", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// PermissionGroupsTable holds the schema information for the "permission_groups" table.
+	PermissionGroupsTable = &schema.Table{
+		Name:       "permission_groups",
+		Columns:    PermissionGroupsColumns,
+		PrimaryKey: []*schema.Column{PermissionGroupsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "permissiongroup_site_id_key",
+				Unique:  true,
+				Columns: []*schema.Column{PermissionGroupsColumns[1], PermissionGroupsColumns[2]},
+			},
+			{
+				Name:    "permissiongroup_site_id",
+				Unique:  false,
+				Columns: []*schema.Column{PermissionGroupsColumns[1]},
+			},
+		},
+	}
 	// ReactionsColumns holds the columns for the "reactions" table.
 	ReactionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -528,6 +675,85 @@ var (
 				Name:    "reaction_site_id_target_type_target_id",
 				Unique:  false,
 				Columns: []*schema.Column{ReactionsColumns[1], ReactionsColumns[3], ReactionsColumns[4]},
+			},
+		},
+	}
+	// ReadingHistoriesColumns holds the columns for the "reading_histories" table.
+	ReadingHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "user_id", Type: field.TypeString, Size: 36},
+		{Name: "target_type", Type: field.TypeString, Size: 20},
+		{Name: "target_id", Type: field.TypeString, Size: 36},
+		{Name: "last_viewed_at", Type: field.TypeTime},
+		{Name: "view_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ReadingHistoriesTable holds the schema information for the "reading_histories" table.
+	ReadingHistoriesTable = &schema.Table{
+		Name:       "reading_histories",
+		Columns:    ReadingHistoriesColumns,
+		PrimaryKey: []*schema.Column{ReadingHistoriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "readinghistory_user_id_target_type_target_id",
+				Unique:  true,
+				Columns: []*schema.Column{ReadingHistoriesColumns[2], ReadingHistoriesColumns[3], ReadingHistoriesColumns[4]},
+			},
+			{
+				Name:    "readinghistory_site_id_user_id_last_viewed_at",
+				Unique:  false,
+				Columns: []*schema.Column{ReadingHistoriesColumns[1], ReadingHistoriesColumns[2], ReadingHistoriesColumns[5]},
+			},
+		},
+	}
+	// RecoveryCodesColumns holds the columns for the "recovery_codes" table.
+	RecoveryCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "user_id", Type: field.TypeString, Size: 36},
+		{Name: "code_hash", Type: field.TypeString, Size: 64},
+		{Name: "used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// RecoveryCodesTable holds the schema information for the "recovery_codes" table.
+	RecoveryCodesTable = &schema.Table{
+		Name:       "recovery_codes",
+		Columns:    RecoveryCodesColumns,
+		PrimaryKey: []*schema.Column{RecoveryCodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "recoverycode_user_id_code_hash",
+				Unique:  true,
+				Columns: []*schema.Column{RecoveryCodesColumns[1], RecoveryCodesColumns[2]},
+			},
+			{
+				Name:    "recoverycode_user_id_used_at",
+				Unique:  false,
+				Columns: []*schema.Column{RecoveryCodesColumns[1], RecoveryCodesColumns[3]},
+			},
+		},
+	}
+	// SensitiveWordsColumns holds the columns for the "sensitive_words" table.
+	SensitiveWordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "word", Type: field.TypeString, Size: 100},
+		{Name: "mode", Type: field.TypeString, Default: "reject"},
+		{Name: "replacement", Type: field.TypeString, Size: 80, Default: "***"},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SensitiveWordsTable holds the schema information for the "sensitive_words" table.
+	SensitiveWordsTable = &schema.Table{
+		Name:       "sensitive_words",
+		Columns:    SensitiveWordsColumns,
+		PrimaryKey: []*schema.Column{SensitiveWordsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sensitiveword_site_id_word",
+				Unique:  true,
+				Columns: []*schema.Column{SensitiveWordsColumns[1], SensitiveWordsColumns[2]},
 			},
 		},
 	}
@@ -587,7 +813,10 @@ var (
 		{Name: "visibility_mode", Type: field.TypeString, Default: "public"},
 		{Name: "publish_mode", Type: field.TypeString, Default: "review"},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2000},
+		{Name: "media_quota_bytes", Type: field.TypeInt64, Nullable: true},
 		{Name: "registration_open", Type: field.TypeBool, Default: true},
+		{Name: "comments_enabled", Type: field.TypeBool, Default: true},
+		{Name: "comments_require_review", Type: field.TypeBool, Default: false},
 		{Name: "disabled", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -607,6 +836,28 @@ var (
 				Name:    "site_domain",
 				Unique:  true,
 				Columns: []*schema.Column{SitesColumns[3]},
+			},
+		},
+	}
+	// SiteConfigsColumns holds the columns for the "site_configs" table.
+	SiteConfigsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "document", Type: field.TypeString, Size: 2147483647},
+		{Name: "revision", Type: field.TypeInt, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SiteConfigsTable holds the schema information for the "site_configs" table.
+	SiteConfigsTable = &schema.Table{
+		Name:       "site_configs",
+		Columns:    SiteConfigsColumns,
+		PrimaryKey: []*schema.Column{SiteConfigsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "siteconfig_site_id",
+				Unique:  true,
+				Columns: []*schema.Column{SiteConfigsColumns[1]},
 			},
 		},
 	}
@@ -632,6 +883,28 @@ var (
 			},
 		},
 	}
+	// SiteIPRulesColumns holds the columns for the "site_ip_rules" table.
+	SiteIPRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "value", Type: field.TypeString, Size: 64},
+		{Name: "note", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// SiteIPRulesTable holds the schema information for the "site_ip_rules" table.
+	SiteIPRulesTable = &schema.Table{
+		Name:       "site_ip_rules",
+		Columns:    SiteIPRulesColumns,
+		PrimaryKey: []*schema.Column{SiteIPRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "siteiprule_site_id_kind_value",
+				Unique:  true,
+				Columns: []*schema.Column{SiteIPRulesColumns[1], SiteIPRulesColumns[2], SiteIPRulesColumns[3]},
+			},
+		},
+	}
 	// SiteMembersColumns holds the columns for the "site_members" table.
 	SiteMembersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -639,6 +912,8 @@ var (
 		{Name: "user_id", Type: field.TypeString, Size: 36},
 		{Name: "role", Type: field.TypeString, Default: "member"},
 		{Name: "status", Type: field.TypeString, Default: "active"},
+		{Name: "group_key", Type: field.TypeString, Size: 40, Default: ""},
+		{Name: "media_quota_bytes", Type: field.TypeInt64, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -662,6 +937,29 @@ var (
 				Name:    "sitemember_site_id_role",
 				Unique:  false,
 				Columns: []*schema.Column{SiteMembersColumns[1], SiteMembersColumns[3]},
+			},
+		},
+	}
+	// SiteSafetySettingsColumns holds the columns for the "site_safety_settings" table.
+	SiteSafetySettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "comment_user_limit", Type: field.TypeInt, Default: 5},
+		{Name: "comment_ip_limit", Type: field.TypeInt, Default: 10},
+		{Name: "comment_window_seconds", Type: field.TypeInt, Default: 60},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SiteSafetySettingsTable holds the schema information for the "site_safety_settings" table.
+	SiteSafetySettingsTable = &schema.Table{
+		Name:       "site_safety_settings",
+		Columns:    SiteSafetySettingsColumns,
+		PrimaryKey: []*schema.Column{SiteSafetySettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sitesafetysetting_site_id",
+				Unique:  true,
+				Columns: []*schema.Column{SiteSafetySettingsColumns[1]},
 			},
 		},
 	}
@@ -700,6 +998,30 @@ var (
 			},
 		},
 	}
+	// TwoFactorsColumns holds the columns for the "two_factors" table.
+	TwoFactorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "user_id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "secret", Type: field.TypeString, Size: 512},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "confirmed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_used_step", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// TwoFactorsTable holds the schema information for the "two_factors" table.
+	TwoFactorsTable = &schema.Table{
+		Name:       "two_factors",
+		Columns:    TwoFactorsColumns,
+		PrimaryKey: []*schema.Column{TwoFactorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "twofactor_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{TwoFactorsColumns[3]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -707,6 +1029,7 @@ var (
 		{Name: "status", Type: field.TypeString, Default: "active"},
 		{Name: "bio", Type: field.TypeString, Nullable: true, Size: 2000},
 		{Name: "avatar_media_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "email_verified_at", Type: field.TypeTime, Nullable: true},
 		{Name: "locale", Type: field.TypeString, Size: 20, Default: "zh-CN"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -805,23 +1128,34 @@ var (
 		BookmarksTable,
 		CommentsTable,
 		ContentItemsTable,
+		ContentRevisionsTable,
 		ConversationsTable,
 		ConversationMembersTable,
 		FollowsTable,
 		IdempotencyKeysTable,
 		MediaAssetsTable,
+		MediaQuotaGuardsTable,
 		MediaUploadsTable,
 		MessagesTable,
 		ModerationReportsTable,
 		NotificationsTable,
+		NotificationPreferencesTable,
 		OutboxEventsTable,
 		PageViewsTable,
+		PermissionGroupsTable,
 		ReactionsTable,
+		ReadingHistoriesTable,
+		RecoveryCodesTable,
+		SensitiveWordsTable,
 		SessionsTable,
 		SitesTable,
+		SiteConfigsTable,
 		SiteCustomizationsTable,
+		SiteIPRulesTable,
 		SiteMembersTable,
+		SiteSafetySettingsTable,
 		TaxonomyTermsTable,
+		TwoFactorsTable,
 		UsersTable,
 		UserIdentitiesTable,
 		VerificationTokensTable,

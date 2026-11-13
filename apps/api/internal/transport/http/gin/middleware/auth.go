@@ -53,7 +53,28 @@ func livePrincipal(c *gin.Context, resolver MembershipResolver, principal auth.P
 		return auth.Principal{}, false
 	}
 	principal.Role = member.Role
+	withMembership(c, member)
 	return principal, true
+}
+
+// membershipKey is the gin context key of the live membership.
+const membershipKey = "practacu.membership"
+
+// withMembership stores the resolved membership on the request so a later guard
+// does not need a second database read.
+func withMembership(c *gin.Context, member site.Member) {
+	c.Set(membershipKey, member)
+}
+
+// MembershipFrom returns the live membership resolved by the authentication
+// guard, when one ran for this request.
+func MembershipFrom(c *gin.Context) (site.Member, bool) {
+	value, ok := c.Get(membershipKey)
+	if !ok {
+		return site.Member{}, false
+	}
+	member, ok := value.(site.Member)
+	return member, ok
 }
 
 // RequireAuth rejects requests without a valid bearer access token.
@@ -141,32 +162,87 @@ func siteMatches(c *gin.Context, principal auth.Principal) bool {
 func RequireAuthForSite(verifier AccessTokenVerifier, memberships ...MembershipResolver) gin.HandlerFunc {
 	resolver := membershipResolver(memberships)
 	return func(c *gin.Context) {
-		raw, ok := bearerToken(c.GetHeader("Authorization"))
-		if !ok {
-			abortUnauthenticated(c, "missing_bearer_token")
-			return
+		if authenticateForSite(c, verifier, resolver) {
+			c.Next()
 		}
+	}
+}
 
-		principal, err := verifier.VerifyAccess(raw)
-		if err != nil {
-			abortUnauthenticated(c, reasonFor(err))
-			return
-		}
+// authenticateForSite is the body of RequireAuthForSite without c.Next, so the
+// capability guard can run its own check in the same middleware slot.
+func authenticateForSite(c *gin.Context, verifier AccessTokenVerifier, resolver MembershipResolver) bool {
+	raw, ok := bearerToken(c.GetHeader("Authorization"))
+	if !ok {
+		abortUnauthenticated(c, "missing_bearer_token")
+		return false
+	}
 
-		withPrincipal(c, principal)
-		if !rejectForeignSite(c, principal) {
+	principal, err := verifier.VerifyAccess(raw)
+	if err != nil {
+		abortUnauthenticated(c, reasonFor(err))
+		return false
+	}
+
+	withPrincipal(c, principal)
+	if !rejectForeignSite(c, principal) {
+		return false
+	}
+	if resolver != nil {
+		live, active := livePrincipal(c, resolver, principal)
+		if !active {
+			abortUnauthenticated(c, "membership_inactive")
+			return false
+		}
+		withPrincipal(c, live)
+	}
+	return true
+}
+
+// RequireAuthForSiteWithCapabilities authenticates and then enforces the site's
+// capability matrix for the route.
+//
+// The matrix is enforced here rather than inside every module: one guard sees the
+// method and path, so a capability switched off in the dashboard refuses the same
+// request whether it would have been handled by the site, content, media or
+// moderation module. Routes without a capability rule keep the module's own role
+// check, which is how member-level surfaces (comments, bookmarks) stay available.
+func RequireAuthForSiteWithCapabilities(
+	verifier AccessTokenVerifier,
+	resolver MembershipResolver,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !authenticateForSite(c, verifier, resolver) {
 			return
 		}
-		if resolver != nil {
-			live, active := livePrincipal(c, resolver, principal)
-			if !active {
-				abortUnauthenticated(c, "membership_inactive")
-				return
-			}
-			withPrincipal(c, live)
+		if capability, required := requiredCapability(c); required && !memberAllows(c, resolver, capability) {
+			AbortProblem(c, apperr.PermissionDenied().
+				WithDetail("reason", "capability_required").
+				WithDetail("capability", string(capability)).
+				WithRequestID(RequestIDFrom(c)))
+			return
 		}
 		c.Next()
 	}
+}
+
+// memberAllows reads the membership resolved by authenticateForSite, falling back
+// to a resolver call when the guard was composed another way.
+func memberAllows(c *gin.Context, resolver MembershipResolver, capability site.Capability) bool {
+	if member, ok := MembershipFrom(c); ok {
+		return member.Allows(capability)
+	}
+	if resolver == nil {
+		return false
+	}
+	principal, ok := PrincipalFrom(c)
+	if !ok {
+		return false
+	}
+	resolved, err := resolver.Membership(c.Request.Context(), principal.SiteID, principal.UserID)
+	if err != nil {
+		return false
+	}
+	return resolved.Allows(capability)
 }
 
 // RequireSiteMatch rejects a principal whose token was issued for another site.

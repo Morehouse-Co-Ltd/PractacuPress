@@ -39,6 +39,25 @@ const fragment: Dictionary = {
   分享: 'Share',
   '最后更新 {date}': 'Last updated {date}',
 
+  // ---- 举报 ----
+  '举报': 'Report',
+  '举报这篇内容': 'Report this content',
+  '举报会进入站长与审核员的后台队列。恶意举报会被记录。':
+    'Reports go to the site owner and reviewer queue. Abusive reports are recorded.',
+  '提交举报': 'Submit report',
+  '举报原因': 'Reason',
+  '垃圾广告': 'Spam',
+  '辱骂与骚扰': 'Abuse or harassment',
+  '违法或侵权内容': 'Illegal or infringing content',
+  '其他': 'Other',
+  '补充说明': 'Additional details',
+  '可选：告诉审核员问题出在哪里。':
+    'Optional: tell the reviewer what is wrong.',
+  '举报已提交': 'Report submitted',
+  '站长会尽快处理，感谢你的反馈。':
+    'The site owner will look into it. Thanks for your feedback.',
+  '举报失败': 'Could not submit the report',
+
   // ---- 加载失败 ----
   '这篇内容不存在': 'This content does not exist',
   '暂时无法打开': 'Cannot open it right now',
@@ -98,6 +117,27 @@ const fragment: Dictionary = {
   // ---- 继续阅读 ----
   继续阅读: 'Keep reading',
   '全部{kind}': 'All {kind}s',
+
+  // ---- 分类 / 标签入口与上下篇 ----
+  未分类: 'Uncategorized',
+  上一篇与下一篇: 'Previous and next',
+  上一篇: 'Previous',
+  下一篇: 'Next',
+  已经是第一篇: 'This is the first one',
+  已经是最新一篇: 'This is the latest one',
+
+  // ---- 密码访问与单篇评论策略 ----
+  这篇内容受密码保护: 'This item is password protected',
+  '输入作者设置的访问密码后即可阅读。密码只保存在当前浏览器会话中。':
+    'Enter the access password to read it. The password is kept only in this browser session.',
+  访问密码: 'Access password',
+  解锁阅读: 'Unlock and read',
+  这篇内容仅登录读者可读: 'This item is for signed-in readers',
+  '请先登录账户，再回到这个链接继续阅读。':
+    'Sign in, then return to this link to continue reading.',
+  登录后阅读: 'Sign in to read',
+  '这篇内容已关闭评论。': 'Comments are closed for this item.',
+  '解锁失败。': 'Could not unlock this item.',
 };
 
 export default fragment;

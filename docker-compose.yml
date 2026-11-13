@@ -45,6 +45,11 @@ services:
       DATABASE_DSN: file:/data/practacu.db
       STORAGE_DRIVER: local
       STORAGE_DIR: /data/media
+      # Instance backups live on the same persistent volume, so a container
+      # rebuild does not take the downloadable packages with it.
+      BACKUP_DIR: /data/backups
+      MEDIA_DEFAULT_USER_QUOTA_BYTES: ${MEDIA_DEFAULT_USER_QUOTA_BYTES:-536870912}
+      MEDIA_DEFAULT_SITE_QUOTA_BYTES: ${MEDIA_DEFAULT_SITE_QUOTA_BYTES:-10737418240}
       SECURITY_GRPC_ADDR: security:9001
       # 让 API 信任 Nginx 传来的 X-Forwarded-*，限流与日志才能拿到真实客户端 IP。
       TRUSTED_PROXIES: 172.28.0.0/16

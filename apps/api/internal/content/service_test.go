@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,28 +18,47 @@ import (
 type fakeRepo struct {
 	items  map[string]Content
 	audits []site.AuditEntry
-	seq    int
+	// revisions records every snapshot the service decided to write.
+	revisions []Revision
+	seq       int
 	// lastFilter records the filter the service handed down, so tests can assert on
 	// the narrowing the store would receive.
 	lastFilter ListFilter
+	// lastPopularFilter records the leaderboard query the service handed down.
+	lastPopularFilter PopularFilter
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{items: make(map[string]Content)} }
 
+// addRevision stores a snapshot with a stable id, like the store does.
+func (f *fakeRepo) addRevision(revision Revision) Revision {
+	revision.ID = fmt.Sprintf("rev%d", len(f.revisions)+1)
+	f.revisions = append(f.revisions, revision)
+	return revision
+}
+
 func (f *fakeRepo) Insert(_ context.Context, item Content, audit site.AuditEntry) (Content, error) {
 	f.seq++
 	item.ID = fmt.Sprintf("c%d", f.seq)
+	item.Revision = 1
 	f.items[item.ID] = item
 	f.audits = append(f.audits, audit)
+	f.addRevision(item.Snapshot(1, item.AuthorID, RevisionCreated, item.CreatedAt))
 	return item, nil
 }
 
 func (f *fakeRepo) SaveDraft(_ context.Context, item Content, audit site.AuditEntry) (Content, error) {
-	if _, ok := f.items[item.ID]; !ok {
+	stored, ok := f.items[item.ID]
+	if !ok {
 		return Content{}, ErrNotFound
 	}
+	if stored.Revision != item.Revision {
+		return Content{}, ErrConflict
+	}
+	item.Revision++
 	f.items[item.ID] = item
 	f.audits = append(f.audits, audit)
+	f.addRevision(item.Snapshot(item.Revision, audit.ActorID, RevisionUpdated, item.UpdatedAt))
 	return item, nil
 }
 
@@ -59,6 +80,52 @@ func (f *fakeRepo) Transition(_ context.Context, item Content, from Status, audi
 	}
 	f.items[item.ID] = item
 	f.audits = append(f.audits, audit)
+	return item, nil
+}
+
+func (f *fakeRepo) ListRevisions(_ context.Context, siteID, contentID string, limit int) ([]Revision, error) {
+	out := make([]Revision, 0)
+	for i := len(f.revisions) - 1; i >= 0; i-- {
+		revision := f.revisions[i]
+		if revision.SiteID != siteID || revision.ContentID != contentID {
+			continue
+		}
+		out = append(out, revision)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRepo) FindRevision(_ context.Context, siteID, contentID, revisionID string) (Revision, error) {
+	for _, revision := range f.revisions {
+		if revision.ID == revisionID && revision.SiteID == siteID && revision.ContentID == contentID {
+			return revision, nil
+		}
+	}
+	return Revision{}, ErrNotFound
+}
+
+func (f *fakeRepo) RestoreRevision(
+	_ context.Context,
+	item Content,
+	backup Revision,
+	audit site.AuditEntry,
+) (Content, error) {
+	stored, ok := f.items[item.ID]
+	if !ok {
+		return Content{}, ErrNotFound
+	}
+	if stored.Revision != item.Revision {
+		return Content{}, ErrConflict
+	}
+	backup.Version = item.Revision + 1
+	backup = f.addRevision(backup)
+	item.Revision += 2
+	f.items[item.ID] = item
+	f.audits = append(f.audits, audit)
+	f.addRevision(item.Snapshot(item.Revision, audit.ActorID, RevisionRollback, item.UpdatedAt))
 	return item, nil
 }
 
@@ -87,6 +154,23 @@ func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error)
 				continue
 			}
 		}
+		if len(filter.AccessModes) > 0 {
+			allowed := false
+			mode := item.AccessMode
+			if mode == "" {
+				// A zero value predates the access control field and means public.
+				mode = AccessPublic
+			}
+			for _, filterMode := range filter.AccessModes {
+				if mode == filterMode {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
 		out = append(out, item)
 	}
 	if filter.Limit > 0 && len(out) > filter.Limit {
@@ -95,19 +179,132 @@ func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error)
 	return out, nil
 }
 
-func (f *fakeRepo) Search(_ context.Context, siteID, term string, kind Kind, limit int) ([]Content, error) {
+func (f *fakeRepo) Search(_ context.Context, filter SearchFilter) (SearchPage, error) {
 	out := make([]Content, 0)
+	term := strings.ToLower(filter.Term)
 	for _, item := range f.items {
-		if item.SiteID != siteID || item.Status != StatusPublished {
+		if item.SiteID != filter.SiteID || item.Status != StatusPublished {
 			continue
 		}
-		if kind != "" && item.Kind != kind {
+		if item.AccessMode != "" && item.AccessMode != AccessPublic {
+			continue
+		}
+		if filter.Kind != "" && item.Kind != filter.Kind {
+			continue
+		}
+		if filter.CategoryID != "" && item.CategoryID != filter.CategoryID {
+			continue
+		}
+		if filter.AuthorID != "" && item.AuthorID != filter.AuthorID {
+			continue
+		}
+		haystack := strings.ToLower(item.Title + " " + item.Summary + " " + item.SourceBody)
+		if term != "" && !strings.Contains(haystack, term) {
 			continue
 		}
 		out = append(out, item)
 	}
-	if len(out) > limit {
-		out = out[:limit]
+	total := len(out)
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
+	}
+	return SearchPage{Items: out, Total: total}, nil
+}
+
+// DueSchedules implements the scheduler read used by ProcessScheduledPublishing.
+func (f *fakeRepo) DueSchedules(_ context.Context, now time.Time, limit int) ([]Content, error) {
+	out := make([]Content, 0)
+	for _, item := range f.items {
+		if item.Status != StatusDraft || item.PublishAt == nil || item.PublishAt.After(now) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// RecordScheduleFailure mirrors the stored attempt counter and optional cancel.
+func (f *fakeRepo) RecordScheduleFailure(
+	_ context.Context,
+	siteID, contentID string,
+	attempts int,
+	cancel bool,
+	audit site.AuditEntry,
+) error {
+	item, ok := f.items[contentID]
+	if !ok || item.SiteID != siteID {
+		return ErrNotFound
+	}
+	item.PublishAttempts = attempts
+	if cancel {
+		item.PublishAt = nil
+	}
+	f.items[contentID] = item
+	f.audits = append(f.audits, audit)
+	return nil
+}
+
+// IncrementViewCount mirrors the store's single incrementing update: only a
+// published item of the same site is counted.
+func (f *fakeRepo) IncrementViewCount(_ context.Context, siteID, contentID string) error {
+	item, ok := f.items[contentID]
+	if !ok || item.SiteID != siteID || item.Status != StatusPublished {
+		return nil
+	}
+	item.ViewCount++
+	f.items[contentID] = item
+	return nil
+}
+
+// Popular mirrors the store's candidate query: published public items inside the
+// horizon, ordered by raw view count and then by publication date.
+func (f *fakeRepo) Popular(_ context.Context, filter PopularFilter) ([]Content, error) {
+	f.lastPopularFilter = filter
+	out := make([]Content, 0, len(f.items))
+	for _, item := range f.items {
+		if item.SiteID != filter.SiteID || item.Status != StatusPublished {
+			continue
+		}
+		mode := item.AccessMode
+		if mode == "" {
+			mode = AccessPublic
+		}
+		if mode != AccessPublic {
+			continue
+		}
+		if filter.Kind != "" && item.Kind != filter.Kind {
+			continue
+		}
+		if filter.CategoryID != "" && item.CategoryID != filter.CategoryID {
+			continue
+		}
+		if filter.Tag != "" {
+			found := false
+			for _, tag := range item.Tags {
+				if tag == filter.Tag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		if !filter.PublishedSince.IsZero() {
+			if item.PublishedAt == nil || item.PublishedAt.Before(filter.PublishedSince) {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ViewCount != out[j].ViewCount {
+			return out[i].ViewCount > out[j].ViewCount
+		}
+		return publishedTime(out[i]).After(publishedTime(out[j]))
+	})
+	if filter.Limit > 0 && len(out) > filter.Limit {
+		out = out[:filter.Limit]
 	}
 	return out, nil
 }
@@ -272,16 +469,127 @@ func TestPublishIsIdempotentOnlyOnce(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidTransition)
 }
 
-func TestUpdateDraftRejectsPublishedContent(t *testing.T) {
+func TestUpdateDraftRevisesPublishedContentAndKeepsHistory(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	author := actor("author", site.RoleMember)
+	ctx := context.Background()
+
+	item, err := service.CreateDraft(ctx, author, KindArticle, sampleDraft())
+	require.NoError(t, err)
+
+	// Publishing is a status move, not a save, so it adds no snapshot.
+	published, err := service.Apply(ctx, actor("mod", site.RoleEditor), item.ID, ActionPublish, "")
+	require.NoError(t, err)
+	require.Equal(t, StatusPublished, published.Status)
+
+	in := sampleDraft()
+	in.SourceBody = "# Revised"
+	revised, err := service.UpdateDraft(ctx, author, item.ID, in)
+	require.NoError(t, err)
+	require.Equal(t, StatusPublished, revised.Status, "a revision must keep the item live")
+	require.Equal(t, "# Revised", revised.SourceBody)
+	require.Equal(t, published.Revision+1, revised.Revision)
+
+	history, err := service.ListRevisions(ctx, author, item.ID)
+	require.NoError(t, err)
+	require.Len(t, history, 2, "create and revision each leave a version")
+	require.Equal(t, RevisionUpdated, history[0].Action)
+	require.Equal(t, "# Revised", history[0].SourceBody)
+	require.Equal(t, RevisionCreated, history[1].Action)
+}
+
+func TestPublishedRevisionFailsClosedWhenSanitizerIsUnavailable(t *testing.T) {
 	repo := newFakeRepo()
 	repo.items["c1"] = Content{
 		ID: "c1", SiteID: "s1", AuthorID: "author", Kind: KindArticle,
-		Status: StatusPublished, RenderedHTML: "<p>x</p>", PolicyVersion: "p1",
+		Status: StatusPublished, SourceBody: "old", RenderedHTML: "<p>old</p>",
+		PolicyVersion: "p1", Revision: 2,
+	}
+	sanitizer := &fakeSanitizer{err: errors.New("grpc unavailable")}
+	service := newService(t, repo, sanitizer, site.PublishModeOpen)
+
+	_, err := service.UpdateDraft(context.Background(), actor("author", site.RoleMember), "c1", sampleDraft())
+	require.ErrorIs(t, err, ErrSecurityUnavailable)
+
+	stored := repo.items["c1"]
+	require.Equal(t, StatusPublished, stored.Status, "a failed revision must not unpublish live content")
+	require.Equal(t, "old", stored.SourceBody)
+	require.Len(t, repo.revisions, 0)
+}
+
+func TestUpdateDraftRejectsPendingReviewContent(t *testing.T) {
+	repo := newFakeRepo()
+	repo.items["c1"] = Content{
+		ID: "c1", SiteID: "s1", AuthorID: "author", Kind: KindArticle,
+		Status: StatusPendingReview,
 	}
 	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
 
 	_, err := service.UpdateDraft(context.Background(), actor("author", site.RoleMember), "c1", sampleDraft())
 	require.ErrorIs(t, err, ErrInvalidTransition)
+}
+
+func TestRevisionHistoryIsHiddenFromStrangers(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	author := actor("author", site.RoleMember)
+	ctx := context.Background()
+
+	item, err := service.CreateDraft(ctx, author, KindArticle, sampleDraft())
+	require.NoError(t, err)
+
+	_, err = service.ListRevisions(ctx, actor("stranger", site.RoleMember), item.ID)
+	require.ErrorIs(t, err, ErrNotFound)
+
+	history, err := service.ListRevisions(ctx, actor("mod", site.RoleEditor), item.ID)
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+}
+
+func TestRestoreRevisionBacksUpCurrentStateAndKeepsStatus(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	author := actor("author", site.RoleMember)
+	ctx := context.Background()
+
+	item, err := service.CreateDraft(ctx, author, KindArticle, sampleDraft())
+	require.NoError(t, err)
+	first := item.SourceBody
+
+	in := sampleDraft()
+	in.SourceBody = "# Second"
+	_, err = service.UpdateDraft(ctx, author, item.ID, in)
+	require.NoError(t, err)
+
+	history, err := service.ListRevisions(ctx, author, item.ID)
+	require.NoError(t, err)
+	// history[0] is the second save, history[1] the original create.
+	restored, err := service.RestoreRevision(ctx, author, item.ID, history[1].ID)
+	require.NoError(t, err)
+	require.Equal(t, first, restored.SourceBody)
+	require.Equal(t, StatusDraft, restored.Status)
+
+	history, err = service.ListRevisions(ctx, author, item.ID)
+	require.NoError(t, err)
+	require.Equal(t, RevisionRollback, history[0].Action)
+	require.Equal(t, RevisionRollbackBackup, history[1].Action, "the pre-rollback state must be backed up")
+	require.Equal(t, "# Second", history[1].SourceBody)
+}
+
+func TestRestoreRevisionIsAuthorOrEditorOnly(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
+	author := actor("author", site.RoleMember)
+	ctx := context.Background()
+
+	item, err := service.CreateDraft(ctx, author, KindArticle, sampleDraft())
+	require.NoError(t, err)
+	history, err := service.ListRevisions(ctx, author, item.ID)
+	require.NoError(t, err)
+
+	_, err = service.RestoreRevision(ctx, actor("stranger", site.RoleMember), item.ID, history[0].ID)
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestUpdateDraftRejectsOtherAuthors(t *testing.T) {
@@ -500,20 +808,26 @@ func TestSearchOnlyReturnsPublished(t *testing.T) {
 		Status: StatusDraft, Title: "Go draft"}
 
 	service := newService(t, repo, okSanitizer(), site.PublishModeReview)
-	items, err := service.Search(context.Background(), actor("reader", site.RoleMember), "Go", KindArticle, 10)
+	result, err := service.Search(context.Background(), actor("reader", site.RoleMember), SearchQuery{
+		Term: "Go", Kind: KindArticle, Limit: 10,
+	})
 	require.NoError(t, err)
-	require.Len(t, items, 1)
-	require.Equal(t, "pub", items[0].ID, "a draft must never surface in search")
+	require.Len(t, result.Hits, 1)
+	require.Equal(t, "pub", result.Hits[0].Content.ID, "a draft must never surface in search")
 }
 
 func TestSearchValidatesTerm(t *testing.T) {
 	service := newService(t, newFakeRepo(), okSanitizer(), site.PublishModeReview)
 	ctx := context.Background()
 
-	_, err := service.Search(ctx, actor("u", site.RoleMember), " a ", KindArticle, 10)
+	_, err := service.Search(ctx, actor("u", site.RoleMember), SearchQuery{
+		Term: " a ", Kind: KindArticle, Limit: 10,
+	})
 	require.ErrorIs(t, err, ErrInvalidInput, "a one character term is refused")
 
-	_, err = service.Search(ctx, actor("u", site.RoleMember), "go", Kind("comment"), 10)
+	_, err = service.Search(ctx, actor("u", site.RoleMember), SearchQuery{
+		Term: "go", Kind: Kind("comment"), Limit: 10,
+	})
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
@@ -526,7 +840,9 @@ func TestSearchBoundsLongTerms(t *testing.T) {
 		long[i] = 'a'
 	}
 
-	items, err := service.Search(context.Background(), actor("u", site.RoleMember), string(long), KindArticle, 10)
+	result, err := service.Search(context.Background(), actor("u", site.RoleMember), SearchQuery{
+		Term: string(long), Kind: KindArticle, Limit: 10,
+	})
 	require.NoError(t, err)
-	require.Empty(t, items)
+	require.Empty(t, result.Hits)
 }

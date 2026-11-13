@@ -175,6 +175,12 @@ func startLive(opts liveOptions) (*liveRuntime, error) {
 // development strictness, SQLite next to the exe, loopback only, and the stable
 // signing key the launcher keeps.
 func apiEnv(live *liveRuntime, signingKey string) []string {
+	// PUBLIC_BASE_URL is deliberately not pinned here: the browser-facing port can
+	// change at runtime, and the API derives the request origin from the proxied
+	// Host. Pinning the startup port would make reset links stale after a port
+	// change. An operator who needs absolute links sets the variable in the
+	// environment, which os.Environ() already carries into the child; the startup
+	// banner points at it when it is missing.
 	return []string{
 		"APP_ENV=development",
 		"HTTP_ADDR=" + net.JoinHostPort("127.0.0.1", strconv.Itoa(live.apiPort)),
@@ -183,6 +189,7 @@ func apiEnv(live *liveRuntime, signingKey string) []string {
 		"SECURITY_GRPC_ADDR=" + net.JoinHostPort("127.0.0.1", strconv.Itoa(live.securityPort)),
 		"STORAGE_DRIVER=local",
 		"STORAGE_DIR=" + filepath.Join(live.dataDir, "media"),
+		"BACKUP_DIR=" + filepath.Join(live.dataDir, "backups"),
 		"PP_DESKTOP=1",
 		"COOKIE_SECURE=false",
 		// The page is served from the same origin, so cookies must work over plain
@@ -327,7 +334,8 @@ func killProcess(cmd *exec.Cmd) {
 	_ = cmd.Process.Kill()
 }
 
-// newAPIProxy forwards /api, /healthz and /readyz to the child API.
+// newAPIProxy forwards /api, /healthz, /readyz and the generated crawler files to
+// the child API.
 //
 // The Host header is left untouched on purpose: the API resolves the site by
 // hostname, and the browser-facing host is exactly the one the operator installed.
@@ -362,11 +370,19 @@ func newAPIProxy(base *url.URL) *httputil.ReverseProxy {
 }
 
 // isAPIPath reports whether a request belongs to the API rather than the static site.
+//
+// Sitemap.xml and robots.txt are generated per site by the API, so they must be
+// proxied too; the embedded static bundle has no such files. /plugins/ serves the
+// frontend half of extensions: those bundles are same-origin classic scripts, so
+// they must come from the API rather than the embedded asset folder.
 func isAPIPath(path string) bool {
 	return path == "/healthz" ||
 		path == "/readyz" ||
+		path == "/sitemap.xml" ||
+		path == "/robots.txt" ||
 		path == "/api" ||
-		strings.HasPrefix(path, "/api/")
+		strings.HasPrefix(path, "/api/") ||
+		strings.HasPrefix(path, "/plugins/")
 }
 
 func waitForReady(url string, timeout time.Duration, exited <-chan error) error {

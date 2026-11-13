@@ -40,6 +40,23 @@ func (t TargetType) Valid() bool {
 	}
 }
 
+// ContentCommentPolicy is the per item override of the site comment switches
+// (C-19). The content module owns the stored value; this package only needs the
+// small closed vocabulary to enforce it.
+type ContentCommentPolicy string
+
+// The per item comment policies.
+const (
+	// CommentPolicyInherit follows the site switches.
+	CommentPolicyInherit ContentCommentPolicy = "inherit"
+	// CommentPolicyOpen opens comments regardless of the site switch.
+	CommentPolicyOpen ContentCommentPolicy = "open"
+	// CommentPolicyDisabled closes comments for this item.
+	CommentPolicyDisabled ContentCommentPolicy = "disabled"
+	// CommentPolicyReview sends new comments to the moderation queue.
+	CommentPolicyReview ContentCommentPolicy = "review"
+)
+
 // Comment status values.
 const (
 	CommentStatusVisible = "visible"
@@ -73,6 +90,9 @@ var (
 	// not visible to the caller. It is deliberately indistinguishable from a missing
 	// row so unpublished content cannot be probed through interactions.
 	ErrTargetNotFound = errors.New("community: target not found")
+	// ErrCommentsClosed means the site switched comments off. It is enforced on the
+	// server so a direct API call cannot post to a closed thread.
+	ErrCommentsClosed = errors.New("community: comments are closed")
 )
 
 // Bounds on caller supplied content.
@@ -104,6 +124,10 @@ type Actor struct {
 	UserID string
 	SiteID string
 	Role   site.Role
+	// IP is the client address of the request. It is only used by the rate limiter;
+	// an empty value means the caller did not supply one (tests, internal callers)
+	// and only the signed-in counter applies.
+	IP string
 }
 
 // Comment is one comment or reply.
@@ -280,4 +304,155 @@ func ValidateReactionKind(kind string) (string, error) {
 	default:
 		return "", ErrInvalidInput
 	}
+}
+
+// InteractionState is the caller's own relation to one content item or member.
+type InteractionState struct {
+	Liked      bool
+	Bookmarked bool
+	Following  bool
+}
+
+// InteractionStateItem is one target's state in a batch response. Following a
+// target only makes sense for a user, so it is carried separately by
+// FollowStateItem.
+type InteractionStateItem struct {
+	TargetID   string
+	Liked      bool
+	Bookmarked bool
+}
+
+// FollowStateItem is one follow state in a batch response.
+type FollowStateItem struct {
+	UserID    string
+	Following bool
+}
+
+// InteractionEntry is one saved or liked content item, enriched with the small
+// read model a personal list needs (title, kind, author and publication date).
+//
+// The fields after CreatedAt are a read model joined by the store; they are empty
+// when the target no longer exists, and Available reports that case so the page can
+// render a tombstone instead of a broken link.
+type InteractionEntry struct {
+	TargetType  TargetType
+	TargetID    string
+	CreatedAt   time.Time
+	Title       string
+	Summary     string
+	Kind        string
+	AuthorID    string
+	AuthorName  string
+	PublishedAt *time.Time
+	Available   bool
+}
+
+// ReadingEntry is one recorded visit to a content item.
+type ReadingEntry struct {
+	SiteID     string
+	UserID     string
+	TargetType TargetType
+	TargetID   string
+	At         time.Time
+}
+
+// ReadingEntryView is one row of the reading history list.
+type ReadingEntryView struct {
+	TargetType   TargetType
+	TargetID     string
+	LastViewedAt time.Time
+	ViewCount    int
+	Title        string
+	Summary      string
+	Kind         string
+	AuthorID     string
+	AuthorName   string
+	PublishedAt  *time.Time
+	Available    bool
+}
+
+// FollowEntry is one member in a following or followers list.
+type FollowEntry struct {
+	UserID        string
+	DisplayName   string
+	Bio           string
+	AvatarMediaID string
+	Since         time.Time
+}
+
+// InteractionListFilter narrows a personal interaction list.
+//
+// UserID always comes from the authenticated actor, never from the query string:
+// the list endpoints expose one user's own data only.
+type InteractionListFilter struct {
+	SiteID     string
+	UserID     string
+	TargetType TargetType
+	// Kind narrows reactions to one kind. It is empty when not relevant.
+	Kind  string
+	Limit int
+	After page.Cursor
+}
+
+// FollowListFilter narrows a following or followers list.
+type FollowListFilter struct {
+	SiteID string
+	UserID string
+	Limit  int
+	After  page.Cursor
+}
+
+// MaxInteractionBatch bounds one batch state request.
+const MaxInteractionBatch = 100
+
+// NormalizeInteractionIDs trims, validates and de-duplicates a caller supplied id
+// list, preserving the requested order.
+func NormalizeInteractionIDs(raw []string) ([]string, error) {
+	ids := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, value := range raw {
+		id := strings.TrimSpace(value)
+		if id == "" {
+			continue
+		}
+		if len(id) > 64 {
+			return nil, ErrInvalidInput
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) > MaxInteractionBatch {
+		return nil, ErrInvalidInput
+	}
+	return ids, nil
+}
+
+// ValidateInteractionTargetType checks the target type used by the read endpoints.
+func ValidateInteractionTargetType(targetType TargetType) error {
+	if !targetType.Valid() {
+		return ErrInvalidInput
+	}
+	return nil
+}
+
+// ValidateReadingTarget checks a reading history write.
+func ValidateReadingTarget(targetType TargetType, targetID string) error {
+	if targetType != TargetArticle && targetType != TargetPost {
+		return ErrInvalidInput
+	}
+	if strings.TrimSpace(targetID) == "" || len(targetID) > 64 {
+		return ErrInvalidInput
+	}
+	return nil
+}
+
+// NormalizeInteractionLimit clamps a list page size.
+func NormalizeInteractionLimit(limit int) int {
+	if limit <= 0 || limit > 100 {
+		return 20
+	}
+	return limit
 }

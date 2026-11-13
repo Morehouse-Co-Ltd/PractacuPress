@@ -15,6 +15,31 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
+// TargetType names what a report points at.
+type TargetType string
+
+// Supported report targets.
+//
+// The set is closed on purpose: an arbitrary string would let a client file a report
+// that no moderator can ever resolve, and resolve actions could not know which module
+// to ask to take the content down.
+const (
+	TargetArticle TargetType = "article"
+	TargetPost    TargetType = "post"
+	TargetComment TargetType = "comment"
+	TargetUser    TargetType = "user"
+)
+
+// Valid reports whether the target type is defined.
+func (t TargetType) Valid() bool {
+	switch t {
+	case TargetArticle, TargetPost, TargetComment, TargetUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Reason is why something was reported.
 type Reason string
 
@@ -60,6 +85,29 @@ func (s Status) Valid() bool {
 // Closed reports whether the report reached a terminal state.
 func (s Status) Closed() bool { return s == StatusResolved || s == StatusDismissed }
 
+// Action is what a moderator did when closing a report.
+type Action string
+
+// Supported resolution actions.
+const (
+	// ActionIgnore closes the report without touching the target.
+	ActionIgnore Action = "ignore"
+	// ActionTakedown hides or archives the reported content.
+	ActionTakedown Action = "takedown"
+	// ActionBan suspends the reported account.
+	ActionBan Action = "ban"
+)
+
+// Valid reports whether the action is defined.
+func (a Action) Valid() bool {
+	switch a {
+	case ActionIgnore, ActionTakedown, ActionBan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Sentinel errors.
 var (
 	// ErrInvalidInput means a field failed validation.
@@ -78,6 +126,15 @@ var (
 	ErrNotAssignee = errors.New("moderation: only the assignee may resolve")
 	// ErrInvalidTransition means the requested move is not available.
 	ErrInvalidTransition = errors.New("moderation: invalid transition")
+	// ErrDuplicateReport means the reporter already has an open report for the target.
+	ErrDuplicateReport = errors.New("moderation: duplicate report")
+	// ErrTargetNotFound means the reported target does not exist on this site.
+	ErrTargetNotFound = errors.New("moderation: target not found")
+	// ErrActionNotAllowed means the resolution action is unavailable to this actor or
+	// this deployment (for example banning without member administration rights).
+	ErrActionNotAllowed = errors.New("moderation: action not allowed")
+	// ErrRateLimited means the reporter filed too many reports in the window.
+	ErrRateLimited = errors.New("moderation: too many reports")
 )
 
 // Bounds on caller supplied input.
@@ -98,12 +155,18 @@ type Actor struct {
 // CanModerate reports whether the actor may act on the queue.
 func CanModerate(actor Actor) bool { return actor.Role.AtLeast(site.RoleEditor) }
 
+// CanBanTarget reports whether the actor may suspend an account through a report.
+//
+// Suspension is member administration, so it needs a site administrator; an editor
+// may hide content but not lock somebody out of the site.
+func CanBanTarget(actor Actor) bool { return actor.Role.AtLeast(site.RoleSiteAdmin) }
+
 // Report is one reported item.
 type Report struct {
 	ID         string
 	SiteID     string
 	ReporterID string
-	TargetType string
+	TargetType TargetType
 	TargetID   string
 	Reason     Reason
 	Note       string
@@ -115,7 +178,7 @@ type Report struct {
 
 // NewReportInput is a filing request.
 type NewReportInput struct {
-	TargetType string
+	TargetType TargetType
 	TargetID   string
 	Reason     Reason
 	Note       string
@@ -123,11 +186,11 @@ type NewReportInput struct {
 
 // ValidateReport normalises and validates a filing request.
 func ValidateReport(in NewReportInput, reporterID, targetAuthorID string) (NewReportInput, error) {
-	in.TargetType = strings.TrimSpace(in.TargetType)
+	in.TargetType = TargetType(strings.TrimSpace(string(in.TargetType)))
 	in.TargetID = strings.TrimSpace(in.TargetID)
 	in.Note = strings.TrimSpace(in.Note)
 
-	if in.TargetType == "" {
+	if in.TargetType == "" || !in.TargetType.Valid() {
 		return NewReportInput{}, fmt.Errorf("%w: target type is required", ErrInvalidInput)
 	}
 	if in.TargetID == "" || len(in.TargetID) > MaxTargetIDLength {

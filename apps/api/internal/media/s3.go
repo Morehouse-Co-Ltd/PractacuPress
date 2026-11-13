@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -210,6 +211,41 @@ func (s *S3Storage) Delete(ctx context.Context, key string) error {
 	return err
 }
 
+// List returns every object key under the configured prefix, relative to it.
+//
+// Keys are returned without the deployment prefix so they compare directly with the
+// storage keys stored in the database. S3 lists keys in lexicographic order already,
+// but the result is sorted again so a dry-run report is stable across drivers.
+func (s *S3Storage) List(ctx context.Context) ([]string, error) {
+	prefix := ""
+	if s.prefix != "" {
+		prefix = s.prefix + "/"
+	}
+
+	keys := make([]string, 0)
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String(prefix),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("media: list objects: %w", err)
+		}
+		for _, object := range page.Contents {
+			key := aws.ToString(object.Key)
+			if prefix != "" {
+				key = strings.TrimPrefix(key, prefix)
+			}
+			if key != "" {
+				keys = append(keys, key)
+			}
+		}
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
 // objectKey validates a server generated key and applies the prefix.
 func (s *S3Storage) objectKey(key string) (string, error) {
 	if key == "" || strings.ContainsRune(key, 0) {
@@ -246,5 +282,3 @@ func isMissing(err error) bool {
 		strings.Contains(message, "not found") ||
 		strings.Contains(message, "statuscode: 404")
 }
-
-

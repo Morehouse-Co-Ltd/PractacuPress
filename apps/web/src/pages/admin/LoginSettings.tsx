@@ -48,7 +48,11 @@ export function LoginSettingsPage() {
       <div className="admin-page-head">
         <div>
           <h1>{t('登录设置')}</h1>
-          <p>{t('点击上方五种登录方式切换配置；每种方式只显示自己的参数。')}</p>
+          <p>
+            {t(
+              '点击上方五种登录方式切换配置；每种方式只显示自己的参数。开关自动保存到站点服务端，登录页对所有访客显示同一组方式。',
+            )}
+          </p>
         </div>
         <div className="admin-page-actions">
           <Link to="/admin/settings" className="btn btn-secondary btn-sm">

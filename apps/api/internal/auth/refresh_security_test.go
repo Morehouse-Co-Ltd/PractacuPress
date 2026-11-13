@@ -19,7 +19,11 @@ const oneDay = 24 * time.Hour
 // idle window but never the lineage's absolute lifetime, and past that lifetime the
 // whole family is revoked.
 func TestRefreshLineageHasAbsoluteLifetime(t *testing.T) {
-	start := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	// The lineage's birth time is stamped by the schema with the real clock, not with
+	// the service's test clock, so the test clock is anchored to the wall clock here:
+	// a hard coded start date would silently stop exercising the ceiling once the
+	// machine's date moves past it.
+	start := time.Now().UTC()
 	clock := newTestClock(start)
 	h := newAPIHarnessWithOptions(t, apiHarnessOptions{hasher: &fakeHasher{}, now: clock.Now})
 	ctx := context.Background()

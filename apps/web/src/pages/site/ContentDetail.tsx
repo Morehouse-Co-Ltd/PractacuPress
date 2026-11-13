@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import type { Comment, ContentKind, ToggleResult } from '../../types';
+import type { Comment, ContentKind, ReportReason, ToggleResult } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useScrollProgress } from '../../lib/hooks';
 import { ApiError } from '../../lib/api';
+import { captchaReasonText, captchaSceneRequired } from '../../lib/captcha';
 import {
   KIND_LABEL,
   formatDate,
@@ -17,27 +18,39 @@ import {
   Button,
   Callout,
   EmptyState,
+  Field,
   Modal,
+  Select,
   Skeleton,
   StatusBadge,
   Textarea,
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
-import { ContentCover } from '../../components/Cover';
+import { Cover } from '../../components/Cover';
 import { FeedProvider } from '../../components/blocks/FeedContext';
 import { ArticleProvider } from '../../components/blocks/ArticleContext';
 import { ScreenRenderer } from '../../components/blocks';
 import { hasArticleContent, screenHasBlocks } from '../../lib/blocks';
 import { useCustomization } from '../../lib/customize';
-import { useCoverHidden } from '../../lib/covers';
+import { coverImageStyle, useCoverHidden, visibleCoverFor } from '../../lib/covers';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { usePermissions } from '../../lib/usePermissions';
 import { copyText } from '../../lib/clipboard';
-import { ArticleToc, useArticleDiagrams, useArticleToc, useCodeCopy } from '../../components/ArticleTools';
+import { ArticleToc, FloatingToc, useArticleDiagrams, useArticleToc, useCodeCopy } from '../../components/ArticleTools';
+import { ReadingToolbar } from '../../components/ReadingToolbar';
+import { ResponsiveHtml } from '../../components/ResponsiveHtml';
+import { CaptchaField, useCaptchaStatus } from '../../components/Captcha';
+import { useArticleMath } from '../../components/ArticleMath';
 import { useToast } from '../../lib/toast';
 import { useSeo, articleJsonLd, breadcrumbJsonLd } from '../../lib/seo';
 import { firstImage } from '../../lib/markdown';
 import { useT } from '../../lib/i18n';
+import {
+  clipTitle,
+  contentPath,
+  pickNeighbors,
+  pickRelated,
+} from './readExperience';
 
 interface CommentNode extends Comment {
   children: CommentNode[];
@@ -69,6 +82,8 @@ function CommentItem({
   onEdit,
   onDelete,
   busy,
+  captchaSlot,
+  captchaBlocked = false,
 }: {
   node: CommentNode;
   depth: number;
@@ -81,6 +96,10 @@ function CommentItem({
   onEdit: (id: string, body: string) => Promise<void>;
   onDelete: (comment: Comment) => void;
   busy: boolean;
+  /** 回复框里的人机验证组件；由页面持有 token，所以从上面传下来。 */
+  captchaSlot?: ReactNode;
+  /** 组件加载失败时禁用发送，避免提交一次注定被拒的回复。 */
+  captchaBlocked?: boolean;
 }) {
   const t = useT();
   const [replyBody, setReplyBody] = useState('');
@@ -151,10 +170,12 @@ function CommentItem({
             maxLength={5000}
             style={{ minHeight: 76 }}
           />
+          {captchaSlot}
           <div className="row gap-8 mt-8">
             <Button
               size="sm"
               loading={busy}
+              disabled={captchaBlocked || !replyBody.trim()}
               onClick={async () => {
                 await onSubmitReply(replyBody);
                 setReplyBody('');
@@ -185,6 +206,8 @@ function CommentItem({
               onEdit={onEdit}
               onDelete={onDelete}
               busy={busy}
+              captchaSlot={captchaSlot}
+              captchaBlocked={captchaBlocked}
             />
           ))}
         </div>
@@ -204,11 +227,18 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   // 否则保持旧行为：正文照旧，编排区块排在评论区之后。
   const layoutOwnsBody = hasArticleContent(articleLayout);
   const { taxonomy } = useTaxonomy();
-  const { can } = usePermissions();
-  const commentSettings = customization.comments;
+  const { can, adminEntry } = usePermissions();
   const extensions = customization.extensions;
   const backend = useBackend();
   const demo = isDemo(backend);
+  // 真实后端以站点字段为准；演示模式保留本地设计里的评论配置。
+  const commentSettings = demo
+    ? customization.comments
+    : {
+        ...customization.comments,
+        enabled: site?.comments_enabled ?? true,
+        require_review: site?.comments_require_review ?? false,
+      };
   const navigate = useNavigate();
   const toast = useToast();
   const progress = useScrollProgress();
@@ -219,11 +249,42 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState<Comment | null>(null);
+  const [reporting, setReporting] = useState(false);
+  const [reportReason, setReportReason] = useState<ReportReason>('spam');
+  const [reportNote, setReportNote] = useState('');
+  const [reportBusy, setReportBusy] = useState(false);
+  // 评论人机验证：站点开启后，评论与回复都要带 token；token 一次性，提交后清空。
+  const captcha = useCaptchaStatus();
+  const captchaRequired = captchaSceneRequired(captcha.status, 'comment');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaFailure, setCaptchaFailure] = useState('');
+  const captchaBlocked = captchaRequired && !!captchaFailure;
+  const recaptchaVersion = customization.verification.recaptcha_version ?? 'v2';
+  // 密码文章的解锁表单：密码只提交给 /unlock，成功授权保存在 HttpOnly Cookie。
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
 
   const content = useAsync(() => backend.getContent(kind, id), [backend, kind, id]);
   const item = content.data;
-  // 作者明确隐藏封面时，整块 .article-cover 不渲染，避免留下空画框。
+  // 作者明确隐藏封面时，整块 .article-hero 不渲染，避免留下空画框。
   const coverHidden = useCoverHidden(item?.id);
+  // 详情页的封面改成「全宽封面头」：有上传的图片就铺图片，没有就铺同款程序化封面，
+  // 标题与摘要压在图上，正文顶部再衬一层同图的高斯模糊——和列表卡片共用一套封面。
+  const heroCover = coverHidden ? undefined : visibleCoverFor(customization, item?.id);
+
+  // 顶部透明 / 悬浮页头会被封面压在下面：给 <html> 打一个标记，让页头文字在滚动前切成白色，
+  // 滚动后页头恢复实底，样式表会自动回到主题色（见 styles/articleHero.css）。
+  useEffect(() => {
+    const root = document.documentElement;
+    // 内容还没到位时后台是白底，白色页头文字会看不见，所以只在封面真正渲染时打标记。
+    if (!item || coverHidden) delete root.dataset.articleHero;
+    else root.dataset.articleHero = 'on';
+    return () => {
+      delete root.dataset.articleHero;
+    };
+  }, [coverHidden, item]);
   // 详情页的 SEO 在数据到位后写入；分享图优先取正文第一张图。
   useSeo({
     title: item?.title,
@@ -260,13 +321,21 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   // 先水合图表、再挂代码复制按钮：图表块水合后不是 pre，不会多出一个复制按钮。
   useArticleDiagrams(item?.rendered_html);
   useCodeCopy(extensions.code_copy, item?.rendered_html);
+  // 公式按需加载 KaTeX：没有公式的文章不下载引擎。
+  useArticleMath(item?.rendered_html);
 
   const comments = useAsync(() => backend.comments(kind, id), [backend, kind, id]);
-  const related = useAsync(async () => {
-    const page = await backend.listContent(kind, { limit: 4 });
-    return page.items.filter((entry) => entry.id !== id && entry.status === 'published').slice(0, 3);
-  }, [backend, kind, id]);
+  // 相关推荐 / 上下篇共用一个同类内容池。契约没有 related 端点，
+  // 100 篇足够覆盖常见站点；更大的站点会退化成「最近 100 篇里选」。
+  const pool = useAsync(async () => {
+    const page = await backend.listContent(kind, { limit: 100 });
+    return page.items;
+  }, [backend, kind]);
+  const relatedItems = useMemo(() => pickRelated(item ?? undefined, pool.data ?? []), [item, pool.data]);
+  const neighbors = useMemo(() => pickNeighbors(pool.data ?? [], id), [pool.data, id]);
 
+  // 刷新后恢复已赞 / 已收藏 / 已关注。`me` 进入依赖：匿名首帧拿到的是全 false，
+  // 登录态水合完成后要再查一次，否则已登录用户会看到未选中，第一次点击反而取消。
   useEffect(() => {
     if (!item) return;
     let alive = true;
@@ -282,13 +351,50 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     return () => {
       alive = false;
     };
-  }, [backend, kind, id, item]);
+  }, [backend, kind, id, item, me?.user.id]);
+
+  // 阅读历史只对登录用户有意义；失败不能影响正文展示。
+  useEffect(() => {
+    if (!me || !item) return;
+    void backend.recordReading(kind, id).catch(() => undefined);
+  }, [backend, kind, id, item, me?.user.id]);
 
   const tree = useMemo(() => buildTree(comments.data?.items ?? []), [comments.data]);
   const visibleComments = (comments.data?.items ?? []).filter((c) => c.status !== 'deleted').length;
 
+  // 单篇评论策略覆盖站点开关（C-19）：关闭优先，开启/先审后发各自覆盖站点值。
+  const contentCommentPolicy = item?.comment_policy ?? 'inherit';
+  const commentsEnabled =
+    contentCommentPolicy === 'disabled'
+      ? false
+      : contentCommentPolicy === 'open' || contentCommentPolicy === 'review'
+        ? true
+        : commentSettings.enabled;
+  const commentsRequireReview =
+    contentCommentPolicy === 'review'
+      ? true
+      : contentCommentPolicy === 'open'
+        ? false
+        : commentSettings.require_review;
+
   const requireLogin = () => {
     navigate(`/login?next=${encodeURIComponent(`/${kind === 'article' ? 'a' : 'p'}/${id}`)}`);
+  };
+
+  /** 提交访问密码；成功后重新读取正文，失败时保留表单并显示原因。 */
+  const unlock = async () => {
+    if (!unlockPassword.trim()) return;
+    setUnlockBusy(true);
+    setUnlockError('');
+    try {
+      await backend.unlockContent(kind, id, unlockPassword);
+      setUnlockPassword('');
+      content.reload();
+    } catch (err) {
+      setUnlockError(err instanceof Error ? err.message : t('解锁失败。'));
+    } finally {
+      setUnlockBusy(false);
+    }
   };
 
   const toggleReaction = async () => {
@@ -353,19 +459,21 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     }
     setBusy(true);
     try {
-      await backend.createComment(
+      const created = await backend.createComment(
         {
           target_type: parentId ? 'comment' : kind,
           target_id: parentId ?? id,
           parent_id: parentId,
           body: text,
+          captcha_token: captchaToken || undefined,
         },
-        { require_review: commentSettings.require_review },
+        { require_review: commentsRequireReview },
       );
       setBody('');
       setReplyTo(null);
+      resetCaptcha();
       comments.reload();
-      if (commentSettings.require_review && demo) {
+      if (created.status === 'pending_review') {
         toast.push(
           'ok',
           parentId ? t('回复已提交') : t('评论已提交'),
@@ -375,10 +483,26 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
         toast.push('ok', parentId ? t('回复已发送') : t('评论已发布'));
       }
     } catch (err) {
-      toast.push('error', t('发送失败'), err instanceof Error ? err.message : undefined);
+      resetCaptcha();
+      const reason =
+        err instanceof ApiError
+          ? (err.problem.details as { reason?: string } | undefined)?.reason
+          : undefined;
+      toast.push(
+        'error',
+        t('发送失败'),
+        captchaReasonText(reason, t) || (err instanceof Error ? err.message : undefined),
+      );
     } finally {
       setBusy(false);
     }
+  };
+
+  /** 清掉已用过的 token 并重挂组件；提交成功或失败都要调用。 */
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaFailure('');
+    setCaptchaNonce((value) => value + 1);
   };
 
   const editComment = async (commentId: string, text: string) => {
@@ -392,6 +516,27 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       toast.push('error', t('更新失败'), err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitReport = async () => {
+    if (!item) return;
+    setReportBusy(true);
+    try {
+      await backend.report({
+        target_type: item.kind,
+        target_id: item.id,
+        reason: reportReason,
+        note: reportNote.trim(),
+      });
+      setReporting(false);
+      setReportNote('');
+      setReportReason('spam');
+      toast.push('ok', t('举报已提交'), t('站长会尽快处理，感谢你的反馈。'));
+    } catch (err) {
+      toast.push('error', t('举报失败'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setReportBusy(false);
     }
   };
 
@@ -418,6 +563,78 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
           <div className="mt-24">
             <Skeleton lines={8} />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 访问控制的两种拒绝先于通用错误页处理：读者需要看到密码墙或登录提示，而不是
+  // 「内容不存在」。服务端不会在 403 里返回标题或摘要，以免泄露。
+  const accessReason =
+    content.error instanceof ApiError
+      ? String((content.error.problem.details as { reason?: unknown } | undefined)?.reason ?? '')
+      : '';
+
+  if (content.error instanceof ApiError && accessReason === 'password_required') {
+    return (
+      <div className="shell">
+        <div className="article" style={{ maxWidth: 520, margin: '0 auto', paddingTop: 72 }}>
+          <EmptyState
+            icon="lock"
+            title={t('这篇内容受密码保护')}
+            body={t('输入作者设置的访问密码后即可阅读。密码只保存在当前浏览器会话中。')}
+          />
+          <div className="comment-form" style={{ marginTop: 20 }}>
+            <Field label={t('访问密码')} htmlFor="content-unlock-password">
+              <input
+                id="content-unlock-password"
+                className="input"
+                type="password"
+                autoComplete="current-password"
+                value={unlockPassword}
+                maxLength={128}
+                onChange={(event) => setUnlockPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void unlock();
+                  }
+                }}
+              />
+            </Field>
+            {unlockError ? (
+              <Callout tone="danger" icon="alert">
+                {unlockError}
+              </Callout>
+            ) : null}
+            <div className="row gap-8 mt-8">
+              <Button size="sm" loading={unlockBusy} disabled={!unlockPassword.trim()} onClick={() => void unlock()}>
+                {t('解锁阅读')}
+              </Button>
+              <Link to={kind === 'article' ? '/articles' : '/posts'} className="btn btn-secondary btn-sm">
+                {t('返回列表')}
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (content.error instanceof ApiError && accessReason === 'members_only') {
+    return (
+      <div className="shell">
+        <div style={{ paddingTop: 64 }}>
+          <EmptyState
+            icon="lock"
+            title={t('这篇内容仅登录读者可读')}
+            body={t('请先登录账户，再回到这个链接继续阅读。')}
+            action={
+              <button type="button" className="btn btn-primary btn-sm" onClick={requireLogin}>
+                {t('登录后阅读')}
+              </button>
+            }
+          />
         </div>
       </div>
     );
@@ -456,73 +673,149 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     ? taxonomy.categories.find((term) => term.id === item.category_id)
     : undefined;
 
+  // 封面式页头和「隐藏封面」时的旧页头都要出现同一份元信息与分类标记，
+  // 抽成函数共用，避免两处以后各自漂移。
+  const metaRow = (extraClass = '') => (
+    <div className={`article-meta${extraClass ? ` ${extraClass}` : ''}`}>
+      <span className="author-line">
+        <Avatar name={item.author_name ?? t('编辑部')} size={32} />
+        <span>
+          <span className="author-name">{item.author_name ?? t('编辑部')}</span>
+          <span className="meta-text" style={{ display: 'block' }}>
+            {formatDateTime(item.published_at ?? item.created_at)}
+          </span>
+        </span>
+      </span>
+      <span className="dot" />
+      <span className="meta-text">
+        {t('{count} 分钟阅读', { count: readingTime(item.rendered_html) })}
+      </span>
+      {typeof item.view_count === 'number' ? (
+        <>
+          <span className="dot" />
+          {/* 单篇阅读量（FSD A-16）：服务端去重后的真实阅读次数，作者与编辑的访问不计入。 */}
+          <span className="meta-text">{t('{count} 次阅读', { count: item.view_count })}</span>
+        </>
+      ) : null}
+      <div className="article-meta-actions">
+        <button type="button" className="icon-btn" onClick={share} aria-label={t('复制链接')}>
+          <Icon name="copy" size={16} />
+        </button>
+        {me && me.user.id !== item.author_id ? (
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setReporting(true)}
+            aria-label={t('举报这篇内容')}
+            title={t('举报')}
+          >
+            <Icon name="alert" size={16} />
+          </button>
+        ) : null}
+        {me && adminEntry && can('moderate_content') ? (
+          <Link to={`/admin/content/${item.kind}/${item.id}`} className="icon-btn" aria-label={t('在后台编辑')}>
+            <Icon name="edit" size={16} />
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const taxonomyRow = (extraClass = '') =>
+    item.category_id || item.tags?.length ? (
+      <div className={`article-taxonomy${extraClass ? ` ${extraClass}` : ''}`}>
+        {articleCategory || item.category_id ? (
+          <Link
+            to={`/category/${encodeURIComponent(articleCategory?.slug ?? item.category_id ?? '')}`}
+            className="article-cat"
+            style={{ '--pp-cat-color': articleCategory?.color ?? 'var(--accent)' } as CSSProperties}
+          >
+            {articleCategory?.name ?? t('未分类')}
+          </Link>
+        ) : null}
+        {(item.tags ?? []).map((tag) => {
+          const term = taxonomy.tags.find((entry) => entry.name === tag);
+          return (
+            <Link key={tag} to={`/tag/${encodeURIComponent(term?.slug ?? tag)}`} className="article-tag">
+              #{tag}
+            </Link>
+          );
+        })}
+      </div>
+    ) : null;
+
   return (
     <>
       {extensions.reading_progress && progress > 0.01 ? (
         <div className="read-progress" style={{ width: `${progress * 100}%` }} />
       ) : null}
-      <div className="shell">
-        <article className="article">
-          <div className="article-head">
-            <Link to={kind === 'article' ? '/articles' : '/posts'} className="back-link">
-              <Icon name="arrow-left" size={13} /> {t('返回{kind}列表', { kind: KIND_LABEL[kind] })}
-            </Link>
-            <div className="article-kicker">
-              <span>{KIND_LABEL[kind]}</span>
-              <span className="dot" />
-              <span>{t('安全策略 · {version}', { version: item.policy_version })}</span>
+
+      <ReadingToolbar toc={toc} title={item.title} />
+
+      {coverHidden ? null : (
+        <section className="article-hero" aria-label={t('封面')}>
+          <div className="article-hero-media">
+            {heroCover ? (
+              <img src={heroCover.url} alt="" aria-hidden="true" style={coverImageStyle(heroCover)} />
+            ) : (
+              <Cover seed={item.id} label={item.title} ratio="auto" plain />
+            )}
+          </div>
+          <div className="article-hero-veil" aria-hidden="true" />
+          <div className="article-hero-inner shell">
+            <div className="article-hero-top">
+              <Link to={kind === 'article' ? '/articles' : '/posts'} className="article-hero-back">
+                <Icon name="arrow-left" size={13} /> {t('返回{kind}列表', { kind: KIND_LABEL[kind] })}
+              </Link>
               {isUnpublished ? <StatusBadge status={item.status} /> : null}
             </div>
-            <h1>{item.title}</h1>
-            {item.summary ? <p className="article-lede">{item.summary}</p> : null}
-            <div className="article-meta">
-              <span className="author-line">
-                <Avatar name={item.author_name ?? t('编辑部')} size={32} />
-                <span>
-                  <span className="author-name">{item.author_name ?? t('编辑部')}</span>
-                  <span className="meta-text" style={{ display: 'block' }}>
-                    {formatDateTime(item.published_at ?? item.created_at)}
-                  </span>
-                </span>
-              </span>
-              <span className="dot" />
-              <span className="meta-text">
-                {t('{count} 分钟阅读', { count: readingTime(item.rendered_html) })}
-              </span>
-              <div className="article-meta-actions">
-                <button type="button" className="icon-btn" onClick={share} aria-label={t('复制链接')}>
-                  <Icon name="copy" size={16} />
-                </button>
-                {me && can('moderate_content') ? (
-                  <Link to={`/admin/content/${item.kind}/${item.id}`} className="icon-btn" aria-label={t('在后台编辑')}>
-                    <Icon name="edit" size={16} />
-                  </Link>
-                ) : null}
+            <div className="article-hero-text">
+              <div className="article-hero-kicker">
+                <span>{KIND_LABEL[kind]}</span>
+                <span className="dot" />
+                <span>{t('安全策略 · {version}', { version: item.policy_version })}</span>
               </div>
+              <h1>{item.title}</h1>
+              {item.summary ? <p className="article-hero-lede">{item.summary}</p> : null}
             </div>
-            {item.category_id || item.tags?.length ? (
-              <div className="article-taxonomy">
-                {articleCategory ? (
-                  <span className="article-cat" style={{ '--pp-cat-color': articleCategory.color } as CSSProperties}>
-                    {articleCategory.name}
-                  </span>
-                ) : null}
-                {(item.tags ?? []).map((tag) => (
-                  <span key={tag} className="article-tag">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
           </div>
+        </section>
+      )}
 
-          {coverHidden ? null : (
-            <div className="article-cover">
-              <ContentCover id={item.id} label={item.title} ratio="21 / 9" />
-            </div>
-          )}
+      <div className={`article-stage${coverHidden ? '' : ' has-hero'}`}>
+        {heroCover ? (
+          <div className="article-backdrop" aria-hidden="true">
+            <img src={heroCover.url} alt="" />
+          </div>
+        ) : null}
+        <div className="shell">
+          <div className="article-layout">
+            {extensions.toc ? <FloatingToc items={toc} /> : null}
+          <article className={`article${coverHidden ? '' : ' article--hero'}`}>
+            {coverHidden ? (
+              <div className="article-head">
+                <Link to={kind === 'article' ? '/articles' : '/posts'} className="back-link">
+                  <Icon name="arrow-left" size={13} /> {t('返回{kind}列表', { kind: KIND_LABEL[kind] })}
+                </Link>
+                <div className="article-kicker">
+                  <span>{KIND_LABEL[kind]}</span>
+                  <span className="dot" />
+                  <span>{t('安全策略 · {version}', { version: item.policy_version })}</span>
+                  {isUnpublished ? <StatusBadge status={item.status} /> : null}
+                </div>
+                <h1>{item.title}</h1>
+                {item.summary ? <p className="article-lede">{item.summary}</p> : null}
+                {metaRow()}
+                {taxonomyRow()}
+              </div>
+            ) : (
+              <>
+                {metaRow('article-meta--hero')}
+                {taxonomyRow('article-taxonomy--hero')}
+              </>
+            )}
 
-          {extensions.toc ? <ArticleToc items={toc} /> : null}
+            {extensions.toc ? <ArticleToc items={toc} className="article-toc--inline" /> : null}
 
           {layoutOwnsBody ? (
             // 正文由编排里的「文章内容」占位符渲染：整份编排放在正文原来的位置，
@@ -544,10 +837,10 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
               </ArticleProvider>
             </div>
           ) : (
-            <div
+            <ResponsiveHtml
               className="article-body"
               // 契约规定：只渲染服务端清洗后产生的 rendered_html。
-              dangerouslySetInnerHTML={{ __html: item.rendered_html }}
+              html={item.rendered_html}
             />
           )}
 
@@ -611,11 +904,44 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             </div>
           ) : null}
 
-          <section className="comments">
+          <nav className="article-pager" aria-label={t('上一篇与下一篇')}>
+            {neighbors.previous ? (
+              <Link className="article-pager-item is-prev" to={contentPath(neighbors.previous)}>
+                <span>
+                  <Icon name="arrow-left" size={12} /> {t('上一篇')}
+                </span>
+                <strong title={neighbors.previous.title}>{clipTitle(neighbors.previous.title)}</strong>
+              </Link>
+            ) : (
+              <span className="article-pager-item is-prev is-disabled" aria-disabled="true">
+                <span>
+                  <Icon name="arrow-left" size={12} /> {t('上一篇')}
+                </span>
+                <strong>{t('已经是第一篇')}</strong>
+              </span>
+            )}
+            {neighbors.next ? (
+              <Link className="article-pager-item is-next" to={contentPath(neighbors.next)}>
+                <span>
+                  {t('下一篇')} <Icon name="arrow-right" size={12} />
+                </span>
+                <strong title={neighbors.next.title}>{clipTitle(neighbors.next.title)}</strong>
+              </Link>
+            ) : (
+              <span className="article-pager-item is-next is-disabled" aria-disabled="true">
+                <span>
+                  {t('下一篇')} <Icon name="arrow-right" size={12} />
+                </span>
+                <strong>{t('已经是最新一篇')}</strong>
+              </span>
+            )}
+          </nav>
+
+          <section className="comments" id="comments">
             <div className="comments-head">
               <h2>{t('讨论')}</h2>
               <span>
-                {!commentSettings.enabled
+                {!commentsEnabled
                   ? t('评论已关闭')
                   : comments.loading
                     ? t('正在载入')
@@ -625,9 +951,11 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
               </span>
             </div>
 
-            {!commentSettings.enabled ? (
+            {!commentsEnabled ? (
               <Callout tone="info" icon="message">
-                {t('本站已经关闭评论。站长可以在「后台 → 评论与审核 → 评论设置」里重新开启。')}
+                {contentCommentPolicy === 'disabled'
+                  ? t('这篇内容已关闭评论。')
+                  : t('本站已经关闭评论。站长可以在「后台 → 评论与审核 → 评论设置」里重新开启。')}
               </Callout>
             ) : (
               <>
@@ -654,12 +982,8 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                         {commentSettings.notice ? (
                           <p className="comment-notice">{commentSettings.notice}</p>
                         ) : null}
-                        {commentSettings.require_review ? (
-                          <p className="field-hint">
-                            {demo
-                              ? t('本站开启先审后发：评论通过审核后才会公开显示。')
-                              : t('先审后发目前只在演示模式生效；真实后端需要接入站点级评论策略。')}
-                          </p>
+                        {commentsRequireReview ? (
+                          <p className="field-hint">{t('本站开启先审后发：评论通过审核后才会公开显示。')}</p>
                         ) : null}
                         <Textarea
                           value={body}
@@ -667,9 +991,24 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                           placeholder={t('写下你的回应。请遵守站点的讨论规则。')}
                           maxLength={5000}
                         />
+                        {replyTo ? null : (
+                          <CaptchaField
+                            scene="comment"
+                            status={captcha.status}
+                            onToken={setCaptchaToken}
+                            recaptchaVersion={recaptchaVersion}
+                            resetKey={captchaNonce}
+                            onFailure={setCaptchaFailure}
+                          />
+                        )}
                         <div className="comment-form-foot">
                           <span>{body.length}/5000</span>
-                          <Button size="sm" loading={busy} onClick={() => void submitComment(body)} disabled={!body.trim()}>
+                          <Button
+                            size="sm"
+                            loading={busy}
+                            onClick={() => void submitComment(body)}
+                            disabled={!body.trim() || captchaBlocked}
+                          >
                             {t('发表评论')}
                           </Button>
                         </div>
@@ -721,6 +1060,17 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                         onEdit={editComment}
                         onDelete={setDeleting}
                         busy={busy}
+                        captchaSlot={
+                          <CaptchaField
+                            scene="comment"
+                            status={captcha.status}
+                            onToken={setCaptchaToken}
+                            recaptchaVersion={recaptchaVersion}
+                            resetKey={captchaNonce}
+                            onFailure={setCaptchaFailure}
+                          />
+                        }
+                        captchaBlocked={captchaBlocked}
                       />
                     ))}
                   </div>
@@ -729,6 +1079,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             )}
           </section>
         </article>
+        </div>
 
         {!layoutOwnsBody && screenHasBlocks(articleLayout) ? (
           <section className="article-extra-blocks">
@@ -738,24 +1089,27 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
           </section>
         ) : null}
 
-        {related.data?.length ? (
-          <section style={{ maxWidth: 720, margin: '56px auto 0' }}>
+        {relatedItems.length ? (
+          <section className="article-related">
             <div className="section-head">
               <h2 style={{ fontSize: 22 }}>{t('继续阅读')}</h2>
               <Link to={kind === 'article' ? '/articles' : '/posts'} className="rule-link">
                 {t('全部{kind}', { kind: KIND_LABEL[kind] })}
               </Link>
             </div>
-            {related.data.map((entry) => (
+            {relatedItems.map((entry) => (
               <article className="story" key={entry.id}>
                 <span className="story-index">·</span>
                 <div className="story-body">
                   <h3>
-                    <Link to={`/${entry.kind === 'article' ? 'a' : 'p'}/${entry.id}`}>{entry.title}</Link>
+                    <Link to={contentPath(entry)}>{entry.title}</Link>
                   </h3>
                   <div className="story-meta">
                     <span>{entry.author_name ?? t('编辑部')}</span>
                     <span>{formatDate(entry.published_at ?? entry.created_at)}</span>
+                    {(entry.tags ?? []).slice(0, 3).map((tag) => (
+                      <span key={tag}>#{tag}</span>
+                    ))}
                   </div>
                 </div>
               </article>
@@ -783,6 +1137,53 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             “{deleting?.body.slice(0, 140)}”
           </p>
         </Modal>
+
+        <Modal
+          open={reporting}
+          title={t('举报这篇内容')}
+          description={t('举报会进入站长与审核员的后台队列。恶意举报会被记录。')}
+          onClose={() => setReporting(false)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setReporting(false)}>
+                {t('取消')}
+              </Button>
+              <Button variant="danger" loading={reportBusy} onClick={() => void submitReport()}>
+                {t('提交举报')}
+              </Button>
+            </>
+          }
+        >
+          <div className="form-stack">
+            <Field label={t('举报原因')} htmlFor="report-reason">
+              <Select
+                id="report-reason"
+                value={reportReason}
+                onChange={(event) => setReportReason(event.target.value as ReportReason)}
+              >
+                <option value="spam">{t('垃圾广告')}</option>
+                <option value="abuse">{t('辱骂与骚扰')}</option>
+                <option value="illegal">{t('违法或侵权内容')}</option>
+                <option value="other">{t('其他')}</option>
+              </Select>
+            </Field>
+            <Field
+              label={t('补充说明')}
+              htmlFor="report-note"
+              aside={`${reportNote.length}/2000`}
+              hint={t('可选：告诉审核员问题出在哪里。')}
+            >
+              <Textarea
+                id="report-note"
+                value={reportNote}
+                maxLength={2000}
+                style={{ minHeight: 84 }}
+                onChange={(event) => setReportNote(event.target.value)}
+              />
+            </Field>
+          </div>
+        </Modal>
+        </div>
       </div>
     </>
   );

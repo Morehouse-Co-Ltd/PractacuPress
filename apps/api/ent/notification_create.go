@@ -75,6 +75,20 @@ func (_c *NotificationCreate) SetPayload(v map[string]string) *NotificationCreat
 	return _c
 }
 
+// SetDedupeKey sets the "dedupe_key" field.
+func (_c *NotificationCreate) SetDedupeKey(v string) *NotificationCreate {
+	_c.mutation.SetDedupeKey(v)
+	return _c
+}
+
+// SetNillableDedupeKey sets the "dedupe_key" field if the given value is not nil.
+func (_c *NotificationCreate) SetNillableDedupeKey(v *string) *NotificationCreate {
+	if v != nil {
+		_c.SetDedupeKey(*v)
+	}
+	return _c
+}
+
 // SetReadAt sets the "read_at" field.
 func (_c *NotificationCreate) SetReadAt(v time.Time) *NotificationCreate {
 	_c.mutation.SetReadAt(v)
@@ -198,6 +212,11 @@ func (_c *NotificationCreate) check() error {
 			return &ValidationError{Name: "subject_id", err: fmt.Errorf(`ent: validator failed for field "Notification.subject_id": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.DedupeKey(); ok {
+		if err := notification.DedupeKeyValidator(v); err != nil {
+			return &ValidationError{Name: "dedupe_key", err: fmt.Errorf(`ent: validator failed for field "Notification.dedupe_key": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Notification.created_at"`)}
 	}
@@ -265,6 +284,10 @@ func (_c *NotificationCreate) createSpec() (*Notification, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Payload(); ok {
 		_spec.SetField(notification.FieldPayload, field.TypeJSON, value)
 		_node.Payload = value
+	}
+	if value, ok := _c.mutation.DedupeKey(); ok {
+		_spec.SetField(notification.FieldDedupeKey, field.TypeString, value)
+		_node.DedupeKey = &value
 	}
 	if value, ok := _c.mutation.ReadAt(); ok {
 		_spec.SetField(notification.FieldReadAt, field.TypeTime, value)
@@ -393,6 +416,9 @@ func (u *NotificationUpsertOne) UpdateNewValues() *NotificationUpsertOne {
 		}
 		if _, exists := u.create.mutation.SubjectID(); exists {
 			s.SetIgnore(notification.FieldSubjectID)
+		}
+		if _, exists := u.create.mutation.DedupeKey(); exists {
+			s.SetIgnore(notification.FieldDedupeKey)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(notification.FieldCreatedAt)
@@ -667,6 +693,9 @@ func (u *NotificationUpsertBulk) UpdateNewValues() *NotificationUpsertBulk {
 			}
 			if _, exists := b.mutation.SubjectID(); exists {
 				s.SetIgnore(notification.FieldSubjectID)
+			}
+			if _, exists := b.mutation.DedupeKey(); exists {
+				s.SetIgnore(notification.FieldDedupeKey)
 			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(notification.FieldCreatedAt)

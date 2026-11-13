@@ -57,6 +57,68 @@ func (s Status) Valid() bool {
 // IsPublic reports whether the status is readable by anonymous visitors.
 func (s Status) IsPublic() bool { return s == StatusPublished }
 
+// AccessMode decides who may read a published item (C-18).
+type AccessMode string
+
+// The access modes.
+const (
+	// AccessPublic is the ordinary, every visitor may read mode.
+	AccessPublic AccessMode = "public"
+	// AccessPassword requires the visitor to unlock the item with its password.
+	// Password protected items never appear in listings, search, feeds or sitemaps.
+	AccessPassword AccessMode = "password"
+	// AccessMembers requires a signed in reader. Like password mode it is a direct
+	// link only mode: it never appears in a public listing or crawler file.
+	AccessMembers AccessMode = "members"
+)
+
+// Valid reports whether the access mode is defined.
+func (m AccessMode) Valid() bool {
+	return m == AccessPublic || m == AccessPassword || m == AccessMembers
+}
+
+// CommentPolicy is the per item override of the site comment switches (C-19).
+type CommentPolicy string
+
+// The per item comment policies.
+const (
+	// CommentPolicyInherit follows the site level switches.
+	CommentPolicyInherit CommentPolicy = "inherit"
+	// CommentPolicyOpen opens comments even when the site closed them.
+	CommentPolicyOpen CommentPolicy = "open"
+	// CommentPolicyDisabled closes comments for this item.
+	CommentPolicyDisabled CommentPolicy = "disabled"
+	// CommentPolicyReview sends new comments to the moderation queue.
+	CommentPolicyReview CommentPolicy = "review"
+)
+
+// Valid reports whether the comment policy is defined.
+func (p CommentPolicy) Valid() bool {
+	switch p {
+	case CommentPolicyInherit, CommentPolicyOpen, CommentPolicyDisabled, CommentPolicyReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Bounds on an access password.
+const (
+	// MinAccessPasswordLength is the shortest access password accepted.
+	MinAccessPasswordLength = 4
+	// MaxAccessPasswordLength bounds the plaintext before hashing.
+	MaxAccessPasswordLength = 128
+)
+
+// ScheduledPublicationBounds controls the background publisher (C-17).
+const (
+	// ScheduledPublishBatch caps how many due items one tick handles.
+	ScheduledPublishBatch = 50
+	// MaxScheduledPublishAttempts is the retry bound after which the schedule is
+	// cancelled instead of being retried on every tick.
+	MaxScheduledPublishAttempts = 3
+)
+
 // SourceFormat is the format the author wrote in.
 type SourceFormat string
 
@@ -104,6 +166,39 @@ var (
 	// ErrQuotaExceeded means the author already has as many active drafts, or as many
 	// bytes of active draft source, as the account quota allows (V-06).
 	ErrQuotaExceeded = errors.New("content: draft quota exceeded")
+	// ErrConflict means the stored item changed after it was read, so the write was
+	// refused instead of silently overwriting a newer revision.
+	ErrConflict = errors.New("content: concurrent modification")
+	// ErrPasswordRequired means the item is password protected and this request has
+	// not been unlocked in the current browser session.
+	ErrPasswordRequired = errors.New("content: password required")
+	// ErrMembersOnly means the item is readable only by signed in members.
+	ErrMembersOnly = errors.New("content: members only")
+	// ErrInvalidPassword means the unlock attempt used the wrong password.
+	ErrInvalidPassword = errors.New("content: invalid password")
+	// ErrUnlockLocked means too many failed unlock attempts; the caller must wait.
+	ErrUnlockLocked = errors.New("content: unlock locked")
+	// ErrPasswordNotSet means password access was requested without a stored hash.
+	ErrPasswordNotSet = errors.New("content: access password not set")
+	// ErrAccessPasswordRequired means access mode password needs a password.
+	ErrAccessPasswordRequired = errors.New("content: access password required")
+	// ErrScheduleNotAllowed means the caller may not publish directly, so it may not
+	// schedule a publication either.
+	ErrScheduleNotAllowed = errors.New("content: schedule not allowed")
+)
+
+// RevisionRetention bounds the history kept per item (C-20 keeps 20 versions).
+const RevisionRetention = 20
+
+// RevisionAction records which write produced a history snapshot.
+type RevisionAction string
+
+// The writes that create a history entry.
+const (
+	RevisionCreated        RevisionAction = "created"
+	RevisionUpdated        RevisionAction = "updated"
+	RevisionRollbackBackup RevisionAction = "rollback_backup"
+	RevisionRollback       RevisionAction = "rollback"
 )
 
 // Per-author draft quotas.
@@ -178,12 +273,119 @@ type Content struct {
 	Tags          []string
 	PublishedAt   *time.Time
 	ArchivedAt    *time.Time
+	// PublishAt is the scheduled publication instant (C-17). The scheduler claims
+	// due drafts; a manual publish clears it.
+	PublishAt *time.Time
+	// PublishAttempts counts failed scheduler passes for a scheduled draft.
+	PublishAttempts int
+	// AccessMode decides who may read the published item (C-18).
+	AccessMode AccessMode
+	// AccessPasswordHash is the Argon2id hash of the access password. It is never
+	// returned to a client.
+	AccessPasswordHash string
+	// CommentPolicy overrides the site comment switches for this item (C-19).
+	CommentPolicy CommentPolicy
+	// ViewCount is the de-duplicated number of reads of the published item
+	// (FSD A-16). It is a counter on the row, not a derived aggregate: see views.go
+	// for why it is not computed from the page_view ledger.
+	ViewCount int
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	// Revision is the current version number. It starts at 1 for a newly created
+	// item and increments on every save; the history table uses the same number.
+	Revision int
+}
+
+// Revision is one immutable snapshot of a Content item.
+//
+// The snapshot copies every author editable field plus the rendered output, so a
+// historical version can be reviewed and restored without reading the live item.
+type Revision struct {
+	ID            string
+	SiteID        string
+	ContentID     string
+	Version       int
+	EditorID      string
+	EditorName    string
+	Action        RevisionAction
+	Status        Status
+	Title         string
+	Slug          string
+	Summary       string
+	SourceFormat  SourceFormat
+	SourceBody    string
+	RenderedHTML  string
+	PolicyVersion string
+	CategoryID    string
+	Tags          []string
 	CreatedAt     time.Time
-	UpdatedAt     time.Time
+}
+
+// snapshot builds a history entry from the item's current state.
+func (c Content) Snapshot(version int, editorID string, action RevisionAction, at time.Time) Revision {
+	return Revision{
+		SiteID:        c.SiteID,
+		ContentID:     c.ID,
+		Version:       version,
+		EditorID:      editorID,
+		Action:        action,
+		Status:        c.Status,
+		Title:         c.Title,
+		Slug:          c.Slug,
+		Summary:       c.Summary,
+		SourceFormat:  c.SourceFormat,
+		SourceBody:    c.SourceBody,
+		RenderedHTML:  c.RenderedHTML,
+		PolicyVersion: c.PolicyVersion,
+		CategoryID:    c.CategoryID,
+		Tags:          c.Tags,
+		CreatedAt:     at,
+	}
+}
+
+// applyRevision copies the author editable fields of a snapshot onto the item.
+//
+// The workflow status is deliberately not copied: restoring an old text must not
+// silently republish or archive the item, so the caller keeps its current state.
+func (c *Content) applyRevision(rev Revision) {
+	c.Title = rev.Title
+	c.Slug = rev.Slug
+	c.Summary = rev.Summary
+	c.SourceFormat = rev.SourceFormat
+	c.SourceBody = rev.SourceBody
+	c.CategoryID = rev.CategoryID
+	c.Tags = rev.Tags
 }
 
 // IsAuthor reports whether the actor wrote this item.
 func (c Content) IsAuthor(actor Actor) bool { return c.AuthorID == actor.UserID }
+
+// IsPasswordProtected reports whether reading the item needs its access password.
+func (c Content) IsPasswordProtected() bool { return c.AccessMode == AccessPassword }
+
+// IsMembersOnly reports whether reading the item requires a signed in member.
+func (c Content) IsMembersOnly() bool { return c.AccessMode == AccessMembers }
+
+// IsScheduled reports whether a draft carries a pending publication instant.
+func (c Content) IsScheduled() bool {
+	return c.Status == StatusDraft && c.PublishAt != nil
+}
+
+// EffectiveCommentSettings resolves the item's comment policy against the site
+// switches. It is the same rule the community service applies, exposed so the
+// content response and the reader UI cannot drift from the server.
+func (c Content) EffectiveCommentSettings(siteEnabled, siteReview bool) (enabled, requireReview bool) {
+	enabled, requireReview = siteEnabled, siteReview
+	switch c.CommentPolicy {
+	case CommentPolicyOpen:
+		enabled, requireReview = true, false
+	case CommentPolicyDisabled:
+		enabled, requireReview = false, false
+	case CommentPolicyReview:
+		enabled, requireReview = true, true
+	}
+	return enabled, requireReview
+}
 
 // DraftInput is a create or update request.
 type DraftInput struct {
@@ -194,6 +396,18 @@ type DraftInput struct {
 	SourceBody   string
 	CategoryID   string
 	Tags         []string
+	// PublishAt schedules a publication. Nil means "no schedule" and, on an update,
+	// removes an existing one.
+	PublishAt *time.Time
+	// AccessMode is empty on an update that keeps the stored mode; an empty value
+	// on create means AccessPublic.
+	AccessMode AccessMode
+	// AccessPassword is the plaintext new access password. Empty keeps the stored
+	// hash; switching away from AccessPassword clears it.
+	AccessPassword string
+	// CommentPolicy is empty on an update that keeps the stored policy; an empty
+	// value on create means CommentPolicyInherit.
+	CommentPolicy CommentPolicy
 }
 
 // Transition is one row of the workflow table.
@@ -374,6 +588,27 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 	}
 	if in.CategoryID != "" && len(in.CategoryID) > 36 {
 		return DraftInput{}, fmt.Errorf("%w: category id is malformed", ErrInvalidInput)
+	}
+
+	if in.AccessMode != "" && !in.AccessMode.Valid() {
+		return DraftInput{}, invalidField("access_mode", "unknown", "unknown access mode")
+	}
+	if in.AccessPassword != "" {
+		if in.AccessMode != "" && in.AccessMode != AccessPassword {
+			return DraftInput{}, invalidField("access_password", "not_allowed",
+				"an access password is only valid for password access")
+		}
+		if len([]rune(in.AccessPassword)) < MinAccessPasswordLength {
+			return DraftInput{}, invalidField("access_password", "too_short",
+				"access password is too short")
+		}
+		if len([]rune(in.AccessPassword)) > MaxAccessPasswordLength {
+			return DraftInput{}, invalidField("access_password", "too_long",
+				"access password is too long")
+		}
+	}
+	if in.CommentPolicy != "" && !in.CommentPolicy.Valid() {
+		return DraftInput{}, invalidField("comment_policy", "unknown", "unknown comment policy")
 	}
 
 	return in, nil

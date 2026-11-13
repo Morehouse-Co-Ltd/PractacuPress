@@ -1,0 +1,87 @@
+# Optional browser E2E smoke gate.
+#
+# The main CI workflow stays fast and deterministic: this workflow is separate,
+# runs on a schedule or on demand, and is safe to re-run. It boots a throwaway
+# stack (fresh SQLite, Go API, Rust security service, production web build) and
+# drives the delivery path in headless Chrome with Playwright.
+#
+# Local equivalent:
+#   bash scripts/e2e.sh
+#   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
+
+name: Browser E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly at 18:00 UTC (Monday 02:00 in Asia/Shanghai).
+    - cron: '0 18 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: Browser smoke (Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build security service
+        timeout-minutes: 15
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            rustup toolchain install stable --profile minimal
+            rustup default stable
+          fi
+          cargo build --release --manifest-path services/security/Cargo.toml
+
+      - name: Ensure a headless browser
+        working-directory: apps/web
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            google-chrome --version
+          else
+            npx playwright install --with-deps chromium
+            echo "PP_E2E_CHANNEL=chromium" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run browser E2E
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          bash scripts/e2e.sh 2>&1 | tee .ci-logs/e2e.log
+
+      - name: Upload E2E report and failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: browser-e2e
+          path: |
+            .tmp/e2e/artifacts/
+            .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14

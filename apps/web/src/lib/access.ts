@@ -194,9 +194,10 @@ export class AccessController {
 
   configure(settings: AccessSettings, adminPath?: string): void {
     this.settings = settings;
-    this.adminPaths = new Set<string>(['/admin', '/setup']);
-    const extra = (adminPath ?? '').trim().replace(/\/+$/, '');
-    if (extra && extra !== '/admin') this.adminPaths.add(extra);
+    // 后台入口是站点级配置：改了入口之后，旧的 /admin 就是一个普通的站点路径，
+    // 不该再享受「后台永远豁免」。安装向导始终豁免。
+    const entry = (adminPath ?? '').trim().replace(/\/+$/, '') || '/admin';
+    this.adminPaths = new Set<string>(['/setup', entry]);
 
     if (!settings.enabled) {
       this.pageEvents = [];

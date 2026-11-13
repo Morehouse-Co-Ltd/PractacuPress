@@ -39,6 +39,33 @@ func (m *recordingMailer) messages() []mailer.Message {
 	return append([]mailer.Message(nil), m.sent...)
 }
 
+// resetMail returns the most recent password reset message.
+//
+// Registration now sends its own verification mail, so the reset link is not
+// necessarily the first (or only) message in the inbox. Selecting by the reset
+// path keeps these tests about password reset instead of about mail ordering.
+func resetMail(t *testing.T, sender *recordingMailer) mailer.Message {
+	t.Helper()
+	messages := sender.messages()
+	for index := len(messages) - 1; index >= 0; index-- {
+		if strings.Contains(messages[index].Text, "/reset-password?token=") {
+			return messages[index]
+		}
+	}
+	t.Fatal("password reset mail is missing")
+	return mailer.Message{}
+}
+
+func resetMailCount(sender *recordingMailer) int {
+	count := 0
+	for _, message := range sender.messages() {
+		if strings.Contains(message.Text, "/reset-password?token=") {
+			count++
+		}
+	}
+	return count
+}
+
 // resetToken pulls the token query parameter out of the link in the plain text body.
 func resetToken(t *testing.T, msg mailer.Message) string {
 	t.Helper()
@@ -118,11 +145,12 @@ func TestPasswordResetRoundTrip(t *testing.T) {
 	require.Equal(t, "accepted", payload["status"])
 
 	messages := sender.messages()
-	require.Len(t, messages, 1)
-	require.Equal(t, []string{"alice@example.com"}, messages[0].To)
-	require.Contains(t, messages[0].Text, "/reset-password?token=")
+	require.Len(t, messages, 2, "registration verification plus the reset link")
+	reset := resetMail(t, sender)
+	require.Equal(t, []string{"alice@example.com"}, reset.To)
+	require.Contains(t, reset.Text, "/reset-password?token=")
 
-	token := resetToken(t, messages[0])
+	token := resetToken(t, reset)
 	require.NotEmpty(t, token)
 
 	require.Equal(t, http.StatusNoContent,
@@ -139,7 +167,7 @@ func TestPasswordResetTokenIsSingleUse(t *testing.T) {
 	require.Equal(t, http.StatusCreated, register(t, h, "alice@example.com").Code)
 	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
 
-	token := resetToken(t, sender.messages()[0])
+	token := resetToken(t, resetMail(t, sender))
 	require.Equal(t, http.StatusNoContent, confirmReset(t, h, token, "first new password").Code)
 
 	replay := confirmReset(t, h, token, "second new password")
@@ -153,7 +181,7 @@ func TestPasswordResetRejectsShortPassword(t *testing.T) {
 	require.Equal(t, http.StatusCreated, register(t, h, "alice@example.com").Code)
 	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
 
-	token := resetToken(t, sender.messages()[0])
+	token := resetToken(t, resetMail(t, sender))
 	w := confirmReset(t, h, token, "short")
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Equal(t, "validation_failed", decode(t, w)["code"])
@@ -174,7 +202,7 @@ func TestPasswordResetDoesNotEnumerate(t *testing.T) {
 
 	require.Equal(t, http.StatusAccepted, unknown.Code)
 	require.Equal(t, known.Body.String(), unknown.Body.String())
-	require.Len(t, sender.messages(), 1, "only the existing address may receive mail")
+	require.Equal(t, 1, resetMailCount(sender), "only the existing address may receive a reset mail")
 }
 
 func TestPasswordResetCooldownDropsSecondMail(t *testing.T) {
@@ -185,7 +213,7 @@ func TestPasswordResetCooldownDropsSecondMail(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
 	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
 
-	require.Len(t, sender.messages(), 1, "a second request inside the cooldown must be silent")
+	require.Equal(t, 1, resetMailCount(sender), "a second request inside the cooldown must be silent")
 }
 
 // TestPasswordResetSurvivesDeliveryFailure keeps the response identical when the
@@ -210,7 +238,7 @@ func TestPasswordResetRevokesExistingSessions(t *testing.T) {
 	require.NotEmpty(t, accessToken)
 
 	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
-	token := resetToken(t, sender.messages()[0])
+	token := resetToken(t, resetMail(t, sender))
 	require.Equal(t, http.StatusNoContent, confirmReset(t, h, token, "yet another passphrase").Code)
 
 	// The access token was minted before the reset. Its session row is revoked, so

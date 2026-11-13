@@ -1,6 +1,6 @@
 /**
  * 夜航主题端到端冒烟（CDP 驱动无头 Chrome，零新增依赖）。
- * 覆盖：安装引导主题选择、夜航深色 + bento 前台、命令面板与明暗事件、
+ * 覆盖：安装引导不再提供主题选择、夜航深色 + bento 前台、命令面板与明暗事件、
  *       演示登录、主题工坊四标签（预设 / 编排 / 思维链 / 模板）与持久化、经典主题回归。
  * 前置：apps/web 已 npm run build，且 node scripts/serve.mjs 在 127.0.0.1:80 提供服务。
  * 运行：node scripts/e2e-nightflight.mjs
@@ -97,15 +97,16 @@ try {
   await send('Page.enable');
   await send('Runtime.enable');
 
-  /* 1. 首次访问渲染安装引导（含第 1 步主题选择器） */
+  /* 1. 首次访问渲染安装引导（已移除主题选择器） */
   await goto(BASE + '/');
   const setup = await evaljs(`(() => ({
-    wiz: !!document.querySelector('.wiz-theme'),
-    cards: document.querySelectorAll('.wiz-theme .builtin-theme-card').length,
+    wiz: !!document.querySelector('.wiz'),
+    themePicker: !!document.querySelector('.wiz-theme'),
+    themeCards: document.querySelectorAll('.wiz .builtin-theme-card').length,
     heading: document.querySelector('h1')?.textContent ?? '',
   }))()`);
   check('首次访问进入安装引导', setup.wiz && setup.heading.length > 0, setup.heading);
-  check('引导第 1 步可选主题', setup.cards >= 2, `${setup.cards} 套大主题`);
+  check('安装引导不再提供主题选择', !setup.themePicker && setup.themeCards === 0);
 
   /* 2. 写入演示配置：夜航深色 + bento 变体 */
   const config = {

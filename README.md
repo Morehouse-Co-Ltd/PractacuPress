@@ -17,11 +17,11 @@
 | **占地少** | Windows 启动器 8.3 MB，**内嵌整套前端**；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。容器部署也只有三个镜像：API、安全服务、静态站。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，**运行时不依赖 Node**，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 七步安装引导自带健康检查，装完即用：`docker compose up -d` 或 `启动.bat` 一条命令起全栈（API + 安全服务 + 前端）。备份就是把 `data/` 目录整体复制走。 |
-| **自定义好** | 2 套大主题 + 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（51 条路径 / 64 个操作）后面，想换前端按契约写就行。 |
+| **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**，每个组件可单独设置圆角、阴影、裁剪、背景、内边距与描边，内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图，随文章发布并按主题重绘；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（当前契约 124 条路径 / 148 个操作，含健康检查与安装状态；站点根路径的 sitemap / robots 与内置 `/api/v1/docs` 不在契约内）后面，想换前端按契约写就行。 |
 
 **功能面**
 
-- **写作**：工具栏编辑器 + Markdown、实时预览、按渲染后的纯文本计字数
+- **写作**：工具栏编辑器 + Markdown、实时预览、按渲染后的纯文本计字数；可插入思维导图、逻辑图、统计图（柱状 / 折线 / 环形 / 饼图）与鱼骨图，保存在正文的 `pp-diagram` 围栏里
 - **社区**：评论、点赞、收藏、关注、私信、通知、举报，配 5 状态审核流
 - **运营**：主题、页面编排、SEO、访问限制、域名与 SSL、存储策略、访问统计
 - **安全**：Argon2id、HTML 白名单清洗、上传检查都在 Rust 服务里；连不上就 fail-closed 返回 503
@@ -39,7 +39,8 @@
 - **Go API**（`apps/api`）：身份、站点、内容、社区、媒体、通知、私信、事件补偿
 - **Rust 安全服务**（`services/security`）：Argon2id 密码哈希、内容清洗、上传检查
 - **契约**（`packages/contracts`）：OpenAPI 3.1 与 protobuf
-- **React 前端**（`apps/web`）：站点前台、管理后台、七步安装引导、主题库与页面编排（可按桌面 / 平板 / 手机独立编排）、自定义页面、内置扩展、访问限制、访问与域名（含 SSL 证书）、性能设置与加载动画
+- **React 前端**（`apps/web`）：站点前台、管理后台、七步安装引导（含高威胁操作保护设置）、邮箱或用户名登录（登录表单居中 + 主题背景）、主题库与页面编排（可按桌面 / 平板 / 手机独立编排，组件可设圆角、阴影、裁剪等外观，含按钮组件）、文章写作（可插思维导图 / 逻辑图 / 统计图 / 鱼骨图）、自定义页面、扩展系统（内置扩展 + 导入 zip：纯前端扩展与 Go/WASM 后端扩展；性能面板即内置扩展）、站点更新（显示名称 / 版本 / 自动更新开关，更新服务端可留空）、访问限制、访问与域名（含 SSL 证书与访问端口）、性能设置与加载动画、性能面板（圆环显示本软件与其他软件的 CPU / 内存 / 磁盘占用，可选模块）
+- **高威胁操作二次验证**：删除 / 编辑账户、重置两步验证、覆盖导入站点数据、删除敏感词与 IP 规则等操作，开启保护后必须再次输入密码；安装引导第 5 步可开启保护并选择“账户登录密码”或另设专用安全密码（之后可在「站点设置 → 高威胁操作保护」修改）。
 
 ### 写作与阅读
 
@@ -58,8 +59,8 @@
   以及后台可下载的 `sitemap.xml` / `robots.txt`。边界见
   [管理后台 → SEO](apps/web/src/pages/admin/Seo.tsx) 里的说明：标签由前端写入 `<head>`，
   不执行 JS 的社交抓取器只能看到 `index.html` 的默认值。
-- **主题**：后台「主题设置」把配色、排版与单栏/双栏版式作为一套「大主题」整体切换。
-  内置原版（纸白单栏）与夜航（暖黑暗色双栏）；主题选择区可导入 JSON 主题、导出当前主题、
+- **主题**：后台「主题设置」把配色、排版与单栏/卡片/双栏版式作为一套「大主题」整体切换。
+  内置原版（纸白单栏）、白昼（白底日报）与夜航（暖黑暗色双栏）；主题选择区可导入 JSON 主题、导出当前主题、
   另存为自定义主题与删除自定义主题。页面编排、外观（品牌/页脚）与加载动画归入同一导航组；
   只有首页仍为默认编排时，切换主题才会同步替换默认组件。页脚的全部内容（品牌标题/副标题/简介、
   状态标签、栏目与条目、版权与底部说明）都可以在「主题设置 → 导航与页脚」里逐项自定义；
@@ -67,6 +68,8 @@
   二级入口可渲染成页头下方的胶囊栏或收进下拉菜单。页头左上角（夜航）与页脚底栏上方还能放
   一排可配置的软件 / 社交快捷链接（GitHub、X、Mastodon、RSS、邮箱、任意网站）；「主题微调」
   新增柔化与过渡：背景柔光、组件混色、过渡时长与页头模糊，系统开启“减少动效”时自动降级。
+  夜航首页的文章卡另可在「封面在上」（默认）与「模糊背景」（封面铺满整张卡并高斯模糊，
+  标题与简介压在卡内毛玻璃面板上）之间切换，只改展示、不改内容与排序。
 - **访问与性能**：后台「访问限制」限制页面切换、页面请求与同浏览器并发页面，并生成
   Nginx `limit_req` / `limit_conn` 与 API `.env`；「访问与域名」设置主域名、别名白名单、
   SSL 证书（Let's Encrypt / 手动证书）、CORS、Cookie 作用域与可信代理；没有设置主域名时，
@@ -74,7 +77,8 @@
   网关压缩/缓存与 API 超时、数据库连接池参数；「存储策略」先用全局本地目录或 S3 兼容云对象存储
   （AWS、MinIO、阿里云 OSS、腾讯云 COS），再按用途单独覆盖：文章媒体、站点图片、用户头像、
   用户数据/附件可以各自选本地目录或桶/前缀，生成 `STORAGE_<SCOPE>_*` 服务端片段；「加载动画」
-  可制作前台加载画面。
+  可制作前台加载画面，也可以切换成页面原位骨架（SKELETON / SHIMMER / 两者叠加），让等待中的
+  内容占位直接落在最终版式的位置。
   这些设置都保存在本地安装配置里，服务器参数需要部署片段后重启生效。
 - **一键恢复**：页面编排可对当前首页或自定义页面恢复默认组件（页面标题、路径与发布状态不变）；
   「外观」可按范围重置品牌文案、首页/页面编排、加载动画、性能、访问限制与访问域名；
@@ -84,10 +88,9 @@
 
 ## 中英双语
 
-站点可以在**简体中文 ↔ English** 之间切换，切换入口只有两处，都在站长手里：
+站点可以在**简体中文 ↔ English** 之间切换，但选择只在装站时做一次：
 
-- **安装引导第一步（欢迎页）**右上角的语言胶囊；
-- **后台「站点设置 → 站点语言」**。
+- **安装引导第一步（欢迎页）**右上角的语言胶囊；装完之后后台不提供语言开关。
 
 语言是**站点级**设置：一个站点一种语言，前台、后台、安装引导与全部提示文案一起切换，
 访客不需要（也不能）单独选择。选择存在站点设计里并随它同步到服务端，所以换浏览器、
@@ -135,9 +138,10 @@ docker compose up -d --build
 - **数据**：命名卷 `practacu-data` 里是 `practacu.db` 与 `media/`。`docker compose down` 不删数据，`down -v` 才删。想直接用宿主机目录，把 compose 里的卷换成 `./data:/data` 并先 `mkdir -p data && sudo chown 10001:10001 data`。
 - **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 启动器一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
 - **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`。
+- **生产部署**：`docker-compose.prod.yml` + `deploy/production/nginx.conf` 提供 production 语义、持久 JWT 私钥、Secure Cookie、TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
 - **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`，另外两个同理（`security.Dockerfile`、`web.Dockerfile`）。
 
-> 开发机上没有 Docker 环境，这套 compose 与镜像定义**没有实跑验证过**：YAML、Dockerfile 引用与健康检查链路只做了静态校验。首次构建若遇问题，欢迎开 issue。
+> 开发机上没有 Docker 环境，这套 compose 与镜像定义（含 `docker-compose.prod.yml` 生产 profile）**没有实跑验证过**：YAML、Dockerfile 引用与健康检查链路只做了静态校验。首次构建若遇问题，欢迎开 issue。
 
 ### Windows 启动器
 
@@ -211,9 +215,9 @@ npm run build
 npm start
 ```
 
-`http://localhost`（默认 80 端口，地址栏不用写端口号）。后台「站点设置 → 访问端口」可以改端口，
-服务会立即在新端口监听并记住选择。开发模式用 `npm run dev`，同样默认 80，会把 `/api`、
-`/healthz`、`/readyz` 转到 `127.0.0.1:8080`。
+`http://localhost:8080`（默认 8080 端口）。后台「站点设置 → 访问与域名 → 访问端口」可以改端口，
+服务会立即在新端口监听并记住选择。开发模式用 `npm run dev`，开发服务器仍用 80 端口
+（8080 留给本机 API），并把 `/api`、`/healthz`、`/readyz` 转到 `127.0.0.1:8080`。
 
 首次打开会进入安装引导；没有后端时可选「演示数据」直接体验完整前台与后台。
 细节见[前端说明](apps/web/README.md)。
@@ -261,8 +265,8 @@ CI 可以直接调用底层脚本（与上面是同一套流程）：
 `node scripts\package-windows.mjs [--skip-security] [--skip-smoke] [--no-zip] [--release-dir <目录>]`。
 在没有 Rust 工具链的机器上，用 `-SkipSecurity` 打出的包仍能浏览、写作与演示，只是发布文章与完成上传会返回 503。
 
-启动器默认在 80 端口提供站点并自动打开浏览器；80 被占用时改用 8080，窗口里会显示实际地址。
-后台「站点设置 → 访问端口」的修改会写进 exe 同目录的 `practacu-web.json`，下次启动沿用。
+启动器默认在 8080 端口提供站点并自动打开浏览器；8080 被占用时依次改用 8081、8082，都不行再退回标准 80 端口，窗口里会显示实际地址。
+后台「站点设置 → 访问与域名 → 访问端口」的修改会写进 exe 同目录的 `practacu-web.json`，下次启动沿用。
 站点只监听本机回环地址，关闭窗口即停止，拉起的 API 与安全服务也会一并退出。
 
 安装引导里的两种运行方式都能直接用：
@@ -272,6 +276,11 @@ CI 可以直接调用底层脚本（与上面是同一套流程）：
   exe 同目录 `data/practacu.db`（纯 Go SQLite），第一次启动自动建表并创建默认站点，
   引导里创建的第一个账户就是平台管理员。`/api`、`/healthz`、`/readyz` 由启动器
   反向代理到本机 API，因此没有跨域配置，Cookie 与 WebSocket 也按同源处理。
+
+> 启动器通过 **http** 访问。通知邮件和第三方登录回调等绝对链接在未设置
+> `PUBLIC_BASE_URL` 时按 https 推导，所以需要它们时，先在启动器的环境里显式设置
+> `PUBLIC_BASE_URL=http://127.0.0.1:<端口>`（端口用窗口里显示的实际地址）再启动；
+> 安装引导最后一步会给出当前地址对应的那一行。找回密码链接会退回当前请求地址。
 
 真实环境的数据都在 `data/`：`practacu.db`、`media/`、`api.log`、`api.err.log`，
 关掉窗口后整体复制即可备份。exe 目录不可写时改用 `%LOCALAPPDATA%\PractacuPress\data`。
@@ -332,6 +341,19 @@ scripts/                           dev / test / gen 脚本
 powershell -ExecutionPolicy Bypass -File scripts\test.ps1     # go build + vet + test
 ```
 
+真实浏览器冒烟（自动起 Go API、Rust 安全服务、全新 SQLite 与前端构建，
+无头跑安装/登录、草稿/发布、阅读/评论/举报、点赞收藏、`/me`、后台设置持久化、
+sitemap/robots/openapi/docs；失败留截图与 trace）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
+# 报告与截图：.tmp\e2e\artifacts\
+```
+
+前置：Chrome（默认 `PP_E2E_CHANNEL=chrome`）、`apps/web` 已 `npm install`、
+Rust 安全服务已 `cargo build --release`。细节见 [tests/README.md](tests/README.md)；
+CI 里是独立的可选工作流 `.github/workflows/e2e.yml`，不阻塞基础 CI。
+
 Rust：
 
 ```powershell
@@ -361,6 +383,7 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | `AUTH_JWT_ED25519_PRIVATE_KEY` | 生产必填；开发环境未配置会自动生成临时密钥并告警 |
 | `TRUSTED_PROXIES` | 留空表示不信任任何代理，`X-Forwarded-*` 全被忽略 |
 | `RATE_LIMIT_PER_MINUTE` | 每 IP 每分钟 API 请求上限；`0` 关闭。浏览器端限制不能替代它 |
+| `MEDIA_DEFAULT_USER_QUOTA_BYTES` / `MEDIA_DEFAULT_SITE_QUOTA_BYTES` | 用户与站点媒体默认累计额度（默认 512 MiB / 10 GiB）；后台可分别覆盖，`0` 表示无限制 |
 | `HTTP_READ_TIMEOUT_SECONDS` / `HTTP_IDLE_TIMEOUT_SECONDS` | HTTP 读超时与空闲 keep-alive 超时，默认 30 / 120 秒 |
 | `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` | 数据库连接池；`0` 使用驱动默认（SQLite 1，MySQL/Postgres 25） |
 | `DB_CONN_MAX_LIFETIME_SECONDS` | 连接生命周期；默认 1800 秒，`0` 表示不主动回收 |
@@ -369,13 +392,20 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | `SMTP_ENCRYPTION` | `starttls`（587）/ `ssl`（465）/ `none`（25，仅本机中继） |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | 必须成对出现；除本机中继外只能走 TLS |
 | `SMTP_FROM` | 发件地址，缺省取 `SMTP_USERNAME` |
-| `PUBLIC_BASE_URL` | 重置链接的前缀；留空则用请求来源域名 |
+| `PUBLIC_BASE_URL` | 绝对链接的前缀。留空时服务端按 https 推导（第三方登录回调、邮件里的绝对地址都依赖它）；桌面 / localhost 通过 http 访问时必须显式设置 |
 
 找回密码的完整链路：登录页「忘记密码」→ `POST /auth/password-reset/request`
 （无论邮箱是否存在都返回 202）→ 邮件里的 `?token=` 打开 `/reset-password` →
 `POST /auth/password-reset/confirm` 换新密码，并吊销该账户所有会话。
 令牌 30 分钟过期、只能用一次，同一账户 60 秒内只发一封。
 管理后台「登录设置 → 邮件通知」可以直接生成这段 `.env`。
+
+> **未设置 `PUBLIC_BASE_URL` 时，服务端会在没有请求上下文的地方按 https 推导绝对链接。**
+> 第三方登录回调按站点域名的 `https://` 拼接，通知邮件也依赖它决定能否放入站内链接；
+> 桌面启动器、本机 `http://localhost` 或其他 http 部署必须显式设置，例如
+> `PUBLIC_BASE_URL=http://127.0.0.1:80`（端口换成站点实际端口），否则这些链接会指向
+> 不存在的 https 地址。API 启动时会在日志里为此打一条 warning；安装向导最后一步也会
+> 给出要粘贴的那一行。
 
 ---
 
@@ -391,12 +421,12 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx/Cloudflare 配置执行，后台只生成片段 |
 | 域名别名 | 服务端按 Host 解析单一站点；别名域名需要反向代理把 Host 改写为主域名（生成片段已包含） |
 | S3 上传内存占用 | 受 SigV4 限制需先缓冲，上限等于单文件上限（25 MiB） |
-| 邮件 | 只实现找回密码这一种事务邮件；注册验证、回复提醒等模板尚未接入 |
+| 邮件 | 已接入找回密码与邮箱验证两种事务邮件；评论回复、审核结果等通知邮件模板尚未接入 |
 | SEO | 标签由前端写入 `<head>`；不执行 JS 的抓取器只能看到 `index.html` 的默认值 |
-| sitemap / robots | 由后台生成并下载，静态托管时需要手动放到站点根目录 |
+| sitemap / robots | Go API 已按 Host 在站点根路径动态输出 `/sitemap.xml` 与 `/robots.txt`，后台也可下载静态副本；不经 API 的纯静态托管仍需手动放到站点根目录 |
 | 未实现 | 前端 SDK 生成、OAuth 适配器、手机验证码、搜索分页游标 |
 
-更细的现状见 [交付状态报告](docs/superpowers/reports/2026-10-20-delivery-status.md)。
+更细的现状见 [当前实现与文档差异](docs/superpowers/reports/2026-11-07-documentation-reality-check.md)。[2026-10-20 交付状态报告](docs/superpowers/reports/2026-10-20-delivery-status.md) 保留为历史快照，其中“未实现”清单已不代表当前代码。
 
 ---
 

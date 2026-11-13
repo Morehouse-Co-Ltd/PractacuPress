@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown, sanitizeHtml, safeUrlAttribute } from './markdown';
+import { enhanceContentImages, renderMarkdown, sanitizeHtml, safeUrlAttribute } from './markdown';
 
 function hrefOf(html: string): string | null {
   return new DOMParser().parseFromString(html, 'text/html').querySelector('a')?.getAttribute('href') ?? null;
 }
 
 describe('formula Markdown rendering', () => {
+  it('preserves author text that matches the internal code placeholder format', () => {
+    const source = `literal \u00000\u0000 content`;
+
+    expect(() => renderMarkdown(source)).not.toThrow();
+    expect(renderMarkdown(source)).toContain(source);
+  });
+
   it('renders inline and block formulas as editable safe nodes', () => {
     const html = renderMarkdown('速度是 $v = s/t$。\n\n$$x^2 + y^2 = z^2$$');
 
@@ -377,5 +384,64 @@ describe('sanitizeHtml target=_blank rel', () => {
     const once = sanitizeHtml('<a href="https://example.com" target="_blank">x</a>');
 
     expect(sanitizeHtml(once)).toBe(once);
+  });
+});
+
+// 响应式图片：正文里的站内媒体要带上服务端能生成的宽度候选与懒加载属性。
+describe('responsive content images', () => {
+  it('adds srcset, sizes and decoding to a markdown media image', () => {
+    const html = renderMarkdown('![封面](/api/v1/media/abc-123)');
+
+    expect(html).toContain('src="/api/v1/media/abc-123"');
+    expect(html).toContain(
+      'srcset="/api/v1/media/abc-123?w=320 320w, /api/v1/media/abc-123?w=768 768w, /api/v1/media/abc-123?w=1280 1280w"',
+    );
+    expect(html).toContain('sizes="(max-width: 768px) 100vw, 768px"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('decoding="async"');
+  });
+
+  it('never claims width variants for an external image', () => {
+    const html = renderMarkdown('![外链](https://cdn.example.com/a.png)');
+
+    expect(html).not.toContain('srcset');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('decoding="async"');
+  });
+
+  it('never turns a non-media relative image into a variant request', () => {
+    const html = renderMarkdown('![本地](/assets/logo.png)');
+
+    expect(html).not.toContain('srcset');
+  });
+
+  it('enhances server rendered html without touching external images', () => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<img src="https://cdn.example.com/a.png" alt="a">' +
+      '<img src="/api/v1/media/xyz?w=768" alt="b">';
+
+    enhanceContentImages(host);
+
+    const [external, media] = Array.from(host.querySelectorAll('img'));
+    expect(external.getAttribute('srcset')).toBeNull();
+    expect(external.getAttribute('loading')).toBe('lazy');
+    expect(external.getAttribute('decoding')).toBe('async');
+    // 原 src 的查询串决定当前变体；srcset 的基址必须去掉它，否则候选项会互相覆盖。
+    expect(media.getAttribute('src')).toBe('/api/v1/media/xyz?w=768');
+    expect(media.getAttribute('srcset')).toContain('/api/v1/media/xyz?w=320 320w');
+    expect(media.getAttribute('sizes')).toBe('(max-width: 768px) 100vw, 768px');
+  });
+
+  it('keeps a content supplied srcset and sizes intact', () => {
+    const host = document.createElement('div');
+    host.innerHTML =
+      '<img src="/api/v1/media/xyz" srcset="/api/v1/media/xyz?w=640 640w" sizes="640px">';
+
+    enhanceContentImages(host);
+
+    const image = host.querySelector('img')!;
+    expect(image.getAttribute('srcset')).toBe('/api/v1/media/xyz?w=640 640w');
+    expect(image.getAttribute('sizes')).toBe('640px');
   });
 });

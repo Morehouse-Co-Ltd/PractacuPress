@@ -16,6 +16,7 @@ import {
   hasBlockAppearance,
 } from '../../lib/blockAppearance';
 import { gridPlacements, gridTemplate } from '../../lib/blocks';
+import { useCustomization } from '../../lib/customize';
 import { normalizeAnchor } from '../../lib/anchorNav';
 import {
   clampGridPlacement,
@@ -82,6 +83,8 @@ export function BlockInspector({
   onPreviewAnimation: (block: BlockInstance) => void;
 }) {
   const t = useT();
+  const { customization } = useCustomization();
+  const flatLayout = customization.layout.variant === 'daylight';
 
   if (!block) {
     return (
@@ -321,8 +324,8 @@ export function BlockInspector({
               </Select>
             </Field>
           )
-        ) : (
-          <Field label={t('夜航布局落位')} hint={t('只在夜航（bento）布局下生效。')}>
+        ) : flatLayout ? null : (
+          <Field label={t('卡片布局落位')} hint={t('只在双栏、卡片等分栏布局下生效。')}>
             <Select
               value={block.area ?? 'main'}
               onChange={(event) => patch({ area: event.target.value as BlockArea })}

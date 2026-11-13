@@ -23,7 +23,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 export function Forbidden({ need }: { need?: string }) {
   const t = useT();
   const { me, site } = useAuth();
-  const { can } = usePermissions();
+  const { adminEntry } = usePermissions();
   const needLabel = need ?? t('编辑');
   return (
     <div className="empty" style={{ marginTop: 40 }}>
@@ -44,7 +44,7 @@ export function Forbidden({ need }: { need?: string }) {
         <Link to="/" className="btn btn-secondary btn-sm">
           {t('返回站点')}
         </Link>
-        {can('moderate_content') ? (
+        {adminEntry ? (
           <Link to="/admin" className="btn btn-secondary btn-sm">
             {t('回到后台')}
           </Link>

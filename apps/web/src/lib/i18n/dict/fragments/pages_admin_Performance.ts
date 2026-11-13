@@ -128,6 +128,24 @@ const fragment: Dictionary = {
   '恢复默认': 'Restore defaults',
   '放弃未保存的修改': 'Discard unsaved changes',
   '没有未保存的修改': 'No unsaved changes',
+
+  // ---- 横向「当前效果」卡组 ----
+  '即时生效': 'Immediate',
+  '按已保存的设置汇总；修改后点「保存修改」才会更新。':
+    'Summarised from saved settings; click “Save changes” to update it.',
+  '文章 + 帖子': 'Articles + posts',
+  '归档页': 'Archive',
+  '分页大小': 'Page size',
+  '每页 {count} 条': '{count} per page',
+  '重复请求合并': 'Duplicate requests merged',
+  '每次都回源': 'Every request hits the API',
+  '首屏带宽': 'First-screen bandwidth',
+  '降低渲染压力': 'Less rendering work',
+  '网关压缩': 'Gateway compression',
+  '未开启': 'Off',
+  '静态资源传输': 'Static asset transfer',
+  '慢请求保护': 'Slow request guard',
+  '连接池上限': 'Connection pool cap',
 };
 
 export default fragment;

@@ -17,9 +17,9 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/messagingstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/outboxstore"
-		"github.com/practacu/practacu-press/apps/api/internal/messaging"
-	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/messaging"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
 )
 

@@ -40,7 +40,21 @@ func readState(file string) launcherState {
 
 // writeState persists the launcher state, falling back to the user config
 // directory when the exe folder is read only (Program Files, read only share).
+//
+// The signing key is the one secret in here, so it is sealed with the platform
+// secret store before it reaches the disk (DPAPI on Windows). A value that is
+// already sealed is written unchanged, and a legacy plain base64 value is migrated
+// on the next write.
 func writeState(file string, state launcherState) error {
+	if state.JWTKey != "" && !isSealedSecret(state.JWTKey) {
+		if raw, err := base64.StdEncoding.DecodeString(state.JWTKey); err == nil {
+			// A failed seal is not fatal: keep the readable value rather than
+			// refusing to save the port, and try again on the next write.
+			if sealed, sealErr := sealSecret(raw); sealErr == nil {
+				state.JWTKey = sealed
+			}
+		}
+	}
 	state.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	payload, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -64,13 +78,23 @@ func writeState(file string, state launcherState) error {
 // creating and persisting it the first time.
 //
 // Without a stable key the API mints an ephemeral one per process, so every restart
-// of the launcher silently logs the operator out.
+// of the launcher silently logs the operator out. The returned value is the plain
+// base64 key handed to the child API; the state file keeps it sealed (see
+// writeState). A state file written by an older launcher still holds plain base64,
+// so reading it is accepted and the next write migrates it to the sealed form.
 func ensureSigningKey(file string, state *launcherState) (string, error) {
 	if state.JWTKey != "" {
-		if raw, err := base64.StdEncoding.DecodeString(state.JWTKey); err == nil {
+		if raw, err := openSecret(state.JWTKey); err == nil {
 			if key, err := x509.ParsePKCS8PrivateKey(raw); err == nil {
 				if _, ok := key.(ed25519.PrivateKey); ok {
-					return state.JWTKey, nil
+					encoded := base64.StdEncoding.EncodeToString(raw)
+					if !isSealedSecret(state.JWTKey) {
+						// Legacy plaintext state: rewrite it sealed (a no-op on
+						// platforms without a secret store).
+						state.JWTKey = encoded
+						_ = writeState(file, *state)
+					}
+					return encoded, nil
 				}
 			}
 		}

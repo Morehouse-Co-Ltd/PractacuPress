@@ -1,0 +1,2 @@
+ALTER TABLE sites ADD COLUMN comments_enabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE sites ADD COLUMN comments_require_review INTEGER NOT NULL DEFAULT 0;

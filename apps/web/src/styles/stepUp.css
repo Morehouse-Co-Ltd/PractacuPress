@@ -1,0 +1,46 @@
+/* =========================================================
+   高威胁操作二次验证（step-up）弹窗
+   由 components/StepUpModal.tsx 使用；独立文件避免多人同时改 styles.css。
+   ========================================================= */
+
+.stepup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 弹窗里回显「即将执行什么操作」，让用户在输密码前再次确认对象。 */
+.stepup-action {
+  margin: 0;
+  padding: 9px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--bg-subtle);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.stepup-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* 设置面板里的“当前状态”一行；窄屏下自动换行，不挤在一起。 */
+.stepup-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.stepup-status-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}

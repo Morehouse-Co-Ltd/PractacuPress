@@ -2,6 +2,12 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`apps/web/src/pages/admin/Settings.tsx` */
 const fragment: Dictionary = {
+  媒体额度: 'Media quota',
+  '本站媒体额度（字节）': 'Site media quota (bytes)',
+  '留空表示继承部署默认，0 表示无限；正整数按字节计算。':
+    'Leave blank to inherit the deployment default; 0 means unlimited; positive integers are bytes.',
+  '媒体额度必须是非负整数，且不能超过可存储上限。':
+    'Enter a non-negative whole number within the supported byte range.',
   '站点设置': 'Site settings',
   '站点名称不能为空。': 'The site name cannot be empty.',
   '后台入口地址必须是以 / 开头且不含空格的路径。':

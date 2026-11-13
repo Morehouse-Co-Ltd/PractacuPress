@@ -34,8 +34,8 @@ const fragment: Dictionary = {
   'SMTP 授权码': 'SMTP app password',
   发件人名称: 'Sender name',
   站点地址: 'Site address',
-  '重置链接的前缀；留空时使用用户访问的域名。':
-    'Prefix for reset links; when it is blank, the domain the user visits is used.',
+  '绝对链接的前缀；留空时服务端按 https 假定，桌面 / localhost（http）请显式填写。':
+    'Prefix for absolute links; when blank the server assumes https, so a desktop / localhost (http) install must fill it in.',
 
   // ---- 端点与提示 ----
   // 这里的英文末尾留一个空格：后面紧跟 <code> 里的接口路径。

@@ -72,7 +72,14 @@ func TestRouterOpenAPIAvailableWithoutSession(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Contains(t, w.Body.String(), `"openapi":"3.1.0"`)
+	require.Contains(t, w.Header().Get("Content-Type"), "application/json")
+	document := w.Body.String()
+	require.Contains(t, document, `"openapi":"3.1.0"`)
+	// The endpoint used to answer a placeholder with an empty paths object; the real
+	// embedded contract must carry the routes the server serves.
+	require.Contains(t, document, `"/articles"`)
+	require.Contains(t, document, `"/sites/{siteID}/settings"`)
+	require.NotContains(t, document, `"paths":{}`)
 }
 
 func TestRouterUnknownRouteIsProblemJSON(t *testing.T) {

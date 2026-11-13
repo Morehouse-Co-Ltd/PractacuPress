@@ -7,15 +7,25 @@ import (
 	"log/slog"
 
 	"github.com/practacu/practacu-press/apps/api/internal/analytics"
+	"github.com/practacu/practacu-press/apps/api/internal/audit"
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/backup"
+	"github.com/practacu/practacu-press/apps/api/internal/captcha"
 	"github.com/practacu/practacu-press/apps/api/internal/community"
 	"github.com/practacu/practacu-press/apps/api/internal/content"
+	"github.com/practacu/practacu-press/apps/api/internal/extensions"
+	"github.com/practacu/practacu-press/apps/api/internal/feed"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/messaging"
+	"github.com/practacu/practacu-press/apps/api/internal/moderation"
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/platformadmin"
+	"github.com/practacu/practacu-press/apps/api/internal/plugins"
+	"github.com/practacu/practacu-press/apps/api/internal/safety"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
+	"github.com/practacu/practacu-press/apps/api/internal/system"
 	"github.com/practacu/practacu-press/apps/api/internal/taxonomy"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
@@ -52,12 +62,33 @@ type Dependencies struct {
 	Memberships middleware.MembershipResolver
 	// Auth mounts the authentication endpoints when non nil.
 	Auth *auth.Handler
+	// OAuth mounts the third party login endpoints when non nil. Nil means no
+	// provider has client credentials, which is the ordinary state of an install
+	// that only offers password login; the routes are then simply absent.
+	OAuth *auth.OAuthHandler
+	// Captcha mounts the public human verification status endpoint when non nil.
+	// It is public because the login and registration forms need to know whether a
+	// widget is required before a session exists.
+	Captcha *captcha.Handler
+	// Audit mounts the audit query endpoint when non nil.
+	Audit *audit.Handler
 	// Sites mounts the site administration endpoints when non nil.
 	Sites *site.Handler
+	// Backups mounts the instance backup and site export/import endpoints when
+	// non nil.
+	Backups *backup.Handler
+	// StepUp enforces the per-site re-authentication switch on the high threat
+	// routes (account administration, site import, policy deletion). A nil enforcer
+	// leaves every route unchanged, which is what the contract tests rely on.
+	StepUp StepUpDependencies
+	// Platform mounts the deployment level site console when non nil.
+	Platform *platformadmin.Handler
 	// Content mounts the article and post endpoints when non nil.
 	Content *content.Handler
 	// Community mounts the comment and interaction endpoints when non nil.
 	Community *community.Handler
+	// Reports mounts the community report queue when non nil.
+	Reports *moderation.Handler
 	// Media mounts the upload endpoints when non nil.
 	Media *media.Handler
 	// WS mounts the ticket endpoint and the socket when non nil.
@@ -72,6 +103,42 @@ type Dependencies struct {
 	Analytics *analytics.Handler
 	// Taxonomy mounts the category and tag endpoints when non nil.
 	Taxonomy *taxonomy.Handler
+	// Safety mounts the sensitive word, IP rule and comment frequency endpoints when
+	// non nil.
+	Safety *safety.Handler
+	// IPPolicy enforces the host-resolved site's IP allow and deny lists. Nil leaves
+	// every site open, which is the documented default.
+	IPPolicy middleware.IPPolicyChecker
+	// SiteFiles renders /sitemap.xml and /robots.txt. Both readers must be set for the
+	// routes to be mounted: a sitemap built from a missing content store would be a
+	// lie, and an absent capability is better than an empty promise.
+	SiteFiles SiteFilesDependencies
+	// Feed renders the RSS and Atom feeds. The customization and content readers are
+	// required for the routes to be mounted; taxonomy and author lookup are optional
+	// and only enrich the output.
+	Feed FeedDependencies
+	// Plugins is the optional plugin host. Nil keeps the process exactly as it was
+	// before plugins existed: no plugin routes, no boot manifest, and the shipped
+	// contract is served unchanged.
+	Plugins *plugins.Host
+	// Extensions is the optional extension administration endpoint. Nil keeps the
+	// management routes out of the process; the host above still serves whatever it
+	// already has installed.
+	Extensions *extensions.Handler
+	// System mounts the optional resource panel (host and per-process metrics) when
+	// non nil. Nil leaves the whole module — route and sampler — out of the process.
+	System *system.Handler
+}
+
+// FeedDependencies is what the syndication feeds need.
+//
+// The readers are narrow on purpose: the transport does not reach into the content,
+// site or taxonomy services directly, and tests can wire stubs without a database.
+type FeedDependencies struct {
+	Customization SiteCustomizationReader
+	Content       feed.ContentLister
+	Taxonomy      feed.TaxonomyLister
+	Authors       feed.AuthorLookup
 }
 
 // InstallReporter answers whether a hostname belongs to an installed site.

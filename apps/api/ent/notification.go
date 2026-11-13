@@ -30,6 +30,8 @@ type Notification struct {
 	SubjectID *string `json:"subject_id,omitempty"`
 	// Payload holds the value of the "payload" field.
 	Payload map[string]string `json:"payload,omitempty"`
+	// DedupeKey holds the value of the "dedupe_key" field.
+	DedupeKey *string `json:"dedupe_key,omitempty"`
 	// ReadAt holds the value of the "read_at" field.
 	ReadAt *time.Time `json:"read_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -44,7 +46,7 @@ func (*Notification) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case notification.FieldPayload:
 			values[i] = new([]byte)
-		case notification.FieldID, notification.FieldSiteID, notification.FieldUserID, notification.FieldType, notification.FieldActorID, notification.FieldSubjectID:
+		case notification.FieldID, notification.FieldSiteID, notification.FieldUserID, notification.FieldType, notification.FieldActorID, notification.FieldSubjectID, notification.FieldDedupeKey:
 			values[i] = new(sql.NullString)
 		case notification.FieldReadAt, notification.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -108,6 +110,13 @@ func (_m *Notification) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.Payload); err != nil {
 					return fmt.Errorf("unmarshal field payload: %w", err)
 				}
+			}
+		case notification.FieldDedupeKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field dedupe_key", values[i])
+			} else if value.Valid {
+				_m.DedupeKey = new(string)
+				*_m.DedupeKey = value.String
 			}
 		case notification.FieldReadAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -179,6 +188,11 @@ func (_m *Notification) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("payload=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Payload))
+	builder.WriteString(", ")
+	if v := _m.DedupeKey; v != nil {
+		builder.WriteString("dedupe_key=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	if v := _m.ReadAt; v != nil {
 		builder.WriteString("read_at=")

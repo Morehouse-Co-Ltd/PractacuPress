@@ -17,6 +17,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
+	"github.com/practacu/practacu-press/apps/api/ent/readinghistory"
+	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 )
 
@@ -396,6 +398,470 @@ func (s *Store) SetFollow(ctx context.Context, siteID, followerID, followeeID st
 		Exec(ctx)
 }
 
+// HasReactionsFor reports which of the targets the user liked.
+func (s *Store) HasReactionsFor(
+	ctx context.Context,
+	siteID, userID string,
+	targetType community.TargetType,
+	targetIDs []string,
+	kind string,
+) (map[string]bool, error) {
+	result := make(map[string]bool, len(targetIDs))
+	if len(targetIDs) == 0 {
+		return result, nil
+	}
+	ids, err := s.client.Reaction.Query().
+		Where(
+			reaction.SiteIDEQ(siteID),
+			reaction.UserIDEQ(userID),
+			reaction.TargetTypeEQ(string(targetType)),
+			reaction.TargetIDIn(targetIDs...),
+			reaction.KindEQ(kind),
+		).
+		Select(reaction.FieldTargetID).
+		Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		result[id] = true
+	}
+	return result, nil
+}
+
+// HasBookmarksFor reports which of the targets the user saved.
+func (s *Store) HasBookmarksFor(
+	ctx context.Context,
+	siteID, userID string,
+	targetType community.TargetType,
+	targetIDs []string,
+) (map[string]bool, error) {
+	result := make(map[string]bool, len(targetIDs))
+	if len(targetIDs) == 0 {
+		return result, nil
+	}
+	ids, err := s.client.Bookmark.Query().
+		Where(
+			bookmark.SiteIDEQ(siteID),
+			bookmark.UserIDEQ(userID),
+			bookmark.TargetTypeEQ(string(targetType)),
+			bookmark.TargetIDIn(targetIDs...),
+		).
+		Select(bookmark.FieldTargetID).
+		Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		result[id] = true
+	}
+	return result, nil
+}
+
+// HasFollowsFor reports which of the users the caller follows.
+func (s *Store) HasFollowsFor(
+	ctx context.Context,
+	siteID, followerID string,
+	followeeIDs []string,
+) (map[string]bool, error) {
+	result := make(map[string]bool, len(followeeIDs))
+	if len(followeeIDs) == 0 {
+		return result, nil
+	}
+	ids, err := s.client.Follow.Query().
+		Where(
+			follow.SiteIDEQ(siteID),
+			follow.FollowerIDEQ(followerID),
+			follow.FolloweeIDIn(followeeIDs...),
+		).
+		Select(follow.FieldFolloweeID).
+		Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		result[id] = true
+	}
+	return result, nil
+}
+
+// ListBookmarks returns the caller's saved content newest first.
+func (s *Store) ListBookmarks(
+	ctx context.Context,
+	filter community.InteractionListFilter,
+) ([]community.InteractionEntry, error) {
+	query := s.client.Bookmark.Query().
+		Where(bookmark.SiteIDEQ(filter.SiteID), bookmark.UserIDEQ(filter.UserID))
+	if filter.TargetType != "" {
+		query = query.Where(bookmark.TargetTypeEQ(string(filter.TargetType)))
+	}
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, community.ErrInvalidInput
+		}
+		query = query.Where(bookmark.Or(
+			bookmark.CreatedAtLT(at),
+			bookmark.And(bookmark.CreatedAtEQ(at), bookmark.TargetIDLT(filter.After.ID)),
+		))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(bookmark.FieldCreatedAt), entgen.Desc(bookmark.FieldTargetID)).
+		Limit(filter.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]community.InteractionEntry, 0, len(rows))
+	for _, row := range rows {
+		entries = append(entries, community.InteractionEntry{
+			TargetType: community.TargetType(row.TargetType),
+			TargetID:   row.TargetID,
+			CreatedAt:  row.CreatedAt,
+		})
+	}
+	return s.enrichInteractionEntries(ctx, filter.SiteID, entries)
+}
+
+// ListReactions returns the content the caller reacted to newest first.
+func (s *Store) ListReactions(
+	ctx context.Context,
+	filter community.InteractionListFilter,
+) ([]community.InteractionEntry, error) {
+	query := s.client.Reaction.Query().
+		Where(reaction.SiteIDEQ(filter.SiteID), reaction.UserIDEQ(filter.UserID))
+	if filter.TargetType != "" {
+		query = query.Where(reaction.TargetTypeEQ(string(filter.TargetType)))
+	}
+	if filter.Kind != "" {
+		query = query.Where(reaction.KindEQ(filter.Kind))
+	}
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, community.ErrInvalidInput
+		}
+		query = query.Where(reaction.Or(
+			reaction.CreatedAtLT(at),
+			reaction.And(reaction.CreatedAtEQ(at), reaction.TargetIDLT(filter.After.ID)),
+		))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(reaction.FieldCreatedAt), entgen.Desc(reaction.FieldTargetID)).
+		Limit(filter.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]community.InteractionEntry, 0, len(rows))
+	for _, row := range rows {
+		entries = append(entries, community.InteractionEntry{
+			TargetType: community.TargetType(row.TargetType),
+			TargetID:   row.TargetID,
+			CreatedAt:  row.CreatedAt,
+		})
+	}
+	return s.enrichInteractionEntries(ctx, filter.SiteID, entries)
+}
+
+// ListFollowing returns the members the caller follows, newest first.
+func (s *Store) ListFollowing(
+	ctx context.Context,
+	filter community.FollowListFilter,
+) ([]community.FollowEntry, error) {
+	query := s.client.Follow.Query().
+		Where(follow.SiteIDEQ(filter.SiteID), follow.FollowerIDEQ(filter.UserID))
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, community.ErrInvalidInput
+		}
+		query = query.Where(follow.Or(
+			follow.CreatedAtLT(at),
+			follow.And(follow.CreatedAtEQ(at), follow.FolloweeIDLT(filter.After.ID)),
+		))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(follow.FieldCreatedAt), entgen.Desc(follow.FieldFolloweeID)).
+		Limit(filter.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.followEntries(ctx, filter.SiteID, rows, false)
+}
+
+// ListFollowers returns the members who follow the caller, newest first.
+func (s *Store) ListFollowers(
+	ctx context.Context,
+	filter community.FollowListFilter,
+) ([]community.FollowEntry, error) {
+	query := s.client.Follow.Query().
+		Where(follow.SiteIDEQ(filter.SiteID), follow.FolloweeIDEQ(filter.UserID))
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, community.ErrInvalidInput
+		}
+		query = query.Where(follow.Or(
+			follow.CreatedAtLT(at),
+			follow.And(follow.CreatedAtEQ(at), follow.FollowerIDLT(filter.After.ID)),
+		))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(follow.FieldCreatedAt), entgen.Desc(follow.FieldFollowerID)).
+		Limit(filter.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.followEntries(ctx, filter.SiteID, rows, true)
+}
+
+// followEntries joins display names onto a page of follow rows.
+//
+// The bool says whether the row user is the follower (followers list) or the
+// followee (following list); both use the same FollowEntry shape.
+func (s *Store) followEntries(
+	ctx context.Context,
+	siteID string,
+	rows []*entgen.Follow,
+	followers bool,
+) ([]community.FollowEntry, error) {
+	userIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if followers {
+			userIDs = append(userIDs, row.FollowerID)
+		} else {
+			userIDs = append(userIDs, row.FolloweeID)
+		}
+	}
+
+	accounts := make([]*entgen.User, 0, len(userIDs))
+	if len(userIDs) > 0 {
+		found, err := s.client.User.Query().Where(user.IDIn(userIDs...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		accounts = found
+	}
+	byID := make(map[string]*entgen.User, len(accounts))
+	for _, account := range accounts {
+		byID[account.ID] = account
+	}
+
+	// A follow row whose account or membership disappeared would render as a dead
+	// link, so only active members of this site are listed.
+	active := map[string]bool{}
+	if len(userIDs) > 0 {
+		members, err := s.client.SiteMember.Query().
+			Where(
+				sitemember.SiteIDEQ(siteID),
+				sitemember.UserIDIn(userIDs...),
+				sitemember.StatusEQ(site.MemberStatusActive),
+			).
+			All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range members {
+			active[member.UserID] = true
+		}
+	}
+
+	entries := make([]community.FollowEntry, 0, len(rows))
+	for _, row := range rows {
+		userID := row.FolloweeID
+		if followers {
+			userID = row.FollowerID
+		}
+		if !active[userID] {
+			continue
+		}
+		entry := community.FollowEntry{UserID: userID, Since: row.CreatedAt}
+		if account := byID[userID]; account != nil {
+			entry.DisplayName = account.DisplayName
+			if account.Bio != nil {
+				entry.Bio = *account.Bio
+			}
+			if account.AvatarMediaID != nil {
+				entry.AvatarMediaID = *account.AvatarMediaID
+			}
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+// RecordReading upserts the caller's last visit to one content item.
+func (s *Store) RecordReading(ctx context.Context, entry community.ReadingEntry) error {
+	return s.client.ReadingHistory.Create().
+		SetSiteID(entry.SiteID).
+		SetUserID(entry.UserID).
+		SetTargetType(string(entry.TargetType)).
+		SetTargetID(entry.TargetID).
+		SetLastViewedAt(entry.At).
+		SetViewCount(1).
+		SetCreatedAt(entry.At).
+		OnConflictColumns(
+			readinghistory.FieldUserID,
+			readinghistory.FieldTargetType,
+			readinghistory.FieldTargetID,
+		).
+		Update(func(upsert *entgen.ReadingHistoryUpsert) {
+			upsert.SetLastViewedAt(entry.At)
+			upsert.AddViewCount(1)
+		}).
+		Exec(ctx)
+}
+
+// ListReadingHistory returns the caller's recently read content newest first.
+func (s *Store) ListReadingHistory(
+	ctx context.Context,
+	filter community.InteractionListFilter,
+) ([]community.ReadingEntryView, error) {
+	query := s.client.ReadingHistory.Query().
+		Where(readinghistory.SiteIDEQ(filter.SiteID), readinghistory.UserIDEQ(filter.UserID))
+	if filter.TargetType != "" {
+		query = query.Where(readinghistory.TargetTypeEQ(string(filter.TargetType)))
+	}
+	if !filter.After.IsZero() {
+		at, err := time.Parse(time.RFC3339Nano, filter.After.Key)
+		if err != nil {
+			return nil, community.ErrInvalidInput
+		}
+		query = query.Where(readinghistory.Or(
+			readinghistory.LastViewedAtLT(at),
+			readinghistory.And(readinghistory.LastViewedAtEQ(at), readinghistory.TargetIDLT(filter.After.ID)),
+		))
+	}
+
+	rows, err := query.
+		Order(entgen.Desc(readinghistory.FieldLastViewedAt), entgen.Desc(readinghistory.FieldTargetID)).
+		Limit(filter.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]community.InteractionEntry, 0, len(rows))
+	views := make([]community.ReadingEntryView, 0, len(rows))
+	for _, row := range rows {
+		views = append(views, community.ReadingEntryView{
+			TargetType:   community.TargetType(row.TargetType),
+			TargetID:     row.TargetID,
+			LastViewedAt: row.LastViewedAt,
+			ViewCount:    row.ViewCount,
+		})
+		entries = append(entries, community.InteractionEntry{
+			TargetType: community.TargetType(row.TargetType),
+			TargetID:   row.TargetID,
+			CreatedAt:  row.LastViewedAt,
+		})
+	}
+
+	// The content join runs on the interaction entry shape, then the fields are
+	// copied back so the caller keeps the reading specific timestamps.
+	enriched, err := s.enrichInteractionEntries(ctx, filter.SiteID, entries)
+	if err != nil {
+		return nil, err
+	}
+	for index := range enriched {
+		views[index].Title = enriched[index].Title
+		views[index].Summary = enriched[index].Summary
+		views[index].Kind = enriched[index].Kind
+		views[index].AuthorID = enriched[index].AuthorID
+		views[index].AuthorName = enriched[index].AuthorName
+		views[index].PublishedAt = enriched[index].PublishedAt
+		views[index].Available = enriched[index].Available
+	}
+	return views, nil
+}
+
+// enrichInteractionEntries joins content titles and author names onto one page.
+//
+// Only content targets have a row to join. A non content target, or a target that
+// was deleted, simply stays unavailable; the personal list then renders it as a
+// tombstone instead of a broken link.
+func (s *Store) enrichInteractionEntries(
+	ctx context.Context,
+	siteID string,
+	entries []community.InteractionEntry,
+) ([]community.InteractionEntry, error) {
+	if len(entries) == 0 {
+		return []community.InteractionEntry{}, nil
+	}
+
+	ids := make([]string, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		if entry.TargetType != community.TargetArticle && entry.TargetType != community.TargetPost {
+			continue
+		}
+		if _, ok := seen[entry.TargetID]; ok {
+			continue
+		}
+		seen[entry.TargetID] = struct{}{}
+		ids = append(ids, entry.TargetID)
+	}
+	if len(ids) == 0 {
+		return entries, nil
+	}
+
+	rows, err := s.client.ContentItem.Query().
+		Where(contentitem.SiteIDEQ(siteID), contentitem.IDIn(ids...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	contentByID := make(map[string]*entgen.ContentItem, len(rows))
+	authorIDs := make([]string, 0, len(rows))
+	seenAuthors := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		contentByID[row.ID] = row
+		if _, ok := seenAuthors[row.AuthorID]; ok {
+			continue
+		}
+		seenAuthors[row.AuthorID] = struct{}{}
+		authorIDs = append(authorIDs, row.AuthorID)
+	}
+	names := make(map[string]string, len(authorIDs))
+	if len(authorIDs) > 0 {
+		authors, authorErr := s.client.User.Query().Where(user.IDIn(authorIDs...)).All(ctx)
+		if authorErr != nil {
+			return nil, authorErr
+		}
+		for _, author := range authors {
+			names[author.ID] = author.DisplayName
+		}
+	}
+
+	for index := range entries {
+		row := contentByID[entries[index].TargetID]
+		if row == nil {
+			continue
+		}
+		entries[index].Title = row.Title
+		entries[index].Summary = row.Summary
+		entries[index].Kind = row.Kind
+		entries[index].AuthorID = row.AuthorID
+		entries[index].AuthorName = names[row.AuthorID]
+		entries[index].PublishedAt = row.PublishedAt
+		// Only published content can be opened again; an archived item stays in the
+		// list with its title but is reported unavailable.
+		entries[index].Available = row.Status == string(content.StatusPublished)
+	}
+	return entries, nil
+}
+
 func insertAudit(ctx context.Context, client *entgen.Client, entry site.AuditEntry) error {
 	at := entry.At
 	if at.IsZero() {
@@ -450,6 +916,12 @@ func (s *Store) TargetOf(
 		return community.Target{
 			AuthorID:  row.AuthorID,
 			Published: row.Status == string(content.StatusPublished),
+			// The notification renderer needs a label and the route kind; both come
+			// from the row we already loaded.
+			Title: row.Title,
+			Kind:  row.Kind,
+			// The item level comment policy overrides the site switches (C-19).
+			CommentPolicy: community.ContentCommentPolicy(row.CommentPolicy),
 		}, nil
 	default:
 		return community.Target{}, community.ErrTargetNotFound

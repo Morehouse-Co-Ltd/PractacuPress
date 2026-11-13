@@ -18,6 +18,9 @@ type Comment func(*sql.Selector)
 // ContentItem is the predicate function for contentitem builders.
 type ContentItem func(*sql.Selector)
 
+// ContentRevision is the predicate function for contentrevision builders.
+type ContentRevision func(*sql.Selector)
+
 // Conversation is the predicate function for conversation builders.
 type Conversation func(*sql.Selector)
 
@@ -33,6 +36,9 @@ type IdempotencyKey func(*sql.Selector)
 // MediaAsset is the predicate function for mediaasset builders.
 type MediaAsset func(*sql.Selector)
 
+// MediaQuotaGuard is the predicate function for mediaquotaguard builders.
+type MediaQuotaGuard func(*sql.Selector)
+
 // MediaUpload is the predicate function for mediaupload builders.
 type MediaUpload func(*sql.Selector)
 
@@ -45,14 +51,29 @@ type ModerationReport func(*sql.Selector)
 // Notification is the predicate function for notification builders.
 type Notification func(*sql.Selector)
 
+// NotificationPreference is the predicate function for notificationpreference builders.
+type NotificationPreference func(*sql.Selector)
+
 // OutboxEvent is the predicate function for outboxevent builders.
 type OutboxEvent func(*sql.Selector)
 
 // PageView is the predicate function for pageview builders.
 type PageView func(*sql.Selector)
 
+// PermissionGroup is the predicate function for permissiongroup builders.
+type PermissionGroup func(*sql.Selector)
+
 // Reaction is the predicate function for reaction builders.
 type Reaction func(*sql.Selector)
+
+// ReadingHistory is the predicate function for readinghistory builders.
+type ReadingHistory func(*sql.Selector)
+
+// RecoveryCode is the predicate function for recoverycode builders.
+type RecoveryCode func(*sql.Selector)
+
+// SensitiveWord is the predicate function for sensitiveword builders.
+type SensitiveWord func(*sql.Selector)
 
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
@@ -60,14 +81,26 @@ type Session func(*sql.Selector)
 // Site is the predicate function for site builders.
 type Site func(*sql.Selector)
 
+// SiteConfig is the predicate function for siteconfig builders.
+type SiteConfig func(*sql.Selector)
+
 // SiteCustomization is the predicate function for sitecustomization builders.
 type SiteCustomization func(*sql.Selector)
+
+// SiteIPRule is the predicate function for siteiprule builders.
+type SiteIPRule func(*sql.Selector)
 
 // SiteMember is the predicate function for sitemember builders.
 type SiteMember func(*sql.Selector)
 
+// SiteSafetySetting is the predicate function for sitesafetysetting builders.
+type SiteSafetySetting func(*sql.Selector)
+
 // TaxonomyTerm is the predicate function for taxonomyterm builders.
 type TaxonomyTerm func(*sql.Selector)
+
+// TwoFactor is the predicate function for twofactor builders.
+type TwoFactor func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Content } from '../types';
+import { useBackend } from '../lib/backend';
+import { useAsync } from '../lib/hooks';
 import { useTaxonomy } from '../lib/useTaxonomy';
 import { useRangeAnalytics } from '../lib/useAnalytics';
 import type { AnalyticsRange } from '../lib/analytics';
@@ -186,41 +188,42 @@ export function DashboardAnalytics() {
   );
 }
 
-/** 仪表盘的热门文章卡片：按详情页阅读次数排序。 */
+/** 仪表盘的热门文章卡片：按服务端的单篇阅读量 + 时间衰减排序（FSD A-16）。 */
 export function DashboardPopular({ items: pool, loading }: { items: Content[]; loading: boolean }) {
   const t = useT();
+  const backend = useBackend();
   const { taxonomy } = useTaxonomy();
-  const { stats } = useRangeAnalytics('30d');
-  const counts = useMemo(
-    () => new Map(stats.topContent.map((entry) => [entry.id, entry.count])),
-    [stats.topContent],
-  );
-  const items = useMemo(
-    () =>
-      [...pool]
-        .filter((item) => item.status === 'published')
-        .sort((a, b) => {
-          const delta = (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0);
-          if (delta !== 0) return delta;
-          return (b.published_at ?? b.created_at).localeCompare(a.published_at ?? a.created_at);
-        })
-        .slice(0, 5),
-    [pool, counts],
-  );
+  // 排序发生在服务端：前端拿不到全站阅读量，本地访问记录只覆盖当前浏览器，
+  // 用它排序会把「我看过的」当成「大家看过的」。
+  const popular = useAsync(() => backend.popularContent({ limit: 5, window: '30d' }), [backend]);
+  const items = useMemo(() => {
+    const remote = popular.data?.items ?? [];
+    if (remote.length) return remote;
+    // 热门榜为空时退回内容池，按阅读量再按发布时间排，避免整卡空着。
+    return [...pool]
+      .filter((item) => item.status === 'published')
+      .sort((a, b) => {
+        const delta = (b.view_count ?? 0) - (a.view_count ?? 0);
+        if (delta !== 0) return delta;
+        return (b.published_at ?? b.created_at).localeCompare(a.published_at ?? a.created_at);
+      })
+      .slice(0, 5);
+  }, [pool, popular.data]);
+  const busy = loading || (popular.loading && !popular.data);
 
   return (
     <section className="panel dashboard-popular">
       <div className="panel-head">
         <div>
           <h3>{t('热门文章')}</h3>
-          <p>{t('按文章详情页阅读次数排序。')}</p>
+          <p>{t('按近 30 天阅读量排序，越新越占优。')}</p>
         </div>
         <Link to="/articles" className="btn btn-ghost btn-sm">
           {t('全部')} <Icon name="arrow-right" size={13} />
         </Link>
       </div>
       <div className="panel-body" style={{ paddingTop: 4 }}>
-        {loading ? (
+        {busy ? (
           <Skeleton lines={5} />
         ) : items.length === 0 ? (
           <EmptyState
@@ -244,7 +247,7 @@ export function DashboardPopular({ items: pool, loading }: { items: Content[]; l
                     </em>
                   </span>
                   <Badge tone={index < 3 ? 'accent' : 'muted'}>
-                    {t('{count} 次', { count: counts.get(item.id) ?? 0 })}
+                    {t('{count} 次', { count: item.view_count ?? 0 })}
                   </Badge>
                 </Link>
               );

@@ -20,12 +20,20 @@ const fragment: Dictionary = {
   '纸白浅色 · 经典单栏，适合安静的长文阅读。':
     'Paper white · classic single column, made for quiet long-form reading.',
   夜航: 'Night flight',
+  白昼: 'Daylight',
   '暖黑暗色 · 双栏杂志布局，适合社区与图片较多的站点。':
     'Warm dark · two-column magazine layout, suited to communities and image-heavy sites.',
+  '白底与电光蓝 · 卡片化现代编辑主题，文章页沿用夜航的封面式阅读体验。':
+    'White ground and electric blue · a card-based modern editorial theme that keeps Night flight’s cover-led reading experience on article pages.',
+  '冷石墨与电光蓝 · 深色杂志布局；切到浅色会得到同一套设计的冷白重配。':
+    'Cold graphite and electric blue · a dark magazine layout; switching to light gives a cool-white remix of the same design.',
+  '白底日报 · 单行胶囊 Tab、分栏头版与单栏文章，适合每日更新的站点。':
+    'A white daily front page · single-row pill tabs, a split lead and a single-column article, made for sites that publish every day.',
 
   // ---- 版式标签 ----
   双栏: 'Two-column',
   单栏: 'Single column',
+  卡片: 'Cards',
 
   // ---- 主题文件导入 ----
   '文件不是有效的 JSON。': 'This file is not valid JSON.',

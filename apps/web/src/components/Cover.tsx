@@ -29,6 +29,7 @@ export function Cover({
   className,
   ratio = '16 / 9',
   accent = false,
+  plain = false,
 }: {
   seed: string;
   label: string;
@@ -36,6 +37,8 @@ export function Cover({
   ratio?: string;
   /** 跟随站点主色的封面（夜航用），避免占位色和主题打架。 */
   accent?: boolean;
+  /** 只画底纹、不画文字：文章页把真实标题压在这层封面上时用，避免两层标题打架。 */
+  plain?: boolean;
 }) {
   const h = hash(seed);
   const palette = PALETTES[h % PALETTES.length];
@@ -49,6 +52,7 @@ export function Cover({
       className={`cover ${className ?? ''}`}
       data-cover={accent ? 'accent' : undefined}
       data-shape={variant}
+      data-plain={plain ? 'true' : undefined}
       style={
         accent
           ? ({ aspectRatio: ratio, color: 'var(--ink)', '--cover-hue': h % 360 } as CSSProperties)

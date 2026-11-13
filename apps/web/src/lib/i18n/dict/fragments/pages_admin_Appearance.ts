@@ -2,6 +2,7 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`apps/web/src/pages/admin/Appearance.tsx` */
 const fragment: Dictionary = {
+  '白昼 · 卡片首屏': 'Daylight · card hero',
   品牌与页脚: 'Branding and footer',
   '首页首屏、品牌副标题、公告条、版权文案与自定义 CSS；导航 Tab 与页脚栏目保留。':
     'Home hero, brand subtitle, announcement bar, copyright line, and custom CSS; navigation tabs and footer columns are kept.',

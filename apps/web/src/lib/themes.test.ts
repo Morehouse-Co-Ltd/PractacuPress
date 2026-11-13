@@ -71,10 +71,12 @@ describe('built-in big themes', () => {
     const night = builtinThemeBundle('night');
     expect(original?.name).toBe('原版');
     expect(original?.variant).toBe('classic');
+    expect(builtinThemeBundle('daylight')).toBeNull();
     expect(night?.name).toBe('夜航');
     expect(night?.variant).toBe('bento');
     expect(night?.theme.mode).toBe('dark');
     expect(variantLabel('bento')).toBe('双栏');
+    expect(variantLabel('daylight')).toBe('卡片');
     expect(BUILTIN_THEMES).toHaveLength(2);
   });
 
@@ -165,5 +167,27 @@ describe('readCustomization theme library', () => {
       customization: { theme: { ...DEFAULT_THEME }, layout: { variant: 'classic' } },
     } as never);
     expect(customization.active_theme).toBe('default');
+  });
+
+  it('folds a legacy daylight config into the night palette', () => {
+    const customization = readCustomization({
+      customization: {
+        theme: {
+          ...DEFAULT_THEME,
+          preset: 'daylight',
+          mode: 'light',
+          background: '#fbfbfa',
+          ink: '#111111',
+          accent: '#2457f5',
+        },
+        layout: { variant: 'daylight' },
+        active_theme: 'daylight',
+      },
+    } as never);
+    // 版式仍然保留，旧文章页的卡片布局不会因为主题下架而塌掉。
+    expect(customization.layout.variant).toBe('daylight');
+    // 配色预设折算到夜航的冷白重配；旧 id 不再存在，按「自定义」处理。
+    expect(customization.theme.preset).toBe('night');
+    expect(customization.active_theme).toBe('custom');
   });
 });

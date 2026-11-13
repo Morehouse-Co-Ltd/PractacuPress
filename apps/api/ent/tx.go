@@ -20,6 +20,8 @@ type Tx struct {
 	Comment *CommentClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// ContentRevision is the client for interacting with the ContentRevision builders.
+	ContentRevision *ContentRevisionClient
 	// Conversation is the client for interacting with the Conversation builders.
 	Conversation *ConversationClient
 	// ConversationMember is the client for interacting with the ConversationMember builders.
@@ -30,6 +32,8 @@ type Tx struct {
 	IdempotencyKey *IdempotencyKeyClient
 	// MediaAsset is the client for interacting with the MediaAsset builders.
 	MediaAsset *MediaAssetClient
+	// MediaQuotaGuard is the client for interacting with the MediaQuotaGuard builders.
+	MediaQuotaGuard *MediaQuotaGuardClient
 	// MediaUpload is the client for interacting with the MediaUpload builders.
 	MediaUpload *MediaUploadClient
 	// Message is the client for interacting with the Message builders.
@@ -38,22 +42,40 @@ type Tx struct {
 	ModerationReport *ModerationReportClient
 	// Notification is the client for interacting with the Notification builders.
 	Notification *NotificationClient
+	// NotificationPreference is the client for interacting with the NotificationPreference builders.
+	NotificationPreference *NotificationPreferenceClient
 	// OutboxEvent is the client for interacting with the OutboxEvent builders.
 	OutboxEvent *OutboxEventClient
 	// PageView is the client for interacting with the PageView builders.
 	PageView *PageViewClient
+	// PermissionGroup is the client for interacting with the PermissionGroup builders.
+	PermissionGroup *PermissionGroupClient
 	// Reaction is the client for interacting with the Reaction builders.
 	Reaction *ReactionClient
+	// ReadingHistory is the client for interacting with the ReadingHistory builders.
+	ReadingHistory *ReadingHistoryClient
+	// RecoveryCode is the client for interacting with the RecoveryCode builders.
+	RecoveryCode *RecoveryCodeClient
+	// SensitiveWord is the client for interacting with the SensitiveWord builders.
+	SensitiveWord *SensitiveWordClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// Site is the client for interacting with the Site builders.
 	Site *SiteClient
+	// SiteConfig is the client for interacting with the SiteConfig builders.
+	SiteConfig *SiteConfigClient
 	// SiteCustomization is the client for interacting with the SiteCustomization builders.
 	SiteCustomization *SiteCustomizationClient
+	// SiteIPRule is the client for interacting with the SiteIPRule builders.
+	SiteIPRule *SiteIPRuleClient
 	// SiteMember is the client for interacting with the SiteMember builders.
 	SiteMember *SiteMemberClient
+	// SiteSafetySetting is the client for interacting with the SiteSafetySetting builders.
+	SiteSafetySetting *SiteSafetySettingClient
 	// TaxonomyTerm is the client for interacting with the TaxonomyTerm builders.
 	TaxonomyTerm *TaxonomyTermClient
+	// TwoFactor is the client for interacting with the TwoFactor builders.
+	TwoFactor *TwoFactorClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -195,23 +217,34 @@ func (tx *Tx) init() {
 	tx.Bookmark = NewBookmarkClient(tx.config)
 	tx.Comment = NewCommentClient(tx.config)
 	tx.ContentItem = NewContentItemClient(tx.config)
+	tx.ContentRevision = NewContentRevisionClient(tx.config)
 	tx.Conversation = NewConversationClient(tx.config)
 	tx.ConversationMember = NewConversationMemberClient(tx.config)
 	tx.Follow = NewFollowClient(tx.config)
 	tx.IdempotencyKey = NewIdempotencyKeyClient(tx.config)
 	tx.MediaAsset = NewMediaAssetClient(tx.config)
+	tx.MediaQuotaGuard = NewMediaQuotaGuardClient(tx.config)
 	tx.MediaUpload = NewMediaUploadClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
 	tx.ModerationReport = NewModerationReportClient(tx.config)
 	tx.Notification = NewNotificationClient(tx.config)
+	tx.NotificationPreference = NewNotificationPreferenceClient(tx.config)
 	tx.OutboxEvent = NewOutboxEventClient(tx.config)
 	tx.PageView = NewPageViewClient(tx.config)
+	tx.PermissionGroup = NewPermissionGroupClient(tx.config)
 	tx.Reaction = NewReactionClient(tx.config)
+	tx.ReadingHistory = NewReadingHistoryClient(tx.config)
+	tx.RecoveryCode = NewRecoveryCodeClient(tx.config)
+	tx.SensitiveWord = NewSensitiveWordClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.Site = NewSiteClient(tx.config)
+	tx.SiteConfig = NewSiteConfigClient(tx.config)
 	tx.SiteCustomization = NewSiteCustomizationClient(tx.config)
+	tx.SiteIPRule = NewSiteIPRuleClient(tx.config)
 	tx.SiteMember = NewSiteMemberClient(tx.config)
+	tx.SiteSafetySetting = NewSiteSafetySettingClient(tx.config)
 	tx.TaxonomyTerm = NewTaxonomyTermClient(tx.config)
+	tx.TwoFactor = NewTwoFactorClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.VerificationToken = NewVerificationTokenClient(tx.config)

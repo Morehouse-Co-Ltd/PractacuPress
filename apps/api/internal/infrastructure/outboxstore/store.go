@@ -51,6 +51,7 @@ func (s *Store) Append(ctx context.Context, entry outbox.Entry) (outbox.Event, e
 		Payload:        created.Payload,
 	}, nil
 }
+
 // Claim locks up to limit due events for this worker.
 //
 // Claiming is a conditional update per row rather than a "select then update": the
@@ -156,6 +157,7 @@ func (s *Store) Replay(ctx context.Context, siteID, userID, afterEventID string,
 	}
 	return events, nil
 }
+
 // MarkPublished records successful delivery and releases the claim.
 func (s *Store) MarkPublished(ctx context.Context, eventID string, at time.Time) error {
 	_, err := s.client.OutboxEvent.Update().

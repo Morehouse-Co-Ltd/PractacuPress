@@ -37,6 +37,8 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/notifications", requireAuth)
 	group.GET("", h.Inbox)
+	group.GET("/preferences", h.Preferences)
+	group.PUT("/preferences", h.UpdatePreferences)
 	group.POST("/read-all", h.MarkAllRead)
 	group.POST("/:notificationID/read", h.MarkRead)
 }
@@ -110,6 +112,91 @@ func (h *Handler) MarkAllRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"updated": updated})
 }
 
+// channelPreferences is the JSON shape of one channel's switches.
+type channelPreferences struct {
+	Enabled    bool `json:"enabled"`
+	Comments   bool `json:"comments"`
+	Reactions  bool `json:"reactions"`
+	Follows    bool `json:"follows"`
+	Moderation bool `json:"moderation"`
+}
+
+// preferencesResponse is the settings payload plus the deployment capability.
+type preferencesResponse struct {
+	InApp           channelPreferences `json:"in_app"`
+	Email           channelPreferences `json:"email"`
+	EmailConfigured bool               `json:"email_configured"`
+}
+
+// Preferences returns the caller's notification settings.
+func (h *Handler) Preferences(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		h.unauthenticated(c)
+		return
+	}
+
+	preferences, err := h.service.Preferences(c.Request.Context(), actor)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, toPreferencesResponse(preferences, h.service.EmailConfigured()))
+}
+
+// UpdatePreferences replaces the caller's notification settings.
+func (h *Handler) UpdatePreferences(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		h.unauthenticated(c)
+		return
+	}
+
+	var body preferencesResponse
+	if err := c.ShouldBindJSON(&body); err != nil {
+		_ = c.Error(apperr.Validation("invalid notification preferences"))
+		return
+	}
+
+	preferences := Preferences{
+		InApp: fromChannelPreferences(body.InApp),
+		Email: fromChannelPreferences(body.Email),
+	}
+	updated, err := h.service.UpdatePreferences(c.Request.Context(), actor, preferences)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, toPreferencesResponse(updated, h.service.EmailConfigured()))
+}
+
+func fromChannelPreferences(in channelPreferences) ChannelPreferences {
+	return ChannelPreferences{
+		Enabled:    in.Enabled,
+		Comments:   in.Comments,
+		Reactions:  in.Reactions,
+		Follows:    in.Follows,
+		Moderation: in.Moderation,
+	}
+}
+
+func toPreferencesResponse(preferences Preferences, emailConfigured bool) preferencesResponse {
+	channel := func(in ChannelPreferences) channelPreferences {
+		return channelPreferences{
+			Enabled:    in.Enabled,
+			Comments:   in.Comments,
+			Reactions:  in.Reactions,
+			Follows:    in.Follows,
+			Moderation: in.Moderation,
+		}
+	}
+	return preferencesResponse{
+		InApp:           channel(preferences.InApp),
+		Email:           channel(preferences.Email),
+		EmailConfigured: emailConfigured,
+	}
+}
+
 func (h *Handler) unauthenticated(c *gin.Context) {
 	_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
 }
@@ -142,6 +229,8 @@ func mapError(err error) *apperr.Problem {
 		return apperr.PermissionDenied().WithDetail("reason", "cross_site")
 	case errors.Is(err, ErrSelfNotification):
 		return apperr.Validation("cannot notify yourself")
+	case errors.Is(err, ErrPreferencesUnavailable):
+		return apperr.Internal(err)
 	}
 
 	var problem *apperr.Problem

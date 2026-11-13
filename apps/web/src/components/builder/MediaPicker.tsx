@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { Asset } from '../../types';
 import { useBackend } from '../../lib/backend';
+import { useMediaSrc } from '../../lib/assetUrl';
 import { useT } from '../../lib/i18n';
 import { Button, Modal } from '../ui';
+
+/**
+ * 缩略图走带鉴权的 blob：站内 content 素材用 `<img src>` 匿名读会被挡成 404。
+ * 取不到 blob 时 hook 回退原地址，浏览器自己再试一次（与改造前一致）。
+ */
+function PickerThumb({ asset }: { asset: Asset }) {
+  const { src } = useMediaSrc(asset.url ?? '');
+  return <img src={src || undefined} alt={asset.file_name ?? ''} loading="lazy" />;
+}
 
 /**
  * 媒体库选择器。
@@ -65,7 +75,7 @@ export function MediaPicker({
               onClose();
             }}
           >
-            <img src={asset.url} alt={asset.file_name ?? ''} loading="lazy" />
+            <PickerThumb asset={asset} />
             <span>{asset.file_name ?? asset.id}</span>
           </button>
         ))}

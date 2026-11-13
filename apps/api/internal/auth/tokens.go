@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
@@ -208,6 +209,237 @@ func (i *TokenIssuer) VerifyAccess(raw string) (Principal, error) {
 		return Principal{}, ErrInvalidToken
 	}
 	return principal, nil
+}
+
+// SiteSwitchTTL bounds how long a handoff token may be redeemed.
+//
+// The token exists to move one account from the platform console to the target site's
+// own origin, where it is exchanged for a real session. Two minutes is long enough for a
+// browser redirect and far too short to be a useful stolen credential; the token is also
+// useless as an access token because it carries no role claim.
+const SiteSwitchTTL = 2 * time.Minute
+
+// siteSwitchPurpose is the claim that separates a handoff token from an access token.
+const siteSwitchPurpose = "site_switch"
+
+// IssueSiteSwitch mints a short lived, single purpose handoff token.
+func (i *TokenIssuer) IssueSiteSwitch(userID, siteID string) (string, time.Time, error) {
+	if userID == "" || siteID == "" {
+		return "", time.Time{}, fmt.Errorf("auth: site switch token must carry user and site")
+	}
+
+	now := i.now()
+	expiresAt := now.Add(SiteSwitchTTL)
+	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
+		"sub":     userID,
+		"sid":     siteID,
+		"purpose": siteSwitchPurpose,
+		"iss":     i.issuer,
+		"iat":     now.Unix(),
+		"nbf":     now.Unix(),
+		"exp":     expiresAt.Unix(),
+		"jti":     uuid.Must(uuid.NewV7()).String(),
+	})
+	token.Header["kid"] = i.keyID
+
+	signed, err := token.SignedString(i.key)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("auth: sign site switch token: %w", err)
+	}
+	return signed, expiresAt, nil
+}
+
+// VerifySiteSwitch validates a handoff token and returns the account and target site.
+//
+// The purpose claim is mandatory: an ordinary access token (which has no purpose claim)
+// is rejected here, so a console session cannot be replayed as a handoff.
+func (i *TokenIssuer) VerifySiteSwitch(raw string) (userID, siteID string, err error) {
+	claims := jwt.MapClaims{}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{signingMethod.Alg()}),
+		jwt.WithIssuer(i.issuer),
+		jwt.WithLeeway(clockSkew),
+	)
+	if _, err := parser.ParseWithClaims(raw, claims, func(t *jwt.Token) (any, error) {
+		kid, _ := t.Header["kid"].(string)
+		if kid == "" || kid != i.keyID {
+			return nil, fmt.Errorf("auth: unexpected key id")
+		}
+		return i.key.Public(), nil
+	}); err != nil {
+		return "", "", mapJWTError(err)
+	}
+
+	if claimString(claims, "purpose") != siteSwitchPurpose {
+		return "", "", ErrInvalidToken
+	}
+	userID = claimString(claims, "sub")
+	siteID = claimString(claims, "sid")
+	if userID == "" || siteID == "" {
+		return "", "", ErrInvalidToken
+	}
+	return userID, siteID, nil
+}
+
+// TwoFactorChallengeTTL bounds the second login step (FSD F-04).
+//
+// Five minutes is long enough to open an authenticator app and type six digits, and
+// short enough that a phished challenge token is useless by the time it is relayed.
+const TwoFactorChallengeTTL = 5 * time.Minute
+
+// TwoFactorChallengePurpose is the claim that separates a challenge token from an
+// access token. It is exported so tests and clients can name it.
+const TwoFactorChallengePurpose = "2fa_challenge"
+
+// TwoFactorChallenge is the short lived, single use credential a password login of
+// a 2FA protected account returns instead of a session.
+//
+// The token carries no role claim, so VerifyAccess rejects it: it cannot be used as
+// an access token even by a client that ignores the response shape. Single use is
+// enforced by the caller persisting JTI under a verification token row.
+type TwoFactorChallenge struct {
+	Token     string
+	JTI       string
+	ExpiresAt time.Time
+}
+
+// IssueTwoFactorChallenge mints the second step token for one account.
+func (i *TokenIssuer) IssueTwoFactorChallenge(userID, siteID string) (TwoFactorChallenge, error) {
+	if userID == "" || siteID == "" {
+		return TwoFactorChallenge{}, fmt.Errorf("auth: 2fa challenge must carry user and site")
+	}
+
+	now := i.now()
+	expiresAt := now.Add(TwoFactorChallengeTTL)
+	jti := uuid.Must(uuid.NewV7()).String()
+	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
+		"sub":     userID,
+		"sid":     siteID,
+		"purpose": TwoFactorChallengePurpose,
+		"iss":     i.issuer,
+		"iat":     now.Unix(),
+		"nbf":     now.Unix(),
+		"exp":     expiresAt.Unix(),
+		"jti":     jti,
+	})
+	token.Header["kid"] = i.keyID
+
+	signed, err := token.SignedString(i.key)
+	if err != nil {
+		return TwoFactorChallenge{}, fmt.Errorf("auth: sign 2fa challenge: %w", err)
+	}
+	return TwoFactorChallenge{Token: signed, JTI: jti, ExpiresAt: expiresAt}, nil
+}
+
+// VerifyTwoFactorChallenge validates a challenge token.
+//
+// Like the site handoff and the content unlock grant, the purpose claim is
+// mandatory, so an ordinary access token can never be replayed as a challenge (and
+// vice versa: access verification demands a valid role claim).
+func (i *TokenIssuer) VerifyTwoFactorChallenge(raw string) (userID, siteID, jti string, err error) {
+	claims := jwt.MapClaims{}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{signingMethod.Alg()}),
+		jwt.WithIssuer(i.issuer),
+		jwt.WithLeeway(clockSkew),
+	)
+	if _, err := parser.ParseWithClaims(raw, claims, func(t *jwt.Token) (any, error) {
+		kid, _ := t.Header["kid"].(string)
+		if kid == "" || kid != i.keyID {
+			return nil, fmt.Errorf("auth: unexpected key id")
+		}
+		return i.key.Public(), nil
+	}); err != nil {
+		return "", "", "", mapJWTError(err)
+	}
+
+	if claimString(claims, "purpose") != TwoFactorChallengePurpose {
+		return "", "", "", ErrInvalidToken
+	}
+	userID = claimString(claims, "sub")
+	siteID = claimString(claims, "sid")
+	jti = claimString(claims, "jti")
+	if userID == "" || siteID == "" || jti == "" {
+		return "", "", "", ErrInvalidToken
+	}
+	return userID, siteID, jti, nil
+}
+
+// ContentUnlockTTL is how long a successful password unlock authorizes reading one
+// item. It matches a working session rather than a single page view, so refreshing
+// the article does not ask for the password again.
+const ContentUnlockTTL = 12 * time.Hour
+
+// contentUnlockPurpose separates an item unlock grant from every other token.
+const contentUnlockPurpose = "content_unlock"
+
+// IssueContentUnlock mints the session grant a password protected item issues after
+// a correct password (C-18).
+//
+// The token is bound to one site and one content id and carries a purpose claim, so
+// it cannot be used as an access token or replayed for another item.
+func (i *TokenIssuer) IssueContentUnlock(
+	_ context.Context,
+	siteID, contentID string,
+) (string, time.Time, error) {
+	if siteID == "" || contentID == "" {
+		return "", time.Time{}, fmt.Errorf("auth: content unlock token must carry site and content")
+	}
+
+	now := i.now()
+	expiresAt := now.Add(ContentUnlockTTL)
+	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
+		"sub":     contentID,
+		"sid":     siteID,
+		"cid":     contentID,
+		"purpose": contentUnlockPurpose,
+		"iss":     i.issuer,
+		"iat":     now.Unix(),
+		"nbf":     now.Unix(),
+		"exp":     expiresAt.Unix(),
+		"jti":     uuid.Must(uuid.NewV7()).String(),
+	})
+	token.Header["kid"] = i.keyID
+
+	signed, err := token.SignedString(i.key)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("auth: sign content unlock token: %w", err)
+	}
+	return signed, expiresAt, nil
+}
+
+// VerifyContentUnlock reports whether raw is a valid grant for exactly this item.
+//
+// Every claim that scopes the grant is checked: purpose, site, content id and
+// signature. A malformed or expired token is simply false, never an error the caller
+// could turn into an information leak.
+func (i *TokenIssuer) VerifyContentUnlock(
+	_ context.Context,
+	raw, siteID, contentID string,
+) bool {
+	if raw == "" || siteID == "" || contentID == "" {
+		return false
+	}
+	claims := jwt.MapClaims{}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{signingMethod.Alg()}),
+		jwt.WithIssuer(i.issuer),
+		jwt.WithLeeway(clockSkew),
+	)
+	if _, err := parser.ParseWithClaims(raw, claims, func(t *jwt.Token) (any, error) {
+		kid, _ := t.Header["kid"].(string)
+		if kid == "" || kid != i.keyID {
+			return nil, fmt.Errorf("auth: unexpected key id")
+		}
+		return i.key.Public(), nil
+	}); err != nil {
+		return false
+	}
+
+	return claimString(claims, "purpose") == contentUnlockPurpose &&
+		claimString(claims, "sid") == siteID &&
+		claimString(claims, "sub") == contentID &&
+		claimString(claims, "cid") == contentID
 }
 
 func mapJWTError(err error) error {

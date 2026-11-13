@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
@@ -73,12 +74,15 @@ func TestRouterResolvesSiteWhenConfigured(t *testing.T) {
 	r := New(Dependencies{
 		Config:       config.Config{AppEnv: config.EnvTest},
 		SiteResolver: resolver,
+		// An auth handler gives the versioned group a real route; the request stops at
+		// the unauthenticated guard, after resolution has already run.
+		Auth: auth.NewHandler(nil, auth.HandlerConfig{}),
 	})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
 	require.Equal(t, []string{"example.com"}, resolver.calls)
 }
 
@@ -88,10 +92,11 @@ func TestRouterRejectsUnknownHostWhenResolverPresent(t *testing.T) {
 	r := New(Dependencies{
 		Config:       config.Config{AppEnv: config.EnvTest},
 		SiteResolver: resolver,
+		Auth:         auth.NewHandler(nil, auth.HandlerConfig{}),
 	})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
 
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Equal(t, middlewareContentTypeProblem, w.Header().Get("Content-Type"))

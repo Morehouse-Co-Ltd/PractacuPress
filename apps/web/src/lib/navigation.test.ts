@@ -8,11 +8,13 @@ import {
   MAX_SOCIAL_LINKS,
   autoNavTabs,
   defaultFooterColumns,
+  footerColumnsForReader,
   navIconName,
   navIconPositionOf,
   navSubStyleOf,
   navTabActive,
   navTabGroupActive,
+  navTabsForReader,
   normalizeFooterColumns,
   normalizeNavTabs,
   normalizeSocialLinks,
@@ -168,6 +170,40 @@ describe('页脚栏目', () => {
     expect(columns[0].links.length).toBeGreaterThan(1);
   });
 
+  it('出厂页脚不再把后台入口递给普通读者', () => {
+    const labels = defaultFooterColumns().flatMap((column) => column.links.map((link) => link.label));
+    const hrefs = defaultFooterColumns().flatMap((column) => column.links.map((link) => link.href));
+    expect(labels.some((label) => label.includes('管理后台'))).toBe(false);
+    expect(hrefs).not.toContain('/admin');
+  });
+
+  it('按身份过滤页脚里的后台入口，并去掉空栏目', () => {
+    const columns = [
+      {
+        id: 'read',
+        title: '阅读',
+        links: [
+          { id: 'a', label: '文章', href: '/articles' },
+          { id: 'b', label: '管理后台', href: '/admin' },
+        ],
+      },
+      {
+        id: 'admin-only',
+        title: '站点',
+        links: [{ id: 'c', label: '管理后台', href: '/admin/settings' }],
+      },
+    ] as never;
+    const visible = footerColumnsForReader(columns, '/admin');
+    expect(visible).toHaveLength(1);
+    expect(visible[0].links.map((link) => link.href)).toEqual(['/articles']);
+    // 自定义后台入口同样不该出现。
+    const custom = footerColumnsForReader(
+      [{ id: 's', title: '站点', links: [{ id: 'd', label: '后台', href: '/manage/users' }] }] as never,
+      '/manage',
+    );
+    expect(custom).toEqual([]);
+  });
+
   it('坏配置回落到默认', () => {
     expect(normalizeFooterColumns('nope')).toHaveLength(2);
   });
@@ -181,6 +217,39 @@ describe('页脚栏目', () => {
     );
     expect(columns).toHaveLength(MAX_FOOTER_COLUMNS);
     expect(columns.every((column) => column.links.length === MAX_FOOTER_LINKS)).toBe(true);
+  });
+});
+
+describe('导航里的后台入口', () => {
+  const tabs = [
+    { id: 'home', label: '首页', href: '/' },
+    { id: 'admin', label: '管理后台', href: '/admin' },
+    {
+      id: 'more',
+      label: '更多',
+      href: '',
+      children: [
+        { id: 'about', label: '关于本站', href: '/about' },
+        { id: 'users', label: '用户管理', href: '/admin/users' },
+      ],
+    },
+    {
+      id: 'admin-only',
+      label: '后台',
+      href: '',
+      children: [{ id: 'settings', label: '设置', href: '/admin/settings' }],
+    },
+  ] as never;
+
+  it('普通读者看不到后台 Tab 与后台二级入口', () => {
+    const visible = navTabsForReader(tabs, '/admin');
+    expect(visible.map((tab) => tab.id)).toEqual(['home', 'more']);
+    expect(visible[1].children?.map((child) => child.href)).toEqual(['/about']);
+  });
+
+  it('二级入口全被过滤后，纯文字分组也一起消失', () => {
+    const visible = navTabsForReader(tabs, '/admin');
+    expect(visible.some((tab) => tab.id === 'admin-only')).toBe(false);
   });
 });
 

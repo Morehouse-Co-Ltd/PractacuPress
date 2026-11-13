@@ -42,6 +42,23 @@ const fragment: Dictionary = {
   '已插入分割线': 'Divider inserted',
   '已插入代码块': 'Code block inserted',
   '已插入提示框': 'Callout inserted',
+
+  // ---- 粘贴 / 拖拽上传 ----
+  '正在上传图片… {percent}%': 'Uploading images… {percent}%',
+  '正在上传图片，请稍候…': 'Uploading an image; please wait…',
+  '上传结果里没有可用的图片地址。': 'The upload result has no usable image URL.',
+  粘贴的图片: 'Pasted image',
+  '图片已插入正文': 'Image inserted into the body',
+  '已插入 {count} 张图片': {
+    one: 'Inserted 1 image',
+    other: 'Inserted {count} images',
+  },
+  图片上传失败: 'Image upload failed',
+  '图片上传失败，请重试。': 'The image upload failed. Please try again.',
+  '只能上传 PNG / JPEG / WebP / GIF 图片。':
+    'Only PNG / JPEG / WebP / GIF images can be uploaded.',
+  '也可以直接粘贴或拖入图片，上传后插入正文。':
+    'You can also paste or drop an image; it is uploaded and inserted into the body.',
 };
 
 export default fragment;

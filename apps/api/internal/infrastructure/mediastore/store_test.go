@@ -2,7 +2,9 @@ package mediastore_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -100,6 +102,153 @@ func TestServiceAgainstRealStore(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, media.Referenceable(asset))
 	require.NotEmpty(t, asset.ID)
+}
+
+func TestQuotaReservationsCountAssetsAndLiveUploads(t *testing.T) {
+	store, _, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	quotaRepo, ok := any(store).(media.QuotaReservationRepository)
+	require.True(t, ok, "the media store must implement atomic quota reservations")
+
+	for _, asset := range []media.Asset{
+		{SiteID: siteID, OwnerID: "u1", StorageKey: "asset/u1.png", MIME: "image/png", Size: 800, ScanStatus: media.ScanClean, CreatedAt: now},
+		{SiteID: siteID, OwnerID: "u2", StorageKey: "asset/u2.png", MIME: "image/png", Size: 400, ScanStatus: media.ScanClean, CreatedAt: now},
+	} {
+		_, err := store.InsertAsset(ctx, asset)
+		require.NoError(t, err)
+	}
+
+	for _, seed := range []struct {
+		owner   string
+		size    int64
+		expires time.Time
+		status  media.UploadStatus
+	}{
+		{owner: "u1", size: 200, expires: now.Add(time.Hour), status: media.UploadPending},
+		{owner: "u3", size: 100, expires: now.Add(time.Hour), status: media.UploadUploaded},
+		{owner: "u2", size: 5000, expires: now.Add(-time.Second), status: media.UploadPending},
+		{owner: "u3", size: 500, expires: now.Add(time.Hour), status: media.UploadPending},
+	} {
+		upload, err := store.InsertUpload(ctx, media.Upload{
+			SiteID: siteID, OwnerID: seed.owner, FileName: "seed.png", DeclaredMIME: "image/png",
+			Size: seed.size, Purpose: media.PurposeContent, StorageKey: media.NewStorageKey("seed.png"),
+			ExpiresAt: seed.expires, CreatedAt: now,
+		})
+		require.NoError(t, err)
+		if seed.status == media.UploadUploaded {
+			require.NoError(t, store.MarkUploadUploaded(ctx, upload.ID, now))
+		}
+		if seed.size == 500 {
+			require.NoError(t, store.MarkUploadCompleted(ctx, upload.ID, now))
+		}
+	}
+
+	request := media.Upload{
+		SiteID: siteID, OwnerID: "u1", FileName: "new.png", DeclaredMIME: "image/png",
+		Size: 500, Purpose: media.PurposeContent, StorageKey: media.NewStorageKey("new.png"),
+		ExpiresAt: now.Add(media.UploadTTL), CreatedAt: now,
+	}
+	_, err := quotaRepo.InsertUploadWithinQuota(ctx, request, 1500, 2000)
+	require.NoError(t, err, "exactly reaching both limits is allowed")
+
+	request.Size = 1
+	request.StorageKey = media.NewStorageKey("over-user.png")
+	_, err = quotaRepo.InsertUploadWithinQuota(ctx, request, 1500, 3000)
+	require.ErrorIs(t, err, media.ErrQuotaExceeded, "the user's existing assets and live reservation count")
+
+	request.OwnerID = "u4"
+	request.StorageKey = media.NewStorageKey("over-site.png")
+	_, err = quotaRepo.InsertUploadWithinQuota(ctx, request, 10_000, 2000)
+	require.ErrorIs(t, err, media.ErrQuotaExceeded, "all owners' assets and live reservations count toward the site")
+}
+
+func TestMediaQuotaOverridesReadSiteAndActiveMemberSettings(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+
+	siteLimit := int64(10_240)
+	_, err := handle.Client.Site.UpdateOneID(siteID).SetMediaQuotaBytes(siteLimit).Save(ctx)
+	require.NoError(t, err)
+	memberLimit := int64(4_096)
+	_, err = handle.Client.SiteMember.Create().
+		SetSiteID(siteID).SetUserID("u1").SetMediaQuotaBytes(memberLimit).Save(ctx)
+	require.NoError(t, err)
+
+	overrides, err := store.MediaQuotaOverrides(ctx, siteID, "u1")
+	require.NoError(t, err)
+	require.NotNil(t, overrides.SiteBytes)
+	require.Equal(t, siteLimit, *overrides.SiteBytes)
+	require.NotNil(t, overrides.UserBytes)
+	require.Equal(t, memberLimit, *overrides.UserBytes)
+}
+
+func TestMediaQuotaOverridesKeepsExplicitUnlimitedAndInheritsNil(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+
+	_, err := handle.Client.Site.UpdateOneID(siteID).SetMediaQuotaBytes(0).Save(ctx)
+	require.NoError(t, err)
+	_, err = handle.Client.SiteMember.Create().SetSiteID(siteID).SetUserID("u1").Save(ctx)
+	require.NoError(t, err)
+
+	overrides, err := store.MediaQuotaOverrides(ctx, siteID, "u1")
+	require.NoError(t, err)
+	require.NotNil(t, overrides.SiteBytes, "explicit site zero is distinct from inheriting nil")
+	require.Zero(t, *overrides.SiteBytes)
+	require.Nil(t, overrides.UserBytes, "missing member override inherits the deployment default")
+}
+
+func TestMediaQuotaOverridesRejectsMissingOrInactiveMembership(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+
+	_, err := store.MediaQuotaOverrides(ctx, siteID, "missing")
+	require.ErrorIs(t, err, media.ErrPermissionDenied)
+
+	_, err = handle.Client.SiteMember.Create().
+		SetSiteID(siteID).SetUserID("u1").SetStatus("suspended").Save(ctx)
+	require.NoError(t, err)
+	_, err = store.MediaQuotaOverrides(ctx, siteID, "u1")
+	require.ErrorIs(t, err, media.ErrPermissionDenied)
+}
+
+func TestQuotaReservationsSerializeConcurrentRequests(t *testing.T) {
+	store, _, siteID := newStore(t)
+	ctx := context.Background()
+	quotaRepo, ok := any(store).(media.QuotaReservationRepository)
+	require.True(t, ok, "the media store must implement atomic quota reservations")
+
+	const workers = 8
+	start := make(chan struct{})
+	errs := make(chan error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, err := quotaRepo.InsertUploadWithinQuota(ctx, media.Upload{
+				SiteID: siteID, OwnerID: "u1", FileName: "race.png", DeclaredMIME: "image/png",
+				Size: 1024, Purpose: media.PurposeContent, StorageKey: fmt.Sprintf("race/%d.png", i),
+				ExpiresAt: time.Now().UTC().Add(media.UploadTTL), CreatedAt: time.Now().UTC(),
+			}, 1024, 1024)
+			errs <- err
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	accepted := 0
+	for err := range errs {
+		if err == nil {
+			accepted++
+			continue
+		}
+		require.ErrorIs(t, err, media.ErrQuotaExceeded)
+	}
+	require.Equal(t, 1, accepted, "only one request may reserve the full remaining quota")
 }
 
 type stubScanner struct{ result media.ScanResult }
@@ -278,4 +427,47 @@ func TestListAssetsRejectsUnusableCursorKey(t *testing.T) {
 	_, _, err := store.ListAssets(context.Background(), siteID, media.AssetFilter{}, 10,
 		page.Cursor{Key: "yesterday", ID: "a1"})
 	require.ErrorIs(t, err, media.ErrInvalidInput)
+}
+
+// TestGarbageCatalogListsAllSitesAndExpiresUploads covers the port the offline collector
+// uses: unlike ListAssets it must cross the tenant boundary, and marking an abandoned
+// session expired must not be able to overwrite a completed one.
+func TestGarbageCatalogListsAllSitesAndExpiresUploads(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	other, err := handle.Client.Site.Create().SetSlug("other").SetName("Other").Save(ctx)
+	require.NoError(t, err)
+
+	insertAsset(t, store, siteID, media.PurposeContent, media.ScanClean, now)
+	insertAsset(t, store, other.ID, media.PurposeContent, media.ScanRejected, now)
+
+	upload, err := store.InsertUpload(ctx, media.Upload{
+		SiteID: siteID, OwnerID: "u1", FileName: "a.png", DeclaredMIME: "image/png",
+		Size: 10, Purpose: media.PurposeContent, StorageKey: "ab/stale.png",
+		Status: media.UploadUploaded, ExpiresAt: now.Add(-time.Hour), CreatedAt: now.Add(-2 * time.Hour),
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.MarkUploadUploaded(ctx, upload.ID, now))
+
+	assets, err := store.AllAssets(ctx)
+	require.NoError(t, err)
+	require.Len(t, assets, 2, "the collector must see every site")
+
+	uploads, err := store.AllUploads(ctx)
+	require.NoError(t, err)
+	require.Len(t, uploads, 1)
+	require.Equal(t, media.UploadUploaded, uploads[0].Status)
+
+	require.NoError(t, store.MarkUploadExpired(ctx, upload.ID, now))
+	found, err := store.FindUpload(ctx, siteID, upload.ID)
+	require.NoError(t, err)
+	require.Equal(t, media.UploadExpired, found.Status)
+
+	// A second pass sees a closed session and leaves it alone.
+	require.NoError(t, store.MarkUploadExpired(ctx, upload.ID, now))
+	found, err = store.FindUpload(ctx, siteID, upload.ID)
+	require.NoError(t, err)
+	require.Equal(t, media.UploadExpired, found.Status)
 }

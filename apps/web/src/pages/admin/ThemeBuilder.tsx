@@ -65,8 +65,15 @@ export function ThemeBuilderPage() {
   const { customization, update } = useCustomization();
   const [params] = useSearchParams();
   const requestedPage = params.get('page');
+  const requestedTarget = params.get('target');
   const [target, setTarget] = useState(
-    requestedPage && customization.pages.some((page) => page.id === requestedPage) ? requestedPage : 'home',
+    requestedTarget === 'article'
+      ? 'article'
+      : requestedTarget === 'home'
+        ? 'home'
+        : requestedPage && customization.pages.some((page) => page.id === requestedPage)
+          ? requestedPage
+          : 'home',
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<BuilderDevice>('desktop');
@@ -233,6 +240,29 @@ export function ThemeBuilderPage() {
     persistBlocks(history.value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history.value]);
+
+  /**
+   * 外部设计变更以配置为准，而不是把编辑器里的旧树写回去。
+   *
+   * `history.value` 只由本地编辑与撤销推进；`blocks` 则来自 `customization`（可能是
+   * 服务端水合、另一个标签页保存，或「打开编排台时本地缓存还没有设计」的默认版面）。
+   * 两者不一致且不是本地编辑造成的，就只能来自外部。这时编辑器必须丢掉旧树、改用
+   * 配置里的真实编排，否则下一次滚动/改属性会把真实内容覆盖成打开时的旧副本
+   * ——这正是「页面编排改不到真正的编排内容」的来源之一。
+   *
+   * 本地编辑会立刻经 `persistBlocks` 写回配置，所以 `blocks` 追上 `history.value`
+   * 时两边 JSON 相等，不会触发这里。
+   */
+  const resetHistory = history.reset;
+  const committedBlocksRef = useRef<string>(JSON.stringify(blocks));
+  useEffect(() => {
+    const next = JSON.stringify(blocks);
+    if (next === committedBlocksRef.current) return;
+    committedBlocksRef.current = next;
+    if (next === JSON.stringify(history.value)) return;
+    resetHistory(blocks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, resetHistory]);
 
   useEffect(() => {
     if (selectedId && !findBlock(history.value, selectedId)) setSelectedId(null);

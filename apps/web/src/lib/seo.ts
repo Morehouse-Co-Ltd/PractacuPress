@@ -50,7 +50,16 @@ export interface SeoPayload {
   author?: string;
   twitter?: string;
   verification: { google: string; baidu: string; bing: string };
+  /** 站点订阅源；关闭、成员限定或禁止收录时为空。 */
+  feeds: FeedLink[];
   jsonLd: Record<string, unknown>[];
+}
+
+/** 一条 feed autodiscovery 链接（`<link rel="alternate">`）。 */
+export interface FeedLink {
+  href: string;
+  title: string;
+  type: 'application/rss+xml' | 'application/atom+xml';
 }
 
 /** 站点根地址：优先站长配置，其次当前访问地址。 */
@@ -98,13 +107,46 @@ function setMeta(attribute: 'name' | 'property', key: string, content?: string):
   document.head.appendChild(meta);
 }
 
-function setLink(rel: string, href: string): void {
+function setLink(rel: string, href: string, attributes: Record<string, string> = {}): void {
   if (!href) return;
   const link = document.createElement('link');
   link.rel = rel;
   link.href = href;
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value) link.setAttribute(key, value);
+  }
   link.setAttribute(MARK, '1');
   document.head.appendChild(link);
+}
+
+/**
+ * 站点级订阅源 autodiscovery 链接。
+ *
+ * 关闭订阅、成员限定站点与关闭收录三者任一成立都返回空数组：服务端这时会
+ * 对 /rss.xml 返回 404，head 里就不该再声明一个不存在的源。其余情况同时声明
+ * RSS 与 Atom，读取器会挑自己支持的那个。
+ */
+export function feedLinks(options: {
+  origin: string;
+  siteName: string;
+  enabled: boolean;
+  indexable: boolean;
+  membersOnly: boolean;
+}): FeedLink[] {
+  if (!options.enabled || !options.indexable || options.membersOnly) return [];
+  const name = options.siteName.trim() || 'Practacu Press';
+  return [
+    {
+      href: absoluteUrl('/rss.xml', options.origin),
+      title: `${name} RSS`,
+      type: 'application/rss+xml',
+    },
+    {
+      href: absoluteUrl('/atom.xml', options.origin),
+      title: `${name} Atom`,
+      type: 'application/atom+xml',
+    },
+  ];
 }
 
 export function applySeo(payload: SeoPayload): void {
@@ -116,6 +158,9 @@ export function applySeo(payload: SeoPayload): void {
   setMeta('name', 'keywords', payload.keywords);
   setMeta('name', 'robots', payload.robots);
   setLink('canonical', payload.canonical);
+  for (const feed of payload.feeds) {
+    setLink('alternate', feed.href, { type: feed.type, title: feed.title });
+  }
 
   setMeta('property', 'og:site_name', payload.siteName);
   setMeta('property', 'og:type', payload.type);
@@ -167,6 +212,7 @@ export function seoPayload(
     origin: string;
     membersOnly: boolean;
     siteLd?: Record<string, unknown>[];
+    feeds?: FeedLink[];
   },
 ): SeoPayload {
   const title = input.title?.trim()
@@ -203,6 +249,7 @@ export function seoPayload(
     author: input.author,
     twitter: options.seo.twitter,
     verification: options.seo.verification,
+    feeds: options.feeds ?? [],
     jsonLd: graph.filter(Boolean),
   };
 }
@@ -215,6 +262,18 @@ export function useSeo(input: SeoInput): void {
   const siteName = site?.name ?? 'Practacu Press';
   const origin = siteOrigin(seo, window.location.origin);
   const membersOnly = site?.visibility_mode === 'members_only';
+  const feed = customization.feed;
+  const feeds = useMemo(
+    () =>
+      feedLinks({
+        origin,
+        siteName,
+        enabled: feed.enabled,
+        indexable: seo.indexable,
+        membersOnly,
+      }),
+    [origin, siteName, feed.enabled, seo.indexable, membersOnly],
+  );
 
   const payload = useMemo(
     () =>
@@ -224,6 +283,7 @@ export function useSeo(input: SeoInput): void {
         siteDescription: site?.description ?? '',
         origin,
         membersOnly,
+        feeds,
         siteLd: [
           {
             '@type': 'WebSite',
@@ -239,7 +299,7 @@ export function useSeo(input: SeoInput): void {
         ],
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(input), seo, siteName, origin, membersOnly, site?.description, config.mode],
+    [JSON.stringify(input), seo, siteName, origin, membersOnly, site?.description, config.mode, feeds],
   );
 
   useEffect(() => {

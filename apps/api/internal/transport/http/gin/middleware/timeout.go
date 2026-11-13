@@ -52,5 +52,14 @@ func LongLivedRequests(c *gin.Context) bool {
 		return true
 	}
 	path := c.Request.URL.Path
-	return strings.HasPrefix(path, "/api/v1/ws") || strings.HasPrefix(path, "/api/v1/media/")
+	if strings.HasPrefix(path, "/api/v1/ws") || strings.HasPrefix(path, "/api/v1/media/") {
+		return true
+	}
+	// Backup creation, site export and site import are bulk file operations; the
+	// ordinary request budget would cut a large package off mid-transfer.
+	if strings.HasPrefix(path, "/api/v1/platform/backups") ||
+		strings.HasSuffix(path, "/export") || strings.HasSuffix(path, "/import") {
+		return true
+	}
+	return false
 }

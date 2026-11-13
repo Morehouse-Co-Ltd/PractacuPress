@@ -2,6 +2,7 @@ package community
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"github.com/practacu/practacu-press/apps/api/internal/captcha"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
@@ -173,4 +175,75 @@ func TestToggleFollowSelfIsRejected(t *testing.T) {
 	w := do(r, http.MethodPost, "/follows/u1", "")
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// stubCaptcha is the human verification guard the tests decide the verdict for.
+type stubCaptcha struct {
+	err   error
+	calls []captcha.RequireInput
+}
+
+func (s *stubCaptcha) Require(_ context.Context, in captcha.RequireInput) error {
+	s.calls = append(s.calls, in)
+	return s.err
+}
+
+func newEngineWithCaptcha(repo Repository, actor Actor, guard CaptchaGuard) *gin.Engine {
+	service, err := NewService(repo, nil)
+	if err != nil {
+		panic(err)
+	}
+	gin.SetMode(gin.TestMode)
+	handler := NewHandler(service, HandlerConfig{
+		Principal: func(*gin.Context) (Actor, bool) { return actor, true },
+		Captcha:   guard,
+	})
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		if len(c.Errors) > 0 {
+			problem := apperr.FromError(c.Errors.Last().Err)
+			c.Header("Content-Type", apperr.ContentType)
+			c.JSON(problem.Status, problem)
+		}
+	})
+	handler.Routes(r, func(c *gin.Context) { c.Next() }, func(c *gin.Context) { c.Next() })
+	return r
+}
+
+func TestCommentIsRefusedWithoutASolvedChallenge(t *testing.T) {
+	repo := newFakeRepo()
+	guard := &stubCaptcha{err: captcha.ErrTokenMissing}
+	r := newEngineWithCaptcha(repo, memberActor(), guard)
+
+	w := do(r, http.MethodPost, "/comments",
+		`{"target_type":"article","target_id":"a1","body":"hello"}`)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var problem struct {
+		Details map[string]any `json:"details"`
+	}
+	require.NoError(t, decodeJSON(w.Body.Bytes(), &problem))
+	require.Equal(t, "captcha_required", problem.Details["reason"])
+	require.Equal(t, "captcha_token", problem.Details["field"])
+
+	// The guard refused before the service ran: no comment was written.
+	require.Zero(t, repo.writes)
+	require.Len(t, guard.calls, 1)
+	require.Equal(t, captcha.SceneComment, guard.calls[0].Scene)
+	require.Equal(t, "s1", guard.calls[0].SiteID)
+}
+
+func TestCommentPassesTheSolvedTokenToTheGuard(t *testing.T) {
+	repo := newFakeRepo()
+	guard := &stubCaptcha{}
+	r := newEngineWithCaptcha(repo, memberActor(), guard)
+
+	w := do(r, http.MethodPost, "/comments",
+		`{"target_type":"article","target_id":"a1","body":"hello","captcha_token":"solved"}`)
+
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	require.Len(t, guard.calls, 1)
+	require.Equal(t, "solved", guard.calls[0].Token)
+	require.Equal(t, "u1", guard.calls[0].ActorID)
 }

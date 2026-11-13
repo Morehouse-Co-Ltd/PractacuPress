@@ -137,6 +137,20 @@ func (_c *ContentItemCreate) SetNillablePolicyVersion(v *string) *ContentItemCre
 	return _c
 }
 
+// SetRevision sets the "revision" field.
+func (_c *ContentItemCreate) SetRevision(v int) *ContentItemCreate {
+	_c.mutation.SetRevision(v)
+	return _c
+}
+
+// SetNillableRevision sets the "revision" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableRevision(v *int) *ContentItemCreate {
+	if v != nil {
+		_c.SetRevision(*v)
+	}
+	return _c
+}
+
 // SetCategoryID sets the "category_id" field.
 func (_c *ContentItemCreate) SetCategoryID(v string) *ContentItemCreate {
 	_c.mutation.SetCategoryID(v)
@@ -189,6 +203,90 @@ func (_c *ContentItemCreate) SetArchivedAt(v time.Time) *ContentItemCreate {
 func (_c *ContentItemCreate) SetNillableArchivedAt(v *time.Time) *ContentItemCreate {
 	if v != nil {
 		_c.SetArchivedAt(*v)
+	}
+	return _c
+}
+
+// SetPublishAt sets the "publish_at" field.
+func (_c *ContentItemCreate) SetPublishAt(v time.Time) *ContentItemCreate {
+	_c.mutation.SetPublishAt(v)
+	return _c
+}
+
+// SetNillablePublishAt sets the "publish_at" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillablePublishAt(v *time.Time) *ContentItemCreate {
+	if v != nil {
+		_c.SetPublishAt(*v)
+	}
+	return _c
+}
+
+// SetPublishAttempts sets the "publish_attempts" field.
+func (_c *ContentItemCreate) SetPublishAttempts(v int) *ContentItemCreate {
+	_c.mutation.SetPublishAttempts(v)
+	return _c
+}
+
+// SetNillablePublishAttempts sets the "publish_attempts" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillablePublishAttempts(v *int) *ContentItemCreate {
+	if v != nil {
+		_c.SetPublishAttempts(*v)
+	}
+	return _c
+}
+
+// SetAccessMode sets the "access_mode" field.
+func (_c *ContentItemCreate) SetAccessMode(v string) *ContentItemCreate {
+	_c.mutation.SetAccessMode(v)
+	return _c
+}
+
+// SetNillableAccessMode sets the "access_mode" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableAccessMode(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetAccessMode(*v)
+	}
+	return _c
+}
+
+// SetAccessPasswordHash sets the "access_password_hash" field.
+func (_c *ContentItemCreate) SetAccessPasswordHash(v string) *ContentItemCreate {
+	_c.mutation.SetAccessPasswordHash(v)
+	return _c
+}
+
+// SetNillableAccessPasswordHash sets the "access_password_hash" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableAccessPasswordHash(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetAccessPasswordHash(*v)
+	}
+	return _c
+}
+
+// SetViewCount sets the "view_count" field.
+func (_c *ContentItemCreate) SetViewCount(v int) *ContentItemCreate {
+	_c.mutation.SetViewCount(v)
+	return _c
+}
+
+// SetNillableViewCount sets the "view_count" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableViewCount(v *int) *ContentItemCreate {
+	if v != nil {
+		_c.SetViewCount(*v)
+	}
+	return _c
+}
+
+// SetCommentPolicy sets the "comment_policy" field.
+func (_c *ContentItemCreate) SetCommentPolicy(v string) *ContentItemCreate {
+	_c.mutation.SetCommentPolicy(v)
+	return _c
+}
+
+// SetNillableCommentPolicy sets the "comment_policy" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableCommentPolicy(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetCommentPolicy(*v)
 	}
 	return _c
 }
@@ -294,9 +392,29 @@ func (_c *ContentItemCreate) defaults() {
 		v := contentitem.DefaultPolicyVersion
 		_c.mutation.SetPolicyVersion(v)
 	}
+	if _, ok := _c.mutation.Revision(); !ok {
+		v := contentitem.DefaultRevision
+		_c.mutation.SetRevision(v)
+	}
 	if _, ok := _c.mutation.Tags(); !ok {
 		v := contentitem.DefaultTags
 		_c.mutation.SetTags(v)
+	}
+	if _, ok := _c.mutation.PublishAttempts(); !ok {
+		v := contentitem.DefaultPublishAttempts
+		_c.mutation.SetPublishAttempts(v)
+	}
+	if _, ok := _c.mutation.AccessMode(); !ok {
+		v := contentitem.DefaultAccessMode
+		_c.mutation.SetAccessMode(v)
+	}
+	if _, ok := _c.mutation.ViewCount(); !ok {
+		v := contentitem.DefaultViewCount
+		_c.mutation.SetViewCount(v)
+	}
+	if _, ok := _c.mutation.CommentPolicy(); !ok {
+		v := contentitem.DefaultCommentPolicy
+		_c.mutation.SetCommentPolicy(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := contentitem.DefaultCreatedAt()
@@ -392,6 +510,14 @@ func (_c *ContentItemCreate) check() error {
 			return &ValidationError{Name: "policy_version", err: fmt.Errorf(`ent: validator failed for field "ContentItem.policy_version": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.Revision(); !ok {
+		return &ValidationError{Name: "revision", err: errors.New(`ent: missing required field "ContentItem.revision"`)}
+	}
+	if v, ok := _c.mutation.Revision(); ok {
+		if err := contentitem.RevisionValidator(v); err != nil {
+			return &ValidationError{Name: "revision", err: fmt.Errorf(`ent: validator failed for field "ContentItem.revision": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.CategoryID(); ok {
 		if err := contentitem.CategoryIDValidator(v); err != nil {
 			return &ValidationError{Name: "category_id", err: fmt.Errorf(`ent: validator failed for field "ContentItem.category_id": %w`, err)}
@@ -399,6 +525,43 @@ func (_c *ContentItemCreate) check() error {
 	}
 	if _, ok := _c.mutation.Tags(); !ok {
 		return &ValidationError{Name: "tags", err: errors.New(`ent: missing required field "ContentItem.tags"`)}
+	}
+	if _, ok := _c.mutation.PublishAttempts(); !ok {
+		return &ValidationError{Name: "publish_attempts", err: errors.New(`ent: missing required field "ContentItem.publish_attempts"`)}
+	}
+	if v, ok := _c.mutation.PublishAttempts(); ok {
+		if err := contentitem.PublishAttemptsValidator(v); err != nil {
+			return &ValidationError{Name: "publish_attempts", err: fmt.Errorf(`ent: validator failed for field "ContentItem.publish_attempts": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AccessMode(); !ok {
+		return &ValidationError{Name: "access_mode", err: errors.New(`ent: missing required field "ContentItem.access_mode"`)}
+	}
+	if v, ok := _c.mutation.AccessMode(); ok {
+		if err := contentitem.AccessModeValidator(v); err != nil {
+			return &ValidationError{Name: "access_mode", err: fmt.Errorf(`ent: validator failed for field "ContentItem.access_mode": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.AccessPasswordHash(); ok {
+		if err := contentitem.AccessPasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "access_password_hash", err: fmt.Errorf(`ent: validator failed for field "ContentItem.access_password_hash": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ViewCount(); !ok {
+		return &ValidationError{Name: "view_count", err: errors.New(`ent: missing required field "ContentItem.view_count"`)}
+	}
+	if v, ok := _c.mutation.ViewCount(); ok {
+		if err := contentitem.ViewCountValidator(v); err != nil {
+			return &ValidationError{Name: "view_count", err: fmt.Errorf(`ent: validator failed for field "ContentItem.view_count": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CommentPolicy(); !ok {
+		return &ValidationError{Name: "comment_policy", err: errors.New(`ent: missing required field "ContentItem.comment_policy"`)}
+	}
+	if v, ok := _c.mutation.CommentPolicy(); ok {
+		if err := contentitem.CommentPolicyValidator(v); err != nil {
+			return &ValidationError{Name: "comment_policy", err: fmt.Errorf(`ent: validator failed for field "ContentItem.comment_policy": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ContentItem.created_at"`)}
@@ -491,6 +654,10 @@ func (_c *ContentItemCreate) createSpec() (*ContentItem, *sqlgraph.CreateSpec) {
 		_spec.SetField(contentitem.FieldPolicyVersion, field.TypeString, value)
 		_node.PolicyVersion = value
 	}
+	if value, ok := _c.mutation.Revision(); ok {
+		_spec.SetField(contentitem.FieldRevision, field.TypeInt, value)
+		_node.Revision = value
+	}
 	if value, ok := _c.mutation.CategoryID(); ok {
 		_spec.SetField(contentitem.FieldCategoryID, field.TypeString, value)
 		_node.CategoryID = &value
@@ -506,6 +673,30 @@ func (_c *ContentItemCreate) createSpec() (*ContentItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ArchivedAt(); ok {
 		_spec.SetField(contentitem.FieldArchivedAt, field.TypeTime, value)
 		_node.ArchivedAt = &value
+	}
+	if value, ok := _c.mutation.PublishAt(); ok {
+		_spec.SetField(contentitem.FieldPublishAt, field.TypeTime, value)
+		_node.PublishAt = &value
+	}
+	if value, ok := _c.mutation.PublishAttempts(); ok {
+		_spec.SetField(contentitem.FieldPublishAttempts, field.TypeInt, value)
+		_node.PublishAttempts = value
+	}
+	if value, ok := _c.mutation.AccessMode(); ok {
+		_spec.SetField(contentitem.FieldAccessMode, field.TypeString, value)
+		_node.AccessMode = value
+	}
+	if value, ok := _c.mutation.AccessPasswordHash(); ok {
+		_spec.SetField(contentitem.FieldAccessPasswordHash, field.TypeString, value)
+		_node.AccessPasswordHash = &value
+	}
+	if value, ok := _c.mutation.ViewCount(); ok {
+		_spec.SetField(contentitem.FieldViewCount, field.TypeInt, value)
+		_node.ViewCount = value
+	}
+	if value, ok := _c.mutation.CommentPolicy(); ok {
+		_spec.SetField(contentitem.FieldCommentPolicy, field.TypeString, value)
+		_node.CommentPolicy = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(contentitem.FieldCreatedAt, field.TypeTime, value)
@@ -663,6 +854,24 @@ func (u *ContentItemUpsert) UpdatePolicyVersion() *ContentItemUpsert {
 	return u
 }
 
+// SetRevision sets the "revision" field.
+func (u *ContentItemUpsert) SetRevision(v int) *ContentItemUpsert {
+	u.Set(contentitem.FieldRevision, v)
+	return u
+}
+
+// UpdateRevision sets the "revision" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateRevision() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldRevision)
+	return u
+}
+
+// AddRevision adds v to the "revision" field.
+func (u *ContentItemUpsert) AddRevision(v int) *ContentItemUpsert {
+	u.Add(contentitem.FieldRevision, v)
+	return u
+}
+
 // SetCategoryID sets the "category_id" field.
 func (u *ContentItemUpsert) SetCategoryID(v string) *ContentItemUpsert {
 	u.Set(contentitem.FieldCategoryID, v)
@@ -726,6 +935,102 @@ func (u *ContentItemUpsert) UpdateArchivedAt() *ContentItemUpsert {
 // ClearArchivedAt clears the value of the "archived_at" field.
 func (u *ContentItemUpsert) ClearArchivedAt() *ContentItemUpsert {
 	u.SetNull(contentitem.FieldArchivedAt)
+	return u
+}
+
+// SetPublishAt sets the "publish_at" field.
+func (u *ContentItemUpsert) SetPublishAt(v time.Time) *ContentItemUpsert {
+	u.Set(contentitem.FieldPublishAt, v)
+	return u
+}
+
+// UpdatePublishAt sets the "publish_at" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdatePublishAt() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldPublishAt)
+	return u
+}
+
+// ClearPublishAt clears the value of the "publish_at" field.
+func (u *ContentItemUpsert) ClearPublishAt() *ContentItemUpsert {
+	u.SetNull(contentitem.FieldPublishAt)
+	return u
+}
+
+// SetPublishAttempts sets the "publish_attempts" field.
+func (u *ContentItemUpsert) SetPublishAttempts(v int) *ContentItemUpsert {
+	u.Set(contentitem.FieldPublishAttempts, v)
+	return u
+}
+
+// UpdatePublishAttempts sets the "publish_attempts" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdatePublishAttempts() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldPublishAttempts)
+	return u
+}
+
+// AddPublishAttempts adds v to the "publish_attempts" field.
+func (u *ContentItemUpsert) AddPublishAttempts(v int) *ContentItemUpsert {
+	u.Add(contentitem.FieldPublishAttempts, v)
+	return u
+}
+
+// SetAccessMode sets the "access_mode" field.
+func (u *ContentItemUpsert) SetAccessMode(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldAccessMode, v)
+	return u
+}
+
+// UpdateAccessMode sets the "access_mode" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateAccessMode() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldAccessMode)
+	return u
+}
+
+// SetAccessPasswordHash sets the "access_password_hash" field.
+func (u *ContentItemUpsert) SetAccessPasswordHash(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldAccessPasswordHash, v)
+	return u
+}
+
+// UpdateAccessPasswordHash sets the "access_password_hash" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateAccessPasswordHash() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldAccessPasswordHash)
+	return u
+}
+
+// ClearAccessPasswordHash clears the value of the "access_password_hash" field.
+func (u *ContentItemUpsert) ClearAccessPasswordHash() *ContentItemUpsert {
+	u.SetNull(contentitem.FieldAccessPasswordHash)
+	return u
+}
+
+// SetViewCount sets the "view_count" field.
+func (u *ContentItemUpsert) SetViewCount(v int) *ContentItemUpsert {
+	u.Set(contentitem.FieldViewCount, v)
+	return u
+}
+
+// UpdateViewCount sets the "view_count" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateViewCount() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldViewCount)
+	return u
+}
+
+// AddViewCount adds v to the "view_count" field.
+func (u *ContentItemUpsert) AddViewCount(v int) *ContentItemUpsert {
+	u.Add(contentitem.FieldViewCount, v)
+	return u
+}
+
+// SetCommentPolicy sets the "comment_policy" field.
+func (u *ContentItemUpsert) SetCommentPolicy(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldCommentPolicy, v)
+	return u
+}
+
+// UpdateCommentPolicy sets the "comment_policy" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateCommentPolicy() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldCommentPolicy)
 	return u
 }
 
@@ -913,6 +1218,27 @@ func (u *ContentItemUpsertOne) UpdatePolicyVersion() *ContentItemUpsertOne {
 	})
 }
 
+// SetRevision sets the "revision" field.
+func (u *ContentItemUpsertOne) SetRevision(v int) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetRevision(v)
+	})
+}
+
+// AddRevision adds v to the "revision" field.
+func (u *ContentItemUpsertOne) AddRevision(v int) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.AddRevision(v)
+	})
+}
+
+// UpdateRevision sets the "revision" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateRevision() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateRevision()
+	})
+}
+
 // SetCategoryID sets the "category_id" field.
 func (u *ContentItemUpsertOne) SetCategoryID(v string) *ContentItemUpsertOne {
 	return u.Update(func(s *ContentItemUpsert) {
@@ -987,6 +1313,118 @@ func (u *ContentItemUpsertOne) UpdateArchivedAt() *ContentItemUpsertOne {
 func (u *ContentItemUpsertOne) ClearArchivedAt() *ContentItemUpsertOne {
 	return u.Update(func(s *ContentItemUpsert) {
 		s.ClearArchivedAt()
+	})
+}
+
+// SetPublishAt sets the "publish_at" field.
+func (u *ContentItemUpsertOne) SetPublishAt(v time.Time) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetPublishAt(v)
+	})
+}
+
+// UpdatePublishAt sets the "publish_at" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdatePublishAt() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdatePublishAt()
+	})
+}
+
+// ClearPublishAt clears the value of the "publish_at" field.
+func (u *ContentItemUpsertOne) ClearPublishAt() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.ClearPublishAt()
+	})
+}
+
+// SetPublishAttempts sets the "publish_attempts" field.
+func (u *ContentItemUpsertOne) SetPublishAttempts(v int) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetPublishAttempts(v)
+	})
+}
+
+// AddPublishAttempts adds v to the "publish_attempts" field.
+func (u *ContentItemUpsertOne) AddPublishAttempts(v int) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.AddPublishAttempts(v)
+	})
+}
+
+// UpdatePublishAttempts sets the "publish_attempts" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdatePublishAttempts() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdatePublishAttempts()
+	})
+}
+
+// SetAccessMode sets the "access_mode" field.
+func (u *ContentItemUpsertOne) SetAccessMode(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetAccessMode(v)
+	})
+}
+
+// UpdateAccessMode sets the "access_mode" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateAccessMode() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateAccessMode()
+	})
+}
+
+// SetAccessPasswordHash sets the "access_password_hash" field.
+func (u *ContentItemUpsertOne) SetAccessPasswordHash(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetAccessPasswordHash(v)
+	})
+}
+
+// UpdateAccessPasswordHash sets the "access_password_hash" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateAccessPasswordHash() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateAccessPasswordHash()
+	})
+}
+
+// ClearAccessPasswordHash clears the value of the "access_password_hash" field.
+func (u *ContentItemUpsertOne) ClearAccessPasswordHash() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.ClearAccessPasswordHash()
+	})
+}
+
+// SetViewCount sets the "view_count" field.
+func (u *ContentItemUpsertOne) SetViewCount(v int) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetViewCount(v)
+	})
+}
+
+// AddViewCount adds v to the "view_count" field.
+func (u *ContentItemUpsertOne) AddViewCount(v int) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.AddViewCount(v)
+	})
+}
+
+// UpdateViewCount sets the "view_count" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateViewCount() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateViewCount()
+	})
+}
+
+// SetCommentPolicy sets the "comment_policy" field.
+func (u *ContentItemUpsertOne) SetCommentPolicy(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCommentPolicy(v)
+	})
+}
+
+// UpdateCommentPolicy sets the "comment_policy" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateCommentPolicy() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCommentPolicy()
 	})
 }
 
@@ -1343,6 +1781,27 @@ func (u *ContentItemUpsertBulk) UpdatePolicyVersion() *ContentItemUpsertBulk {
 	})
 }
 
+// SetRevision sets the "revision" field.
+func (u *ContentItemUpsertBulk) SetRevision(v int) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetRevision(v)
+	})
+}
+
+// AddRevision adds v to the "revision" field.
+func (u *ContentItemUpsertBulk) AddRevision(v int) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.AddRevision(v)
+	})
+}
+
+// UpdateRevision sets the "revision" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateRevision() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateRevision()
+	})
+}
+
 // SetCategoryID sets the "category_id" field.
 func (u *ContentItemUpsertBulk) SetCategoryID(v string) *ContentItemUpsertBulk {
 	return u.Update(func(s *ContentItemUpsert) {
@@ -1417,6 +1876,118 @@ func (u *ContentItemUpsertBulk) UpdateArchivedAt() *ContentItemUpsertBulk {
 func (u *ContentItemUpsertBulk) ClearArchivedAt() *ContentItemUpsertBulk {
 	return u.Update(func(s *ContentItemUpsert) {
 		s.ClearArchivedAt()
+	})
+}
+
+// SetPublishAt sets the "publish_at" field.
+func (u *ContentItemUpsertBulk) SetPublishAt(v time.Time) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetPublishAt(v)
+	})
+}
+
+// UpdatePublishAt sets the "publish_at" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdatePublishAt() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdatePublishAt()
+	})
+}
+
+// ClearPublishAt clears the value of the "publish_at" field.
+func (u *ContentItemUpsertBulk) ClearPublishAt() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.ClearPublishAt()
+	})
+}
+
+// SetPublishAttempts sets the "publish_attempts" field.
+func (u *ContentItemUpsertBulk) SetPublishAttempts(v int) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetPublishAttempts(v)
+	})
+}
+
+// AddPublishAttempts adds v to the "publish_attempts" field.
+func (u *ContentItemUpsertBulk) AddPublishAttempts(v int) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.AddPublishAttempts(v)
+	})
+}
+
+// UpdatePublishAttempts sets the "publish_attempts" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdatePublishAttempts() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdatePublishAttempts()
+	})
+}
+
+// SetAccessMode sets the "access_mode" field.
+func (u *ContentItemUpsertBulk) SetAccessMode(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetAccessMode(v)
+	})
+}
+
+// UpdateAccessMode sets the "access_mode" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateAccessMode() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateAccessMode()
+	})
+}
+
+// SetAccessPasswordHash sets the "access_password_hash" field.
+func (u *ContentItemUpsertBulk) SetAccessPasswordHash(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetAccessPasswordHash(v)
+	})
+}
+
+// UpdateAccessPasswordHash sets the "access_password_hash" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateAccessPasswordHash() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateAccessPasswordHash()
+	})
+}
+
+// ClearAccessPasswordHash clears the value of the "access_password_hash" field.
+func (u *ContentItemUpsertBulk) ClearAccessPasswordHash() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.ClearAccessPasswordHash()
+	})
+}
+
+// SetViewCount sets the "view_count" field.
+func (u *ContentItemUpsertBulk) SetViewCount(v int) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetViewCount(v)
+	})
+}
+
+// AddViewCount adds v to the "view_count" field.
+func (u *ContentItemUpsertBulk) AddViewCount(v int) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.AddViewCount(v)
+	})
+}
+
+// UpdateViewCount sets the "view_count" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateViewCount() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateViewCount()
+	})
+}
+
+// SetCommentPolicy sets the "comment_policy" field.
+func (u *ContentItemUpsertBulk) SetCommentPolicy(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCommentPolicy(v)
+	})
+}
+
+// UpdateCommentPolicy sets the "comment_policy" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateCommentPolicy() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCommentPolicy()
 	})
 }
 

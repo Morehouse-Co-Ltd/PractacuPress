@@ -2,8 +2,55 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`apps/web/src/pages/admin/ChooseTheme.tsx` */
 const fragment: Dictionary = {
-  '下方是全部主题；点击卡片立即应用，单栏 / 双栏版式会一起切换。也可以创建、导入或删除自己的主题。':
-    'Every theme is listed below; click a card to apply it and the single- / two-column layout switches with it. You can also create, import or delete your own themes.',
+  '下方是全部主题；点击卡片立即应用，单栏 / 卡片 / 双栏版式会一起切换。也可以创建、导入或删除自己的主题。':
+    'Every theme is listed below; click a card to apply it and the single-column / cards / two-column layout switches with it. You can also create, import or delete your own themes.',
+  '上方是当前主题；点击卡片立即应用，单栏 / 卡片 / 双栏版式会一起切换。':
+    'The current theme is above; click a card to apply it and the single-column / cards / two-column layout switches with it.',
+  '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，左上角会出现编辑入口。':
+    'Every theme shows a large cover, its title and a description. Click a card to read the full introduction on the right, then apply it. Hover a cover and an edit shortcut appears in the top-left corner.',
+  '主题库': 'Theme library',
+  '封面在上、标题与描述在下。点击卡片在右侧查看详细介绍，需要时再点“使用这套主题”。':
+    'A large cover on top, title and description below. Click a card to read the full introduction on the right, then choose “Use this theme”.',
+  '点击卡片在右侧查看详细介绍；需要时再点「使用这套主题」。':
+    'Click a card to read the full introduction on the right; choose “Use this theme” when ready.',
+  '导入': 'Import',
+  '查看「{name}」的详细介绍': 'Read the full introduction of “{name}”',
+  '编辑': 'Edit',
+  '主题详情': 'Theme details',
+  '版式': 'Layout',
+  '明暗': 'Light or dark',
+  '标题字体': 'Heading font',
+  '无衬线': 'Sans-serif',
+  '衬线': 'Serif',
+  '正文字号': 'Body size',
+  '内容宽度': 'Content width',
+  '圆角': 'Corner radius',
+  '配色': 'Palette',
+  '背景': 'Background',
+  '文字': 'Text',
+  '强调色': 'Accent',
+  '默认首页组件': 'Default home blocks',
+  '外观分区': 'Appearance sections',
+  '正在使用': 'In use',
+  '使用这套主题': 'Use this theme',
+  '编辑页面编排': 'Edit page layout',
+  '当前主题：{name}': 'Current theme: {name}',
+  '（已微调）': ' (customized)',
+  '选择一个主题查看详细介绍。': 'Select a theme to read its introduction.',
+  '纸白单栏：衬线标题、发丝线与大量留白，适合把注意力留给长文阅读。编辑排版干净克制，图片以正文宽度呈现。':
+    'Paper white, single column: serif headings, hairline rules and generous whitespace keep the focus on long-form reading. The layout is quiet and images sit at body width.',
+  '夜航双栏：冷石墨底色与电光蓝强调，杂志式网格适合图片、专题与社区内容。切到浅色模式会得到同一套设计的冷白重配。':
+    'Night flight, two columns: cool graphite surfaces with electric-blue accents; the magazine grid suits imagery, features and community content. Switching to light mode gives the same design in cool white.',
+  '{layout}版式、{mode}配色。{note}': '{layout} layout with a {mode} palette. {note}',
+  '主题作者备注：{note}': 'Theme author note: {note}',
+  '没有备注。': 'No note.',
+  '卡片': 'Cards',
+  '白底卡片与封面文章，适合现代编辑型站点。':
+    'White cards and cover-led articles for a modern editorial site.',
+  '单栏 / 卡片 / 双栏 · 自定义外观':
+    'Single column / cards / two-column · custom appearance',
+  '单栏取纸白，卡片取白昼，双栏取夜航。':
+    'Paper white for single-column, Daylight for cards, Night flight for two-column.',
   '编辑「{name}」的页面编排': 'Edit the page layout of “{name}”',
   '进入页面编排：用这套主题搭首页与文章页':
     'Open the page builder to compose the home and article pages with this theme',

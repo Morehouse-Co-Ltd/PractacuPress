@@ -11,6 +11,9 @@ const (
 	VerificationEmailVerify   = "email_verify"
 	VerificationPhoneVerify   = "phone_verify"
 	VerificationPasswordReset = "password_reset"
+	// VerificationTwoFactorChallenge marks the jti of a short lived 2FA login
+	// challenge: the row is what makes the token single use (FSD F-04).
+	VerificationTwoFactorChallenge = "two_factor_challenge"
 )
 
 // VerificationToken authorises a one-off email, phone or password action.
@@ -24,7 +27,12 @@ func (VerificationToken) Fields() []ent.Field {
 		idField(),
 		field.String("user_id").MaxLen(36).NotEmpty(),
 		field.String("kind").
-			Validate(oneOf(VerificationEmailVerify, VerificationPhoneVerify, VerificationPasswordReset)),
+			Validate(oneOf(
+				VerificationEmailVerify,
+				VerificationPhoneVerify,
+				VerificationPasswordReset,
+				VerificationTwoFactorChallenge,
+			)),
 		field.String("token_hash").MaxLen(64).NotEmpty(),
 		field.Time("expires_at"),
 		field.Time("consumed_at").Optional().Nillable(),

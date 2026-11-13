@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -163,6 +164,41 @@ func (s *LocalStorage) Delete(ctx context.Context, key string) error {
 		return err
 	}
 	return nil
+}
+
+// List returns every stored object key, relative to the root and slash separated.
+//
+// The garbage collector needs to see objects no row refers to, which is the only way to
+// find files left behind by a crash between an upload and its database row. Keys are
+// sorted so a dry-run report is deterministic.
+func (s *LocalStorage) List(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0)
+	err := filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(s.root, path)
+		if err != nil {
+			return err
+		}
+		keys = append(keys, filepath.ToSlash(relative))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(keys)
+	return keys, nil
 }
 
 // resolve maps a key to a path inside the root.

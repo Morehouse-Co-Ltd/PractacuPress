@@ -1,11 +1,15 @@
 /**
  * 站点运行时信息：访问端口与静态服务器能力。
  *
- * 端口由 `apps/web/scripts/serve.mjs` 提供（npm start）。开发服务器（Vite）
- * 没有运行时接口，此时读取失败，界面按“启动时确定”处理。
+ * 端口由 `apps/web/scripts/serve.mjs`（npm start）或 Windows 启动器提供，
+ * 两者默认都监听 8080。开发服务器（Vite）没有运行时接口，此时读取失败，
+ * 界面按“启动时确定”处理。
  */
 
 import { t } from './i18n';
+
+/** 站点默认开放端口；与 `scripts/serve.mjs`、Windows 启动器保持一致。 */
+export const DEFAULT_SITE_PORT = 8080;
 
 export interface RuntimeApiInfo {
   /** 启动器是否托管了本机 API 进程。 */

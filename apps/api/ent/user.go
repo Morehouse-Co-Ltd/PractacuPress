@@ -25,6 +25,8 @@ type User struct {
 	Bio *string `json:"bio,omitempty"`
 	// AvatarMediaID holds the value of the "avatar_media_id" field.
 	AvatarMediaID *string `json:"avatar_media_id,omitempty"`
+	// EmailVerifiedAt holds the value of the "email_verified_at" field.
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	// Locale holds the value of the "locale" field.
 	Locale string `json:"locale,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -41,7 +43,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldID, user.FieldDisplayName, user.FieldStatus, user.FieldBio, user.FieldAvatarMediaID, user.FieldLocale:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt:
+		case user.FieldEmailVerifiedAt, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -89,6 +91,13 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AvatarMediaID = new(string)
 				*_m.AvatarMediaID = value.String
+			}
+		case user.FieldEmailVerifiedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field email_verified_at", values[i])
+			} else if value.Valid {
+				_m.EmailVerifiedAt = new(time.Time)
+				*_m.EmailVerifiedAt = value.Time
 			}
 		case user.FieldLocale:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -158,6 +167,11 @@ func (_m *User) String() string {
 	if v := _m.AvatarMediaID; v != nil {
 		builder.WriteString("avatar_media_id=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.EmailVerifiedAt; v != nil {
+		builder.WriteString("email_verified_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
 	builder.WriteString("locale=")

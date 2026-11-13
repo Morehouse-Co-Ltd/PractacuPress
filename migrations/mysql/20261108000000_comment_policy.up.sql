@@ -1,0 +1,2 @@
+ALTER TABLE sites ADD COLUMN comments_enabled TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE sites ADD COLUMN comments_require_review TINYINT(1) NOT NULL DEFAULT 0;

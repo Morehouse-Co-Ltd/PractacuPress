@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -26,6 +27,7 @@ import { BLOCK_SKELETON_SHAPES } from '../../lib/loading';
 import { applyDisplayOverrides } from '../../lib/layout';
 import { isVisibleAt, roleFromSession, type VisibilityContext } from '../../lib/visibility';
 import { isPreviewFrame } from '../../lib/access';
+import { pluginBlockRegistry } from '../../lib/plugins/registry';
 import { useAuth } from '../../lib/session';
 import { useT } from '../../lib/i18n';
 import { usePageSkeleton } from '../SkeletonMode';
@@ -34,6 +36,7 @@ import { useBlockDataContext } from './ArticleContext';
 import { BlockSkeleton } from './BlockSkeleton';
 import { CLASSIC_RENDERERS } from './Classic';
 import { NIGHT_RENDERERS } from './Nightflight';
+import { DAYLIGHT_RENDERERS } from './Daylight';
 import { CONTENT_RENDERERS } from './ContentBlocks';
 import { ColumnsBlock, ContainerBlock, GridBlock, SectionBlock } from './LayoutBlocks';
 import { MEDIA_RENDERERS } from './MediaBlocks';
@@ -68,6 +71,7 @@ import { ScreenScopeProvider, type ScreenScope } from './ScreenScope';
 const RENDERERS: Record<string, (props: { block: BlockInstance }) => ReactElement | null> = {
   ...CLASSIC_RENDERERS,
   ...NIGHT_RENDERERS,
+  ...DAYLIGHT_RENDERERS,
   ...CONTENT_RENDERERS,
   ...MEDIA_RENDERERS,
   ...DATA_RENDERERS,
@@ -131,7 +135,18 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
         : block,
     [block, dataContext],
   );
-  const Renderer = RENDERERS[displayBlock.type];
+  // Plugin block types are a runtime registry: the built-in map is static, so a
+  // plugin can only add a type that the built-in map does not already own.
+  const blockRevision = useSyncExternalStore(
+    pluginBlockRegistry.subscribe,
+    pluginBlockRegistry.getVersion,
+    pluginBlockRegistry.getVersion,
+  );
+  const pluginRenderer = useMemo(
+    () => pluginBlockRegistry.get(displayBlock.type),
+    [displayBlock.type, blockRevision],
+  );
+  const Renderer = blockRendererFor(displayBlock.type, pluginRenderer);
   const isColumns = displayBlock.type === 'columns';
   const isContainer = displayBlock.type === 'container';
   // 栅格和分栏一样，自己负责递归子区块（见下面的 GridBlock 分支）。
@@ -232,6 +247,17 @@ function flat(blocks: BlockInstance[]) {
   return blocks.map((block) => <BlockView key={block.id} block={block} />);
 }
 
+/**
+ * Resolves a block type. Built-in renderers win: a plugin can add a new type
+ * but can never shadow a shipped block, even if a future registry call tries.
+ */
+export function blockRendererFor(
+  type: string,
+  pluginRenderer?: (props: { block: BlockInstance }) => ReactNode,
+): ((props: { block: BlockInstance }) => ReactNode) | undefined {
+  return RENDERERS[type] ?? pluginRenderer ?? pluginBlockRegistry.get(type);
+}
+
 /** 前台按窗口宽度选择设备；开启「不同设备分割」时取对应设备的编排。 */
 function useViewportDevice(): BuilderDevice {
   const [device, setDevice] = useState<BuilderDevice>(() =>
@@ -288,6 +314,9 @@ function renderBlocks(
   variant: LayoutVariant,
   t: ReturnType<typeof useT>,
 ) {
+  if (variant === 'daylight') {
+    return <div className="pp-screen pp-screen-daylight">{flat(blocks)}</div>;
+  }
   if (variant !== 'bento') return <>{flat(blocks)}</>;
 
   const lead: BlockInstance[] = [];

@@ -160,7 +160,7 @@ func (h *Handler) CreateUpload(c *gin.Context) {
 	})
 }
 
-// DownloadAsset streams a clean asset.
+// DownloadAsset streams a clean asset, or one of its resized representations.
 //
 // Only clean assets are reachable: an object that failed inspection must not be
 // served even to its uploader, because serving it is exactly the outcome the scan
@@ -169,21 +169,151 @@ func (h *Handler) CreateUpload(c *gin.Context) {
 // A reader with no session is served too: an image embedded in a published article has
 // to load for a logged-out visitor. The tenant then comes from the resolved host - the
 // only thing an anonymous request has - and a members-only site still refuses.
+//
+// The representation is selected with a query parameter on this same route, so no new
+// endpoint (and no contract change) is needed:
+//
+//	?w=320                     one of the supported widths
+//	?variant=thumb             short spelling of ?w=320
+//	?variant=medium            ?w=768
+//	?variant=original|full     original bytes
 func (h *Handler) DownloadAsset(c *gin.Context) {
-	asset, reader, err := h.openForCaller(c, c.Param("assetID"))
+	width, variantErr := parseVariant(c.Query("w"), c.Query("variant"))
+	if variantErr != nil {
+		_ = c.Error(apperr.Validation("unknown media variant"))
+		return
+	}
+
+	asset, reader, servedWidth, err := h.openRepresentation(c, c.Param("assetID"), width)
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
 	}
 	defer reader.Close()
 
-	// The type comes from the stored asset, never from the request, and the browser is
-	// told not to sniff a different one.
+	// The type comes from the stored asset (or its derivative), never from the request,
+	// and the browser is told not to sniff a different one.
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Content-Disposition", "inline")
 	c.Header("Cache-Control", cacheControlFor(asset.Purpose))
 
+	// A stable ETag lets the browser revalidate a variant it already holds, which is
+	// what keeps a long article of images from re-downloading on every visit.
+	etag := representationETag(asset, servedWidth)
+	c.Header("ETag", etag)
+	if etagMatches(c.GetHeader("If-None-Match"), etag) {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
 	c.DataFromReader(http.StatusOK, asset.Size, asset.MIME, reader, nil)
+}
+
+// parseVariant resolves the optional representation selector.
+//
+// An unknown value is a client error rather than a silent fallback: a typo in a srcset
+// would otherwise look like a missing image, and the caller could never discover it.
+func parseVariant(widthRaw, variantRaw string) (int, error) {
+	widthRaw = strings.TrimSpace(widthRaw)
+	variantRaw = strings.ToLower(strings.TrimSpace(variantRaw))
+
+	if widthRaw != "" {
+		width, err := strconv.Atoi(widthRaw)
+		if err != nil || !ValidVariantWidth(width) {
+			return 0, ErrInvalidInput
+		}
+		return width, nil
+	}
+
+	switch variantRaw {
+	case "", "original", "full":
+		return 0, nil
+	case "thumb", "thumbnail":
+		return VariantThumbWidth, nil
+	case "medium":
+		return DefaultVariantWidth, nil
+	}
+
+	// Also accept the key-shaped spelling, ?variant=w768.
+	if strings.HasPrefix(variantRaw, "w") {
+		if width, err := strconv.Atoi(variantRaw[1:]); err == nil && ValidVariantWidth(width) {
+			return width, nil
+		}
+	}
+	return 0, ErrInvalidInput
+}
+
+// representationETag names one representation of an asset. The asset id and the width
+// are immutable, so the value is stable across requests and replicas.
+func representationETag(asset Asset, width int) string {
+	if width > 0 {
+		return `"` + asset.ID + "-w" + strconv.Itoa(width) + `"`
+	}
+	return `"` + asset.ID + `"`
+}
+
+// etagMatches implements the If-None-Match comparison, including the weak prefix and
+// the wildcard. A list is compared member by member.
+func etagMatches(header, etag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" {
+			return true
+		}
+		if strings.TrimPrefix(candidate, "W/") == etag {
+			return true
+		}
+	}
+	return false
+}
+
+// openRepresentation returns the requested derivative, or the original when a
+// derivative cannot be produced.
+//
+// servedWidth is zero when the original bytes are returned: the ETag must describe what
+// was actually sent, not what was asked for.
+func (h *Handler) openRepresentation(
+	c *gin.Context,
+	assetID string,
+	width int,
+) (Asset, io.ReadCloser, int, error) {
+	if width <= 0 {
+		asset, reader, err := h.openForCaller(c, assetID)
+		return asset, reader, 0, err
+	}
+
+	asset, reader, err := h.openVariantForCaller(c, assetID, width)
+	if err == nil {
+		return asset, reader, width, nil
+	}
+	if !errors.Is(err, ErrDerivativeUnavailable) {
+		// A non-clean, out-of-scope or missing asset must stay 404. Only a clean asset
+		// whose bytes cannot be resized falls through to the larger original.
+		return Asset{}, nil, width, err
+	}
+	asset, reader, err = h.openForCaller(c, assetID)
+	return asset, reader, 0, err
+}
+
+// openVariantForCaller applies the same caller/site rules as openForCaller before the
+// service produces a derivative.
+func (h *Handler) openVariantForCaller(
+	c *gin.Context,
+	assetID string,
+	width int,
+) (Asset, io.ReadCloser, error) {
+	if actor, ok := h.principal(c); ok {
+		return h.service.OpenVariant(c.Request.Context(), actor, assetID, width)
+	}
+
+	resolved, ok := h.site(c)
+	if !ok {
+		return Asset{}, nil, apperr.New(apperr.CodeSiteNotFound)
+	}
+	if resolved.IsMembersOnly() {
+		return Asset{}, nil, apperr.Unauthenticated().WithDetail("reason", "members_only_site")
+	}
+	return h.service.OpenVariantInSite(c.Request.Context(), resolved.ID, assetID, width)
 }
 
 // openForCaller resolves the asset for an authenticated caller or an anonymous reader.
@@ -205,6 +335,7 @@ func (h *Handler) openForCaller(c *gin.Context, assetID string) (Asset, io.ReadC
 	}
 	return h.service.OpenAssetInSite(c.Request.Context(), resolved.ID, assetID)
 }
+
 // UploadContent accepts the bytes for an open session.
 func (h *Handler) UploadContent(c *gin.Context) {
 	actor, ok := h.principal(c)
@@ -242,6 +373,7 @@ func (h *Handler) UploadContent(c *gin.Context) {
 		ExpiresAt:  upload.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
+
 // CompleteUpload inspects the stored object and returns the resulting asset.
 func (h *Handler) CompleteUpload(c *gin.Context) {
 	actor, ok := h.principal(c)
@@ -345,6 +477,8 @@ func mapError(err error) *apperr.Problem {
 		return apperr.PermissionDenied()
 	case errors.Is(err, ErrAlreadyCompleted):
 		return apperr.Conflict(apperr.CodeConflict).WithMessage("上传已完成")
+	case errors.Is(err, ErrQuotaExceeded):
+		return apperr.New(apperr.CodeQuotaExceeded)
 	case errors.Is(err, ErrSecurityUnavailable):
 		return apperr.New(apperr.CodeSecurityUnavailable)
 	case errors.Is(err, ErrScanRejected):

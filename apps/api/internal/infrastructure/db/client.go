@@ -3,7 +3,11 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"net/url"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,6 +19,211 @@ import (
 	// The generated package is also named ent, so it is aliased here.
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
 )
+
+// SchemaVersion identifies the reviewed migration level this binary expects.
+//
+// It mirrors the newest file in migrations/<dialect>/; the backup manifest stores
+// it so a restore can refuse a package produced by a newer schema and report when
+// an older one needed the additive migration pass.
+const SchemaVersion = "20261117000000"
+
+// ErrSnapshotUnsupported means the active driver cannot be snapshotted by this
+// process. SQLite has a consistent, online snapshot command; MySQL and PostgreSQL
+// require their own dump tools, which this binary does not shell out to.
+var ErrSnapshotUnsupported = errors.New("db: snapshot unsupported for this driver")
+
+// Stats is the small, non sensitive inventory a restore uses to decide whether a
+// database is empty and to report what came back.
+type Stats struct {
+	// SchemaReady reports whether the core tables exist at all.
+	SchemaReady bool
+	Sites       int
+	Users       int
+	Content     int
+}
+
+// DesignRow is one site design captured for a backup package.
+//
+// It is a raw row instead of an Ent model on purpose: a backup must still work
+// when the database predates the newest Ent column, and a generated query selects
+// every column.
+type DesignRow struct {
+	SiteID    string
+	Name      string
+	Slug      string
+	Domain    string
+	Revision  int
+	Document  []byte
+	UpdatedAt time.Time
+}
+
+// DesignRows reads every site and its saved design using only columns that have
+// existed since the design table was introduced.
+func (d *DB) DesignRows(ctx context.Context) ([]DesignRow, error) {
+	sites, err := d.sqlDB.QueryContext(ctx,
+		"SELECT id, name, slug, COALESCE(domain, '') FROM sites ORDER BY id",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer sites.Close()
+
+	bySite := make(map[string]DesignRow)
+	for sites.Next() {
+		var row DesignRow
+		if err := sites.Scan(&row.SiteID, &row.Name, &row.Slug, &row.Domain); err != nil {
+			return nil, err
+		}
+		bySite[row.SiteID] = row
+	}
+	if err := sites.Err(); err != nil {
+		return nil, err
+	}
+
+	hasDesigns, err := d.tableExists(ctx, "site_customizations")
+	if err != nil {
+		return nil, err
+	}
+	if hasDesigns {
+		rows, queryErr := d.sqlDB.QueryContext(ctx,
+			"SELECT site_id, revision, document, updated_at FROM site_customizations ORDER BY site_id",
+		)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var siteID, document string
+			var revision int
+			var updatedAt time.Time
+			if err := rows.Scan(&siteID, &revision, &document, &updatedAt); err != nil {
+				return nil, err
+			}
+			row, exists := bySite[siteID]
+			if !exists {
+				continue
+			}
+			row.Revision = revision
+			row.Document = []byte(document)
+			row.UpdatedAt = updatedAt
+			bySite[siteID] = row
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	ordered := make([]DesignRow, 0, len(bySite))
+	ids := make([]string, 0, len(bySite))
+	for id := range bySite {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		ordered = append(ordered, bySite[id])
+	}
+	return ordered, nil
+}
+
+// Snapshot writes a consistent copy of a SQLite database to dest.
+//
+// VACUUM INTO is the supported equivalent of the sqlite3 `.backup` command: it
+// runs inside a read transaction, so a concurrent writer cannot produce a torn
+// file, and the result is a normal database with no WAL sidecar. dest must not
+// already exist.
+func (d *DB) Snapshot(ctx context.Context, dest string) error {
+	if d.driver != config.DriverSQLite {
+		return fmt.Errorf("%w: driver=%s", ErrSnapshotUnsupported, d.driver)
+	}
+	if strings.TrimSpace(dest) == "" {
+		return errors.New("db: snapshot destination is required")
+	}
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf("db: snapshot destination already exists: %s", dest)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if _, err := d.sqlDB.ExecContext(ctx, "VACUUM INTO ?", dest); err != nil {
+		return fmt.Errorf("db: vacuum into snapshot: %w", err)
+	}
+	return nil
+}
+
+// Inspect returns the row counts a restore safety check needs.
+//
+// Only SQLite is supported because restore itself is SQLite only. A database
+// file that does not exist yet, or one without the core tables, reports an empty
+// schema so a first install can be restored without a confirmation prompt.
+func (d *DB) Inspect(ctx context.Context) (Stats, error) {
+	var stats Stats
+	ready, err := d.tableExists(ctx, "sites")
+	if err != nil {
+		return Stats{}, err
+	}
+	stats.SchemaReady = ready
+	if !ready {
+		return stats, nil
+	}
+
+	// Every table name is a compile time constant in this file, never caller input.
+	for _, probe := range []struct {
+		table string
+		into  *int
+	}{
+		{"sites", &stats.Sites},
+		{"users", &stats.Users},
+		{"content_items", &stats.Content},
+	} {
+		exists, existsErr := d.tableExists(ctx, probe.table)
+		if existsErr != nil {
+			return Stats{}, existsErr
+		}
+		if !exists {
+			continue
+		}
+		if scanErr := d.sqlDB.QueryRowContext(
+			ctx, "SELECT COUNT(*) FROM "+probe.table,
+		).Scan(probe.into); scanErr != nil {
+			return Stats{}, scanErr
+		}
+	}
+	return stats, nil
+}
+
+// VerifySchema checks that the restored database carries the core tables.
+//
+// The additive migration pass runs before this, so a database produced by an
+// older backup is repaired; a missing table after that means the file is not a
+// Practacu Press database at all.
+func (d *DB) VerifySchema(ctx context.Context) error {
+	required := []string{
+		"sites", "users", "site_members", "content_items",
+		"content_revisions", "media_assets", "site_customizations",
+	}
+	for _, table := range required {
+		exists, err := d.tableExists(ctx, table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("db: restored database is missing table %q", table)
+		}
+	}
+	return nil
+}
+
+func (d *DB) tableExists(ctx context.Context, table string) (bool, error) {
+	var count int
+	err := d.sqlDB.QueryRowContext(
+		ctx,
+		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+		table,
+	).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
 
 // Pool sizing. SQLite takes a single connection on purpose: it has one writer, and
 // a larger pool converts concurrent writes into "database is locked" errors
@@ -100,6 +309,10 @@ func (d *DB) Ping(ctx context.Context) error { return d.sqlDB.PingContext(ctx) }
 
 // Driver returns the canonical driver name.
 func (d *DB) Driver() string { return d.driver }
+
+// SQL exposes the underlying pool for infrastructure that must run dialect SQL
+// outside Ent, such as the full text search index. Callers must not close it.
+func (d *DB) SQL() *sql.DB { return d.sqlDB }
 
 // Dialect returns the Ent dialect constant.
 func (d *DB) Dialect() string { return dialectOfCanonical(d.driver) }

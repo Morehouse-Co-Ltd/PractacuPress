@@ -25,6 +25,8 @@ const (
 	FieldSubjectID = "subject_id"
 	// FieldPayload holds the string denoting the payload field in the database.
 	FieldPayload = "payload"
+	// FieldDedupeKey holds the string denoting the dedupe_key field in the database.
+	FieldDedupeKey = "dedupe_key"
 	// FieldReadAt holds the string denoting the read_at field in the database.
 	FieldReadAt = "read_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -42,6 +44,7 @@ var Columns = []string{
 	FieldActorID,
 	FieldSubjectID,
 	FieldPayload,
+	FieldDedupeKey,
 	FieldReadAt,
 	FieldCreatedAt,
 }
@@ -67,6 +70,8 @@ var (
 	ActorIDValidator func(string) error
 	// SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
 	SubjectIDValidator func(string) error
+	// DedupeKeyValidator is a validator for the "dedupe_key" field. It is called by the builders before save.
+	DedupeKeyValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -106,6 +111,11 @@ func ByActorID(opts ...sql.OrderTermOption) OrderOption {
 // BySubjectID orders the results by the subject_id field.
 func BySubjectID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubjectID, opts...).ToFunc()
+}
+
+// ByDedupeKey orders the results by the dedupe_key field.
+func ByDedupeKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDedupeKey, opts...).ToFunc()
 }
 
 // ByReadAt orders the results by the read_at field.

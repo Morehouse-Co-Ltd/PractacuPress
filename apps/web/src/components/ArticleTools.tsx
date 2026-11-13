@@ -61,11 +61,11 @@ export function useArticleToc(html: string | undefined): TocItem[] {
   return items;
 }
 
-export function ArticleToc({ items }: { items: TocItem[] }) {
+export function ArticleToc({ items, className = '' }: { items: TocItem[]; className?: string }) {
   const t = useT();
   if (items.length < 2) return null;
   return (
-    <nav className="article-toc" aria-label={t('本文目录')}>
+    <nav className={`article-toc${className ? ` ${className}` : ''}`} aria-label={t('本文目录')}>
       <p className="article-toc-label">{t('本文目录')}</p>
       <ol>
         {items.map((item) => (
@@ -77,6 +77,81 @@ export function ArticleToc({ items }: { items: TocItem[] }) {
         ))}
       </ol>
     </nav>
+  );
+}
+
+/**
+ * 当前读到的标题。
+ *
+ * 只按「标题顶端已经越过页头」判断，不依赖 IntersectionObserver 的可见比例：
+ * 长标题和短标题混排时，比例法会把一个大标题误判成还没进入阅读区。
+ */
+function useActiveHeading(items: TocItem[]): string {
+  const [active, setActive] = useState('');
+
+  useEffect(() => {
+    if (!items.length) {
+      setActive('');
+      return;
+    }
+    let ticking = false;
+    const update = () => {
+      ticking = false;
+      const threshold = 148;
+      let current = items[0]?.id ?? '';
+      for (const item of items) {
+        const element = document.getElementById(item.id);
+        if (!element) continue;
+        if (element.getBoundingClientRect().top <= threshold) current = item.id;
+        else break;
+      }
+      setActive((prev) => (prev === current ? prev : current));
+    };
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [items]);
+
+  return active;
+}
+
+/**
+ * 桌面端左侧的悬浮目录。
+ *
+ * 白昼被合并进夜航后，文章页改成「中央阅读列 + 左侧悬浮目录」：目录固定在
+ * 阅读列左侧的空白里，不占正文宽度，也不再把正文挤到屏幕偏右。窄屏隐藏，
+ * 由正文上方的折叠目录接管。
+ */
+export function FloatingToc({ items }: { items: TocItem[] }) {
+  const t = useT();
+  const active = useActiveHeading(items);
+  if (items.length < 2) return null;
+  return (
+    <aside className="article-float-toc" aria-label={t('本文目录')}>
+      <p className="article-float-toc-label">{t('本文目录')}</p>
+      <ol>
+        {items.map((item) => (
+          <li key={item.id}>
+            <a
+              href={`#${item.id}`}
+              className={`${item.level === 3 ? 'is-sub' : ''}${active === item.id ? ' is-active' : ''}`.trim()}
+              aria-current={active === item.id ? 'location' : undefined}
+            >
+              {item.text}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </aside>
   );
 }
 

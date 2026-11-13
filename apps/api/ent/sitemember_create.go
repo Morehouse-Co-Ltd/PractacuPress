@@ -63,6 +63,34 @@ func (_c *SiteMemberCreate) SetNillableStatus(v *string) *SiteMemberCreate {
 	return _c
 }
 
+// SetGroupKey sets the "group_key" field.
+func (_c *SiteMemberCreate) SetGroupKey(v string) *SiteMemberCreate {
+	_c.mutation.SetGroupKey(v)
+	return _c
+}
+
+// SetNillableGroupKey sets the "group_key" field if the given value is not nil.
+func (_c *SiteMemberCreate) SetNillableGroupKey(v *string) *SiteMemberCreate {
+	if v != nil {
+		_c.SetGroupKey(*v)
+	}
+	return _c
+}
+
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (_c *SiteMemberCreate) SetMediaQuotaBytes(v int64) *SiteMemberCreate {
+	_c.mutation.SetMediaQuotaBytes(v)
+	return _c
+}
+
+// SetNillableMediaQuotaBytes sets the "media_quota_bytes" field if the given value is not nil.
+func (_c *SiteMemberCreate) SetNillableMediaQuotaBytes(v *int64) *SiteMemberCreate {
+	if v != nil {
+		_c.SetMediaQuotaBytes(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *SiteMemberCreate) SetCreatedAt(v time.Time) *SiteMemberCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -148,6 +176,10 @@ func (_c *SiteMemberCreate) defaults() {
 		v := sitemember.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.GroupKey(); !ok {
+		v := sitemember.DefaultGroupKey
+		_c.mutation.SetGroupKey(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := sitemember.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -194,6 +226,14 @@ func (_c *SiteMemberCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := sitemember.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "SiteMember.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.GroupKey(); !ok {
+		return &ValidationError{Name: "group_key", err: errors.New(`ent: missing required field "SiteMember.group_key"`)}
+	}
+	if v, ok := _c.mutation.GroupKey(); ok {
+		if err := sitemember.GroupKeyValidator(v); err != nil {
+			return &ValidationError{Name: "group_key", err: fmt.Errorf(`ent: validator failed for field "SiteMember.group_key": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -258,6 +298,14 @@ func (_c *SiteMemberCreate) createSpec() (*SiteMember, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(sitemember.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.GroupKey(); ok {
+		_spec.SetField(sitemember.FieldGroupKey, field.TypeString, value)
+		_node.GroupKey = value
+	}
+	if value, ok := _c.mutation.MediaQuotaBytes(); ok {
+		_spec.SetField(sitemember.FieldMediaQuotaBytes, field.TypeInt64, value)
+		_node.MediaQuotaBytes = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(sitemember.FieldCreatedAt, field.TypeTime, value)
@@ -340,6 +388,42 @@ func (u *SiteMemberUpsert) SetStatus(v string) *SiteMemberUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *SiteMemberUpsert) UpdateStatus() *SiteMemberUpsert {
 	u.SetExcluded(sitemember.FieldStatus)
+	return u
+}
+
+// SetGroupKey sets the "group_key" field.
+func (u *SiteMemberUpsert) SetGroupKey(v string) *SiteMemberUpsert {
+	u.Set(sitemember.FieldGroupKey, v)
+	return u
+}
+
+// UpdateGroupKey sets the "group_key" field to the value that was provided on create.
+func (u *SiteMemberUpsert) UpdateGroupKey() *SiteMemberUpsert {
+	u.SetExcluded(sitemember.FieldGroupKey)
+	return u
+}
+
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (u *SiteMemberUpsert) SetMediaQuotaBytes(v int64) *SiteMemberUpsert {
+	u.Set(sitemember.FieldMediaQuotaBytes, v)
+	return u
+}
+
+// UpdateMediaQuotaBytes sets the "media_quota_bytes" field to the value that was provided on create.
+func (u *SiteMemberUpsert) UpdateMediaQuotaBytes() *SiteMemberUpsert {
+	u.SetExcluded(sitemember.FieldMediaQuotaBytes)
+	return u
+}
+
+// AddMediaQuotaBytes adds v to the "media_quota_bytes" field.
+func (u *SiteMemberUpsert) AddMediaQuotaBytes(v int64) *SiteMemberUpsert {
+	u.Add(sitemember.FieldMediaQuotaBytes, v)
+	return u
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (u *SiteMemberUpsert) ClearMediaQuotaBytes() *SiteMemberUpsert {
+	u.SetNull(sitemember.FieldMediaQuotaBytes)
 	return u
 }
 
@@ -437,6 +521,48 @@ func (u *SiteMemberUpsertOne) SetStatus(v string) *SiteMemberUpsertOne {
 func (u *SiteMemberUpsertOne) UpdateStatus() *SiteMemberUpsertOne {
 	return u.Update(func(s *SiteMemberUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetGroupKey sets the "group_key" field.
+func (u *SiteMemberUpsertOne) SetGroupKey(v string) *SiteMemberUpsertOne {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.SetGroupKey(v)
+	})
+}
+
+// UpdateGroupKey sets the "group_key" field to the value that was provided on create.
+func (u *SiteMemberUpsertOne) UpdateGroupKey() *SiteMemberUpsertOne {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.UpdateGroupKey()
+	})
+}
+
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (u *SiteMemberUpsertOne) SetMediaQuotaBytes(v int64) *SiteMemberUpsertOne {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.SetMediaQuotaBytes(v)
+	})
+}
+
+// AddMediaQuotaBytes adds v to the "media_quota_bytes" field.
+func (u *SiteMemberUpsertOne) AddMediaQuotaBytes(v int64) *SiteMemberUpsertOne {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.AddMediaQuotaBytes(v)
+	})
+}
+
+// UpdateMediaQuotaBytes sets the "media_quota_bytes" field to the value that was provided on create.
+func (u *SiteMemberUpsertOne) UpdateMediaQuotaBytes() *SiteMemberUpsertOne {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.UpdateMediaQuotaBytes()
+	})
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (u *SiteMemberUpsertOne) ClearMediaQuotaBytes() *SiteMemberUpsertOne {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.ClearMediaQuotaBytes()
 	})
 }
 
@@ -703,6 +829,48 @@ func (u *SiteMemberUpsertBulk) SetStatus(v string) *SiteMemberUpsertBulk {
 func (u *SiteMemberUpsertBulk) UpdateStatus() *SiteMemberUpsertBulk {
 	return u.Update(func(s *SiteMemberUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetGroupKey sets the "group_key" field.
+func (u *SiteMemberUpsertBulk) SetGroupKey(v string) *SiteMemberUpsertBulk {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.SetGroupKey(v)
+	})
+}
+
+// UpdateGroupKey sets the "group_key" field to the value that was provided on create.
+func (u *SiteMemberUpsertBulk) UpdateGroupKey() *SiteMemberUpsertBulk {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.UpdateGroupKey()
+	})
+}
+
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (u *SiteMemberUpsertBulk) SetMediaQuotaBytes(v int64) *SiteMemberUpsertBulk {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.SetMediaQuotaBytes(v)
+	})
+}
+
+// AddMediaQuotaBytes adds v to the "media_quota_bytes" field.
+func (u *SiteMemberUpsertBulk) AddMediaQuotaBytes(v int64) *SiteMemberUpsertBulk {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.AddMediaQuotaBytes(v)
+	})
+}
+
+// UpdateMediaQuotaBytes sets the "media_quota_bytes" field to the value that was provided on create.
+func (u *SiteMemberUpsertBulk) UpdateMediaQuotaBytes() *SiteMemberUpsertBulk {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.UpdateMediaQuotaBytes()
+	})
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (u *SiteMemberUpsertBulk) ClearMediaQuotaBytes() *SiteMemberUpsertBulk {
+	return u.Update(func(s *SiteMemberUpsert) {
+		s.ClearMediaQuotaBytes()
 	})
 }
 

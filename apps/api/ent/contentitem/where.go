@@ -119,6 +119,11 @@ func PolicyVersion(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldPolicyVersion, v))
 }
 
+// Revision applies equality check predicate on the "revision" field. It's identical to RevisionEQ.
+func Revision(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldRevision, v))
+}
+
 // CategoryID applies equality check predicate on the "category_id" field. It's identical to CategoryIDEQ.
 func CategoryID(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldCategoryID, v))
@@ -137,6 +142,36 @@ func PublishedAt(v time.Time) predicate.ContentItem {
 // ArchivedAt applies equality check predicate on the "archived_at" field. It's identical to ArchivedAtEQ.
 func ArchivedAt(v time.Time) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldArchivedAt, v))
+}
+
+// PublishAt applies equality check predicate on the "publish_at" field. It's identical to PublishAtEQ.
+func PublishAt(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldPublishAt, v))
+}
+
+// PublishAttempts applies equality check predicate on the "publish_attempts" field. It's identical to PublishAttemptsEQ.
+func PublishAttempts(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldPublishAttempts, v))
+}
+
+// AccessMode applies equality check predicate on the "access_mode" field. It's identical to AccessModeEQ.
+func AccessMode(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldAccessMode, v))
+}
+
+// AccessPasswordHash applies equality check predicate on the "access_password_hash" field. It's identical to AccessPasswordHashEQ.
+func AccessPasswordHash(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldAccessPasswordHash, v))
+}
+
+// ViewCount applies equality check predicate on the "view_count" field. It's identical to ViewCountEQ.
+func ViewCount(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldViewCount, v))
+}
+
+// CommentPolicy applies equality check predicate on the "comment_policy" field. It's identical to CommentPolicyEQ.
+func CommentPolicy(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCommentPolicy, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -864,6 +899,46 @@ func PolicyVersionContainsFold(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldContainsFold(FieldPolicyVersion, v))
 }
 
+// RevisionEQ applies the EQ predicate on the "revision" field.
+func RevisionEQ(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldRevision, v))
+}
+
+// RevisionNEQ applies the NEQ predicate on the "revision" field.
+func RevisionNEQ(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldRevision, v))
+}
+
+// RevisionIn applies the In predicate on the "revision" field.
+func RevisionIn(vs ...int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldRevision, vs...))
+}
+
+// RevisionNotIn applies the NotIn predicate on the "revision" field.
+func RevisionNotIn(vs ...int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldRevision, vs...))
+}
+
+// RevisionGT applies the GT predicate on the "revision" field.
+func RevisionGT(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldRevision, v))
+}
+
+// RevisionGTE applies the GTE predicate on the "revision" field.
+func RevisionGTE(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldRevision, v))
+}
+
+// RevisionLT applies the LT predicate on the "revision" field.
+func RevisionLT(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldRevision, v))
+}
+
+// RevisionLTE applies the LTE predicate on the "revision" field.
+func RevisionLTE(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldRevision, v))
+}
+
 // CategoryIDEQ applies the EQ predicate on the "category_id" field.
 func CategoryIDEQ(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldCategoryID, v))
@@ -1102,6 +1177,341 @@ func ArchivedAtIsNil() predicate.ContentItem {
 // ArchivedAtNotNil applies the NotNil predicate on the "archived_at" field.
 func ArchivedAtNotNil() predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldNotNull(FieldArchivedAt))
+}
+
+// PublishAtEQ applies the EQ predicate on the "publish_at" field.
+func PublishAtEQ(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldPublishAt, v))
+}
+
+// PublishAtNEQ applies the NEQ predicate on the "publish_at" field.
+func PublishAtNEQ(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldPublishAt, v))
+}
+
+// PublishAtIn applies the In predicate on the "publish_at" field.
+func PublishAtIn(vs ...time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldPublishAt, vs...))
+}
+
+// PublishAtNotIn applies the NotIn predicate on the "publish_at" field.
+func PublishAtNotIn(vs ...time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldPublishAt, vs...))
+}
+
+// PublishAtGT applies the GT predicate on the "publish_at" field.
+func PublishAtGT(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldPublishAt, v))
+}
+
+// PublishAtGTE applies the GTE predicate on the "publish_at" field.
+func PublishAtGTE(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldPublishAt, v))
+}
+
+// PublishAtLT applies the LT predicate on the "publish_at" field.
+func PublishAtLT(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldPublishAt, v))
+}
+
+// PublishAtLTE applies the LTE predicate on the "publish_at" field.
+func PublishAtLTE(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldPublishAt, v))
+}
+
+// PublishAtIsNil applies the IsNil predicate on the "publish_at" field.
+func PublishAtIsNil() predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIsNull(FieldPublishAt))
+}
+
+// PublishAtNotNil applies the NotNil predicate on the "publish_at" field.
+func PublishAtNotNil() predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotNull(FieldPublishAt))
+}
+
+// PublishAttemptsEQ applies the EQ predicate on the "publish_attempts" field.
+func PublishAttemptsEQ(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldPublishAttempts, v))
+}
+
+// PublishAttemptsNEQ applies the NEQ predicate on the "publish_attempts" field.
+func PublishAttemptsNEQ(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldPublishAttempts, v))
+}
+
+// PublishAttemptsIn applies the In predicate on the "publish_attempts" field.
+func PublishAttemptsIn(vs ...int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldPublishAttempts, vs...))
+}
+
+// PublishAttemptsNotIn applies the NotIn predicate on the "publish_attempts" field.
+func PublishAttemptsNotIn(vs ...int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldPublishAttempts, vs...))
+}
+
+// PublishAttemptsGT applies the GT predicate on the "publish_attempts" field.
+func PublishAttemptsGT(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldPublishAttempts, v))
+}
+
+// PublishAttemptsGTE applies the GTE predicate on the "publish_attempts" field.
+func PublishAttemptsGTE(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldPublishAttempts, v))
+}
+
+// PublishAttemptsLT applies the LT predicate on the "publish_attempts" field.
+func PublishAttemptsLT(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldPublishAttempts, v))
+}
+
+// PublishAttemptsLTE applies the LTE predicate on the "publish_attempts" field.
+func PublishAttemptsLTE(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldPublishAttempts, v))
+}
+
+// AccessModeEQ applies the EQ predicate on the "access_mode" field.
+func AccessModeEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldAccessMode, v))
+}
+
+// AccessModeNEQ applies the NEQ predicate on the "access_mode" field.
+func AccessModeNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldAccessMode, v))
+}
+
+// AccessModeIn applies the In predicate on the "access_mode" field.
+func AccessModeIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldAccessMode, vs...))
+}
+
+// AccessModeNotIn applies the NotIn predicate on the "access_mode" field.
+func AccessModeNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldAccessMode, vs...))
+}
+
+// AccessModeGT applies the GT predicate on the "access_mode" field.
+func AccessModeGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldAccessMode, v))
+}
+
+// AccessModeGTE applies the GTE predicate on the "access_mode" field.
+func AccessModeGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldAccessMode, v))
+}
+
+// AccessModeLT applies the LT predicate on the "access_mode" field.
+func AccessModeLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldAccessMode, v))
+}
+
+// AccessModeLTE applies the LTE predicate on the "access_mode" field.
+func AccessModeLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldAccessMode, v))
+}
+
+// AccessModeContains applies the Contains predicate on the "access_mode" field.
+func AccessModeContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldAccessMode, v))
+}
+
+// AccessModeHasPrefix applies the HasPrefix predicate on the "access_mode" field.
+func AccessModeHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldAccessMode, v))
+}
+
+// AccessModeHasSuffix applies the HasSuffix predicate on the "access_mode" field.
+func AccessModeHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldAccessMode, v))
+}
+
+// AccessModeEqualFold applies the EqualFold predicate on the "access_mode" field.
+func AccessModeEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldAccessMode, v))
+}
+
+// AccessModeContainsFold applies the ContainsFold predicate on the "access_mode" field.
+func AccessModeContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldAccessMode, v))
+}
+
+// AccessPasswordHashEQ applies the EQ predicate on the "access_password_hash" field.
+func AccessPasswordHashEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashNEQ applies the NEQ predicate on the "access_password_hash" field.
+func AccessPasswordHashNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashIn applies the In predicate on the "access_password_hash" field.
+func AccessPasswordHashIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldAccessPasswordHash, vs...))
+}
+
+// AccessPasswordHashNotIn applies the NotIn predicate on the "access_password_hash" field.
+func AccessPasswordHashNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldAccessPasswordHash, vs...))
+}
+
+// AccessPasswordHashGT applies the GT predicate on the "access_password_hash" field.
+func AccessPasswordHashGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashGTE applies the GTE predicate on the "access_password_hash" field.
+func AccessPasswordHashGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashLT applies the LT predicate on the "access_password_hash" field.
+func AccessPasswordHashLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashLTE applies the LTE predicate on the "access_password_hash" field.
+func AccessPasswordHashLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashContains applies the Contains predicate on the "access_password_hash" field.
+func AccessPasswordHashContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashHasPrefix applies the HasPrefix predicate on the "access_password_hash" field.
+func AccessPasswordHashHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashHasSuffix applies the HasSuffix predicate on the "access_password_hash" field.
+func AccessPasswordHashHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashIsNil applies the IsNil predicate on the "access_password_hash" field.
+func AccessPasswordHashIsNil() predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIsNull(FieldAccessPasswordHash))
+}
+
+// AccessPasswordHashNotNil applies the NotNil predicate on the "access_password_hash" field.
+func AccessPasswordHashNotNil() predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotNull(FieldAccessPasswordHash))
+}
+
+// AccessPasswordHashEqualFold applies the EqualFold predicate on the "access_password_hash" field.
+func AccessPasswordHashEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldAccessPasswordHash, v))
+}
+
+// AccessPasswordHashContainsFold applies the ContainsFold predicate on the "access_password_hash" field.
+func AccessPasswordHashContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldAccessPasswordHash, v))
+}
+
+// ViewCountEQ applies the EQ predicate on the "view_count" field.
+func ViewCountEQ(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldViewCount, v))
+}
+
+// ViewCountNEQ applies the NEQ predicate on the "view_count" field.
+func ViewCountNEQ(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldViewCount, v))
+}
+
+// ViewCountIn applies the In predicate on the "view_count" field.
+func ViewCountIn(vs ...int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldViewCount, vs...))
+}
+
+// ViewCountNotIn applies the NotIn predicate on the "view_count" field.
+func ViewCountNotIn(vs ...int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldViewCount, vs...))
+}
+
+// ViewCountGT applies the GT predicate on the "view_count" field.
+func ViewCountGT(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldViewCount, v))
+}
+
+// ViewCountGTE applies the GTE predicate on the "view_count" field.
+func ViewCountGTE(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldViewCount, v))
+}
+
+// ViewCountLT applies the LT predicate on the "view_count" field.
+func ViewCountLT(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldViewCount, v))
+}
+
+// ViewCountLTE applies the LTE predicate on the "view_count" field.
+func ViewCountLTE(v int) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldViewCount, v))
+}
+
+// CommentPolicyEQ applies the EQ predicate on the "comment_policy" field.
+func CommentPolicyEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCommentPolicy, v))
+}
+
+// CommentPolicyNEQ applies the NEQ predicate on the "comment_policy" field.
+func CommentPolicyNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldCommentPolicy, v))
+}
+
+// CommentPolicyIn applies the In predicate on the "comment_policy" field.
+func CommentPolicyIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldCommentPolicy, vs...))
+}
+
+// CommentPolicyNotIn applies the NotIn predicate on the "comment_policy" field.
+func CommentPolicyNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldCommentPolicy, vs...))
+}
+
+// CommentPolicyGT applies the GT predicate on the "comment_policy" field.
+func CommentPolicyGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldCommentPolicy, v))
+}
+
+// CommentPolicyGTE applies the GTE predicate on the "comment_policy" field.
+func CommentPolicyGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldCommentPolicy, v))
+}
+
+// CommentPolicyLT applies the LT predicate on the "comment_policy" field.
+func CommentPolicyLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldCommentPolicy, v))
+}
+
+// CommentPolicyLTE applies the LTE predicate on the "comment_policy" field.
+func CommentPolicyLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldCommentPolicy, v))
+}
+
+// CommentPolicyContains applies the Contains predicate on the "comment_policy" field.
+func CommentPolicyContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldCommentPolicy, v))
+}
+
+// CommentPolicyHasPrefix applies the HasPrefix predicate on the "comment_policy" field.
+func CommentPolicyHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldCommentPolicy, v))
+}
+
+// CommentPolicyHasSuffix applies the HasSuffix predicate on the "comment_policy" field.
+func CommentPolicyHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldCommentPolicy, v))
+}
+
+// CommentPolicyEqualFold applies the EqualFold predicate on the "comment_policy" field.
+func CommentPolicyEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldCommentPolicy, v))
+}
+
+// CommentPolicyContainsFold applies the ContainsFold predicate on the "comment_policy" field.
+func CommentPolicyContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldCommentPolicy, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -1,0 +1,81 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.hello",
+  "name": "Hello PP",
+  "version": "1.0.0",
+  "description": "Reference plugin for the plugin-host spike: one content hook, two routes and a browser half.",
+  "author": "Practacu Press",
+  "license": "MIT",
+  "engines": {
+    "pp": ">=0.1.0 <1.0.0",
+    "contract": ">=1.0.0 <2.0.0"
+  },
+  "runtime": "wasm",
+  "backend": {
+    "entry": "backend/hello.wasm",
+    "abi": "wasi-json-v1",
+    "timeout_ms": 300,
+    "max_memory_mb": 64,
+    "hooks": ["content.render"],
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/hello",
+        "handler": "hello",
+        "auth": "public",
+        "contract": {
+          "summary": "Say hello from a WASM plugin",
+          "description": "Served by the plugin's sandboxed backend. Demonstrates a plugin-owned, contract-documented route.",
+          "responses": {
+            "200": {
+              "description": "A greeting",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["message", "site_id"],
+                    "properties": {
+                      "message": {"type": "string"},
+                      "site_id": {"type": "string"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/admin/ping",
+        "handler": "admin",
+        "auth": "admin",
+        "contract": {
+          "summary": "Admin-only plugin route",
+          "description": "The host enforces the admin policy before the sandbox is invoked.",
+          "responses": {
+            "200": {"description": "The caller's role"},
+            "401": {"description": "No session"},
+            "403": {"description": "Not a site administrator"}
+          }
+        }
+      }
+    ]
+  },
+  "frontend": {
+    "entry": "frontend/client.js",
+    "styles": ["frontend/client.css"],
+    "slots": ["article.after"],
+    "blocks": [
+      {"type": "hello.card", "name": "Hello card"}
+    ]
+  },
+  "permissions": [
+    "content.render",
+    "http.route.public",
+    "admin.route",
+    "ui.inject",
+    "ui.block",
+    "ui.style"
+  ]
+}

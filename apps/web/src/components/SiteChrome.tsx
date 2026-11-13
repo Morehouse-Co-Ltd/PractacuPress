@@ -10,6 +10,7 @@ import { isPersonalSite } from '../lib/site';
 import { navPages, useCustomization, useThemeMode } from '../lib/customize';
 import {
   footerBrand,
+  footerColumnsForReader,
   navAlignOf,
   navHrefKind,
   navIconName,
@@ -17,11 +18,15 @@ import {
   navSubStyleOf,
   navTabActive,
   navTabGroupActive,
+  navTabsForReader,
   safeHref,
   siteNavTabs,
   socialIconName,
 } from '../lib/navigation';
 import { usePermissions } from '../lib/usePermissions';
+import { writingEntryPath } from '../lib/adminAccess';
+import { adminPathOf } from '../lib/siteConfig';
+import { navigateWithTransition } from '../lib/themeTransition';
 import { BackToTop } from './ArticleTools';
 import { CommandLayer } from './CommandLayer';
 import { ExtensionRuntime } from './ExtensionRuntime';
@@ -48,14 +53,16 @@ export function SiteChrome() {
   const t = useT();
   const { me, site, status, unread, logout, config } = useAuth();
   const { customization } = useCustomization();
-  const { can } = usePermissions();
+  const { can, adminEntry } = usePermissions();
   const backend = useBackend();
   const demo = isDemo(backend);
   const personal = isPersonalSite(config);
   // O-3：站点关闭自助注册时不再显示注册入口；服务端仍会拒绝注册请求。
   const registrationClosed = site?.registration_open === false;
-  const adminAccess =
-    can('moderate_content') || can('manage_member') || can('manage_site') || can('view_log');
+  // 管理员回后台编辑器，普通成员去写作台：后者不该为了写一篇稿子走进后台。
+  const writeHref = writingEntryPath('article', adminEntry);
+  // 站点可能把后台入口改成了 /manage 之类的别名；导航与页脚过滤后台链接时要用它。
+  const adminPath = adminPathOf(config);
   const layout = customization.layout;
   const extensions = customization.extensions;
   const navigate = useNavigate();
@@ -103,7 +110,15 @@ export function SiteChrome() {
     window.scrollTo({ top: 0 });
   }, [location.pathname]);
 
-  const navItems = siteNavTabs(layout, navPages(customization)).tabs;
+  const navItems = (() => {
+    const tabs = siteNavTabs(layout, navPages(customization)).tabs;
+    // 能进后台的人保留站长配置的「管理后台」入口；普通读者看到的导航里不该有它。
+    return adminEntry ? tabs : navTabsForReader(tabs, adminPath);
+  })();
+  // 页脚同为站长可编辑内容：旧安装的默认页脚带着一条「管理后台」，这里按身份过滤。
+  const footerColumns = adminEntry
+    ? layout.footer_columns
+    : footerColumnsForReader(layout.footer_columns, adminPath);
   const activeTopTab = navItems.find((tab) => navTabGroupActive(location.pathname, tab));
   const activeSubStyle = activeTopTab ? navSubStyleOf(activeTopTab, layout) : layout.nav_sub_style;
   const socialLinks = layout.social_links ?? [];
@@ -250,7 +265,7 @@ export function SiteChrome() {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    navigateWithTransition(() => navigate('/'));
   };
 
   return (
@@ -298,7 +313,7 @@ export function SiteChrome() {
             {bare ? null : status === 'ready' && me ? (
               <>
                 {can('write_content') ? (
-                  <Link to="/admin/content/new/article" className="btn btn-primary btn-sm header-write">
+                  <Link to={writeHref} className="btn btn-primary btn-sm header-write">
                     {t('写文章')}
                   </Link>
                 ) : null}
@@ -339,8 +354,11 @@ export function SiteChrome() {
                       <Link to={`/u/${me.user.id}`} className="menu-item" role="menuitem">
                         <Icon name="user" size={15} /> {t('个人主页')}
                       </Link>
+                      <Link to="/me/bookmarks" className="menu-item" role="menuitem">
+                        <Icon name="bookmark" size={15} /> {t('我的互动')}
+                      </Link>
                       {can('write_content') ? (
-                        <Link to="/admin/content/new/article" className="menu-item" role="menuitem">
+                        <Link to={writeHref} className="menu-item" role="menuitem">
                           <Icon name="edit" size={15} /> {t('新建文章')}
                         </Link>
                       ) : null}
@@ -353,7 +371,7 @@ export function SiteChrome() {
                           <Icon name="mail" size={15} /> {t('私信')}
                         </Link>
                       )}
-                      {adminAccess ? (
+                      {adminEntry ? (
                         <Link to="/admin" className="menu-item" role="menuitem">
                           <Icon name="grid" size={15} /> {t('管理后台')}
                         </Link>
@@ -474,8 +492,8 @@ export function SiteChrome() {
                     {unread > 0 ? t('（{count}）', { count: unread }) : ''}
                   </Link>
                   {personal ? null : <Link to="/messages">{t('私信')}</Link>}
-                  {adminAccess ? <Link to="/admin">{t('管理后台')}</Link> : null}
-                  {can('write_content') ? <Link to="/admin/content/new/article">{t('写文章')}</Link> : null}
+                  {adminEntry ? <Link to="/admin">{t('管理后台')}</Link> : null}
+                  {can('write_content') ? <Link to={writeHref}>{t('写文章')}</Link> : null}
                 </>
               ) : personal ? (
                 <Link to="/login">{t('管理员登录')}</Link>
@@ -527,7 +545,12 @@ export function SiteChrome() {
       ) : null}
 
       <main id="main">
-        <Outlet />
+        <div
+          className="route-transition"
+          key={location.pathname}
+        >
+          <Outlet />
+        </div>
       </main>
 
       {/* 创作者扩展：按路由页面类型与槽位挂载沙箱 iframe；预览 iframe 里自动跳过。 */}
@@ -543,10 +566,10 @@ export function SiteChrome() {
         <footer className="site-footer">
           <div className="shell">
             <div
-              className={`footer-inner${layout.footer_columns.length ? '' : ' is-brand-only'}`}
+              className={`footer-inner${footerColumns.length ? '' : ' is-brand-only'}`}
               style={
-                layout.footer_columns.length
-                  ? ({ '--footer-cols': String(layout.footer_columns.length) } as CSSProperties)
+                footerColumns.length
+                  ? ({ '--footer-cols': String(footerColumns.length) } as CSSProperties)
                   : undefined
               }
             >
@@ -583,7 +606,7 @@ export function SiteChrome() {
                 ) : null}
               </div>
 
-              {layout.footer_columns.map((column) => (
+              {footerColumns.map((column) => (
                 <div className="footer-col" key={column.id}>
                   <h4>{column.title}</h4>
                   {column.links.map((link) => {

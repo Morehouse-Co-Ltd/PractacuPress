@@ -2,6 +2,7 @@ import type { SiteCustomization, SiteTheme } from '../types';
 import { defaultHomeLayout } from './blocks';
 import { useCustomization } from './customize';
 import { t } from './i18n';
+import { variantLabel } from './themes';
 import { useToast } from './toast';
 
 /**
@@ -79,11 +80,11 @@ export function useThemeSwitch(): { applyBundle: (bundle: SiteTheme, announce?: 
       t('已切换到「{name}」', { name: bundle.name }),
       homeWasDefault
         ? t('配色、排版与{layout}版式已一起切换，首页也同步为该主题的默认编排。', {
-            layout: bundle.variant === 'bento' ? t('双栏') : t('单栏'),
+            layout: variantLabel(bundle.variant),
           })
-        : bundle.variant === 'bento'
-          ? t('配色、排版与双栏版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。')
-          : t('配色、排版与单栏版式已一起切换；已有首页编排不会删除。'),
+        : t('配色、排版与{layout}版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。', {
+            layout: variantLabel(bundle.variant),
+          }),
     );
   };
 

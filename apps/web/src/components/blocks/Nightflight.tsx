@@ -17,16 +17,10 @@ import type { RangeStats } from '../../lib/analytics';
 import { useT } from '../../lib/i18n';
 
 /**
- * 夜航区块（第二套主题）。
+ * 夜航区块（深色杂志布局）：双卡首屏、分类胶囊、封面网格与粘性侧栏。
  *
- * 版式参考 hidesg.ink：双卡首屏 → 三个大色块分类 → 封面卡双列 + 右侧粘性侧栏
- * （站点数据 / 作者 / 标签 / 归档）。
- *
- * 首屏经过两轮调整：左侧黑卡放到更大（约 3:2），彩色瓷砖装饰已经整体移除，
- * 改用可自定义的背景图 / 底色（默认纯黑）；右侧换成紧凑的热门榜单，
- * 默认 6 条、不占缩略图，整体比左边明显更小。
- * 卡片语言：12–16px 圆角、1px 描边、悬停上浮；彩色只出现在分类按钮与
- * 封面占位，正文仍然克制。样式限定在 [data-variant='bento'] 下。
+ * 这些组件是夜航自己的视觉语言；白昼使用独立的 Daylight.tsx 与 dl- 样式，
+ * 不共享这里的组件或类名。
  */
 
 function contentUrl(item: Content): string {
@@ -36,6 +30,17 @@ function contentUrl(item: Content): string {
 /** 把地址塞进 CSS url() 前先收紧：去掉引号、反斜杠与括号，避免破坏声明。 */
 function cssUrl(input: string): string {
   return input.replace(/["'\\()\s]/g, '');
+}
+
+/**
+ * 首页文章卡是否使用「模糊背景」外观。
+ *
+ * 设置存在 `layout.article_card_style`：缺省或未知值都按原来的卡片渲染，
+ * 所以旧站点升级后不会突然换脸。
+ */
+function useBlurCards(): boolean {
+  const { customization } = useCustomization();
+  return customization.layout.article_card_style === 'blur';
 }
 
 /* ---------------------------------------------------------------- 首屏 */
@@ -183,17 +188,22 @@ function HeroCards({ block }: { block: BlockInstance }) {
   const domain = site?.domain || (typeof window === 'undefined' ? '' : window.location.host);
   const lines = heroLines(title).slice(0, 2);
 
-  // 没有背景图时就是一块纯色（默认黑），有图时叠一层可调的黑色遮罩保证白字可读。
-  const heroStyle: CSSProperties = { backgroundColor: bgColor };
+  // 没有背景图时，夜航使用主题自己的主卡底色；只有站长真的选了非默认色才内联。
+  // 这样同一个区块在深色 / 浅色模式下都能跟着主题换底，不会留一块黑卡。
+  const daylight = customization.layout.variant === 'daylight';
+  const customBg = !!bgColor && bgColor.toLowerCase() !== '#000000';
+  const heroStyle: CSSProperties = {};
   if (bgImage) {
     heroStyle.backgroundImage = `linear-gradient(0deg, rgb(0 0 0 / ${bgDim}%), rgb(0 0 0 / ${bgDim}%)), url("${bgImage}")`;
     heroStyle.backgroundSize = 'cover';
     heroStyle.backgroundPosition = 'center';
     heroStyle.backgroundRepeat = 'no-repeat';
+  } else if (!daylight && customBg) {
+    heroStyle.backgroundColor = bgColor;
   }
 
   return (
-    <section className={`nf-hero ${HERO_RATIO_CLASS[ratio] ?? 'is-wide'}`}>
+    <section className={`nf-hero ${HERO_RATIO_CLASS[ratio] ?? 'is-wide'}${bgImage ? ' has-bg' : ''}`}>
       <div className="nf-hero-left" style={heroStyle}>
         <div className="nf-hero-head">
           {kicker ? <p className="nf-hero-kicker">{kicker}</p> : null}
@@ -311,6 +321,7 @@ function CategoryPills({ block }: { block: BlockInstance }) {
 function FeaturePost({ block }: { block: BlockInstance }) {
   const t = useT();
   const { all, loading } = useFeed();
+  const blur = useBlurCards();
   const showSummary = blockProp(block, 'show_summary', true);
   const feature = all[0];
   if (loading) return <Skeleton lines={4} />;
@@ -325,10 +336,11 @@ function FeaturePost({ block }: { block: BlockInstance }) {
     );
   }
   return (
-    <article className="nf-feature nf-card">
+    <article className={`nf-feature nf-card${blur ? ' is-blur' : ''}`}>
       <Link to={contentUrl(feature)} className="nf-feature-cover" aria-label={feature.title}>
-        <ContentCover id={feature.id} label={feature.title} ratio="21 / 9" accent />
+        <ContentCover id={feature.id} label={feature.title} ratio={blur ? '16 / 9' : '21 / 9'} accent />
       </Link>
+      {blur ? <span className="nf-blur-veil" aria-hidden /> : null}
       <div className="nf-feature-body">
         <div className="nf-meta">
           <span className="nf-kind">
@@ -381,6 +393,7 @@ function MoreLink({ label }: { label: string }) {
 function PostList({ block }: { block: BlockInstance }) {
   const t = useT();
   const { all, loading } = useFeed();
+  const blur = useBlurCards();
   const heading = blockProp(block, 'heading', '最新文章').trim();
   const limit = blockProp(block, 'limit', 18);
   const showSummary = blockProp(block, 'show_summary', true);
@@ -413,15 +426,16 @@ function PostList({ block }: { block: BlockInstance }) {
       <SectionHeading title={heading} count={items.length} to="/articles" />
       <div className="nf-list">
         {items.map((item, index) => (
-          <article className="nf-row nf-card" key={item.id}>
+          <article className={`nf-row nf-card${blur ? ' is-blur' : ''}`} key={item.id}>
             {showNumber ? (
               <span className="nf-row-index" aria-hidden>
                 {String(index + 1).padStart(2, '0')}
               </span>
             ) : null}
             <Link to={contentUrl(item)} className="nf-row-cover" aria-label={item.title} tabIndex={-1}>
-              <ContentCover id={item.id} label={item.title} ratio="4 / 3" accent />
+              <ContentCover id={item.id} label={item.title} ratio={blur ? '16 / 9' : '4 / 3'} accent />
             </Link>
+            {blur ? <span className="nf-blur-veil" aria-hidden /> : null}
             <div className="nf-row-body">
               <div className="nf-meta">
                 <span className="nf-kind">{item.kind === 'article' ? t('文章') : t('帖子')}</span>
@@ -432,9 +446,11 @@ function PostList({ block }: { block: BlockInstance }) {
               </h3>
               {showSummary && item.summary ? <p>{item.summary}</p> : null}
             </div>
-            <span className="nf-row-arrow" aria-hidden>
-              <Icon name="arrow-right" size={15} />
-            </span>
+            {blur ? null : (
+              <span className="nf-row-arrow" aria-hidden>
+                <Icon name="arrow-right" size={15} />
+              </span>
+            )}
           </article>
         ))}
       </div>
@@ -448,6 +464,7 @@ function PostList({ block }: { block: BlockInstance }) {
 function PostGrid({ block }: { block: BlockInstance }) {
   const t = useT();
   const { all, loading } = useFeed();
+  const blur = useBlurCards();
   const [tab, setTab] = useState<'all' | 'article' | 'post'>('all');
   const tabs: { key: 'all' | 'article' | 'post'; label: string }[] = [
     { key: 'all', label: t('全部') },
@@ -523,10 +540,11 @@ function PostGrid({ block }: { block: BlockInstance }) {
       {bar}
       <div className="nf-grid">
         {items.map((item) => (
-          <article className="nf-card nf-tile" key={item.id}>
+          <article className={`nf-card nf-tile${blur ? ' is-blur' : ''}`} key={item.id}>
             <Link to={contentUrl(item)} className="nf-tile-cover" aria-label={item.title} tabIndex={-1}>
               <ContentCover id={item.id} label={item.title} ratio="16 / 10" accent />
             </Link>
+            {blur ? <span className="nf-blur-veil" aria-hidden /> : null}
             <div className="nf-tile-body">
               <div className="nf-tile-tags">
                 <span className="nf-chip-kind">

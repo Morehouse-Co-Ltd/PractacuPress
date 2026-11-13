@@ -105,6 +105,32 @@ func TestUpdateMemberRoleWritesAudit(t *testing.T) {
 	require.Equal(t, "admin_1", *entries[0].ActorID)
 }
 
+func TestUpdateMemberRoleResetsGroupToBuiltin(t *testing.T) {
+	store, handle := newStore(t)
+	ctx := context.Background()
+
+	siteRow, err := handle.Client.Site.Create().SetSlug("main").SetName("Main").Save(ctx)
+	require.NoError(t, err)
+	userRow, err := handle.Client.User.Create().SetDisplayName("Alice").Save(ctx)
+	require.NoError(t, err)
+	_, err = handle.Client.SiteMember.Create().
+		SetSiteID(siteRow.ID).SetUserID(userRow.ID).SetRole(string(site.RoleMember)).
+		SetGroupKey("ops").
+		Save(ctx)
+	require.NoError(t, err)
+
+	err = store.UpdateMemberRole(ctx, siteRow.ID, userRow.ID, site.RoleEditor, site.AuditEntry{
+		Action: "site.member.role_changed",
+	})
+	require.NoError(t, err)
+
+	member, err := store.FindMember(ctx, siteRow.ID, userRow.ID)
+	require.NoError(t, err)
+	require.Equal(t, site.RoleEditor, member.Role)
+	require.Equal(t, site.GroupKeyForRole(site.RoleEditor), member.GroupKey,
+		"a coarse role change must not leave a custom group with the old base role attached")
+}
+
 func TestUpdateMemberRoleMissingMember(t *testing.T) {
 	store, _ := newStore(t)
 

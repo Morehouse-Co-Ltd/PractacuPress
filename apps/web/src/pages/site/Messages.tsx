@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';import type { Conversation, Message } from '../../types';
+import { useNavigate, useParams } from 'react-router-dom';
+import type { Conversation, Message, PublicProfile } from '../../types';
 import { useAuth } from '../../lib/session';
-import { useBackend, isDemo } from '../../lib/backend';
+import { useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
+import { REALTIME_POLL, useRealtime } from '../../lib/realtime';
 import { formatDateTime, relativeTime, shortId } from '../../lib/format';
 import { useT } from '../../lib/i18n';
 import {
@@ -21,14 +23,13 @@ export function MessagesPage() {
   const { id } = useParams();
   const { me } = useAuth();
   const backend = useBackend();
-  const demo = isDemo(backend) ? backend : null;
   const navigate = useNavigate();
   const toast = useToast();
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [picker, setPicker] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const [demoMembers, setDemoMembers] = useState<{ id: string; display_name: string }[]>([]);
+  const [members, setMembers] = useState<PublicProfile[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastReadRef = useRef('');
   useTitle(t('私信'));
@@ -41,11 +42,68 @@ export function MessagesPage() {
     if (!activeId) return [];
     return backend.messages(activeId);
   }, [backend, activeId]);
+  const reloadConversations = conversations.reload;
+  const reloadMessages = messages.reload;
+  const realtime = useRealtime();
 
+  /**
+   * 实时推送 / 轮询兜底都只触发「重新读一次服务端」，不把推送内容直接塞进列表：
+   * 推送里的 `message.created` 只有 id 没有正文，重读还顺带拿到排序与未读游标，
+   * 也避免同一条消息被推送和补偿各插一次。
+   */
   useEffect(() => {
-    if (!demo) return;
-    demo.demoMembers().then((users) => setDemoMembers(users.filter((u) => u.id !== me?.user.id)));
-  }, [demo, me]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let needList = false;
+    let needThread = false;
+    const flush = () => {
+      timer = null;
+      if (needList) {
+        needList = false;
+        reloadConversations();
+      }
+      if (needThread) {
+        needThread = false;
+        reloadMessages();
+      }
+    };
+    const unsubscribe = realtime.subscribe((event) => {
+      const isPoll = event.type === REALTIME_POLL;
+      if (!isPoll && event.type !== 'message.created') return;
+      needList = true;
+      const conversationId =
+        typeof event.payload.conversation_id === 'string' ? event.payload.conversation_id : '';
+      if (isPoll || (activeId && conversationId === activeId)) needThread = true;
+      // 补偿可能一次补很多事件，合并成一次刷新，避免连续请求。
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(flush, 200);
+    });
+    return () => {
+      unsubscribe();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [realtime, activeId, reloadConversations, reloadMessages]);
+
+  /**
+   * 成员目录只在打开“新会话”时拉取：日常读写已有会话不需要这次请求，而目录
+   * 端点要求登录，未登录用户也看不到这个弹窗。
+   */
+  useEffect(() => {
+    if (!picker) return;
+    let alive = true;
+    backend
+      .memberDirectory({ limit: 100 })
+      .then((users) => {
+        if (alive) setMembers(users.filter((user) => user.user_id !== me?.user.id));
+      })
+      .catch((err) => {
+        if (alive) toast.push('error', t('无法加载成员'), err instanceof Error ? err.message : undefined);
+      });
+    return () => {
+      alive = false;
+    };
+    // t / toast 只是提示文案与容器；目录请求只随弹窗与身份变化。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend, picker, me?.user.id]);
 
   useEffect(() => {
     const list = messages.data;
@@ -60,10 +118,25 @@ export function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, messages.data]);
 
+  const lastThreadRef = useRef('');
+  const lastCountRef = useRef(0);
   useEffect(() => {
     const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [messages.data]);
+    if (!node) return;
+    const count = messages.data?.length ?? 0;
+    const threadChanged = lastThreadRef.current !== activeId;
+    const firstLoad = lastCountRef.current === 0 && count > 0;
+    const grew = count > lastCountRef.current;
+    lastThreadRef.current = activeId;
+    lastCountRef.current = count;
+    // 轮询 / 推送刷新时只有本来就在底部才跟随，别把正在翻历史的人拽回底部。
+    const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const last = messages.data?.[count - 1];
+    const own = last?.sender_id === me?.user.id;
+    if (threadChanged || firstLoad || (grew && (distance < 160 || own))) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, [activeId, messages.data, me?.user.id]);
 
   const send = async () => {
     if (!draft.trim() || !activeId) return;
@@ -81,10 +154,10 @@ export function MessagesPage() {
   };
 
   const createConversation = async () => {
-    if (!demo || !selectedMembers.length) return;
+    if (!selectedMembers.length) return;
     setBusy(true);
     try {
-      const conv = await demo.createConversation(selectedMembers);
+      const conv = await backend.createConversation(selectedMembers);
       setPicker(false);
       setSelectedMembers([]);
       conversations.reload();
@@ -109,19 +182,15 @@ export function MessagesPage() {
       <aside className="conv-pane">
         <div className="conv-head">
           <h1>{t('私信')}</h1>
-          {demo ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="plus"
-              onClick={() => setPicker(true)}
-              aria-label={t('发起会话')}
-            >
-              {t('新会话')}
-            </Button>
-          ) : (
-            <span className="tiny faint">{t('仅成员可见')}</span>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="plus"
+            onClick={() => setPicker(true)}
+            aria-label={t('发起会话')}
+          >
+            {t('新会话')}
+          </Button>
         </div>
         <div className="conv-list">
           {(conversations.data ?? []).map((conv) => (
@@ -148,29 +217,16 @@ export function MessagesPage() {
                 compact
                 icon="mail"
                 title={t('还没有会话')}
-                body={
-                  demo
-                    ? t('选择和一位成员开始对话。')
-                    : t('当有人给你发消息时，会话会出现在这里。')
-                }
+                body={t('选择和一位成员开始对话。')}
                 action={
-                  demo ? (
-                    <Button variant="secondary" size="sm" onClick={() => setPicker(true)}>
-                      {t('发起会话')}
-                    </Button>
-                  ) : null
+                  <Button variant="secondary" size="sm" onClick={() => setPicker(true)}>
+                    {t('发起会话')}
+                  </Button>
                 }
               />
             </div>
           ) : null}
         </div>
-        {!demo ? (
-          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--line)' }}>
-            <p className="tiny faint" style={{ lineHeight: 1.6 }}>
-              {t('契约没有成员目录端点，因此无法从浏览器发起新会话；已有会话仍可正常读写。')}
-            </p>
-          </div>
-        ) : null}
       </aside>
 
       <section className="thread-pane">
@@ -268,14 +324,16 @@ export function MessagesPage() {
         }
       >
         <div className="check-list">
-          {demoMembers.map((user) => (
-            <label key={user.id} className="checkline" style={{ padding: '8px 0' }}>
+          {members.map((user) => (
+            <label key={user.user_id} className="checkline" style={{ padding: '8px 0' }}>
               <input
                 type="checkbox"
-                checked={selectedMembers.includes(user.id)}
+                checked={selectedMembers.includes(user.user_id)}
                 onChange={(e) =>
                   setSelectedMembers((prev) =>
-                    e.target.checked ? [...prev, user.id] : prev.filter((id) => id !== user.id),
+                    e.target.checked
+                      ? [...prev, user.user_id]
+                      : prev.filter((id) => id !== user.user_id),
                   )
                 }
               />
@@ -286,7 +344,7 @@ export function MessagesPage() {
             </label>
           ))}
         </div>
-        {!demoMembers.length ? <p className="tiny faint">{t('当前站点没有其他可选成员。')}</p> : null}
+        {!members.length ? <p className="tiny faint">{t('当前站点没有其他可选成员。')}</p> : null}
         <p className="field-hint mt-12">
           {t('创建后你一定是成员；私信要求恰好一位其他成员。未读游标由服务端保存。')}
         </p>

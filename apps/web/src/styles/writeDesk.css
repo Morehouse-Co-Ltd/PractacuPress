@@ -1,0 +1,113 @@
+/* =========================================================
+   写作台：普通成员的独立写作页面
+   ---------------------------------------------------------
+   它刻意不继承后台的双栏骨架：没有侧边导航、没有内容库、没有仪表盘，
+   只有一条站点顶栏和文章编辑器本身。管理员仍然使用 /admin 的后台外壳。
+   ========================================================= */
+
+.write-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.write-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 62px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.write-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: inherit;
+}
+.write-brand .brand-mark {
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  transform: none;
+}
+.write-brand-text {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.write-brand-text small {
+  display: block;
+  font-family: var(--sans);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.write-topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.write-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.write-signout:hover {
+  color: var(--ink);
+}
+
+.write-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.write-content {
+  width: 100%;
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 34px 32px 96px;
+}
+
+/* 写作台里没有后台的白色卡片底盘，面板沿用站点自己的边线令牌。 */
+.write-shell .panel {
+  background: var(--bg);
+}
+
+@media (max-width: 960px) {
+  .write-topbar {
+    padding: 0 16px;
+    gap: 10px;
+  }
+  .write-topbar-actions {
+    gap: 8px;
+  }
+  .write-hide-sm {
+    display: none;
+  }
+  .write-content {
+    padding: 22px 16px 72px;
+  }
+}

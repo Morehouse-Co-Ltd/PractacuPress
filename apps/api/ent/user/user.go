@@ -21,6 +21,8 @@ const (
 	FieldBio = "bio"
 	// FieldAvatarMediaID holds the string denoting the avatar_media_id field in the database.
 	FieldAvatarMediaID = "avatar_media_id"
+	// FieldEmailVerifiedAt holds the string denoting the email_verified_at field in the database.
+	FieldEmailVerifiedAt = "email_verified_at"
 	// FieldLocale holds the string denoting the locale field in the database.
 	FieldLocale = "locale"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -38,6 +40,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldBio,
 	FieldAvatarMediaID,
+	FieldEmailVerifiedAt,
 	FieldLocale,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -106,6 +109,11 @@ func ByBio(opts ...sql.OrderTermOption) OrderOption {
 // ByAvatarMediaID orders the results by the avatar_media_id field.
 func ByAvatarMediaID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAvatarMediaID, opts...).ToFunc()
+}
+
+// ByEmailVerifiedAt orders the results by the email_verified_at field.
+func ByEmailVerifiedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEmailVerifiedAt, opts...).ToFunc()
 }
 
 // ByLocale orders the results by the locale field.

@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
+	"github.com/practacu/practacu-press/apps/api/internal/audit"
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/authstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
@@ -24,10 +25,21 @@ import (
 )
 
 type apiHarness struct {
-	router  *gin.Engine
-	db      *db.DB
-	siteID  string
-	service *auth.Service
+	router       *gin.Engine
+	db           *db.DB
+	siteID       string
+	service      *auth.Service
+	issuer       *auth.TokenIssuer
+	stepUpSigner *auth.StepUpSigner
+}
+
+// buildStepUpSigner derives the grant signer from the harness issuer when the test
+// asked for it; nil keeps the endpoint unwired.
+func buildStepUpSigner(enabled bool, issuer *auth.TokenIssuer) *auth.StepUpSigner {
+	if !enabled {
+		return nil
+	}
+	return auth.NewStepUpSigner(issuer, site.StepUpTokenTTL)
 }
 
 type staticResolver struct{ site site.Site }
@@ -43,6 +55,15 @@ type apiHarnessOptions struct {
 	bootstrapFirstAdmin bool
 	firstAdminAllowed   auth.FirstAdminFunc
 	registrationPolicy  func(ctx context.Context, siteID string) (bool, error)
+	avatars             auth.AvatarValidator
+	audit               audit.Recorder
+	// captcha is the human verification guard the test wants the router to use.
+	// Nil keeps today's "no challenge" behaviour.
+	captcha auth.CaptchaGuard
+	// stepUp wires the high threat re-authentication. A nil stepUpConfig means only
+	// account login passwords can authorize a step-up.
+	stepUp       bool
+	stepUpConfig auth.StepUpConfigReader
 }
 
 func newAPIHarness(t *testing.T) *apiHarness {
@@ -85,6 +106,7 @@ func newAPIHarnessWithOptions(t *testing.T, opts apiHarnessOptions) *apiHarness 
 		})
 	}
 
+	stepUpSigner := buildStepUpSigner(opts.stepUp, issuer)
 	service, err := auth.NewService(auth.ServiceConfig{
 		Repository:          authstore.New(handle.Client),
 		Hasher:              hasher,
@@ -93,6 +115,10 @@ func newAPIHarnessWithOptions(t *testing.T, opts apiHarnessOptions) *apiHarness 
 		Now:                 opts.now,
 		BootstrapFirstAdmin: opts.bootstrapFirstAdmin,
 		RegistrationPolicy:  opts.registrationPolicy,
+		AvatarValidator:     opts.avatars,
+		Audit:               opts.audit,
+		StepUpSigner:        stepUpSigner,
+		StepUpConfig:        opts.stepUpConfig,
 	})
 	require.NoError(t, err)
 
@@ -105,6 +131,7 @@ func newAPIHarnessWithOptions(t *testing.T, opts apiHarnessOptions) *apiHarness 
 		},
 		Principal:         middleware.PrincipalFrom,
 		FirstAdminAllowed: opts.firstAdminAllowed,
+		Captcha:           opts.captcha,
 	})
 
 	router := ginrouter.New(ginrouter.Dependencies{
@@ -114,7 +141,14 @@ func newAPIHarnessWithOptions(t *testing.T, opts apiHarnessOptions) *apiHarness 
 		Auth:         handler,
 	})
 
-	return &apiHarness{router: router, db: handle, siteID: siteRow.ID, service: service}
+	return &apiHarness{
+		router:       router,
+		db:           handle,
+		siteID:       siteRow.ID,
+		service:      service,
+		issuer:       issuer,
+		stepUpSigner: stepUpSigner,
+	}
 }
 
 func (h *apiHarness) do(t *testing.T, req *http.Request) *httptest.ResponseRecorder {

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.hello-admin",
+  "name": "Hello Admin",
+  "version": "1.0.0",
+  "description": "纯前端扩展示例：在后台注册一个「扩展页面」，页面里显示实时时间与一句说明。",
+  "author": "Practacu Press",
+  "license": "MIT",
+  "homepage": "https://example.com/practacu-press/extensions",
+  "engines": {
+    "pp": ">=0.1.0 <1.0.0"
+  },
+  "runtime": "none",
+  "frontend": {
+    "entry": "frontend/client.js"
+  },
+  "permissions": ["ui.inject"]
+}

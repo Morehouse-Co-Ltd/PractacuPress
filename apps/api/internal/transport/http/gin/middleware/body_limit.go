@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +15,10 @@ import (
 type BodyLimitRule struct {
 	// Prefix matches the request path by prefix, for example "/api/v1/media/uploads/".
 	Prefix string
-	// Limit is the ceiling in bytes for requests matching Prefix.
+	// Suffix matches the request path by suffix, for routes whose path before the
+	// suffix identifies the resource (for example every /import route).
+	Suffix string
+	// Limit is the ceiling in bytes for requests matching the rule.
 	Limit int64
 }
 
@@ -29,7 +33,7 @@ type BodyLimitRule struct {
 func BodyLimit(defaultLimit int64, rules ...BodyLimitRule) gin.HandlerFunc {
 	limits := make([]BodyLimitRule, 0, len(rules))
 	for _, rule := range rules {
-		if rule.Prefix != "" && rule.Limit > 0 {
+		if (rule.Prefix != "" || rule.Suffix != "") && rule.Limit > 0 {
 			limits = append(limits, rule)
 		}
 	}
@@ -38,7 +42,12 @@ func BodyLimit(defaultLimit int64, rules ...BodyLimitRule) gin.HandlerFunc {
 		limit := defaultLimit
 		path := c.Request.URL.Path
 		for _, rule := range limits {
-			if len(path) >= len(rule.Prefix) && path[:len(rule.Prefix)] == rule.Prefix {
+			if rule.Prefix != "" &&
+				len(path) >= len(rule.Prefix) && path[:len(rule.Prefix)] == rule.Prefix {
+				limit = rule.Limit
+				break
+			}
+			if rule.Suffix != "" && strings.HasSuffix(path, rule.Suffix) {
 				limit = rule.Limit
 				break
 			}

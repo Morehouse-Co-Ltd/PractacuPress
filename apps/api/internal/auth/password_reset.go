@@ -216,6 +216,11 @@ func (s *Service) ResetPassword(ctx context.Context, plainToken, newPassword str
 	if err := s.repo.UpdatePasswordHash(ctx, identity.ID, passwordHash, &verifiedAt); err != nil {
 		return err
 	}
+	// Keep the account level mirror in step: redeeming a reset link proves the
+	// mailbox exactly like clicking a verification link does.
+	if err := s.repo.MarkEmailVerified(ctx, identity.ID, identity.UserID, verifiedAt); err != nil {
+		return err
+	}
 
 	// Tokens still outstanding are retired; the one just used is already consumed.
 	if err := s.repo.InvalidateVerificationTokens(ctx, token.UserID,

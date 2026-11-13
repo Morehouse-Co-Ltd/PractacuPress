@@ -104,9 +104,24 @@ func Description(v string) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldDescription, v))
 }
 
+// MediaQuotaBytes applies equality check predicate on the "media_quota_bytes" field. It's identical to MediaQuotaBytesEQ.
+func MediaQuotaBytes(v int64) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldMediaQuotaBytes, v))
+}
+
 // RegistrationOpen applies equality check predicate on the "registration_open" field. It's identical to RegistrationOpenEQ.
 func RegistrationOpen(v bool) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldRegistrationOpen, v))
+}
+
+// CommentsEnabled applies equality check predicate on the "comments_enabled" field. It's identical to CommentsEnabledEQ.
+func CommentsEnabled(v bool) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldCommentsEnabled, v))
+}
+
+// CommentsRequireReview applies equality check predicate on the "comments_require_review" field. It's identical to CommentsRequireReviewEQ.
+func CommentsRequireReview(v bool) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldCommentsRequireReview, v))
 }
 
 // Disabled applies equality check predicate on the "disabled" field. It's identical to DisabledEQ.
@@ -659,6 +674,56 @@ func DescriptionContainsFold(v string) predicate.Site {
 	return predicate.Site(sql.FieldContainsFold(FieldDescription, v))
 }
 
+// MediaQuotaBytesEQ applies the EQ predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesEQ(v int64) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesNEQ applies the NEQ predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesNEQ(v int64) predicate.Site {
+	return predicate.Site(sql.FieldNEQ(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesIn applies the In predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesIn(vs ...int64) predicate.Site {
+	return predicate.Site(sql.FieldIn(FieldMediaQuotaBytes, vs...))
+}
+
+// MediaQuotaBytesNotIn applies the NotIn predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesNotIn(vs ...int64) predicate.Site {
+	return predicate.Site(sql.FieldNotIn(FieldMediaQuotaBytes, vs...))
+}
+
+// MediaQuotaBytesGT applies the GT predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesGT(v int64) predicate.Site {
+	return predicate.Site(sql.FieldGT(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesGTE applies the GTE predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesGTE(v int64) predicate.Site {
+	return predicate.Site(sql.FieldGTE(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesLT applies the LT predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesLT(v int64) predicate.Site {
+	return predicate.Site(sql.FieldLT(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesLTE applies the LTE predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesLTE(v int64) predicate.Site {
+	return predicate.Site(sql.FieldLTE(FieldMediaQuotaBytes, v))
+}
+
+// MediaQuotaBytesIsNil applies the IsNil predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesIsNil() predicate.Site {
+	return predicate.Site(sql.FieldIsNull(FieldMediaQuotaBytes))
+}
+
+// MediaQuotaBytesNotNil applies the NotNil predicate on the "media_quota_bytes" field.
+func MediaQuotaBytesNotNil() predicate.Site {
+	return predicate.Site(sql.FieldNotNull(FieldMediaQuotaBytes))
+}
+
 // RegistrationOpenEQ applies the EQ predicate on the "registration_open" field.
 func RegistrationOpenEQ(v bool) predicate.Site {
 	return predicate.Site(sql.FieldEQ(FieldRegistrationOpen, v))
@@ -667,6 +732,26 @@ func RegistrationOpenEQ(v bool) predicate.Site {
 // RegistrationOpenNEQ applies the NEQ predicate on the "registration_open" field.
 func RegistrationOpenNEQ(v bool) predicate.Site {
 	return predicate.Site(sql.FieldNEQ(FieldRegistrationOpen, v))
+}
+
+// CommentsEnabledEQ applies the EQ predicate on the "comments_enabled" field.
+func CommentsEnabledEQ(v bool) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldCommentsEnabled, v))
+}
+
+// CommentsEnabledNEQ applies the NEQ predicate on the "comments_enabled" field.
+func CommentsEnabledNEQ(v bool) predicate.Site {
+	return predicate.Site(sql.FieldNEQ(FieldCommentsEnabled, v))
+}
+
+// CommentsRequireReviewEQ applies the EQ predicate on the "comments_require_review" field.
+func CommentsRequireReviewEQ(v bool) predicate.Site {
+	return predicate.Site(sql.FieldEQ(FieldCommentsRequireReview, v))
+}
+
+// CommentsRequireReviewNEQ applies the NEQ predicate on the "comments_require_review" field.
+func CommentsRequireReviewNEQ(v bool) predicate.Site {
+	return predicate.Site(sql.FieldNEQ(FieldCommentsRequireReview, v))
 }
 
 // DisabledEQ applies the EQ predicate on the "disabled" field.

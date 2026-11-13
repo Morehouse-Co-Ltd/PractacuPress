@@ -258,17 +258,29 @@ export function ArticleCard({
   showExcerpt,
   showMeta,
   showTags,
+  coverAccent = true,
 }: {
   item: Content;
   layout: string;
   showExcerpt: boolean;
   showMeta: boolean;
   showTags: boolean;
+  /**
+   * 程序化封面是否跟随站点主色。白昼 / 夜航用主题色封面；纸白没有 accent 封面
+   * 样式（只有默认深色封面），调用方可以关掉，避免深底深字。
+   */
+  coverAccent?: boolean;
 }) {
   const t = useT();
   return (
     <Link className={`pp-article-card is-${layout}`} to={contentUrl(item)}>
-      <ContentCover id={item.id} label={item.title} className="pp-article-cover" ratio="16 / 9" accent />
+      <ContentCover
+        id={item.id}
+        label={item.title}
+        className="pp-article-cover"
+        ratio="16 / 9"
+        accent={coverAccent}
+      />
       <span className="pp-article-copy">
         <span className="pp-article-kind">{item.kind === 'article' ? t('文章') : t('帖子')}</span>
         <strong>{item.title}</strong>

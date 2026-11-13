@@ -1,9 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { Content, ContentAction, ContentKind, SourceFormat } from '../../types';
+import type {
+  Content,
+  ContentAccessMode,
+  ContentAction,
+  ContentCommentPolicy,
+  ContentKind,
+  ContentRevision,
+} from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
-import { useAsync, useTitle, useUnsavedWarning } from '../../lib/hooks';
+import { adminEditorPath, writingPath } from '../../lib/adminAccess';
+import { usePermissions } from '../../lib/usePermissions';
+import {
+  draftIsStale,
+  editorDraftKey,
+  readEditorDraft,
+  removeEditorDraft,
+  useAsync,
+  useEditorAutosave,
+  useTitle,
+  useUnsavedWarning,
+  type EditorDraftRecord,
+} from '../../lib/hooks';
 import { noteActivity } from '../../lib/activity';
 import {
   ACTION_LABEL,
@@ -12,6 +31,7 @@ import {
   STATUS_LABEL,
   canReview,
   formatDateTime,
+  relativeTime,
 } from '../../lib/format';
 import { useT } from '../../lib/i18n';
 import {
@@ -39,13 +59,38 @@ interface FormState {
   title: string;
   slug: string;
   summary: string;
-  source_format: SourceFormat;
+  /** 编辑器内部只处理 Markdown；导入 HTML 也会先归一化。 */
+  source_format: 'markdown';
   source_body: string;
   category_id: string;
   tags: string[];
+  /** datetime-local 的值；空串表示不预约。 */
+  publish_at: string;
+  access_mode: ContentAccessMode;
+  /** 只写字段：留空保持已有密码。 */
+  access_password: string;
+  comment_policy: ContentCommentPolicy;
 }
 
 type SaveStatus = 'draft' | 'pending_review' | 'published';
+
+/** 服务端 ISO 时间转成 datetime-local 需要的本地值。 */
+function toDateTimeLocal(iso?: string): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+/** datetime-local 的值转成服务端接受的 ISO 字符串；空值表示取消预约。 */
+function fromDateTimeLocal(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 const EMPTY: FormState = {
   title: '',
@@ -55,6 +100,10 @@ const EMPTY: FormState = {
   source_body: '',
   category_id: '',
   tags: [],
+  publish_at: '',
+  access_mode: 'public',
+  access_password: '',
+  comment_policy: 'inherit',
 };
 
 export function EditorPage() {
@@ -72,6 +121,7 @@ function EditorWorkspace() {
   const kind: ContentKind = kindParam === 'post' ? 'post' : 'article';
   const isNew = !id;
   const { me, site } = useAuth();
+  const { adminEntry } = usePermissions();
   const backend = useBackend();
   const demo = isDemo(backend);
   const { taxonomy, saveTerm: saveTaxonomyTerm } = useTaxonomy();
@@ -84,6 +134,8 @@ function EditorWorkspace() {
   const [initial, setInitial] = useState<FormState>(EMPTY);
   const [loadedId, setLoadedId] = useState('');
   const [busy, setBusy] = useState(false);
+  // 两个保存按钮各自显示自己的 loading，避免点「发布」时「保存草稿」也在转圈。
+  const [saveBusy, setSaveBusy] = useState<SaveStatus | ''>('');
   const [actionBusy, setActionBusy] = useState<ContentAction | ''>('');
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -92,96 +144,184 @@ function EditorWorkspace() {
   // 编辑区内容只在「切换稿件 / 导入 Markdown」时重灌；输入过程中不重置 DOM，否则光标会跳。
   const [surface, setSurface] = useState<{ html: string; revision: string }>({ html: '', revision: '0' });
   const [wordCount, setWordCount] = useState(0);
-  const [targetStatus, setTargetStatus] = useState<SaveStatus>('draft');
-  const [initialStatus, setInitialStatus] = useState<SaveStatus>('draft');
   const [tagInput, setTagInput] = useState('');
   const revisionRef = useRef(0);
   const importRef = useRef<HTMLInputElement>(null);
 
+  const draftScope = editorDraftKey({
+    siteId: site?.id,
+    kind,
+    contentId: isNew ? null : id,
+  });
+  const [pendingDraft, setPendingDraft] = useState<EditorDraftRecord | null>(null);
+  // 点「稍后再说」后弹窗收起，但草稿仍然保留，等作者在页面里再决定。
+  const [draftDeferred, setDraftDeferred] = useState(false);
+  const [draftChecked, setDraftChecked] = useState(false);
+  const [restoredSavedAt, setRestoredSavedAt] = useState<number | null>(null);
+
   const content = useAsync(async () => (isNew ? null : backend.getContent(kind, id!)), [backend, kind, id, isNew]);
   const item = content.data;
   useTitle(isNew ? t('新建{kind}', { kind: KIND_LABEL[kind] }) : item?.title ?? t('编辑内容'));
+
+  const history = useAsync(
+    async () =>
+      isNew ? { items: [] as ContentRevision[] } : backend.contentRevisions(kind, id!),
+    [backend, kind, id, isNew],
+  );
+  const [revisionView, setRevisionView] = useState<ContentRevision | null>(null);
+  const [revisionBusy, setRevisionBusy] = useState('');
+  const [restoreTarget, setRestoreTarget] = useState<ContentRevision | null>(null);
 
   const mountSurface = useCallback((html: string) => {
     revisionRef.current += 1;
     setSurface({ html, revision: `r${revisionRef.current}` });
   }, []);
 
+  /** 把服务端返回的稿件灌进表单；seed 是新建后跳转时带过来的源文。 */
+  const loadContentIntoForm = useCallback(
+    (current: Content, sourceOverride?: string) => {
+      const normalized = normalizeEditorSource(
+        current.source_format,
+        sourceOverride ?? current.source_body ?? '',
+      );
+      const next: FormState = {
+        title: current.title,
+        slug: current.slug,
+        summary: current.summary ?? '',
+        source_format: 'markdown',
+        source_body: normalized.markdown,
+        category_id: current.category_id ?? '',
+        tags: current.tags ?? [],
+        publish_at: toDateTimeLocal(current.publish_at),
+        access_mode: current.access_mode ?? 'public',
+        access_password: '',
+        comment_policy: current.comment_policy ?? 'inherit',
+      };
+      setForm(next);
+      setInitial(next);
+      setLoadedId(current.id);
+      mountSurface(normalized.html);
+    },
+    [mountSurface],
+  );
+
   useEffect(() => {
     if (isNew) {
       setForm(EMPTY);
       setInitial(EMPTY);
       setLoadedId('new');
-      setTargetStatus('draft');
-      setInitialStatus('draft');
       mountSurface('');
       return;
     }
     if (!item || item.id === loadedId) return;
     const seeded = seed && seed.id === item.id ? seed.source_body : undefined;
-    const source = seeded ?? item.source_body ?? '';
-    const normalized = normalizeEditorSource(item.source_format, source);
-    const next: FormState = {
-      title: item.title,
-      slug: item.slug,
-      summary: item.summary ?? '',
-      source_format: 'markdown',
-      source_body: normalized.markdown,
-      category_id: item.category_id ?? '',
-      tags: item.tags ?? [],
-    };
-    setForm(next);
-    setInitial(next);
-    setTargetStatus(
-      item.status === 'published'
-        ? 'published'
-        : item.status === 'pending_review'
-          ? 'pending_review'
-          : 'draft',
-    );
-    setInitialStatus(
-      item.status === 'published'
-        ? 'published'
-        : item.status === 'pending_review'
-          ? 'pending_review'
-          : 'draft',
-    );
-    setLoadedId(item.id);
-    mountSurface(normalized.html);
-  }, [item, isNew, seed, loadedId, mountSurface]);
+    loadContentIntoForm(item, seeded);
+  }, [item, isNew, seed, loadedId, mountSurface, loadContentIntoForm]);
 
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial) || targetStatus !== initialStatus;
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   useUnsavedWarning(dirty);
 
-  const editable = isNew || item?.status === 'draft' || item?.status === 'rejected';
-  const sourceMissing = !isNew && !!item && item.source_body === undefined && !(seed && seed.id === item.id);
+  // 已发布内容也可以修订：每次保存都会留下一个可回滚的版本。
+  const editable =
+    isNew ||
+    item?.status === 'draft' ||
+    item?.status === 'rejected' ||
+    item?.status === 'pending_security_check' ||
+    item?.status === 'published';
+  const published = item?.status === 'published';
+
+  const draftConflict = pendingDraft
+    ? !isNew &&
+      draftIsStale(pendingDraft, {
+        revision: item?.revision,
+        updatedAt: item?.updated_at,
+      })
+    : false;
+
+  /**
+   * 本地自动保存。
+   *
+   * 只写 localStorage，不调用服务端：关闭标签、断网或浏览器崩溃后还能找回正文；
+   * 真正的版本管理仍然交给「保存草稿」和版本历史。
+   */
+  const autosave = useEditorAutosave({
+    storageKey: draftScope,
+    siteId: site?.id ?? '',
+    kind,
+    contentId: isNew ? null : (item?.id ?? id ?? null),
+    payload: form,
+    // 有未处理的旧草稿时先不写，避免把还没决定要不要恢复的内容覆盖掉。
+    enabled: editable && dirty && !pendingDraft,
+    baseRevision: item?.revision ?? null,
+    serverUpdatedAt: item?.updated_at ?? null,
+    restoredSavedAt,
+    onError: () => {
+      toast.push(
+        'error',
+        t('自动保存失败'),
+        t('浏览器本地存储空间不足或已被禁用；请先手动保存草稿。'),
+      );
+    },
+  });
+
+  const restoreDraft = (draft: EditorDraftRecord) => {
+    // 旧版本地草稿没有访问/预约字段，用编辑器默认值补齐。
+    const payload = draft.payload as Partial<FormState>;
+    setForm({
+      ...draft.payload,
+      publish_at: payload.publish_at ?? '',
+      access_mode: payload.access_mode ?? 'public',
+      access_password: '',
+      comment_policy: payload.comment_policy ?? 'inherit',
+    });
+    setRestoredSavedAt(draft.saved_at);
+    // 正文要从草稿的 Markdown 重新渲染，不能只替换表单字段。
+    mountSurface(normalizeEditorSource('markdown', draft.payload.source_body).html);
+    setPendingDraft(null);
+    setDraftDeferred(false);
+    toast.push('ok', t('本地草稿已恢复'), t('还没有保存到服务器，记得保存草稿。'));
+  };
+
+  const discardDraft = (quiet = false) => {
+    removeEditorDraft(draftScope);
+    setPendingDraft(null);
+    setDraftDeferred(false);
+    setRestoredSavedAt(null);
+    if (!quiet) toast.push('ok', t('本地草稿已丢弃'), t('编辑器保留服务器上的当前版本。'));
+  };
+
+  /** 载入完成后再看本地草稿：新建内容等表单初始化，已有内容等服务端版本回来。 */
+  useEffect(() => {
+    if (draftChecked) return;
+    if (isNew ? loadedId !== 'new' : !item || loadedId !== item.id) return;
+    setDraftChecked(true);
+    const stored = readEditorDraft(draftScope);
+    if (!stored) return;
+    // 与当前服务端内容完全一致就没有恢复价值，顺手清掉，避免下次又弹一次。
+    if (JSON.stringify(stored.payload) === JSON.stringify(initial)) {
+      removeEditorDraft(draftScope);
+      return;
+    }
+    setPendingDraft(stored);
+  }, [draftChecked, draftScope, initial, isNew, item, loadedId]);
+
+  /**
+   * 作者选择「稍后再说」后继续改正文：说明当前服务端内容才是继续编辑的起点，
+   * 旧草稿已经被新的修改取代。清掉旧记录，让自动保存从这一版重新开始。
+   */
+  useEffect(() => {
+    if (!draftDeferred || !pendingDraft || !dirty) return;
+    removeEditorDraft(draftScope);
+    setPendingDraft(null);
+    setDraftDeferred(false);
+    setRestoredSavedAt(null);
+  }, [draftDeferred, pendingDraft, dirty, draftScope]);
 
   const update = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
   const reviewer = canReview(me?.role);
   const canPublishDirectly = reviewer || site?.publish_mode === 'open';
   const category = taxonomy.categories.find((term) => term.id === form.category_id);
-
-  const statusOptions: { value: SaveStatus; label: string; hint: string; disabled: boolean }[] = [
-    {
-      value: 'draft',
-      label: t('草稿'),
-      hint: t('仅自己与编辑可见，可以继续修改。'),
-      disabled: false,
-    },
-    {
-      value: 'pending_review',
-      label: t('提交审核'),
-      hint: t('进入审核队列，等待另一位编辑处理。'),
-      disabled: false,
-    },
-    {
-      value: 'published',
-      label: t('直接发布'),
-      hint: canPublishDirectly ? t('保存后立即公开，仍会经过服务端清洗。') : t('当前发布模式不允许直接发布。'),
-      disabled: !canPublishDirectly,
-    },
-  ];
 
   const toggleTag = (name: string) => {
     update({
@@ -249,31 +389,43 @@ function EditorWorkspace() {
     if (form.slug && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.slug)) {
       return t('路径只能使用小写字母、数字和连字符，例如 hello-world。');
     }
+    if (form.access_mode === 'password' && !form.access_password && !item?.has_access_password) {
+      return t('密码访问需要设置一个访问密码。');
+    }
+    if (form.access_password && form.access_password.length < 4) {
+      return t('访问密码至少需要 4 个字符。');
+    }
+    if (form.publish_at && new Date(form.publish_at).getTime() <= Date.now()) {
+      return t('预约发布时间必须晚于现在。');
+    }
     return '';
   };
 
-  const applyTargetStatus = async (current: Content): Promise<Content> => {
+  /**
+   * 保存之后再走到目标状态。
+   *
+   * 新建内容一定先落成草稿，再按右上角按钮的意图提交或发布：
+   * 「发布」= createDraft → publish，「提交审核」= createDraft → submit。
+   */
+  const applyTargetStatus = async (current: Content, nextStatus: SaveStatus): Promise<Content> => {
     let latest = current;
     let status = current.status;
-    if (status === 'rejected' && targetStatus !== 'draft') {
+    if (status === 'rejected' && nextStatus !== 'draft') {
       latest = await backend.contentAction(kind, current.id, 'restore');
       status = latest.status;
     }
-    if (targetStatus === 'pending_review' && status === 'draft') {
+    if (nextStatus === 'pending_review' && status === 'draft') {
       latest = await backend.contentAction(kind, current.id, 'submit');
       status = latest.status;
     }
-    if (targetStatus === 'published' && (status === 'draft' || status === 'pending_review')) {
+    if (nextStatus === 'published' && (status === 'draft' || status === 'pending_review')) {
       latest = await backend.contentAction(kind, current.id, 'publish');
-      status = latest.status;
-    }
-    if (targetStatus === 'draft' && status === 'rejected') {
-      latest = await backend.contentAction(kind, current.id, 'restore');
     }
     return latest;
   };
 
-  const save = async (): Promise<Content | null> => {
+  /** 右上角两个按钮共用：nextStatus 决定这一下是存草稿、提交审核还是直接发布。 */
+  const save = async (nextStatus: SaveStatus = 'draft'): Promise<Content | null> => {
     const message = validate();
     if (message) {
       setError(message);
@@ -281,6 +433,7 @@ function EditorWorkspace() {
     }
     setError('');
     setBusy(true);
+    setSaveBusy(nextStatus);
     try {
       const payload = {
         title: form.title.trim(),
@@ -290,22 +443,32 @@ function EditorWorkspace() {
         source_body: form.source_body,
         category_id: form.category_id || undefined,
         tags: form.tags,
+        publish_at: fromDateTimeLocal(form.publish_at),
+        access_mode: form.access_mode,
+        // 空串表示保持已有密码；服务端只在密码模式下读取它。
+        access_password: form.access_mode === 'password' ? form.access_password || undefined : undefined,
+        comment_policy: form.comment_policy,
       };
       if (isNew) {
         const created = await backend.createDraft(kind, payload);
         noteActivity(backend, me?.user.display_name ?? '作者', '创建草稿', created.title, KIND_LABEL[kind]);
         let final = created;
         try {
-          final = await applyTargetStatus(created);
+          final = await applyTargetStatus(created, nextStatus);
         } catch (err) {
           toast.push('error', t('草稿已保存，但状态切换失败'), err instanceof Error ? err.message : undefined);
         }
+        // 已经落成服务端草稿，本地临时草稿（新建内容的 `new` 位）没有保留价值了。
+        autosave.clear();
+        setPendingDraft(null);
+        setDraftDeferred(false);
+        setRestoredSavedAt(null);
         toast.push(
           'ok',
           t('内容已保存'),
           t('当前状态：{status}', { status: STATUS_LABEL[final.status] ?? t('草稿') }),
         );
-        navigate(`/admin/content/${kind}/${created.id}`, {
+        navigate(adminEntry ? adminEditorPath(kind, created.id) : writingPath(kind, created.id), {
           replace: true,
           state: { content: { ...final, source_body: form.source_body } },
         });
@@ -315,19 +478,17 @@ function EditorWorkspace() {
       noteActivity(backend, me?.user.display_name ?? '作者', '更新草稿', updated.title, KIND_LABEL[kind]);
       let final = updated;
       try {
-        final = await applyTargetStatus(updated);
+        final = await applyTargetStatus(updated, nextStatus);
       } catch (err) {
         toast.push('error', t('内容已保存，但状态切换失败'), err instanceof Error ? err.message : undefined);
       }
+      autosave.clear();
+      setPendingDraft(null);
+      setDraftDeferred(false);
+      setRestoredSavedAt(null);
       setInitial(form);
-      setInitialStatus(
-        final.status === 'published'
-          ? 'published'
-          : final.status === 'pending_review'
-            ? 'pending_review'
-            : 'draft',
-      );
       content.reload();
+      history.reload();
       setForm(form);
       toast.push('ok', t('已保存'), t('当前状态：{status}', { status: STATUS_LABEL[final.status] }));
       return final;
@@ -338,6 +499,7 @@ function EditorWorkspace() {
       return null;
     } finally {
       setBusy(false);
+      setSaveBusy('');
     }
   };
 
@@ -373,6 +535,82 @@ function EditorWorkspace() {
     }
   };
 
+  /** 读取单个版本的完整源文，供查看与回滚确认。 */
+  const openRevision = async (summary: ContentRevision) => {
+    if (!item) return;
+    setRevisionBusy(summary.id);
+    try {
+      setRevisionView(await backend.contentRevision(kind, item.id, summary.id));
+    } catch (err) {
+      toast.push('error', t('无法读取这个版本'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setRevisionBusy('');
+    }
+  };
+
+  const restoreRevision = async () => {
+    if (!item || !restoreTarget) return;
+    setRevisionBusy(restoreTarget.id);
+    try {
+      const updated = await backend.restoreContentRevision(kind, item.id, restoreTarget.id);
+      loadContentIntoForm(updated);
+      // 回滚得到的内容才是新的起点，旧本地草稿再恢复就会覆盖回滚结果。
+      removeEditorDraft(draftScope);
+      setPendingDraft(null);
+      setDraftDeferred(false);
+      setRestoredSavedAt(null);
+      content.reload();
+      history.reload();
+      toast.push(
+        'ok',
+        t('已回滚到版本 {version}', { version: restoreTarget.version }),
+        t('当前状态：{status}', { status: STATUS_LABEL[updated.status] ?? t('草稿') }),
+      );
+      setRestoreTarget(null);
+      setRevisionView(null);
+    } catch (err) {
+      toast.push('error', t('回滚失败'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setRevisionBusy('');
+    }
+  };
+
+  const revisionActionLabel = (action: ContentRevision['action']): string => {
+    switch (action) {
+      case 'created':
+        return t('创建');
+      case 'updated':
+        return t('保存');
+      case 'rollback_backup':
+        return t('回滚前备份');
+      case 'rollback':
+        return t('回滚');
+      default:
+        return action;
+    }
+  };
+
+  // 服务端返回当前版本号；演示数据的旧快照可能没有该字段，退化为“列表第一条是当前版本”。
+  const isCurrentVersion = (revision: ContentRevision): boolean =>
+    item?.revision !== undefined
+      ? revision.version === item.revision
+      : history.data?.items[0]?.id === revision.id;
+
+  const autosaveLabel =
+    autosave.state === 'saving'
+      ? t('正在保存本地草稿…')
+      : autosave.state === 'error'
+        ? t('本地草稿保存失败（可能是浏览器存储已满）')
+        : autosave.savedAt
+          ? t('草稿已自动保存 · {time}', {
+              time: relativeTime(new Date(autosave.savedAt).toISOString()),
+            })
+          : '';
+
+  // 管理员回内容库，普通成员回站点：写作台里没有内容库这一站。
+  const backTo = adminEntry ? '/admin/content' : '/';
+  const backLabel = adminEntry ? t('内容库') : t('返回站点');
+
   if (!isNew && content.loading) return <PageLoading label={t('正在载入稿件')} />;
 
   if (!isNew && content.error) {
@@ -380,8 +618,8 @@ function EditorWorkspace() {
       <Callout tone="danger" icon="alert" title={t('无法打开这份稿件')}>
         {content.error instanceof Error ? content.error.message : t('请求失败。')}
         <div className="mt-12">
-          <Link to="/admin/content" className="btn btn-secondary btn-sm">
-            {t('返回内容库')}
+          <Link to={backTo} className="btn btn-secondary btn-sm">
+            {backLabel}
           </Link>
         </div>
       </Callout>
@@ -393,8 +631,8 @@ function EditorWorkspace() {
       <div className="admin-page-head">
         <div>
           <div className="row gap-8 mb-8">
-            <Link to="/admin/content" className="back-link" style={{ margin: 0 }}>
-              <Icon name="arrow-left" size={13} /> {t('内容库')}
+            <Link to={backTo} className="back-link" style={{ margin: 0 }}>
+              <Icon name="arrow-left" size={13} /> {backLabel}
             </Link>
             <Badge tone="muted">{KIND_LABEL[kind]}</Badge>
             {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">{t('未保存')}</Badge>}
@@ -402,7 +640,7 @@ function EditorWorkspace() {
           <h1>{isNew ? t('新建{kind}', { kind: KIND_LABEL[kind] }) : editable ? t('编辑稿件') : t('查看稿件')}</h1>
           <p>
             {isNew
-              ? t('保存后会生成一份内容，并按右侧选择的状态提交或发布。正文会交给服务端清洗。')
+              ? t('保存后会生成一份内容；右上角可以直接保存草稿或发布，正文会交给服务端清洗。')
               : item
                 ? t('{author} · 更新于 {date}', {
                     author: item.author_name ?? t('作者'),
@@ -447,30 +685,32 @@ function EditorWorkspace() {
                   if (file) void importMarkdown(file);
                 }}
               />
-              <Button icon="check" loading={busy} onClick={() => void save()}>
-                {targetStatus === 'draft'
-                  ? t('保存草稿')
-                  : targetStatus === 'pending_review'
-                    ? t('保存并提交')
-                    : t('保存并发布')}
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="file"
+                loading={saveBusy === 'draft'}
+                disabled={busy}
+                onClick={() => void save('draft')}
+              >
+                {published ? t('保存修订') : t('保存草稿')}
               </Button>
+              {!published ? (
+                <Button
+                  icon={canPublishDirectly ? 'check' : 'send'}
+                  loading={saveBusy === (canPublishDirectly ? 'published' : 'pending_review')}
+                  disabled={busy}
+                  onClick={() => void save(canPublishDirectly ? 'published' : 'pending_review')}
+                >
+                  {canPublishDirectly ? t('发布') : t('提交审核')}
+                </Button>
+              ) : null}
             </>
           ) : null}
         </div>
       </div>
 
-      {sourceMissing ? (
-        <Callout tone="warn" icon="alert" title={t('无法安全地编辑这份稿件')}>
-          {t('v0.1.0 契约没有提供读取源文的端点，服务端只返回了清洗后的 HTML。为避免用空白覆盖原文，')}{' '}
-          {t('编辑入口在这里关闭。新建草稿不受影响。')}
-          <div className="mt-12">
-            <Link to={`/${kind === 'article' ? 'a' : 'p'}/${id}`} className="btn btn-secondary btn-sm">
-              {t('查看已渲染页面')}
-            </Link>
-          </div>
-        </Callout>
-      ) : (
-        <div className="editor-grid">
+      <div className="editor-grid">
           <div className="editor-main">
             <input
               className="editor-title-input"
@@ -505,6 +745,11 @@ function EditorWorkspace() {
                 {form.source_body ? (
                   <span>{t('· 约 {count} 字', { count: wordCount.toLocaleString() })}</span>
                 ) : null}
+                {autosaveLabel ? (
+                  <span className="tiny faint" role="status" aria-live="polite">
+                    {autosaveLabel}
+                  </span>
+                ) : null}
               </div>
               <span className="tiny faint">
                 {t('所见即所得 · 直接输入 Markdown · 保存时使用 Markdown')}
@@ -520,6 +765,26 @@ function EditorWorkspace() {
                 setWordCount(stats.text);
               }}
             />
+
+            {pendingDraft && draftDeferred ? (
+              <Callout tone="warn" icon="alert" title={t('有未处理的本地草稿')}>
+                <p className="small muted" style={{ margin: 0 }}>
+                  {t('继续编辑会覆盖旧草稿；也可以现在恢复。')}
+                </p>
+                <div className="row gap-8 mt-8">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => restoreDraft(pendingDraft)}
+                  >
+                    {t('恢复本地草稿')}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => discardDraft()}>
+                    {t('丢弃本地草稿')}
+                  </Button>
+                </div>
+              </Callout>
+            ) : null}
 
             <p className="field-hint">
               {t('正文以所见即所得方式编辑：在段首输入')} <code># </code>
@@ -602,12 +867,125 @@ function EditorWorkspace() {
             <div className="panel">
               <div className="panel-head">
                 <div>
+                  <h3>{t('发布与访问')}</h3>
+                  <p>{t('预约发布时间、访问权限与单篇评论策略。')}</p>
+                </div>
+              </div>
+              <div className="panel-body form-stack">
+                <Field
+                  label={t('预约发布时间')}
+                  htmlFor="editor-publish-at"
+                  hint={
+                    !canPublishDirectly
+                      ? t('站点要求先审核，审核通过后才能预约或直接发布。')
+                      : form.publish_at
+                        ? t('保存后到点自动发布；手动发布会清除预约。')
+                        : t('留空表示不预约。到点后由服务端自动发布。')
+                  }
+                >
+                  <div className="row gap-8">
+                    <Input
+                      id="editor-publish-at"
+                      type="datetime-local"
+                      value={form.publish_at}
+                      disabled={!editable || published || !canPublishDirectly}
+                      onChange={(event) => update({ publish_at: event.target.value })}
+                    />
+                    {form.publish_at && canPublishDirectly ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!editable || published}
+                        onClick={() => update({ publish_at: '' })}
+                      >
+                        {t('取消预约')}
+                      </Button>
+                    ) : null}
+                  </div>
+                </Field>
+
+                <Field
+                  label={t('访问权限')}
+                  htmlFor="editor-access-mode"
+                  hint={
+                    form.access_mode === 'public'
+                      ? t('公开内容会出现在列表、搜索与订阅源里。')
+                      : t('密码与仅登录内容只能通过链接访问，不会出现在列表、搜索、订阅源或站点地图里。')
+                  }
+                >
+                  <Select
+                    id="editor-access-mode"
+                    value={form.access_mode}
+                    disabled={!editable}
+                    onChange={(event) =>
+                      update({
+                        access_mode: event.target.value as ContentAccessMode,
+                        access_password: '',
+                      })
+                    }
+                  >
+                    <option value="public">{t('公开')}</option>
+                    <option value="password">{t('密码访问')}</option>
+                    <option value="members">{t('仅登录读者')}</option>
+                  </Select>
+                </Field>
+
+                {form.access_mode === 'password' ? (
+                  <Field
+                    label={t('访问密码')}
+                    htmlFor="editor-access-password"
+                    hint={
+                      item?.has_access_password
+                        ? t('已设置访问密码；留空表示保持不变。')
+                        : t('至少 4 个字符，保存后只保留哈希。')
+                    }
+                  >
+                    <Input
+                      id="editor-access-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={form.access_password}
+                      maxLength={128}
+                      disabled={!editable}
+                      placeholder={item?.has_access_password ? t('留空保持不变') : t('设置访问密码')}
+                      onChange={(event) => update({ access_password: event.target.value })}
+                    />
+                  </Field>
+                ) : null}
+
+                <Field
+                  label={t('评论策略')}
+                  htmlFor="editor-comment-policy"
+                  hint={t('单篇设置优先于站点级评论开关。')}
+                >
+                  <Select
+                    id="editor-comment-policy"
+                    value={form.comment_policy}
+                    disabled={!editable}
+                    onChange={(event) =>
+                      update({ comment_policy: event.target.value as ContentCommentPolicy })
+                    }
+                  >
+                    <option value="inherit">{t('跟随站点设置')}</option>
+                    <option value="open">{t('开启评论')}</option>
+                    <option value="disabled">{t('关闭评论')}</option>
+                    <option value="review">{t('先审后发')}</option>
+                  </Select>
+                </Field>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-head">
+                <div>
                   <h3>{t('分类与标签')}</h3>
                   <p>{t('分类用于归档，标签用于跨分类关联主题。')}</p>
                 </div>
-                <Link to="/admin/taxonomy" className="link-btn">
-                  {t('管理')}
-                </Link>
+                {adminEntry ? (
+                  <Link to="/admin/taxonomy" className="link-btn">
+                    {t('管理')}
+                  </Link>
+                ) : null}
               </div>
               <div className="panel-body form-stack">
                 <Field
@@ -684,33 +1062,78 @@ function EditorWorkspace() {
               <div className="panel-head">
                 <div>
                   <h3>{t('发布状态')}</h3>
-                  <p>{t('保存时按这里的选择提交或发布。')}</p>
+                  <p>{t('右上角决定存草稿还是发布；这里显示当前状态。')}</p>
                 </div>
                 {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">{t('未保存')}</Badge>}
               </div>
               <div className="panel-body">
-                <div className="publish-state-grid">
-                  {statusOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      disabled={!editable || option.disabled}
-                      className={`publish-state${targetStatus === option.value ? ' is-on' : ''}`}
-                      onClick={() => setTargetStatus(option.value)}
-                    >
-                      <span className="publish-state-dot" />
-                      <span>
-                        <strong>{option.label}</strong>
-                        <em>{option.hint}</em>
-                      </span>
-                    </button>
-                  ))}
+                <div className="mini-list">
+                  <div className="mini-row">
+                    <span className="mini-label">{t('当前状态')}</span>
+                    <span className="mini-value">{item ? STATUS_LABEL[item.status] : t('未保存')}</span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('发布模式')}</span>
+                    <span className="mini-value">{site ? PUBLISH_LABEL[site.publish_mode] : '—'}</span>
+                  </div>
                 </div>
                 <p className="field-hint mt-12">
-                  {t('作者不能审核自己的内容；如果当前账户没有直接发布权限，请选择“提交审核”。')}
+                  {t('作者不能审核自己的内容；如果当前账户没有直接发布权限，右上角主按钮会显示「提交审核」。')}
                 </p>
               </div>
             </div>
+
+            {item ? (
+              <div className="panel">
+                <div className="panel-head">
+                  <div>
+                    <h3>{t('版本历史')}</h3>
+                    <p>{t('每次保存都会留下一个可回滚的版本，最多保留 20 个。')}</p>
+                  </div>
+                </div>
+                <div className="panel-body">
+                  {history.loading ? (
+                    <p className="tiny faint">{t('正在载入版本历史')}</p>
+                  ) : history.error ? (
+                    <p className="tiny faint">{t('无法读取版本历史')}</p>
+                  ) : !history.data?.items.length ? (
+                    <p className="tiny faint">{t('还没有版本记录')}</p>
+                  ) : (
+                    <div className="mini-list">
+                      {history.data.items.map((revision) => (
+                        <div className="mini-row" key={revision.id}>
+                          <span className="mini-label">
+                            v{revision.version} · {revisionActionLabel(revision.action)}
+                            <br />
+                            <span className="tiny faint">{formatDateTime(revision.created_at)}</span>
+                          </span>
+                          <span className="mini-value" style={{ display: 'flex', gap: 6 }}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={revisionBusy === revision.id}
+                              onClick={() => void openRevision(revision)}
+                            >
+                              {t('查看')}
+                            </Button>
+                            {!isCurrentVersion(revision) ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon="refresh"
+                                onClick={() => setRestoreTarget(revision)}
+                              >
+                                {t('回滚')}
+                              </Button>
+                            ) : null}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             {item ? (
               <div className="panel">
@@ -726,7 +1149,7 @@ function EditorWorkspace() {
                       {item.status === 'pending_review'
                         ? t('作者不能审核自己的内容；请等待另一位编辑处理。')
                         : item.status === 'published'
-                          ? t('已发布内容不可直接修改，归档由编辑执行。')
+                          ? t('已发布内容仍可修订，归档由编辑执行。')
                           : t('当前没有可执行的流程动作。')}
                     </p>
                   ) : (
@@ -776,7 +1199,6 @@ function EditorWorkspace() {
             )}
           </aside>
         </div>
-      )}
 
       <Modal
         open={rejectOpen}
@@ -827,6 +1249,161 @@ function EditorWorkspace() {
           </>
         }
       />
+
+      <Modal
+        open={!!revisionView}
+        title={revisionView ? t('版本 {version}', { version: revisionView.version }) : ''}
+        description={
+          revisionView
+            ? `${revisionActionLabel(revisionView.action)} · ${formatDateTime(revisionView.created_at)}`
+            : undefined
+        }
+        onClose={() => setRevisionView(null)}
+        footer={
+          revisionView ? (
+            <>
+              <Button variant="ghost" onClick={() => setRevisionView(null)}>
+                {t('关闭')}
+              </Button>
+              {!isCurrentVersion(revisionView) ? (
+                <Button
+                  variant="secondary"
+                  icon="refresh"
+                  onClick={() => {
+                    setRevisionView(null);
+                    setRestoreTarget(revisionView);
+                  }}
+                >
+                  {t('回滚到此版本')}
+                </Button>
+              ) : null}
+            </>
+          ) : null
+        }
+      >
+        {revisionView ? (
+          <>
+            <div className="mini-list">
+              <div className="mini-row">
+                <span className="mini-label">{t('标题')}</span>
+                <span className="mini-value">{revisionView.title}</span>
+              </div>
+              <div className="mini-row">
+                <span className="mini-label">{t('状态')}</span>
+                <span className="mini-value">{STATUS_LABEL[revisionView.status] ?? revisionView.status}</span>
+              </div>
+              <div className="mini-row">
+                <span className="mini-label">{t('编辑者')}</span>
+                <span className="mini-value">{revisionView.editor_name ?? revisionView.editor_id}</span>
+              </div>
+            </div>
+            <pre
+              className="small mono mt-12"
+              style={{ whiteSpace: 'pre-wrap', maxHeight: 360, overflow: 'auto' }}
+            >
+              {revisionView.source_body}
+            </pre>
+          </>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={!!restoreTarget}
+        title={t('回滚这份稿件？')}
+        description={t('回滚前会先备份当前版本，因此回滚本身也可以撤销；发布状态不会改变。')}
+        onClose={() => setRestoreTarget(null)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRestoreTarget(null)}>
+              {t('取消')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={!!restoreTarget && revisionBusy === restoreTarget.id}
+              onClick={() => void restoreRevision()}
+            >
+              {t('确认回滚')}
+            </Button>
+          </>
+        }
+      >
+        <p className="small muted">
+          {restoreTarget
+            ? t('将恢复到版本 {version}（{date}）。', {
+                version: restoreTarget.version,
+                date: formatDateTime(restoreTarget.created_at),
+              })
+            : ''}
+        </p>
+      </Modal>
+
+      <Modal
+        open={!!pendingDraft && !draftDeferred}
+        title={draftConflict ? t('发现本地草稿，服务器版本已更新') : t('恢复上次编辑？')}
+        description={
+          pendingDraft
+            ? draftConflict
+              ? t('服务器上的版本在本地草稿之后更新过。恢复并保存会覆盖服务器版本；如果拿不准，先用服务器版本。')
+              : t('发现 {time} 自动保存的本地草稿。', {
+                  time: formatDateTime(new Date(pendingDraft.saved_at).toISOString()),
+                })
+            : undefined
+        }
+        onClose={() => setDraftDeferred(true)}
+        footer={
+          pendingDraft ? (
+            <>
+              <Button variant="ghost" onClick={() => setDraftDeferred(true)}>
+                {t('稍后再说')}
+              </Button>
+              <Button
+                variant={draftConflict ? 'primary' : 'ghost'}
+                onClick={() => discardDraft()}
+              >
+                {draftConflict ? t('使用服务器版本') : t('丢弃本地草稿')}
+              </Button>
+              <Button
+                variant={draftConflict ? 'secondary' : 'primary'}
+                onClick={() => restoreDraft(pendingDraft)}
+              >
+                {t('恢复本地草稿')}
+              </Button>
+            </>
+          ) : null
+        }
+      >
+        {pendingDraft ? (
+          <>
+            <div className="mini-list">
+              <div className="mini-row">
+                <span className="mini-label">{t('本地草稿')}</span>
+                <span className="mini-value">
+                  {pendingDraft.payload.title.trim() || t('未命名')}
+                  {' · '}
+                  {formatDateTime(new Date(pendingDraft.saved_at).toISOString())}
+                </span>
+              </div>
+              {!isNew && item ? (
+                <div className="mini-row">
+                  <span className="mini-label">{t('服务器版本')}</span>
+                  <span className="mini-value">{formatDateTime(item.updated_at)}</span>
+                </div>
+              ) : null}
+              <div className="mini-row">
+                <span className="mini-label">{t('正文')}</span>
+                <span className="mini-value">
+                  {t('{count} 字符', {
+                    count: pendingDraft.payload.source_body.length.toLocaleString(),
+                  })}
+                </span>
+              </div>
+            </div>
+            <p className="field-hint mt-12">
+              {t('恢复本地草稿会替换当前编辑区的内容；服务端版本在保存之前不会被改动。')}
+            </p>
+          </>
+        ) : null}
+      </Modal>
     </>
   );
 }

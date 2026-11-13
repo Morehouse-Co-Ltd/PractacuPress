@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type {
+  ArticleCardStyle,
   ArticleCover,
   BlockAnimation,
   BlockDisplayOverride,
@@ -15,6 +16,7 @@ import type {
   ExtensionPageScope,
   ExtensionPermission,
   ExtensionSlot,
+  FeedSettings,
   HeaderStyle,
   HeroSettings,
   HumanVerificationProvider,
@@ -37,21 +39,23 @@ import { normalizePins } from './homeTiles';
 import {
   DEFAULT_THEME,
   THEME_PRESETS,
-  applyMode,
   normalizeThemeSettings,
   themeCss,
   type ThemePreset,
 } from './theme';
 import {
   BUILTIN_THEME_IDS,
+  builtinThemeBundle,
   inferActiveTheme,
   normalizeCustomTheme,
+  normalizeVariant,
 } from './themes';
 import {
   BLOCK_TYPES,
   blockDef,
   createBlock,
   defaultHomeLayout,
+  isLegacyDaylightHome,
   migrateWidthsToSpan,
   nextBlockId,
 } from './blocks';
@@ -65,11 +69,17 @@ import {
   normalizeSocialLinks,
 } from './navigation';
 import { DEFAULT_PERMISSIONS, normalizePermissions } from './permissions';
+import {
+  DEFAULT_PERMISSION_GROUPS,
+  normalizePermissionGroupConfigs,
+} from './permissions';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
-import { normalizeLocale } from './i18n/locales';
+import { normalizeLocale, type Locale } from './i18n/locales';
 import { CURRENT_SCHEMA_VERSION, migrateCustomization } from './migrate';
 import { publishMigrationReport } from './migrationNotice';
+import { setThemePreference, useThemePreference } from './themePreference';
+import { runThemeTransition } from './themeTransition';
 
 /**
  * 站点外观、页面与扩展。
@@ -98,6 +108,8 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   header_blur: true,
   header_blur_amount: 12,
   header_threshold: 8,
+  // 夜航首页文章卡默认保持原来的「封面在上、文字在下」。
+  article_card_style: 'cover',
   footer_text: '',
   // 页脚品牌区与底部说明：留空时回退到站点名称/简介与默认英文副标题。
   footer_brand_name: '',
@@ -138,9 +150,11 @@ export const DEFAULT_VERIFICATION: HumanVerificationSettings = {
   enabled: false,
   provider: 'turnstile',
   site_key: '',
+  recaptcha_version: 'v2',
   on_login: true,
   on_register: true,
   on_comment: false,
+  on_password_reset: true,
 };
 
 export const DEFAULT_TAXONOMY: TaxonomySettings = {
@@ -475,6 +489,15 @@ export const DEFAULT_SEO: SeoSettings = {
   verification: { google: '', baidu: '', bing: '' },
 };
 
+export const DEFAULT_FEED: FeedSettings = {
+  // 主题作者卡默认带 /rss.xml 链接，所以新站点默认打开订阅源，避免出现死链。
+  enabled: true,
+  // 摘要比全文更省流量，也避免把只该在站内阅读的正文整段带出去。
+  full_text: false,
+  limit: 20,
+  include_taxonomy: true,
+};
+
 export const DEFAULT_CUSTOMIZATION: SiteCustomization = {
   language: 'zh-CN',
   theme: DEFAULT_THEME,
@@ -492,7 +515,9 @@ export const DEFAULT_CUSTOMIZATION: SiteCustomization = {
   comments: DEFAULT_COMMENT_SETTINGS,
   verification: DEFAULT_VERIFICATION,
   permissions: DEFAULT_PERMISSIONS,
+  permission_groups: DEFAULT_PERMISSION_GROUPS,
   seo: DEFAULT_SEO,
+  feed: DEFAULT_FEED,
   taxonomy: DEFAULT_TAXONOMY,
   custom_css: '',
 };
@@ -1204,6 +1229,13 @@ function normalizeHeaderStyle(value: unknown): HeaderStyle {
   return HEADER_STYLES.find((style) => style === value) ?? 'classic';
 }
 
+/** 夜航文章卡外观枚举；未知值回退到原有外观。 */
+const ARTICLE_CARD_STYLES: ArticleCardStyle[] = ['cover', 'blur'];
+
+function normalizeArticleCardStyle(value: unknown): ArticleCardStyle {
+  return ARTICLE_CARD_STYLES.find((style) => style === value) ?? 'cover';
+}
+
 /** 数字字段收敛：非法值回退默认，小数取整，超出范围夹紧。 */
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
@@ -1229,11 +1261,33 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
   // 这里，所以这里绝不能碰 localStorage——「已读」只由后台界面记录。
   publishMigrationReport(migrated.report);
   const raw = migrated.value as Partial<SiteCustomization>;
-  const theme = normalizeThemeSettings(raw.theme);
+  const rawTheme = normalizeThemeSettings(raw.theme);
+  // 白昼主题在 2026-11 被合并进夜航：旧配置里的 daylight 预设按同一模式
+  // 折算成夜航的冷白 / 冷石墨令牌，避免已选过白昼的站点读到不存在的预设。
+  const theme =
+    rawTheme.preset === 'daylight'
+      ? { ...rawTheme, preset: 'night' }
+      : rawTheme;
   const layout = raw.layout ?? DEFAULT_LAYOUT;
-  const variant = layout.variant === 'bento' ? 'bento' : 'classic';
+  const variant = normalizeVariant(layout.variant);
   const extensions = raw.extensions ?? DEFAULT_EXTENSIONS;
-  const home = normalizeScreenLayout(raw.home);
+  let home = normalizeScreenLayout(raw.home);
+  /**
+   * 显式保存的首页编排（包括 `blocks: []`）必须原样尊重。
+   *
+   * 旧逻辑把「空编排」当成「从没配置过」而回退默认首页：站长在编排台里删光区块、
+   * 保存，下一次读取又会把默认区块长回来，看起来像「真正的编排内容改不掉」。只有
+   * 从没写过 `home` 的旧配置才用默认版面兜底。
+   */
+  const homeProvided =
+    !!raw.home &&
+    typeof raw.home === 'object' &&
+    Array.isArray((raw.home as ScreenLayout).blocks);
+  // 旧版白昼默认首页复用了夜航区块；升级后只在拓扑和属性都没被改过时
+  // 自动换成新的白昼头版，站长自己的编排保持原样。
+  if (variant === 'daylight' && isLegacyDaylightHome(home)) {
+    home = defaultHomeLayout('daylight');
+  }
   const article = normalizeScreenLayout(raw.article);
   // 旧配置没有备案开关时按“已填写就显示”处理，避免已有备案信息突然消失。
   const icp = text(layout.icp, '', 80);
@@ -1274,6 +1328,7 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
       header_blur: bool(layout.header_blur, true),
       header_blur_amount: clampNumber(layout.header_blur_amount, 4, 24, 10),
       header_threshold: clampNumber(layout.header_threshold, 0, 240, 8),
+      article_card_style: normalizeArticleCardStyle(layout.article_card_style),
       footer_text: text(layout.footer_text, '', 200),
       footer_brand_name: text(layout.footer_brand_name, '', 60),
       footer_brand_sub: text(layout.footer_brand_sub, '', 60),
@@ -1306,9 +1361,9 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
         title: text(layout.hero?.title, DEFAULT_HERO.title, 200),
         lede: text(layout.hero?.lede, '', 300),
       },
-      variant: layout.variant === 'bento' ? 'bento' : 'classic',
+      variant,
     },
-    home: home.blocks.length ? home : defaultHomeLayout(variant),
+    home: homeProvided ? home : defaultHomeLayout(variant),
     article,
     pages: Array.isArray(raw.pages) ? raw.pages.filter(isPageLike).map(normalizePage) : [],
     pins: normalizePins(raw.pins),
@@ -1332,12 +1387,22 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
       enabled: bool(raw.verification?.enabled, DEFAULT_VERIFICATION.enabled),
       provider: normalizeVerificationProvider(raw.verification?.provider),
       site_key: text(raw.verification?.site_key, '', 200),
+      recaptcha_version: raw.verification?.recaptcha_version === 'v3' ? 'v3' : 'v2',
       on_login: bool(raw.verification?.on_login, DEFAULT_VERIFICATION.on_login),
       on_register: bool(raw.verification?.on_register, DEFAULT_VERIFICATION.on_register),
       on_comment: bool(raw.verification?.on_comment, DEFAULT_VERIFICATION.on_comment),
+      on_password_reset: bool(
+        raw.verification?.on_password_reset,
+        DEFAULT_VERIFICATION.on_password_reset,
+      ),
     },
     taxonomy: normalizeTaxonomy(raw.taxonomy),
     permissions: normalizePermissions(raw.permissions),
+    // The capability groups are the source of truth when the server exposes them;
+    // this mirror keeps names and the matrix available offline and in demo mode.
+    permission_groups: normalizePermissionGroupConfigs(
+      raw.permission_groups ?? raw.permissions,
+    ),
     seo: {
       title_template: text(raw.seo?.title_template, DEFAULT_SEO.title_template, 120) || DEFAULT_SEO.title_template,
       default_description: text(raw.seo?.default_description, '', 300),
@@ -1352,6 +1417,12 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
         baidu: text(raw.seo?.verification?.baidu, '', 120),
         bing: text(raw.seo?.verification?.bing, '', 120),
       },
+    },
+    feed: {
+      enabled: bool(raw.feed?.enabled, DEFAULT_FEED.enabled),
+      full_text: bool(raw.feed?.full_text, DEFAULT_FEED.full_text),
+      limit: clampNumber(raw.feed?.limit, 1, 100, DEFAULT_FEED.limit),
+      include_taxonomy: bool(raw.feed?.include_taxonomy, DEFAULT_FEED.include_taxonomy),
     },
     // 自定义 CSS 是唯一会原样进入全站 <style> 的字段：读入时就把高危规则剔掉，
     // 保证随后写回服务端的副本、导出文件与渲染都走同一份干净内容。
@@ -1454,14 +1525,20 @@ export function pageSlugError(slug: string, pages: SitePage[], currentId?: strin
   return '';
 }
 
-/** 当前明暗模式与切换函数。页头按钮、Shift+D 与思维链动作共用。 */
+/**
+ * 当前明暗模式与切换函数。页头按钮、Shift+D、阅读工具栏与思维链动作共用。
+ *
+ * 返回值是「这台浏览器实际看到的模式」：Cookie 里有偏好就用偏好，否则跟随
+ * 站点默认。切换只写 Cookie，不写站点配置，访客不会改掉站长的主题。
+ */
 export function useThemeMode(): { mode: ThemeMode; toggle: () => void } {
-  const { customization, update } = useCustomization();
-  const mode = customization.theme.mode;
+  const { customization } = useCustomization();
+  const preference = useThemePreference();
+  const mode = preference ?? customization.theme.mode;
   const toggle = useCallback(() => {
-    const next: ThemeMode = customization.theme.mode === 'dark' ? 'light' : 'dark';
-    update({ theme: applyMode(customization.theme, next) });
-  }, [customization.theme, update]);
+    const next: ThemeMode = mode === 'dark' ? 'light' : 'dark';
+    runThemeTransition(() => setThemePreference(next));
+  }, [mode]);
   return { mode, toggle };
 }
 
@@ -1568,6 +1645,30 @@ export function starterPages(): SitePage[] {
 
 export function createCustomizationWithPages(): SiteCustomization {
   return { ...DEFAULT_CUSTOMIZATION, pages: starterPages() };
+}
+
+/**
+ * 安装完成后的默认大主题：夜航。
+ *
+ * 2026-11 起安装向导不再让用户挑主题，新站点统一以「夜航」交付（深色 + 双栏）。
+ * 站长之后仍可在后台「主题设置」里换成原版或自定义主题。
+ */
+export const INSTALL_DEFAULT_THEME_ID = 'night';
+
+/** 首次安装完成时写进站点设计的完整配置：默认大主题 + 安装时选择的语言。 */
+export function installCustomization(language: Locale): SiteCustomization {
+  const base = createCustomizationWithPages();
+  // 取内置主题的完整排版默认值，而不是只套配色：否则安装完成后会被判成自定义主题。
+  const bundle = builtinThemeBundle(INSTALL_DEFAULT_THEME_ID);
+  if (!bundle) throw new Error(`Built-in theme "${INSTALL_DEFAULT_THEME_ID}" is missing.`);
+  return {
+    ...base,
+    language,
+    theme: bundle.theme,
+    layout: { ...base.layout, variant: bundle.variant },
+    active_theme: bundle.id,
+    home: defaultHomeLayout(bundle.variant),
+  };
 }
 
 /** 导出为 JSON 文件：外观、页面与扩展一并带走。 */

@@ -35,6 +35,8 @@ const fragment: Dictionary = {
   // ---- 热门文章 ----
   热门文章: 'Popular articles',
   '按文章详情页阅读次数排序。': 'Ranked by reads on the article page.',
+  '按近 30 天阅读量排序，越新越占优。':
+    'Ranked by reads in the last 30 days; newer items win ties.',
   还没有文章: 'No articles yet',
   '发布内容后，这里会出现热门文章。':
     'Popular articles will appear here once you publish something.',

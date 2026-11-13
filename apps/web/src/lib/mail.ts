@@ -78,7 +78,7 @@ export function smtpEnvSnippet(mail: MailSettings, password = ''): string {
   lines.push(`SMTP_FROM=${mail.from.trim()}`);
   if (mail.from_name.trim()) lines.push(`SMTP_FROM_NAME=${mail.from_name.trim()}`);
   lines.push('');
-  lines.push(t('# 重置邮件里的链接指向这个地址；留空则使用请求来源'));
+  lines.push(t('# 绝对链接的前缀；留空时服务端按 https 假定，桌面 / localhost（http）请显式填写 http://127.0.0.1:<端口>'));
   lines.push(`PUBLIC_BASE_URL=${mail.public_base_url.trim() || t('<你的站点地址，例如 https://press.example.com>')}`);
   return lines.join('\n');
 }

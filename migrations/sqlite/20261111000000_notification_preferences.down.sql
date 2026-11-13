@@ -1,0 +1,3 @@
+DROP TABLE notification_preferences;
+DROP INDEX notification_site_id_user_id_dedupe_key_created_at;
+ALTER TABLE notifications DROP COLUMN dedupe_key;

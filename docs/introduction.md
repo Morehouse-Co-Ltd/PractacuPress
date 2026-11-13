@@ -40,7 +40,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。容器部署只有三个镜像：API、安全服务、静态站。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 七步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
-| **自定义好** | 2 套大主题 + 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（51 条路径 / 64 个操作）之后，换前端按契约写即可。 |
+| **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 83 条路径 / 100 个操作）之后，换前端按契约写即可。 |
 
 然后再回到产品本身——Practacu Press 想同时拿到三样：
 
@@ -59,7 +59,8 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 ### 3.1 写作与阅读
 
 - **双编辑模式**：富文本与 Markdown。Markdown 由服务端 goldmark 按 GFM 渲染（表格、删除线、任务列表、自动链接），再交给 Rust 安全服务按白名单清洗。
-- **编辑器工具栏**：标题、分栏、图片（含素材库上传）、视频卡片、嵌入网址卡片、链接、表格、图集、提示框、引用、分割线与图标；右侧实时预览；字数按**渲染后的纯文本**统计。
+- **编辑器工具栏**：标题、分栏、图片（含素材库上传）、视频卡片、嵌入网址卡片、链接、表格、图集、提示框、引用、分割线、图标与图表；右侧实时预览；字数按**渲染后的纯文本**统计。
+- **文章图表**：思维导图、逻辑图、统计图（柱状 / 折线 / 环形 / 饼图）与鱼骨图。规格以 `pp-diagram` 围栏随正文保存成 Markdown，阅读页按当前主题重绘成 SVG；不把 SVG 写进正文，因此服务端的 HTML 白名单不需要放宽。
 - **站内搜索**：头部常驻搜索框，输入即搜（防抖 220 ms，取前 6 条），`/` 聚焦，回车进入完整结果页；窄屏只留放大镜。
 - **SEO**：标题模板、描述、关键词、canonical、Open Graph / Twitter、JSON-LD（WebSite / SearchAction / Article / BreadcrumbList / Person）、站长验证、全站 noindex 开关，以及后台可下载的 `sitemap.xml` / `robots.txt`。
 
@@ -74,8 +75,8 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 | 模块 | 能做什么 |
 | --- | --- |
-| **主题** | 2 套内置大主题（原版：纸白单栏 / 夜航：暖黑暗色双栏）+ 7 套配色预设；导入 JSON 主题、导出当前主题、另存为自定义主题 |
-| **页面编排** | 区块组件库，首页与自定义页面可编排，**桌面 / 平板 / 手机三端各自独立**；可一键恢复默认组件 |
+| **主题** | 3 套内置大主题（原版：纸白单栏 / 白昼：白底日报 / 夜航：暖黑暗色双栏）+ 8 套配色预设；导入 JSON 主题、导出当前主题、另存为自定义主题 |
+| **页面编排** | 区块组件库（文本、图片、视频、网站、幻灯片、按钮、图表、留言箱等），每个组件可单独设圆角、阴影、裁剪、背景、内边距与描边；首页与自定义页面可编排，**桌面 / 平板 / 手机三端各自独立**；可一键恢复默认组件 |
 | **导航与页脚** | 顶部 Tab 可配图标、左右位置与排序，最多 8 个二级入口（胶囊栏或下拉）；页脚栏目、条目、版权、社交快捷链接逐项可配 |
 | **主题微调** | 背景柔光、组件混色、过渡时长、页头模糊；系统开启"减少动效"时自动降级 |
 | **访问限制** | 限制页面切换、页面请求与同浏览器并发页面，生成 Nginx `limit_req` / `limit_conn` 与 API `.env` |
@@ -126,7 +127,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | 数据库 | SQLite（纯 Go 驱动）/ MySQL / PostgreSQL |
 | 安全服务 | Rust · tonic（gRPC）· argon2 · ammonia（白名单清洗）· zeroize |
 | 前端 | React 19 · Vite 7 · TypeScript 5.9 · React Router 7（零 UI 框架依赖） |
-| 契约 | OpenAPI 3.1（**51 条路径 / 64 个操作**）+ protobuf（`security.proto`） |
+| 契约 | OpenAPI 3.1（**83 条路径 / 100 个操作**；站点根路径的 sitemap / robots 与内置文档页不在契约内）+ protobuf（`security.proto`） |
 | 实时 | WebSocket（`coder/websocket`）+ outbox 事件补偿 |
 | 桌面分发 | Go 启动器（`go:embed` 内嵌前端 + 同源反向代理 + 子进程管理） |
 
@@ -203,7 +204,7 @@ cd services/security; cargo test                            # Rust（需 MSVC �
 
 **已验证（本机实跑）**
 
-认证链路与会话轮换 · 站点解析与权限矩阵 · 内容状态机与审核 · 媒体两阶段上传与下载 · 搜索 · 通知 · 私信 · WebSocket 与票据 · 事件补偿 · 打包产物自检（真实进程注册 / 发稿 / 清洗 / 发布）。
+认证链路与会话轮换 · 站点解析与权限矩阵 · 内容状态机与审核 · 媒体两阶段上传与下载 · 搜索 · 通知 · 私信 · WebSocket 与票据 · 事件补偿 · 举报与审核 · 审计查询 · 邮箱验证 · 打包产物自检（真实进程注册 / 发稿 / 清洗 / 发布）。
 
 **未验证**
 
@@ -222,12 +223,12 @@ cd services/security; cargo test                            # Rust（需 MSVC �
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx / Cloudflare 执行，后台只生成片段 |
 | 域名别名 | 服务端按 Host 解析单一站点，别名域名需要反向代理改写 Host（生成的片段已包含） |
 | S3 上传内存占用 | 受 SigV4 限制需先缓冲，上限等于单文件上限（25 MiB） |
-| 邮件 | 只实现找回密码这一种事务邮件 |
+| 邮件 | 已接入找回密码与邮箱验证两种事务邮件；评论回复、审核结果等通知邮件模板尚未接入 |
 | SEO | 标签由前端写入 `<head>`，不执行 JS 的抓取器只能看到 `index.html` 的默认值 |
-| sitemap / robots | 由后台生成并下载，静态托管时需手动放到站点根目录 |
+| sitemap / robots | Go API 已按 Host 在站点根路径动态输出 `/sitemap.xml` 与 `/robots.txt`，后台也可下载静态副本；纯静态托管时仍需手动放到站点根目录 |
 | 尚未实现 | 前端 SDK 生成、OAuth 适配器、手机验证码、搜索分页游标 |
 
-更细的现状见 [交付状态报告](superpowers/reports/2026-10-20-delivery-status.md)，会随实现更新。
+更细的现状见 [当前实现与文档差异](superpowers/reports/2026-11-07-documentation-reality-check.md)。[2026-10-20 交付状态报告](superpowers/reports/2026-10-20-delivery-status.md) 保留为历史快照，其中的“未实现”清单已不代表当前代码。
 
 ## 9. 目录结构
 
@@ -242,7 +243,7 @@ apps/api/           Go API
     platform/{config,logging,errors,page,mailer}/
     infrastructure/             Ent 仓储、存储适配器、Rust gRPC 客户端
     transport/{http/gin,ws}     HTTP 中间件与 WebSocket
-apps/web/           React 前台、管理后台与七步安装引导（39 个页面组件）
+apps/web/           React 前台、管理后台与七步安装引导
 apps/launcher/      Windows 一键启动器（go:embed + 同源反代）
 services/security/  Rust 安全服务（tonic）
 packages/contracts/ OpenAPI 3.1 与 protobuf，含生成代码
@@ -256,7 +257,8 @@ scripts/            dev / test / gen / package
 - [前端说明](../apps/web/README.md)——路由、主题、页面编排、打包
 - [产品与技术设计](superpowers/specs/2026-10-18-practacu-press-design.md)
 - [计划评审与可行性](superpowers/reviews/2026-10-18-practacu-press-plan-review.md)
-- [交付状态报告](superpowers/reports/2026-10-20-delivery-status.md)
+- [当前实现与文档差异](superpowers/reports/2026-11-07-documentation-reality-check.md)
+- [2026-10-20 交付状态报告（历史快照）](superpowers/reports/2026-10-20-delivery-status.md)
 
 **许可证**：**AGPL-3.0**，全文见 [LICENSE](../LICENSE)。它可以商用——部署、修改、对外提供付费服务都不需要授权；但**修改版必须以同一许可证开源**，包括"只作为网络服务提供、并不分发二进制"的情况（AGPL 第 13 条），同时**必须保留版权声明、项目名称与仓库地址**，并在改动过的文件上标明改动（第 5 条、第 7(b) 条）。不能接受 AGPL 的场景（例如嵌进闭源产品）目前没有商业双许可。
 
@@ -327,7 +329,7 @@ Most options force a trade-off: blog engines write well but have no community; f
 | **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is three images. |
 | **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
 | **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
-| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (51 paths / 64 operations). |
+| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts where every block can set its own corner radius, shadow, crop, background, padding and border, with a built-in button block; mind maps, logic charts, statistical charts and fishbone diagrams can be inserted while writing; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (currently 83 paths / 100 operations; site-root sitemap / robots and the built-in docs page are outside the contract). |
 
 Practacu Press aims for all three at low deployment cost:
 
@@ -337,11 +339,11 @@ Practacu Press aims for all three at low deployment cost:
 
 ## Feature highlights
 
-- **Writing** — rich text and Markdown side by side; Markdown is rendered by goldmark (GFM) on the server, then sanitized against an allow-list in Rust. Toolbar blocks, live preview, and a word count measured on the *rendered* text.
+- **Writing** — rich text and Markdown side by side; Markdown is rendered by goldmark (GFM) on the server, then sanitized against an allow-list in Rust. Toolbar blocks, live preview, and a word count measured on the *rendered* text. Mind maps, logic charts, statistical charts (bar / line / donut / pie) and fishbone diagrams are stored in the body as `pp-diagram` fenced blocks and redrawn as SVG on the reading page, so the server allow-list stays untouched.
 - **Reading** — header search that queries as you type (220 ms debounce, top 6 hits, `/` to focus, Enter for the full result page); SEO with title templates, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site verification, a global noindex switch, and downloadable `sitemap.xml` / `robots.txt`.
 - **Community** — articles and posts, threaded comments, likes, bookmarks, follows, DM conversations, in-app notifications, reports and moderation. A 5-state / 5-action review state machine, with per-site publishing policy; authors cannot approve their own work.
 - **Realtime** — WebSocket upgrades with a **one-time ticket** (60 s, single use, stored hashed) so access tokens never land in URLs, plus a REST catch-up endpoint (`GET /events`) for reconnects.
-- **Admin** — 2 built-in themes (paper single-column; "Night Flight" warm-dark two-column) with 7 colour presets and JSON import/export; no-code page composition **independently per desktop / tablet / phone**; fully configurable navigation and footer; access limits, domains and TLS, performance and storage settings that emit ready-to-deploy Nginx and `.env` snippets; members and 4-role permissions; media library, review queue, taxonomy, analytics, built-in extensions.
+- **Admin** — 3 built-in themes (paper single-column; "Daylight" white card-based editorial; "Night Flight" warm-dark two-column) with 8 colour presets and JSON import/export; no-code page composition **independently per desktop / tablet / phone**; fully configurable navigation and footer; access limits, domains and TLS, performance and storage settings that emit ready-to-deploy Nginx and `.env` snippets; members and 4-role permissions; media library, review queue, taxonomy, analytics, built-in extensions.
 - **Delivery** — seven-step first-run wizard (demo data in `localStorage`, or a real backend found automatically); a Windows launcher that embeds the frontend via `go:embed`, proxies `/api`, `/healthz` and `/readyz` on the same origin, and falls back from port 80 to 8080 when busy; and a packaging script that **actually boots the artifact on a temporary port** and smoke-tests registration, article creation (verifying `<script>` is stripped) and publishing before producing a zip.
 
 ## Architecture
@@ -373,7 +375,7 @@ Three decisions worth calling out:
 | Database | SQLite (pure Go) / MySQL / PostgreSQL |
 | Security service | Rust · tonic (gRPC) · argon2 · ammonia · zeroize |
 | Frontend | React 19 · Vite 7 · TypeScript 5.9 · React Router 7 (no UI framework) |
-| Contract | OpenAPI 3.1 (**51 paths / 64 operations**) + protobuf |
+| Contract | OpenAPI 3.1 (**83 paths / 100 operations**; site-root sitemap / robots and the built-in docs page are outside the contract) + protobuf |
 | Realtime | WebSocket (`coder/websocket`) + outbox catch-up |
 | Desktop | Go launcher (`go:embed` + same-origin reverse proxy) |
 
@@ -390,11 +392,11 @@ Three decisions worth calling out:
 
 The project separates "actually exercised" from "written but unverified":
 
-- **Verified locally:** auth and session rotation, site resolution and permissions, the content state machine, two-phase media upload and download, search, notifications, DMs, WebSocket tickets, event catch-up, and the packaging self-test against a real process.
+- **Verified locally:** auth and session rotation, site resolution and permissions, the content state machine, two-phase media upload and download, search, notifications, DMs, WebSocket tickets, event catch-up, reports and moderation, audit queries, email verification, and the packaging self-test against a real process.
 - **Implemented but unverified:** MySQL / PostgreSQL (no local instances; needs a CI matrix) and S3-compatible storage (S3 tests are skipped without a real endpoint such as MinIO or AWS).
-- **Not done / known edges:** the Docker images and compose file are present but **have never been built or run** here (no Docker on the development machine); no MSI installer; multi-replica deployment (WebSocket tickets and the hub are in-process; rate limiting is per process), granular IP/concurrency limits (the admin generates Nginx snippets, it does not enforce them), email beyond password reset, SEO tags written client-side (crawlers without JS see `index.html` defaults), and no frontend SDK generation, OAuth adapters, SMS codes or search pagination.
+- **Not done / known edges:** the Docker images and compose file are present but **have never been built or run** here (no Docker on the development machine); no MSI installer; multi-replica deployment (WebSocket tickets and the hub are in-process; rate limiting is per process), granular IP/concurrency limits (the admin generates Nginx snippets, it does not enforce them), notification email beyond password reset and email verification, SEO tags written client-side (crawlers without JS see `index.html` defaults), sitemap/robots served by the API at the site root but still manual for static-only hosting, and no frontend SDK generation, OAuth adapters, SMS codes or search pagination.
 
-Details in the [delivery status report](superpowers/reports/2026-10-20-delivery-status.md).
+Details in [Current implementation vs. documentation](superpowers/reports/2026-11-07-documentation-reality-check.md). The [2026-10-20 delivery status report](superpowers/reports/2026-10-20-delivery-status.md) is a historical snapshot whose "not implemented" list no longer describes the current code.
 
 ## Getting started
 

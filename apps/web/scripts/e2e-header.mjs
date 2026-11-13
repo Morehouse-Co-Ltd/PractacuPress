@@ -3,6 +3,8 @@
  *
  * 覆盖：classic / transparent / float 三种样式在滚动前 / 后的外观、高斯模糊开关、
  * 滚动阈值、夜航深色，以及后台「主题设置 → 导航与页脚 → 页头样式」三选一。
+ * float 额外验证「从外往里收」的过程：中部宽度、最终 1180px、scale(0.97) 与 logo 内移。
+ * 注意：无头 Chrome 默认匹配 prefers-reduced-motion: reduce，脚本会显式模拟 no-preference。
  *
  * 前置：cd apps/web && npm run build，并让 node scripts/serve.mjs 在 PP_E2E_BASE 提供服务
  * （或对 npm run dev 的 5173 跑）。
@@ -150,6 +152,11 @@ const MEASURE = `(() => {
     innerShadow: is.boxShadow,
     innerRadius: is.borderRadius,
     innerWidth: Math.round(inner.getBoundingClientRect().width),
+    // offsetWidth 不受 transform 缩放影响，用来断言「胶囊布局宽度」是否收到 1180px。
+    innerOffsetWidth: Math.round(inner.offsetWidth),
+    innerTransform: is.transform,
+    innerPadding: is.paddingLeft,
+    brandLeft: Math.round(document.querySelector('.brand')?.getBoundingClientRect().left ?? -1),
     styleAttr: document.documentElement.dataset.headerStyle,
   };
 })()`;
@@ -166,6 +173,11 @@ const blurred = (value) => /blur\(/.test(value || '');
 try {
   await send('Page.enable');
   await send('Runtime.enable');
+  // 无头 Chrome 默认匹配 prefers-reduced-motion: reduce，会让所有过渡瞬间完成；
+  // 这里显式模拟「允许动效」，才能验证悬浮胶囊的收缩过程。
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+  });
   // 先落到真实站点：Chrome 启动目标可能还是 about:blank，读不了 localStorage。
   await goto(BASE + '/');
   await sleep(900);
@@ -203,6 +215,10 @@ try {
   const floatTop = await evaljs(MEASURE);
   await shot('float-light-top');
   await evaljs('window.scrollTo(0, 900); true');
+  // 收缩动画进行到一半时取样：宽度应严格处于两端之间，证明不是瞬间跳变。
+  await sleep(140);
+  const floatMid = await evaljs(MEASURE);
+  await shot('float-light-mid');
   await sleep(600);
   const floatScrolled = await evaljs(MEASURE);
   await shot('float-light-scrolled');
@@ -214,6 +230,33 @@ try {
   check('悬浮胶囊：滚动后胶囊浮起（阴影）', floatScrolled?.innerShadow !== 'none');
   check('悬浮胶囊：滚动后胶囊高斯模糊', floatScrolled && blurred(floatScrolled.innerBlur), floatScrolled?.innerBlur);
   check('悬浮胶囊：宽度不超过 1280px', (floatScrolled?.innerWidth ?? 9999) <= 1282, `${floatScrolled?.innerWidth}px`);
+  check(
+    '悬浮胶囊：顶部与内容同宽、滚动后收窄',
+    !!floatTop && !!floatScrolled && floatTop.innerOffsetWidth > floatScrolled.innerOffsetWidth + 100,
+    `${floatTop?.innerOffsetWidth}px → ${floatScrolled?.innerOffsetWidth}px`,
+  );
+  check(
+    '悬浮胶囊：收缩过程有中间帧（不是瞬间跳变）',
+    !!floatTop && !!floatScrolled && !!floatMid &&
+      floatMid.innerOffsetWidth < floatTop.innerOffsetWidth &&
+      floatMid.innerOffsetWidth > floatScrolled.innerOffsetWidth,
+    `mid=${floatMid?.innerOffsetWidth}px`,
+  );
+  check(
+    '悬浮胶囊：收起后布局宽度约 1180px',
+    Math.abs((floatScrolled?.innerOffsetWidth ?? 0) - 1180) <= 2,
+    `${floatScrolled?.innerOffsetWidth}px`,
+  );
+  check(
+    '悬浮胶囊：收起时有很轻的整体缩放',
+    /0\.97/.test(floatScrolled?.innerTransform ?? ''),
+    floatScrolled?.innerTransform,
+  );
+  check(
+    '悬浮胶囊：logo 向中心移动',
+    !!floatTop && !!floatScrolled && floatScrolled.brandLeft > floatTop.brandLeft + 30,
+    `${floatTop?.brandLeft}px → ${floatScrolled?.brandLeft}px`,
+  );
 
   /* ---- 4. 关闭模糊 ---- */
   await applyConfig(config({ layout: { variant: 'classic', header_style: 'float', header_blur: false, header_blur_amount: 14, header_threshold: 8 } }));

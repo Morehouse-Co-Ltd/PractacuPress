@@ -140,6 +140,27 @@ func (_u *ContentItemUpdate) SetNillablePolicyVersion(v *string) *ContentItemUpd
 	return _u
 }
 
+// SetRevision sets the "revision" field.
+func (_u *ContentItemUpdate) SetRevision(v int) *ContentItemUpdate {
+	_u.mutation.ResetRevision()
+	_u.mutation.SetRevision(v)
+	return _u
+}
+
+// SetNillableRevision sets the "revision" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableRevision(v *int) *ContentItemUpdate {
+	if v != nil {
+		_u.SetRevision(*v)
+	}
+	return _u
+}
+
+// AddRevision adds value to the "revision" field.
+func (_u *ContentItemUpdate) AddRevision(v int) *ContentItemUpdate {
+	_u.mutation.AddRevision(v)
+	return _u
+}
+
 // SetCategoryID sets the "category_id" field.
 func (_u *ContentItemUpdate) SetCategoryID(v string) *ContentItemUpdate {
 	_u.mutation.SetCategoryID(v)
@@ -211,6 +232,116 @@ func (_u *ContentItemUpdate) SetNillableArchivedAt(v *time.Time) *ContentItemUpd
 // ClearArchivedAt clears the value of the "archived_at" field.
 func (_u *ContentItemUpdate) ClearArchivedAt() *ContentItemUpdate {
 	_u.mutation.ClearArchivedAt()
+	return _u
+}
+
+// SetPublishAt sets the "publish_at" field.
+func (_u *ContentItemUpdate) SetPublishAt(v time.Time) *ContentItemUpdate {
+	_u.mutation.SetPublishAt(v)
+	return _u
+}
+
+// SetNillablePublishAt sets the "publish_at" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillablePublishAt(v *time.Time) *ContentItemUpdate {
+	if v != nil {
+		_u.SetPublishAt(*v)
+	}
+	return _u
+}
+
+// ClearPublishAt clears the value of the "publish_at" field.
+func (_u *ContentItemUpdate) ClearPublishAt() *ContentItemUpdate {
+	_u.mutation.ClearPublishAt()
+	return _u
+}
+
+// SetPublishAttempts sets the "publish_attempts" field.
+func (_u *ContentItemUpdate) SetPublishAttempts(v int) *ContentItemUpdate {
+	_u.mutation.ResetPublishAttempts()
+	_u.mutation.SetPublishAttempts(v)
+	return _u
+}
+
+// SetNillablePublishAttempts sets the "publish_attempts" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillablePublishAttempts(v *int) *ContentItemUpdate {
+	if v != nil {
+		_u.SetPublishAttempts(*v)
+	}
+	return _u
+}
+
+// AddPublishAttempts adds value to the "publish_attempts" field.
+func (_u *ContentItemUpdate) AddPublishAttempts(v int) *ContentItemUpdate {
+	_u.mutation.AddPublishAttempts(v)
+	return _u
+}
+
+// SetAccessMode sets the "access_mode" field.
+func (_u *ContentItemUpdate) SetAccessMode(v string) *ContentItemUpdate {
+	_u.mutation.SetAccessMode(v)
+	return _u
+}
+
+// SetNillableAccessMode sets the "access_mode" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableAccessMode(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetAccessMode(*v)
+	}
+	return _u
+}
+
+// SetAccessPasswordHash sets the "access_password_hash" field.
+func (_u *ContentItemUpdate) SetAccessPasswordHash(v string) *ContentItemUpdate {
+	_u.mutation.SetAccessPasswordHash(v)
+	return _u
+}
+
+// SetNillableAccessPasswordHash sets the "access_password_hash" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableAccessPasswordHash(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetAccessPasswordHash(*v)
+	}
+	return _u
+}
+
+// ClearAccessPasswordHash clears the value of the "access_password_hash" field.
+func (_u *ContentItemUpdate) ClearAccessPasswordHash() *ContentItemUpdate {
+	_u.mutation.ClearAccessPasswordHash()
+	return _u
+}
+
+// SetViewCount sets the "view_count" field.
+func (_u *ContentItemUpdate) SetViewCount(v int) *ContentItemUpdate {
+	_u.mutation.ResetViewCount()
+	_u.mutation.SetViewCount(v)
+	return _u
+}
+
+// SetNillableViewCount sets the "view_count" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableViewCount(v *int) *ContentItemUpdate {
+	if v != nil {
+		_u.SetViewCount(*v)
+	}
+	return _u
+}
+
+// AddViewCount adds value to the "view_count" field.
+func (_u *ContentItemUpdate) AddViewCount(v int) *ContentItemUpdate {
+	_u.mutation.AddViewCount(v)
+	return _u
+}
+
+// SetCommentPolicy sets the "comment_policy" field.
+func (_u *ContentItemUpdate) SetCommentPolicy(v string) *ContentItemUpdate {
+	_u.mutation.SetCommentPolicy(v)
+	return _u
+}
+
+// SetNillableCommentPolicy sets the "comment_policy" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableCommentPolicy(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetCommentPolicy(*v)
+	}
 	return _u
 }
 
@@ -293,9 +424,39 @@ func (_u *ContentItemUpdate) check() error {
 			return &ValidationError{Name: "policy_version", err: fmt.Errorf(`ent: validator failed for field "ContentItem.policy_version": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Revision(); ok {
+		if err := contentitem.RevisionValidator(v); err != nil {
+			return &ValidationError{Name: "revision", err: fmt.Errorf(`ent: validator failed for field "ContentItem.revision": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.CategoryID(); ok {
 		if err := contentitem.CategoryIDValidator(v); err != nil {
 			return &ValidationError{Name: "category_id", err: fmt.Errorf(`ent: validator failed for field "ContentItem.category_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PublishAttempts(); ok {
+		if err := contentitem.PublishAttemptsValidator(v); err != nil {
+			return &ValidationError{Name: "publish_attempts", err: fmt.Errorf(`ent: validator failed for field "ContentItem.publish_attempts": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AccessMode(); ok {
+		if err := contentitem.AccessModeValidator(v); err != nil {
+			return &ValidationError{Name: "access_mode", err: fmt.Errorf(`ent: validator failed for field "ContentItem.access_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AccessPasswordHash(); ok {
+		if err := contentitem.AccessPasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "access_password_hash", err: fmt.Errorf(`ent: validator failed for field "ContentItem.access_password_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ViewCount(); ok {
+		if err := contentitem.ViewCountValidator(v); err != nil {
+			return &ValidationError{Name: "view_count", err: fmt.Errorf(`ent: validator failed for field "ContentItem.view_count": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CommentPolicy(); ok {
+		if err := contentitem.CommentPolicyValidator(v); err != nil {
+			return &ValidationError{Name: "comment_policy", err: fmt.Errorf(`ent: validator failed for field "ContentItem.comment_policy": %w`, err)}
 		}
 	}
 	return nil
@@ -337,6 +498,12 @@ func (_u *ContentItemUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.PolicyVersion(); ok {
 		_spec.SetField(contentitem.FieldPolicyVersion, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Revision(); ok {
+		_spec.SetField(contentitem.FieldRevision, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRevision(); ok {
+		_spec.AddField(contentitem.FieldRevision, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.CategoryID(); ok {
 		_spec.SetField(contentitem.FieldCategoryID, field.TypeString, value)
 	}
@@ -357,6 +524,36 @@ func (_u *ContentItemUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.ArchivedAtCleared() {
 		_spec.ClearField(contentitem.FieldArchivedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PublishAt(); ok {
+		_spec.SetField(contentitem.FieldPublishAt, field.TypeTime, value)
+	}
+	if _u.mutation.PublishAtCleared() {
+		_spec.ClearField(contentitem.FieldPublishAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PublishAttempts(); ok {
+		_spec.SetField(contentitem.FieldPublishAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPublishAttempts(); ok {
+		_spec.AddField(contentitem.FieldPublishAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AccessMode(); ok {
+		_spec.SetField(contentitem.FieldAccessMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AccessPasswordHash(); ok {
+		_spec.SetField(contentitem.FieldAccessPasswordHash, field.TypeString, value)
+	}
+	if _u.mutation.AccessPasswordHashCleared() {
+		_spec.ClearField(contentitem.FieldAccessPasswordHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.ViewCount(); ok {
+		_spec.SetField(contentitem.FieldViewCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedViewCount(); ok {
+		_spec.AddField(contentitem.FieldViewCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CommentPolicy(); ok {
+		_spec.SetField(contentitem.FieldCommentPolicy, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(contentitem.FieldUpdatedAt, field.TypeTime, value)
@@ -493,6 +690,27 @@ func (_u *ContentItemUpdateOne) SetNillablePolicyVersion(v *string) *ContentItem
 	return _u
 }
 
+// SetRevision sets the "revision" field.
+func (_u *ContentItemUpdateOne) SetRevision(v int) *ContentItemUpdateOne {
+	_u.mutation.ResetRevision()
+	_u.mutation.SetRevision(v)
+	return _u
+}
+
+// SetNillableRevision sets the "revision" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableRevision(v *int) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetRevision(*v)
+	}
+	return _u
+}
+
+// AddRevision adds value to the "revision" field.
+func (_u *ContentItemUpdateOne) AddRevision(v int) *ContentItemUpdateOne {
+	_u.mutation.AddRevision(v)
+	return _u
+}
+
 // SetCategoryID sets the "category_id" field.
 func (_u *ContentItemUpdateOne) SetCategoryID(v string) *ContentItemUpdateOne {
 	_u.mutation.SetCategoryID(v)
@@ -564,6 +782,116 @@ func (_u *ContentItemUpdateOne) SetNillableArchivedAt(v *time.Time) *ContentItem
 // ClearArchivedAt clears the value of the "archived_at" field.
 func (_u *ContentItemUpdateOne) ClearArchivedAt() *ContentItemUpdateOne {
 	_u.mutation.ClearArchivedAt()
+	return _u
+}
+
+// SetPublishAt sets the "publish_at" field.
+func (_u *ContentItemUpdateOne) SetPublishAt(v time.Time) *ContentItemUpdateOne {
+	_u.mutation.SetPublishAt(v)
+	return _u
+}
+
+// SetNillablePublishAt sets the "publish_at" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillablePublishAt(v *time.Time) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetPublishAt(*v)
+	}
+	return _u
+}
+
+// ClearPublishAt clears the value of the "publish_at" field.
+func (_u *ContentItemUpdateOne) ClearPublishAt() *ContentItemUpdateOne {
+	_u.mutation.ClearPublishAt()
+	return _u
+}
+
+// SetPublishAttempts sets the "publish_attempts" field.
+func (_u *ContentItemUpdateOne) SetPublishAttempts(v int) *ContentItemUpdateOne {
+	_u.mutation.ResetPublishAttempts()
+	_u.mutation.SetPublishAttempts(v)
+	return _u
+}
+
+// SetNillablePublishAttempts sets the "publish_attempts" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillablePublishAttempts(v *int) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetPublishAttempts(*v)
+	}
+	return _u
+}
+
+// AddPublishAttempts adds value to the "publish_attempts" field.
+func (_u *ContentItemUpdateOne) AddPublishAttempts(v int) *ContentItemUpdateOne {
+	_u.mutation.AddPublishAttempts(v)
+	return _u
+}
+
+// SetAccessMode sets the "access_mode" field.
+func (_u *ContentItemUpdateOne) SetAccessMode(v string) *ContentItemUpdateOne {
+	_u.mutation.SetAccessMode(v)
+	return _u
+}
+
+// SetNillableAccessMode sets the "access_mode" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableAccessMode(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetAccessMode(*v)
+	}
+	return _u
+}
+
+// SetAccessPasswordHash sets the "access_password_hash" field.
+func (_u *ContentItemUpdateOne) SetAccessPasswordHash(v string) *ContentItemUpdateOne {
+	_u.mutation.SetAccessPasswordHash(v)
+	return _u
+}
+
+// SetNillableAccessPasswordHash sets the "access_password_hash" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableAccessPasswordHash(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetAccessPasswordHash(*v)
+	}
+	return _u
+}
+
+// ClearAccessPasswordHash clears the value of the "access_password_hash" field.
+func (_u *ContentItemUpdateOne) ClearAccessPasswordHash() *ContentItemUpdateOne {
+	_u.mutation.ClearAccessPasswordHash()
+	return _u
+}
+
+// SetViewCount sets the "view_count" field.
+func (_u *ContentItemUpdateOne) SetViewCount(v int) *ContentItemUpdateOne {
+	_u.mutation.ResetViewCount()
+	_u.mutation.SetViewCount(v)
+	return _u
+}
+
+// SetNillableViewCount sets the "view_count" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableViewCount(v *int) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetViewCount(*v)
+	}
+	return _u
+}
+
+// AddViewCount adds value to the "view_count" field.
+func (_u *ContentItemUpdateOne) AddViewCount(v int) *ContentItemUpdateOne {
+	_u.mutation.AddViewCount(v)
+	return _u
+}
+
+// SetCommentPolicy sets the "comment_policy" field.
+func (_u *ContentItemUpdateOne) SetCommentPolicy(v string) *ContentItemUpdateOne {
+	_u.mutation.SetCommentPolicy(v)
+	return _u
+}
+
+// SetNillableCommentPolicy sets the "comment_policy" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableCommentPolicy(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetCommentPolicy(*v)
+	}
 	return _u
 }
 
@@ -659,9 +987,39 @@ func (_u *ContentItemUpdateOne) check() error {
 			return &ValidationError{Name: "policy_version", err: fmt.Errorf(`ent: validator failed for field "ContentItem.policy_version": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Revision(); ok {
+		if err := contentitem.RevisionValidator(v); err != nil {
+			return &ValidationError{Name: "revision", err: fmt.Errorf(`ent: validator failed for field "ContentItem.revision": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.CategoryID(); ok {
 		if err := contentitem.CategoryIDValidator(v); err != nil {
 			return &ValidationError{Name: "category_id", err: fmt.Errorf(`ent: validator failed for field "ContentItem.category_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PublishAttempts(); ok {
+		if err := contentitem.PublishAttemptsValidator(v); err != nil {
+			return &ValidationError{Name: "publish_attempts", err: fmt.Errorf(`ent: validator failed for field "ContentItem.publish_attempts": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AccessMode(); ok {
+		if err := contentitem.AccessModeValidator(v); err != nil {
+			return &ValidationError{Name: "access_mode", err: fmt.Errorf(`ent: validator failed for field "ContentItem.access_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AccessPasswordHash(); ok {
+		if err := contentitem.AccessPasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "access_password_hash", err: fmt.Errorf(`ent: validator failed for field "ContentItem.access_password_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ViewCount(); ok {
+		if err := contentitem.ViewCountValidator(v); err != nil {
+			return &ValidationError{Name: "view_count", err: fmt.Errorf(`ent: validator failed for field "ContentItem.view_count": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CommentPolicy(); ok {
+		if err := contentitem.CommentPolicyValidator(v); err != nil {
+			return &ValidationError{Name: "comment_policy", err: fmt.Errorf(`ent: validator failed for field "ContentItem.comment_policy": %w`, err)}
 		}
 	}
 	return nil
@@ -720,6 +1078,12 @@ func (_u *ContentItemUpdateOne) sqlSave(ctx context.Context) (_node *ContentItem
 	if value, ok := _u.mutation.PolicyVersion(); ok {
 		_spec.SetField(contentitem.FieldPolicyVersion, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Revision(); ok {
+		_spec.SetField(contentitem.FieldRevision, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRevision(); ok {
+		_spec.AddField(contentitem.FieldRevision, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.CategoryID(); ok {
 		_spec.SetField(contentitem.FieldCategoryID, field.TypeString, value)
 	}
@@ -740,6 +1104,36 @@ func (_u *ContentItemUpdateOne) sqlSave(ctx context.Context) (_node *ContentItem
 	}
 	if _u.mutation.ArchivedAtCleared() {
 		_spec.ClearField(contentitem.FieldArchivedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PublishAt(); ok {
+		_spec.SetField(contentitem.FieldPublishAt, field.TypeTime, value)
+	}
+	if _u.mutation.PublishAtCleared() {
+		_spec.ClearField(contentitem.FieldPublishAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PublishAttempts(); ok {
+		_spec.SetField(contentitem.FieldPublishAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPublishAttempts(); ok {
+		_spec.AddField(contentitem.FieldPublishAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AccessMode(); ok {
+		_spec.SetField(contentitem.FieldAccessMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AccessPasswordHash(); ok {
+		_spec.SetField(contentitem.FieldAccessPasswordHash, field.TypeString, value)
+	}
+	if _u.mutation.AccessPasswordHashCleared() {
+		_spec.ClearField(contentitem.FieldAccessPasswordHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.ViewCount(); ok {
+		_spec.SetField(contentitem.FieldViewCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedViewCount(); ok {
+		_spec.AddField(contentitem.FieldViewCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CommentPolicy(); ok {
+		_spec.SetField(contentitem.FieldCommentPolicy, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(contentitem.FieldUpdatedAt, field.TypeTime, value)

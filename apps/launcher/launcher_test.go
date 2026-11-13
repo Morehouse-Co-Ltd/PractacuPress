@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -10,8 +12,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestNormalizeMode(t *testing.T) {
@@ -38,13 +43,49 @@ func TestNormalizeMode(t *testing.T) {
 	}
 }
 
+func TestDefaultPortIs8080(t *testing.T) {
+	// 用户需求：站点默认开放 8080。改动这个常量会改变所有新安装的首次启动行为。
+	if defaultPort != 8080 {
+		t.Fatalf("defaultPort = %d, want 8080", defaultPort)
+	}
+}
+
+func TestCandidatePortsPrefer8080ThenNeighbours(t *testing.T) {
+	cases := []struct {
+		preferred int
+		want      []int
+	}{
+		// 全新安装：先 8080，占用时依次 8081、8082，最后才退回标准 HTTP 80。
+		{8080, []int{8080, 8081, 8082, 80}},
+		// 老安装保存过 80：首选端口仍然是用户自己的选择。
+		{80, []int{80, 8080, 8081, 8082}},
+		// 显式 --port 9000：不要被默认端口顶掉。
+		{9000, []int{9000, 8080, 8081, 8082, 80}},
+	}
+	for _, tc := range cases {
+		if got := candidatePorts(tc.preferred); !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("candidatePorts(%d) = %v, want %v", tc.preferred, got, tc.want)
+		}
+	}
+}
+
+func TestOriginForPortOmitsOnlyStandardHTTPPort(t *testing.T) {
+	if got := originForPort(8080); got != "http://localhost:8080" {
+		t.Fatalf("originForPort(8080) = %q, want http://localhost:8080", got)
+	}
+	// 80 是浏览器默认端口，地址栏不写端口号；这是 URL 语义，与站点默认端口无关。
+	if got := originForPort(80); got != "http://localhost" {
+		t.Fatalf("originForPort(80) = %q, want http://localhost", got)
+	}
+}
+
 func TestIsAPIPath(t *testing.T) {
-	for _, path := range []string{"/api", "/api/", "/api/v1/articles", "/healthz", "/readyz"} {
+	for _, path := range []string{"/api", "/api/", "/api/v1/articles", "/healthz", "/readyz", "/sitemap.xml", "/robots.txt", "/plugins/com.example.hello/1.0.0/client.js"} {
 		if !isAPIPath(path) {
 			t.Fatalf("%s must be proxied to the API", path)
 		}
 	}
-	for _, path := range []string{"/", "/admin", "/apix", "/__pp/runtime", "/assets/app.js"} {
+	for _, path := range []string{"/", "/admin", "/apix", "/plugins", "/__pp/runtime", "/assets/app.js", "/sitemap.xml.bak", "/robots.txt/extra"} {
 		if isAPIPath(path) {
 			t.Fatalf("%s must be served by the launcher itself", path)
 		}
@@ -160,5 +201,348 @@ func TestStartLiveRejectsMissingBinary(t *testing.T) {
 	_, err := startLive(liveOptions{apiBinary: "", dataDir: t.TempDir()})
 	if err == nil {
 		t.Fatal("startLive must fail without an API binary")
+	}
+}
+
+// newTestApp builds the smallest app the HTTP handlers need: an embedded-like
+// static site and empty runtime state. It never binds a socket.
+func newTestApp(t *testing.T) *app {
+	t.Helper()
+	return &app{
+		dist: fstest.MapFS{
+			"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>test</title>")},
+		},
+		distReady: true,
+		stateFile: filepath.Join(t.TempDir(), stateName),
+		snapshots: map[string]snapshot{},
+		mode:      modeDemo,
+		port:      18099,
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	loopback := []string{
+		"localhost",
+		"localhost:80",
+		"LOCALHOST:8080",
+		"localhost.",
+		"127.0.0.1",
+		"127.0.0.1:18099",
+		"127.0.0.2:9000",
+		"[::1]",
+		"[::1]:18099",
+		"::1",
+	}
+	for _, host := range loopback {
+		if !isLoopbackHost(host) {
+			t.Fatalf("isLoopbackHost(%q) = false, want true", host)
+		}
+	}
+	notLoopback := []string{
+		"",
+		"example.com",
+		"example.com:80",
+		"192.168.1.10:18099",
+		"10.0.0.5",
+		"[2001:db8::1]:443",
+		"evil.example:8080",
+	}
+	for _, host := range notLoopback {
+		if isLoopbackHost(host) {
+			t.Fatalf("isLoopbackHost(%q) = true, want false", host)
+		}
+	}
+}
+
+func TestControlPlaneRejectsProxiedPublicRequests(t *testing.T) {
+	a := newTestApp(t)
+	token := strings.Repeat("a", 32)
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		host   string
+		remote string
+		body   string
+	}{
+		{"runtime via public host", http.MethodGet, "/__pp/runtime", "press.example.com:8080", "127.0.0.1:50000", ""},
+		{"port via public host", http.MethodPost, "/__pp/runtime/port", "press.example.com", "127.0.0.1:50000", `{"port":18099}`},
+		{"state via public host", http.MethodGet, "/__pp/state/" + token, "192.168.1.10:18099", "127.0.0.1:50000", ""},
+		{"runtime from a remote peer", http.MethodGet, "/__pp/runtime", "127.0.0.1:18099", "203.0.113.7:50000", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, "http://"+tc.host+tc.path, strings.NewReader(tc.body))
+			req.Host = tc.host
+			req.RemoteAddr = tc.remote
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			a.ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("%s returned %d, want 403 (body: %s)", tc.name, rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), `"permission_denied"`) {
+				t.Fatalf("%s body does not name permission_denied: %s", tc.name, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestControlPlaneRejectsForwardedRequests(t *testing.T) {
+	a := newTestApp(t)
+	// A proxy that rewrites Host to 127.0.0.1 would look local; the forwarding
+	// headers it adds are what still gives it away.
+	for _, header := range []string{"X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP", "Forwarded"} {
+		t.Run(header, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18099/__pp/runtime", nil)
+			req.Host = "127.0.0.1:18099"
+			req.RemoteAddr = "127.0.0.1:50000"
+			req.Header.Set(header, "203.0.113.7")
+			rec := httptest.NewRecorder()
+			a.ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("forwarded request with %s returned %d, want 403: %s", header, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestRuntimeResponseOmitsInternalDetails(t *testing.T) {
+	a := newTestApp(t)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18099/__pp/runtime", nil)
+	req.Host = "127.0.0.1:18099"
+	req.RemoteAddr = "127.0.0.1:50000"
+	rec := httptest.NewRecorder()
+	a.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("runtime returned %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("runtime is not JSON: %v", err)
+	}
+	for _, field := range []string{"mode", "runtime_mode", "name", "port", "origin", "dist_ready", "api"} {
+		if _, ok := body[field]; !ok {
+			t.Fatalf("runtime lost the field %q the page needs: %v", field, body)
+		}
+	}
+	for _, field := range []string{"pid", "started_at"} {
+		if _, ok := body[field]; ok {
+			t.Fatalf("runtime still leaks %q: %v", field, body)
+		}
+	}
+
+	api, ok := body["api"].(map[string]any)
+	if !ok {
+		t.Fatalf("runtime api is not an object: %v", body["api"])
+	}
+	for _, field := range []string{"base", "data_dir", "log", "pid"} {
+		if _, ok := api[field]; ok {
+			t.Fatalf("runtime api still leaks %q: %v", field, api)
+		}
+	}
+	for _, field := range []string{"managed", "ready"} {
+		if _, ok := api[field]; !ok {
+			t.Fatalf("runtime api lost %q: %v", field, api)
+		}
+	}
+}
+
+func TestRuntimeAndStateAcceptLoopbackHost(t *testing.T) {
+	a := newTestApp(t)
+	token := strings.Repeat("b", 32)
+
+	runtimeReq := httptest.NewRequest(http.MethodGet, "http://localhost:18099/__pp/runtime", nil)
+	runtimeReq.Host = "localhost:18099"
+	runtimeReq.RemoteAddr = "127.0.0.1:50000"
+	runtimeRec := httptest.NewRecorder()
+	a.ServeHTTP(runtimeRec, runtimeReq)
+	if runtimeRec.Code != http.StatusOK {
+		t.Fatalf("localhost must reach the runtime endpoint, got %d: %s", runtimeRec.Code, runtimeRec.Body.String())
+	}
+
+	// A loopback Host with no Origin header (curl/scripts) must still be allowed.
+	portReq := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:18099/__pp/runtime/port", strings.NewReader(`{"port":18099}`))
+	portReq.Host = "127.0.0.1:18099"
+	portReq.RemoteAddr = "127.0.0.1:50000"
+	portReq.Header.Set("Content-Type", "application/json")
+	portRec := httptest.NewRecorder()
+	a.ServeHTTP(portRec, portReq)
+	if portRec.Code != http.StatusOK {
+		t.Fatalf("loopback port change returned %d: %s", portRec.Code, portRec.Body.String())
+	}
+
+	// An unknown token must be a plain 404, not an auth failure.
+	stateReq := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18099/__pp/state/"+token, nil)
+	stateReq.Host = "127.0.0.1:18099"
+	stateReq.RemoteAddr = "127.0.0.1:50000"
+	stateRec := httptest.NewRecorder()
+	a.ServeHTTP(stateRec, stateReq)
+	if stateRec.Code != http.StatusNotFound {
+		t.Fatalf("unknown import token returned %d, want 404: %s", stateRec.Code, stateRec.Body.String())
+	}
+}
+
+func TestSecurityHeadersOnEveryResponse(t *testing.T) {
+	a := newTestApp(t)
+	headers := map[string]string{
+		"Content-Security-Policy": contentSecurityPolicy,
+		"X-Frame-Options":         "SAMEORIGIN",
+		"Referrer-Policy":         "strict-origin-when-cross-origin",
+		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
+		"X-Content-Type-Options":  "nosniff",
+	}
+	for _, target := range []string{"/", "/__pp/runtime", "/__pp/unknown", "/api/v1/articles", "/healthz"} {
+		req := httptest.NewRequest(http.MethodGet, "http://localhost:18099"+target, nil)
+		req.Host = "localhost:18099"
+		req.RemoteAddr = "127.0.0.1:50000"
+		rec := httptest.NewRecorder()
+		a.ServeHTTP(rec, req)
+		for name, want := range headers {
+			if got := rec.Header().Get(name); got != want {
+				t.Fatalf("%s: header %s = %q, want %q", target, name, got, want)
+			}
+		}
+	}
+}
+
+func TestSealAndOpenSecretRoundTrip(t *testing.T) {
+	secret := []byte("a signing key that must not be readable on disk")
+	sealed, err := sealSecret(secret)
+	if err != nil {
+		t.Fatalf("sealSecret: %v", err)
+	}
+	if runtime.GOOS == "windows" && !isSealedSecret(sealed) {
+		t.Fatalf("Windows must seal the secret, got %q", sealed)
+	}
+	if runtime.GOOS != "windows" && isSealedSecret(sealed) {
+		t.Fatalf("non-Windows must not pretend to seal the secret, got %q", sealed)
+	}
+
+	opened, err := openSecret(sealed)
+	if err != nil {
+		t.Fatalf("openSecret: %v", err)
+	}
+	if string(opened) != string(secret) {
+		t.Fatalf("round trip changed the secret: %q", opened)
+	}
+
+	// Various payload sizes, so an incorrect DPAPI buffer length or an early free
+	// shows up as a mismatch instead of working by accident on one small value.
+	for _, size := range []int{1, 16, 48, 64, 200, 1024} {
+		payload := make([]byte, size)
+		for i := range payload {
+			payload[i] = byte(i*7 + size)
+		}
+		sealed, err := sealSecret(payload)
+		if err != nil {
+			t.Fatalf("sealSecret(%d bytes): %v", size, err)
+		}
+		opened, err := openSecret(sealed)
+		if err != nil {
+			t.Fatalf("openSecret(%d bytes): %v", size, err)
+		}
+		if !bytes.Equal(opened, payload) {
+			t.Fatalf("round trip changed a %d byte secret", size)
+		}
+	}
+
+	for _, broken := range []string{"", "not base64!!", sealedSecretPrefix + "!!!", sealedSecretPrefix} {
+		if _, err := openSecret(broken); err == nil {
+			t.Fatalf("openSecret(%q) must fail", broken)
+		}
+	}
+}
+
+func TestWriteStateSealsTheSigningKey(t *testing.T) {
+	file := filepath.Join(t.TempDir(), stateName)
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := base64.StdEncoding.EncodeToString(der)
+
+	if err := writeState(file, launcherState{Port: 8090, JWTKey: plain}); err != nil {
+		t.Fatalf("writeState: %v", err)
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := readState(file)
+	if runtime.GOOS == "windows" {
+		if !isSealedSecret(stored.JWTKey) {
+			t.Fatalf("the signing key was written without DPAPI: %s", raw)
+		}
+		if strings.Contains(string(raw), plain) {
+			t.Fatalf("the state file still contains the plaintext signing key")
+		}
+	} else if stored.JWTKey != plain {
+		t.Fatalf("non-Windows state must keep the plain base64 key, got %q", stored.JWTKey)
+	}
+
+	// Writing a sealed state again must not seal it twice.
+	if err := writeState(file, stored); err != nil {
+		t.Fatalf("writeState (second): %v", err)
+	}
+	again := readState(file)
+	if again.JWTKey != stored.JWTKey {
+		t.Fatalf("a second write changed the stored key: %q -> %q", stored.JWTKey, again.JWTKey)
+	}
+}
+
+func TestEnsureSigningKeyMigratesLegacyPlaintext(t *testing.T) {
+	file := filepath.Join(t.TempDir(), stateName)
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := base64.StdEncoding.EncodeToString(der)
+
+	// A state file written by an older launcher: jwt_key is plain base64.
+	legacy, err := json.Marshal(launcherState{Port: 18099, JWTKey: plain})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	state := readState(file)
+	got, err := ensureSigningKey(file, &state)
+	if err != nil {
+		t.Fatalf("ensureSigningKey: %v", err)
+	}
+	if got != plain {
+		t.Fatal("the legacy key must keep working, otherwise the operator is logged out")
+	}
+
+	stored := readState(file)
+	if stored.Port != 18099 {
+		t.Fatalf("migration lost the port: %d", stored.Port)
+	}
+	if runtime.GOOS == "windows" && !isSealedSecret(stored.JWTKey) {
+		t.Fatal("a Windows launcher must migrate the legacy plaintext key to DPAPI")
+	}
+	if runtime.GOOS != "windows" && stored.JWTKey != plain {
+		t.Fatalf("non-Windows state changed unexpectedly: %q", stored.JWTKey)
+	}
+
+	// The migrated file must still yield the same key on the next launch.
+	second, err := ensureSigningKey(file, &stored)
+	if err != nil {
+		t.Fatalf("ensureSigningKey (reload): %v", err)
+	}
+	if second != plain {
+		t.Fatal("the migrated key must survive a restart")
 	}
 }

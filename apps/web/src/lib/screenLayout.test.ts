@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  availableBlocks,
   builderDeviceForWidth,
   cloneBlocks,
   createBlock,
   defaultHomeLayout,
+  isLegacyDaylightHome,
+  legacyDaylightHome,
   screenBlocksForDevice,
   screenHasBlocks,
 } from './blocks';
@@ -127,5 +130,67 @@ describe('按设备选择页面编排', () => {
     expect(customization.home.blocks[0].at).toEqual({ mobile: { hidden: true } });
     expect(customization.home.device_split).toBeUndefined();
     expect(customization.home.devices).toBeUndefined();
+  });
+});
+
+describe('白昼的独立首页', () => {
+  it('默认编排使用白昼专用区块，不混入夜航首页块', () => {
+    const types = defaultHomeLayout('daylight').blocks.map((block) => block.type);
+    expect(types).toEqual([
+      'daylight-front',
+      'daylight-topics',
+      'daylight-stories',
+      'daylight-briefs',
+      'join-band',
+    ]);
+    expect(types).not.toContain('bento-hero');
+    expect(types).not.toContain('spotlight');
+    expect(types).not.toContain('post-grid');
+  });
+
+  it('组件面板给白昼专用区块，不向作者暴露夜航主组件', () => {
+    const types = availableBlocks('daylight').map((block) => block.type);
+    expect(types).toContain('daylight-front');
+    expect(types).toContain('daylight-stories');
+    expect(types).toContain('join-band');
+    expect(types).not.toContain('bento-hero');
+    expect(types).not.toContain('spotlight');
+    expect(types).not.toContain('post-grid');
+  });
+
+  it('旧白昼默认首页识别成功，改过属性后不再迁移', () => {
+    const legacy = legacyDaylightHome();
+    expect(isLegacyDaylightHome(legacy)).toBe(true);
+    const edited = JSON.parse(JSON.stringify(legacy)) as typeof legacy;
+    edited.blocks[0].props.title = '改过的标题';
+    expect(isLegacyDaylightHome(edited)).toBe(false);
+  });
+
+  it('读取旧白昼默认首页时升级为新白昼编排，自定义编排保留', () => {
+    const migrated = readCustomization({
+      customization: {
+        theme: { preset: 'daylight', mode: 'light', background: '#fbfbfa', ink: '#111111', accent: '#2457f5' },
+        layout: { variant: 'daylight' },
+        home: legacyDaylightHome(),
+      },
+    } as never);
+    expect(migrated.home.blocks.map((block) => block.type)).toEqual([
+      'daylight-front',
+      'daylight-topics',
+      'daylight-stories',
+      'daylight-briefs',
+      'join-band',
+    ]);
+
+    const custom = legacyDaylightHome();
+    custom.blocks[0] = { ...custom.blocks[0], props: { ...custom.blocks[0].props, title: '我的标题' } };
+    const kept = readCustomization({
+      customization: {
+        theme: { preset: 'daylight', mode: 'light', background: '#fbfbfa', ink: '#111111', accent: '#2457f5' },
+        layout: { variant: 'daylight' },
+        home: custom,
+      },
+    } as never);
+    expect(kept.home.blocks[0].type).toBe('bento-hero');
   });
 });

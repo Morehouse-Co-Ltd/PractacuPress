@@ -130,6 +130,12 @@ function messageFor(detail: ProblemDetail, t: (key: string) => string): string |
     case 'color:malformed':
       return t('颜色格式不正确，请使用 #rrggbb 这样的写法。');
 
+    // 两步验证（FSD F-04）：验证码错误与同一步长重放是两种不同的原因。
+    case 'code:invalid':
+      return t('验证码或恢复码不正确。');
+    case 'code:already_used':
+      return t('这个验证码已经用过了，请等下一个。');
+
     default:
       return undefined;
   }
@@ -182,4 +188,6 @@ export const KNOWN_DETAILS: ProblemDetail[] = [
   { field: 'target', rule: 'unsupported' },
   { field: 'depth', rule: 'out_of_range' },
   { field: 'color', rule: 'malformed' },
+  { field: 'code', rule: 'invalid' },
+  { field: 'code', rule: 'already_used' },
 ];

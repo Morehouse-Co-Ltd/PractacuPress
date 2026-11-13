@@ -51,6 +51,42 @@ func TestLoadDefaults(t *testing.T) {
 	require.Equal(t, DriverSQLite, cfg.DatabaseDriver)
 }
 
+func TestLoadMediaQuotaDefaultsAreFiniteOnFreshDeployments(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("MEDIA_DEFAULT_USER_QUOTA_BYTES", "")
+	t.Setenv("MEDIA_DEFAULT_SITE_QUOTA_BYTES", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.EqualValues(t, DefaultMediaUserQuotaBytes, cfg.MediaDefaultUserQuotaBytes)
+	require.EqualValues(t, DefaultMediaSiteQuotaBytes, cfg.MediaDefaultSiteQuotaBytes)
+}
+
+func TestLoadMediaQuotaDefaultsUseInt64Bytes(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("MEDIA_DEFAULT_USER_QUOTA_BYTES", "9223372036854775807")
+	t.Setenv("MEDIA_DEFAULT_SITE_QUOTA_BYTES", "10737418240")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.EqualValues(t, int64(9223372036854775807), cfg.MediaDefaultUserQuotaBytes)
+	require.EqualValues(t, int64(10737418240), cfg.MediaDefaultSiteQuotaBytes)
+}
+
+func TestLoadRejectsInvalidMediaQuotaDefaults(t *testing.T) {
+	for key, value := range map[string]string{
+		"MEDIA_DEFAULT_USER_QUOTA_BYTES": "-1",
+		"MEDIA_DEFAULT_SITE_QUOTA_BYTES": "9223372036854775808",
+	} {
+		t.Run(key, func(t *testing.T) {
+			setValidEnv(t)
+			t.Setenv(key, value)
+			_, err := Load()
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestLoadServerResourceDefaults(t *testing.T) {
 	setValidEnv(t)
 

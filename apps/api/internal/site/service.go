@@ -7,6 +7,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 )
 
 // Action is a permission checked against a membership.
@@ -14,31 +16,47 @@ type Action string
 
 // The permission surface of the first release.
 const (
-	ActionWriteContent    Action = "content.write"
-	ActionModerateContent Action = "content.moderate"
-	ActionManageMembers   Action = "site.members.manage"
-	ActionManageSite      Action = "site.manage"
+	ActionWriteContent     Action = "content.write"
+	ActionModerateContent  Action = "content.moderate"
+	ActionManageMembers    Action = "site.members.manage"
+	ActionManageSite       Action = "site.manage"
+	ActionManagePermission Action = "site.permissions.manage"
+	ActionViewLog          Action = "site.audit.view"
+	ActionComment          Action = "community.comment"
+	ActionModerateComment  Action = "community.comment.moderate"
 )
+
+// actionCapability maps a server action to the capability that authorizes it.
+//
+// The matrix is finer grained than the four roles, but every action still has a
+// single capability. Keeping the mapping in one table means the role fallback and
+// the configurable matrix can never disagree about what an action means.
+var actionCapability = map[Action]Capability{
+	ActionWriteContent:     CapabilityWriteContent,
+	ActionModerateContent:  CapabilityModerateContent,
+	ActionManageMembers:    CapabilityManageMember,
+	ActionManageSite:       CapabilityManageSite,
+	ActionManagePermission: CapabilityManagePermission,
+	ActionViewLog:          CapabilityViewLog,
+	ActionComment:          CapabilityComment,
+	ActionModerateComment:  CapabilityModerateComment,
+}
 
 // Can reports whether a member may perform action.
 //
 // Authorisation is a single table instead of scattered role comparisons: adding a
 // role or an action changes exactly one place, and every call site stays honest.
+// When the membership carries a permission group matrix it decides; otherwise the
+// role defaults apply, so callers that build a Member by hand keep working.
 func Can(member Member, action Action) bool {
 	if !member.IsActive() {
 		return false
 	}
-
-	switch action {
-	case ActionWriteContent:
-		return member.Role.AtLeast(RoleMember)
-	case ActionModerateContent:
-		return member.Role.AtLeast(RoleEditor)
-	case ActionManageMembers, ActionManageSite:
-		return member.Role.AtLeast(RoleSiteAdmin)
-	default:
+	capability, ok := actionCapability[action]
+	if !ok {
 		return false
 	}
+	return member.Allows(capability)
 }
 
 // CanAssignRole reports whether actor may grant role to someone else.
@@ -66,6 +84,13 @@ type Service struct {
 	// txtLookup resolves the DNS TXT challenge of a domain verification. It is an
 	// interface so the network dependency can be replaced in tests.
 	txtLookup TXTLookup
+	// stepUpHasher hashes the optional dedicated security password of a site.
+	// Nil means a deployment where the feature is not wired; setting a password
+	// then fails closed with ErrStepUpUnavailable.
+	stepUpHasher StepUpPasswordHasher
+	// stepUpTokens verifies X-PP-Step-Up grants. Nil means every write after the
+	// first one is refused, which is the safe direction.
+	stepUpTokens StepUpTokenVerifier
 }
 
 // Option configures optional Service behaviour.
@@ -197,6 +222,18 @@ func (s *Service) PublishMode(ctx context.Context, siteID string) (PublishMode, 
 	return found.PublishMode, nil
 }
 
+// CommentPolicy returns the comment switches of a site.
+//
+// The community service reads it on every comment write, so a change in the admin UI
+// takes effect on the next request and a direct API call cannot bypass it.
+func (s *Service) CommentPolicy(ctx context.Context, siteID string) (enabled, requireReview bool, err error) {
+	found, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return false, false, err
+	}
+	return found.CommentsEnabled, found.CommentsRequireReview, nil
+}
+
 // Get returns a site to a caller who is a member of it.
 //
 // Non members get ErrMemberNotFound rather than ErrNotFound so the endpoint does not
@@ -251,6 +288,53 @@ func (s *Service) PublicMember(ctx context.Context, siteID, userID string) (Memb
 	return member, nil
 }
 
+// MemberDirectory lists the active members of a site to a signed-in member.
+//
+// The caller must be an active member of the same site. The result is the public
+// profile projection only: no email, status or media quota, because the directory is
+// a people finder for the community, not an administration screen.
+func (s *Service) MemberDirectory(
+	ctx context.Context,
+	siteID, actorUserID, query string,
+	limit int,
+	after page.Cursor,
+) ([]Member, page.Cursor, error) {
+	if siteID == "" || actorUserID == "" {
+		return nil, page.Cursor{}, ErrPermissionDenied
+	}
+	if _, err := s.Membership(ctx, siteID, actorUserID); err != nil {
+		return nil, page.Cursor{}, err
+	}
+
+	directory, ok := s.repo.(MemberDirectoryRepository)
+	if !ok {
+		return nil, page.Cursor{}, errors.New("site: member directory is not configured")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	filter := MemberDirectoryFilter{
+		SiteID: siteID,
+		Query:  strings.TrimSpace(query),
+		Limit:  limit,
+		After:  after,
+	}
+	members, err := directory.ListMemberDirectory(ctx, filter)
+	if err != nil {
+		return nil, page.Cursor{}, err
+	}
+
+	next := page.Cursor{}
+	if len(members) == limit && len(members) > 0 {
+		last := members[len(members)-1]
+		next = page.Cursor{
+			Key: last.CreatedAt.UTC().Format(time.RFC3339Nano),
+			ID:  last.UserID,
+		}
+	}
+	return members, next, nil
+}
+
 // ChangeMemberRole changes another member's role.
 //
 // Two escalation guards matter here: the actor must administer this site, and only a
@@ -301,8 +385,12 @@ func (s *Service) ChangeMemberRole(
 		Action:    "site.member.role_changed",
 		Target:    userID,
 		RequestID: requestID,
-		Detail:    map[string]any{"from": string(target.Role), "to": string(role)},
-		At:        s.now(),
+		Detail: map[string]any{
+			"from":  string(target.Role),
+			"to":    string(role),
+			"group": GroupKeyForRole(role),
+		},
+		At: s.now(),
 	})
 }
 
@@ -413,6 +501,48 @@ func (s *Service) UpdateMemberStatus(
 	return target, nil
 }
 
+// UpdateMemberMediaQuota sets or clears one member's media storage override.
+//
+// Only site administrators may manage quotas. A missing property is a read-only
+// no-op and returns the current member so PATCH responses remain useful.
+func (s *Service) UpdateMemberMediaQuota(
+	ctx context.Context,
+	actor Member,
+	siteID, userID string,
+	quota QuotaOverride,
+	requestID string,
+) (Member, error) {
+	if err := authorize(actor, siteID, ActionManageSite); err != nil {
+		return Member{}, err
+	}
+	target, err := s.repo.FindMember(ctx, siteID, userID)
+	if err != nil {
+		if errors.Is(err, ErrMemberNotFound) {
+			return Member{}, ErrTargetNotFound
+		}
+		return Member{}, err
+	}
+	if !quota.Present {
+		return target, nil
+	}
+	if quota.Bytes != nil && *quota.Bytes < 0 {
+		return Member{}, ErrInvalidInput
+	}
+	if err := s.repo.UpdateMemberMediaQuota(ctx, siteID, userID, quota, AuditEntry{
+		SiteID:    siteID,
+		ActorID:   actor.UserID,
+		Action:    "site.member.media_quota_updated",
+		Target:    userID,
+		RequestID: requestID,
+		Detail:    map[string]any{"media_quota_bytes": quota.Bytes},
+		At:        s.now(),
+	}); err != nil {
+		return Member{}, err
+	}
+	target.MediaQuotaBytes = quota.Bytes
+	return target, nil
+}
+
 // DeleteMember removes a member from the site.
 //
 // The account itself is kept: it may still own content, comments and other site
@@ -494,6 +624,9 @@ func (s *Service) UpdateSettings(
 	if in.Name != "" && len(in.Name) > 160 {
 		return ErrInvalidInput
 	}
+	if in.MediaQuota.Present && in.MediaQuota.Bytes != nil && *in.MediaQuota.Bytes < 0 {
+		return ErrInvalidInput
+	}
 	if in.VisibilityMode != "" &&
 		in.VisibilityMode != VisibilityPublic && in.VisibilityMode != VisibilityMembersOnly {
 		return ErrInvalidInput
@@ -505,11 +638,14 @@ func (s *Service) UpdateSettings(
 	}
 
 	normalized := SettingsInput{
-		Name:             strings.TrimSpace(in.Name),
-		Description:      strings.TrimSpace(in.Description),
-		VisibilityMode:   in.VisibilityMode,
-		PublishMode:      in.PublishMode,
-		RegistrationOpen: in.RegistrationOpen,
+		Name:                  strings.TrimSpace(in.Name),
+		Description:           strings.TrimSpace(in.Description),
+		VisibilityMode:        in.VisibilityMode,
+		PublishMode:           in.PublishMode,
+		RegistrationOpen:      in.RegistrationOpen,
+		CommentsEnabled:       in.CommentsEnabled,
+		CommentsRequireReview: in.CommentsRequireReview,
+		MediaQuota:            in.MediaQuota,
 	}
 	detail := map[string]any{
 		"visibility_mode": string(normalized.VisibilityMode),
@@ -517,6 +653,15 @@ func (s *Service) UpdateSettings(
 	}
 	if in.RegistrationOpen != nil {
 		detail["registration_open"] = *in.RegistrationOpen
+	}
+	if in.CommentsEnabled != nil {
+		detail["comments_enabled"] = *in.CommentsEnabled
+	}
+	if in.CommentsRequireReview != nil {
+		detail["comments_require_review"] = *in.CommentsRequireReview
+	}
+	if in.MediaQuota.Present {
+		detail["media_quota_bytes"] = in.MediaQuota.Bytes
 	}
 
 	if in.Domain != "" {
@@ -708,6 +853,25 @@ func (s *Service) VerifyDomain(
 	verified := found
 	verified.DomainVerifiedAt = &now
 	return domainStatusOf(verified), nil
+}
+
+// VerifyDomainForPlatform runs the DNS challenge of a site on behalf of the platform
+// console.
+//
+// The console has already authorised the caller as a deployment level platform
+// administrator or as the target site's own administrator; the synthetic membership is
+// only the shape the site rules expect. Sharing VerifyDomain means the challenge token,
+// DNS lookup, audit entry and verified timestamp follow exactly one implementation.
+func (s *Service) VerifyDomainForPlatform(
+	ctx context.Context,
+	siteID, userID string,
+) (DomainStatus, error) {
+	return s.VerifyDomain(ctx, Member{
+		UserID: userID,
+		SiteID: siteID,
+		Role:   RolePlatformAdmin,
+		Status: MemberStatusActive,
+	}, siteID, "")
 }
 
 // RegistrationOpen reports whether anonymous visitors may create an account on the

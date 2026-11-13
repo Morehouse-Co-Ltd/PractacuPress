@@ -13,6 +13,9 @@ import {
   normalizeStorage,
   normalizeStrategy,
   readStorage,
+  scopeAllocation,
+  scopeStrategyIds,
+  scopesUsingStrategy,
   storageUrlError,
   strategyLocation,
 } from './storage';
@@ -190,6 +193,102 @@ describe('normalizeStorage for the strategy model', () => {
     } as never);
     expect(storage.strategies[0].id).toBe('local');
     expect(storage.strategies[1].id).toBe('cos');
+  });
+});
+
+describe('per-scope allocations', () => {
+  it('starts each scope as a single unlimited strategy', () => {
+    const storage = defaultStorage();
+    for (const scope of STORAGE_SCOPES) {
+      expect(storage.allocations?.[scope]).toEqual({
+        mode: 'single',
+        entries: [{ strategy_id: 'local', quota_gb: 0 }],
+        overflow: 'switch',
+      });
+    }
+  });
+
+  it('keeps multiple strategies, their order, caps and overflow policy', () => {
+    const storage = normalizeStorage({
+      strategies: [localStrategy('local', '本地储存'), cloudStrategy('cos', '图床', 'bucket')],
+      allocations: {
+        content: {
+          mode: 'quota',
+          entries: [
+            { strategy_id: 'local', quota_gb: 50 },
+            { strategy_id: 'cos', quota_gb: 0 },
+          ],
+          overflow: 'stop',
+        },
+        site: {
+          mode: 'single',
+          entries: [{ strategy_id: 'cos', quota_gb: 0 }],
+          overflow: 'switch',
+        },
+      },
+    } as never);
+
+    expect(storage.allocations?.content).toEqual({
+      mode: 'quota',
+      entries: [
+        { strategy_id: 'local', quota_gb: 50 },
+        { strategy_id: 'cos', quota_gb: 0 },
+      ],
+      overflow: 'stop',
+    });
+    expect(storage.scopes.content).toBe('local');
+    expect(scopeStrategyIds(storage, 'content')).toEqual(['local', 'cos']);
+    // 单策略模式只使用第一套，即使还保留着多余 entries。
+    expect(storage.allocations?.site.entries).toHaveLength(1);
+    expect(scopeStrategyIds(storage, 'site')).toEqual(['cos']);
+    expect(scopesUsingStrategy(storage, 'cos')).toContain('content');
+    expect(scopesUsingStrategy(storage, 'cos')).toContain('site');
+    expect(scopeAllocation(storage, 'attachment').mode).toBe('single');
+  });
+
+  it('drops unknown and duplicate strategies and clamps caps', () => {
+    const storage = normalizeStorage({
+      strategies: [localStrategy('local', '本地储存'), cloudStrategy('cos', 'COS', 'b')],
+      allocations: {
+        content: {
+          mode: 'quota',
+          entries: [
+            { strategy_id: 'missing', quota_gb: 10 },
+            { strategy_id: 'cos', quota_gb: -4 },
+            { strategy_id: 'cos', quota_gb: 12 },
+            { strategy_id: 'local', quota_gb: 99999999 },
+          ],
+          overflow: 'unknown',
+        },
+      },
+    } as never);
+
+    expect(storage.allocations?.content.entries).toEqual([
+      { strategy_id: 'cos', quota_gb: 0 },
+      { strategy_id: 'local', quota_gb: 1_000_000 },
+    ]);
+    expect(storage.allocations?.content.overflow).toBe('switch');
+    expect(storage.scopes.content).toBe('cos');
+    // 其余用途没有分配：按主策略回退成单策略。
+    expect(scopeAllocation(storage, 'site').entries).toEqual([
+      { strategy_id: 'local', quota_gb: 0 },
+    ]);
+  });
+
+  it('migrates a legacy scope override into a single allocation', () => {
+    const storage = normalizeStorage({
+      driver: 'local',
+      scopes: {
+        content: { driver: 's3', s3_bucket: 'content-bucket' },
+      },
+    } as never);
+
+    expect(storage.allocations?.content).toEqual({
+      mode: 'single',
+      entries: [{ strategy_id: 'scope-content', quota_gb: 0 }],
+      overflow: 'switch',
+    });
+    expect(storage.allocations?.attachment.entries[0].strategy_id).toBe('local');
   });
 });
 

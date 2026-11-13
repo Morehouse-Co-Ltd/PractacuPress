@@ -35,6 +35,12 @@ function formulaAttribute(source: string): string {
   return escapeHtml(normalizeFormulaSource(source));
 }
 
+function placeholderPrefix(source: string): string {
+  let prefix = '\u0000pp-placeholder\u0000';
+  while (source.includes(prefix)) prefix += '\u0000';
+  return prefix;
+}
+
 export function inlineFormula(source: string): string {
   const value = normalizeFormulaSource(source);
   return `<span class="pp-math-inline" data-pp-math="${formulaAttribute(value)}">${escapeHtml(value)}</span>`;
@@ -45,30 +51,93 @@ export function blockFormula(source: string): string {
   return `<p class="pp-math-block" data-pp-math="${formulaAttribute(value)}">${escapeHtml(value)}</p>`;
 }
 
+/**
+ * 派生图宽度。必须与服务端 `media.VariantWidths` 保持一致：前端只负责声明候选，
+ * 服务端遇到不认识的宽度会直接 400，而不是悄悄回退。
+ */
+const RESPONSIVE_WIDTHS = [320, 768, 1280] as const;
+
+/**
+ * 站内媒体地址的稳定前缀。
+ *
+ * 查询串只控制返回哪一个变体，不能进入 srcset 的基址，否则
+ * `/media/x?w=768?w=320` 会让所有候选项都落在同一个宽度上。
+ */
+const MEDIA_PATH = /^((?:https?:\/\/[^/\s]+)?\/api\/v1\/media\/[^\s?#]+)/;
+
+/** 返回站内媒体地址去掉查询串后的基址；外链与 blob/data 地址返回空串。 */
+export function mediaBaseUrl(value: string): string {
+  const match = MEDIA_PATH.exec((value ?? '').trim());
+  return match ? match[1] : '';
+}
+
+function srcsetFor(base: string): string {
+  return RESPONSIVE_WIDTHS.map((width) => `${base}?w=${width} ${width}w`).join(', ');
+}
+
+/**
+ * 正文图片的加载属性。
+ *
+ * 站内媒体额外给出宽度候选：服务端通过同一个下载路由的 `?w=` 返回按需生成的
+ * 缩略图。外链无法假定支持查询参数，所以只加懒加载与异步解码。
+ */
+export function imageLoadingAttributes(src: string): string {
+  const base = mediaBaseUrl(src);
+  const lazy = 'loading="lazy" decoding="async"';
+  if (!base) return lazy;
+  return `srcset="${srcsetFor(base)}" sizes="(max-width: 768px) 100vw, 768px" ${lazy}`;
+}
+
+/**
+ * 给已经注入 DOM 的服务端 `rendered_html` 补上响应式图片属性。
+ *
+ * 发布正文由服务端清洗后原样输出，清洗白名单里没有 srcset/loading/decoding，
+ * 所以属性只能在渲染后补。这里只根据已经清洗过的 `src` 派生新属性，不读入或执行
+ * 任何新的 HTML，也不覆盖内容自带的 srcset/sizes。
+ */
+export function enhanceContentImages(root: ParentNode | null | undefined): void {
+  if (!root) return;
+  root.querySelectorAll('img').forEach((element) => {
+    if (!element.hasAttribute('loading')) element.setAttribute('loading', 'lazy');
+    if (!element.hasAttribute('decoding')) element.setAttribute('decoding', 'async');
+
+    const base = mediaBaseUrl(element.getAttribute('src') ?? '');
+    if (!base) return;
+    if (!element.hasAttribute('srcset')) element.setAttribute('srcset', srcsetFor(base));
+    if (!element.hasAttribute('sizes')) {
+      element.setAttribute('sizes', '(max-width: 768px) 100vw, 768px');
+    }
+  });
+}
+
 /** 代码片段与公式先占位，避免其中的星号、下划线被当成强调语法。 */
 function inline(text: string): string {
   const codes: string[] = [];
+  const codePrefix = placeholderPrefix(text);
   let source = text.replace(/`([^`]+)`/g, (_, code: string) => {
     codes.push(code);
-    return `\u0000${codes.length - 1}\u0000`;
+    return `${codePrefix}${codes.length - 1}${codePrefix}`;
   });
 
   const formulas: string[] = [];
+  const formulaPrefix = placeholderPrefix(`${text}${source}`);
   // Avoid treating the inner dollar signs of $$...$$ as an inline formula.
   source = source.replace(
     /(^|[^$])\$([^$\n]+)\$(?!\$)/g,
     (_, prefix: string, formula: string) => {
       formulas.push(inlineFormula(formula));
-      return `${prefix}\u0001${formulas.length - 1}\u0001`;
+      return `${prefix}${formulaPrefix}${formulas.length - 1}${formulaPrefix}`;
     },
   );
 
   let s = escapeHtml(source);
 
-  // 图片先于链接：![]() 的后半段和 []() 完全一样。
+  // 图片先于链接：![]() 的后半段和 []() 完全一样。站内媒体（相对路径）也要
+  // 识别，否则发布正文里的缩略图变体永远不会被请求。
   s = s.replace(
-    /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,
-    '<img src="$2" alt="$1" loading="lazy" />',
+    /!\[([^\]]*)\]\(((?:https?:\/\/|\/api\/v1\/media\/)[^\s)]+)\)/g,
+    (_, alt: string, src: string) =>
+      `<img src="${src}" alt="${alt}" ${imageLoadingAttributes(src)} />`,
   );
   s = s.replace(
     /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
@@ -78,8 +147,12 @@ function inline(text: string): string {
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[\s（(])\*([^*\n]+)\*/g, '$1<em>$2</em>');
 
-  s = s.replace(/\u0000(\d+)\u0000/g, (_, index: string) => `<code>${escapeHtml(codes[Number(index)])}</code>`);
-  s = s.replace(/\u0001(\d+)\u0001/g, (_, index: string) => formulas[Number(index)]);
+  codes.forEach((code, index) => {
+    s = s.replace(`${codePrefix}${index}${codePrefix}`, `<code>${escapeHtml(code)}</code>`);
+  });
+  formulas.forEach((formula, index) => {
+    s = s.replace(`${formulaPrefix}${index}${formulaPrefix}`, formula);
+  });
   return s;
 }
 

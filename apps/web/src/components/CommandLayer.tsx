@@ -4,6 +4,7 @@ import type { Content } from '../types';
 import { useAuth } from '../lib/session';
 import { useBackend } from '../lib/backend';
 import { usePermissions } from '../lib/usePermissions';
+import { writingEntryPath } from '../lib/adminAccess';
 import { pageSearchText, useCustomization, useThemeMode } from '../lib/customize';
 import { onInterfaceCommand } from '../lib/interfaceCommands';
 import { useT } from '../lib/i18n';
@@ -45,7 +46,7 @@ export function CommandLayer() {
   const t = useT();
   const navigate = useNavigate();
   const { me } = useAuth();
-  const { can } = usePermissions();
+  const { can, adminEntry } = usePermissions();
   const backend = useBackend();
   const { customization } = useCustomization();
   const { toggle } = useThemeMode();
@@ -73,18 +74,19 @@ export function CommandLayer() {
       { key: 'mode', label: t('切换深浅色'), hint: 'Shift+D', icon: 'palette', run: toggle },
     ];
     if (me && can('write_content')) {
+      const target = writingEntryPath('article', adminEntry);
       items.push({
         key: 'write',
         label: t('写新文章'),
-        hint: '/admin/content/new/article',
+        hint: target,
         icon: 'edit',
-        run: () => navigate('/admin/content/new/article'),
+        run: () => navigate(target),
       });
     }
-    if (can('moderate_content') || can('manage_site')) {
+    if (adminEntry) {
       items.push({ key: 'admin', label: t('管理后台'), hint: '/admin', icon: 'grid', run: () => navigate('/admin') });
     }
-    if (can('manage_site')) {
+    if (adminEntry && can('manage_site')) {
       items.push({
         key: 'theme',
         label: t('页面编排'),
@@ -180,7 +182,7 @@ export function CommandLayer() {
     let alive = true;
     const timer = window.setTimeout(() => {
       backend
-        .search(q, undefined, 12)
+        .search(q, { limit: 12 })
         .then((result) => {
           if (alive) setHits(result.items ?? []);
         })

@@ -14,6 +14,7 @@ import {
   sitemapXml,
 } from '../../lib/seo';
 import { Button, Callout, CopyButton, Field, Input, Textarea, Toggle } from '../../components/ui';
+import { NumberField } from '../../components/NumberField';
 import { RoleGate } from '../../components/Guards';
 
 function downloadFile(name: string, content: string, type: string) {
@@ -44,6 +45,7 @@ function SeoWorkspace() {
   const backend = useBackend();
   const { customization, update } = useCustomization();
   const seo = customization.seo;
+  const feed = customization.feed;
   const toast = useToast();
   const [tab, setTab] = useState<'meta' | 'files'>('meta');
 
@@ -86,6 +88,7 @@ function SeoWorkspace() {
     t('站点默认描述会出现在这里，约 120–160 字最合适。');
 
   const patch = (next: Partial<typeof seo>) => update({ seo: { ...seo, ...next } });
+  const patchFeed = (next: Partial<typeof feed>) => update({ feed: { ...feed, ...next } });
 
   return (
     <>
@@ -267,6 +270,73 @@ function SeoWorkspace() {
             <section className="panel">
               <div className="panel-head">
                 <div>
+                  <h3>{t('订阅源')}</h3>
+                  <p>{t('RSS 2.0 与 Atom 1.0 由服务端直接提供；关闭后根路径返回 404。')}</p>
+                </div>
+              </div>
+              <div className="panel-body">
+                <div className="form-stack">
+                  <Toggle
+                    checked={feed.enabled}
+                    onChange={(value) => patchFeed({ enabled: value })}
+                    label={t('启用订阅源')}
+                    description={t('同时关闭 RSS 与 Atom，包括分类与标签订阅。')}
+                  />
+                  <Toggle
+                    checked={feed.full_text}
+                    onChange={(value) => patchFeed({ full_text: value })}
+                    label={t('输出全文')}
+                    description={t('关闭时只输出摘要；打开后包含清洗过的正文。')}
+                  />
+                  <NumberField
+                    id="seo-feed-limit"
+                    label={t('每个源最多条数')}
+                    hint={t('超过内容服务的上限时会按 100 条截断。')}
+                    value={feed.limit}
+                    min={1}
+                    max={100}
+                    unit={t('条')}
+                    onChange={(limit) => patchFeed({ limit })}
+                  />
+                  <Toggle
+                    checked={feed.include_taxonomy}
+                    onChange={(value) => patchFeed({ include_taxonomy: value })}
+                    label={t('提供分类与标签订阅')}
+                    description={t('在 /category/{slug}/ 与 /tag/{slug}/ 下提供 RSS 与 Atom。')}
+                  />
+                  <div className="mini-list">
+                    <div className="mini-row">
+                      <span className="mini-label">{t('站点订阅')}</span>
+                      <span className="mini-value mono">
+                        {feed.enabled ? (
+                          <>
+                            <a href="/rss.xml" target="_blank" rel="noreferrer">
+                              /rss.xml
+                            </a>
+                            {' · '}
+                            <a href="/atom.xml" target="_blank" rel="noreferrer">
+                              /atom.xml
+                            </a>
+                          </>
+                        ) : (
+                          t('已关闭')
+                        )}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('分类与标签订阅')}</span>
+                      <span className="mini-value mono">
+                        {feed.include_taxonomy ? '/category/{slug}/rss.xml · /tag/{slug}/rss.xml' : t('已关闭')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-head">
+                <div>
                   <h3>{t('站长验证')}</h3>
                   <p>{t('把搜索平台给的验证值填进来，会输出对应的 meta 标签。')}</p>
                 </div>
@@ -329,6 +399,16 @@ function SeoWorkspace() {
                     <span className="mini-value">
                       {seo.indexable ? t('允许收录') : t('禁止收录')}
                     </span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('订阅源')}</span>
+                    <span className="mini-value">
+                      {feed.enabled ? t('已开启') : t('已关闭')}
+                    </span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('每个源最多条数')}</span>
+                    <span className="mini-value">{t('{count} 条', { count: feed.limit })}</span>
                   </div>
                   <div className="mini-row">
                     <span className="mini-label">{t('已发布内容')}</span>

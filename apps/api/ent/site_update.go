@@ -164,6 +164,33 @@ func (_u *SiteUpdate) ClearDescription() *SiteUpdate {
 	return _u
 }
 
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (_u *SiteUpdate) SetMediaQuotaBytes(v int64) *SiteUpdate {
+	_u.mutation.ResetMediaQuotaBytes()
+	_u.mutation.SetMediaQuotaBytes(v)
+	return _u
+}
+
+// SetNillableMediaQuotaBytes sets the "media_quota_bytes" field if the given value is not nil.
+func (_u *SiteUpdate) SetNillableMediaQuotaBytes(v *int64) *SiteUpdate {
+	if v != nil {
+		_u.SetMediaQuotaBytes(*v)
+	}
+	return _u
+}
+
+// AddMediaQuotaBytes adds value to the "media_quota_bytes" field.
+func (_u *SiteUpdate) AddMediaQuotaBytes(v int64) *SiteUpdate {
+	_u.mutation.AddMediaQuotaBytes(v)
+	return _u
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (_u *SiteUpdate) ClearMediaQuotaBytes() *SiteUpdate {
+	_u.mutation.ClearMediaQuotaBytes()
+	return _u
+}
+
 // SetRegistrationOpen sets the "registration_open" field.
 func (_u *SiteUpdate) SetRegistrationOpen(v bool) *SiteUpdate {
 	_u.mutation.SetRegistrationOpen(v)
@@ -174,6 +201,34 @@ func (_u *SiteUpdate) SetRegistrationOpen(v bool) *SiteUpdate {
 func (_u *SiteUpdate) SetNillableRegistrationOpen(v *bool) *SiteUpdate {
 	if v != nil {
 		_u.SetRegistrationOpen(*v)
+	}
+	return _u
+}
+
+// SetCommentsEnabled sets the "comments_enabled" field.
+func (_u *SiteUpdate) SetCommentsEnabled(v bool) *SiteUpdate {
+	_u.mutation.SetCommentsEnabled(v)
+	return _u
+}
+
+// SetNillableCommentsEnabled sets the "comments_enabled" field if the given value is not nil.
+func (_u *SiteUpdate) SetNillableCommentsEnabled(v *bool) *SiteUpdate {
+	if v != nil {
+		_u.SetCommentsEnabled(*v)
+	}
+	return _u
+}
+
+// SetCommentsRequireReview sets the "comments_require_review" field.
+func (_u *SiteUpdate) SetCommentsRequireReview(v bool) *SiteUpdate {
+	_u.mutation.SetCommentsRequireReview(v)
+	return _u
+}
+
+// SetNillableCommentsRequireReview sets the "comments_require_review" field if the given value is not nil.
+func (_u *SiteUpdate) SetNillableCommentsRequireReview(v *bool) *SiteUpdate {
+	if v != nil {
+		_u.SetCommentsRequireReview(*v)
 	}
 	return _u
 }
@@ -327,8 +382,23 @@ func (_u *SiteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(site.FieldDescription, field.TypeString)
 	}
+	if value, ok := _u.mutation.MediaQuotaBytes(); ok {
+		_spec.SetField(site.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedMediaQuotaBytes(); ok {
+		_spec.AddField(site.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.MediaQuotaBytesCleared() {
+		_spec.ClearField(site.FieldMediaQuotaBytes, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.RegistrationOpen(); ok {
 		_spec.SetField(site.FieldRegistrationOpen, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CommentsEnabled(); ok {
+		_spec.SetField(site.FieldCommentsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CommentsRequireReview(); ok {
+		_spec.SetField(site.FieldCommentsRequireReview, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Disabled(); ok {
 		_spec.SetField(site.FieldDisabled, field.TypeBool, value)
@@ -492,6 +562,33 @@ func (_u *SiteUpdateOne) ClearDescription() *SiteUpdateOne {
 	return _u
 }
 
+// SetMediaQuotaBytes sets the "media_quota_bytes" field.
+func (_u *SiteUpdateOne) SetMediaQuotaBytes(v int64) *SiteUpdateOne {
+	_u.mutation.ResetMediaQuotaBytes()
+	_u.mutation.SetMediaQuotaBytes(v)
+	return _u
+}
+
+// SetNillableMediaQuotaBytes sets the "media_quota_bytes" field if the given value is not nil.
+func (_u *SiteUpdateOne) SetNillableMediaQuotaBytes(v *int64) *SiteUpdateOne {
+	if v != nil {
+		_u.SetMediaQuotaBytes(*v)
+	}
+	return _u
+}
+
+// AddMediaQuotaBytes adds value to the "media_quota_bytes" field.
+func (_u *SiteUpdateOne) AddMediaQuotaBytes(v int64) *SiteUpdateOne {
+	_u.mutation.AddMediaQuotaBytes(v)
+	return _u
+}
+
+// ClearMediaQuotaBytes clears the value of the "media_quota_bytes" field.
+func (_u *SiteUpdateOne) ClearMediaQuotaBytes() *SiteUpdateOne {
+	_u.mutation.ClearMediaQuotaBytes()
+	return _u
+}
+
 // SetRegistrationOpen sets the "registration_open" field.
 func (_u *SiteUpdateOne) SetRegistrationOpen(v bool) *SiteUpdateOne {
 	_u.mutation.SetRegistrationOpen(v)
@@ -502,6 +599,34 @@ func (_u *SiteUpdateOne) SetRegistrationOpen(v bool) *SiteUpdateOne {
 func (_u *SiteUpdateOne) SetNillableRegistrationOpen(v *bool) *SiteUpdateOne {
 	if v != nil {
 		_u.SetRegistrationOpen(*v)
+	}
+	return _u
+}
+
+// SetCommentsEnabled sets the "comments_enabled" field.
+func (_u *SiteUpdateOne) SetCommentsEnabled(v bool) *SiteUpdateOne {
+	_u.mutation.SetCommentsEnabled(v)
+	return _u
+}
+
+// SetNillableCommentsEnabled sets the "comments_enabled" field if the given value is not nil.
+func (_u *SiteUpdateOne) SetNillableCommentsEnabled(v *bool) *SiteUpdateOne {
+	if v != nil {
+		_u.SetCommentsEnabled(*v)
+	}
+	return _u
+}
+
+// SetCommentsRequireReview sets the "comments_require_review" field.
+func (_u *SiteUpdateOne) SetCommentsRequireReview(v bool) *SiteUpdateOne {
+	_u.mutation.SetCommentsRequireReview(v)
+	return _u
+}
+
+// SetNillableCommentsRequireReview sets the "comments_require_review" field if the given value is not nil.
+func (_u *SiteUpdateOne) SetNillableCommentsRequireReview(v *bool) *SiteUpdateOne {
+	if v != nil {
+		_u.SetCommentsRequireReview(*v)
 	}
 	return _u
 }
@@ -685,8 +810,23 @@ func (_u *SiteUpdateOne) sqlSave(ctx context.Context) (_node *Site, err error) {
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(site.FieldDescription, field.TypeString)
 	}
+	if value, ok := _u.mutation.MediaQuotaBytes(); ok {
+		_spec.SetField(site.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedMediaQuotaBytes(); ok {
+		_spec.AddField(site.FieldMediaQuotaBytes, field.TypeInt64, value)
+	}
+	if _u.mutation.MediaQuotaBytesCleared() {
+		_spec.ClearField(site.FieldMediaQuotaBytes, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.RegistrationOpen(); ok {
 		_spec.SetField(site.FieldRegistrationOpen, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CommentsEnabled(); ok {
+		_spec.SetField(site.FieldCommentsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CommentsRequireReview(); ok {
+		_spec.SetField(site.FieldCommentsRequireReview, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Disabled(); ok {
 		_spec.SetField(site.FieldDisabled, field.TypeBool, value)

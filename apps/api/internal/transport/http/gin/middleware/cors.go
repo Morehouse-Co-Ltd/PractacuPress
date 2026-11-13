@@ -91,8 +91,11 @@ func CORS(cfg CORSConfig) gin.HandlerFunc {
 
 		if isPreflight {
 			header.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			// X-Visit-Session is the anonymous de-duplication hint of the read counter
+			// (FSD A-16): a browser only sends it when the preflight allows it, so it
+			// must be listed here or a cross origin reader's read is never counted.
 			header.Set("Access-Control-Allow-Headers",
-				"Authorization, Content-Type, Idempotency-Key, X-CSRF-Token, X-Request-ID")
+				"Authorization, Content-Type, Idempotency-Key, X-CSRF-Token, X-Request-ID, X-Visit-Session")
 			header.Set("Access-Control-Max-Age", strconv.Itoa(int(maxAge.Seconds())))
 			c.AbortWithStatus(http.StatusNoContent)
 			return

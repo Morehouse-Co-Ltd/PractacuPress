@@ -27,6 +27,8 @@ const fragment: Dictionary = {
   '密码至少 8 位。': 'Passwords must be at least 8 characters.',
   '两次输入的密码不一致。': 'The two passwords do not match.',
   '邮箱或密码不正确。': 'Incorrect email or password.',
+  '邮箱/用户名或密码不正确。': 'Incorrect email, username or password.',
+  '请输入邮箱或用户名。': 'Enter your email or username.',
   '请求失败。': 'Request failed.',
   '请填写 11 位手机号。': 'Enter an 11-digit phone number.',
   '演示模式的验证码是 {code}。': 'In demo mode the verification code is {code}.',
@@ -56,7 +58,10 @@ const fragment: Dictionary = {
   '会出现在文章署名与评论里。': 'Appears in article bylines and comments.',
   '例如：陈默': 'For example: Chen Mo',
   邮箱: 'Email',
+  '邮箱或用户名': 'Email or username',
   '站长创建的账户都可以登录。': 'Any account created by the site owner can sign in.',
+  '站长创建的账户都可以登录；用户名或邮箱均可。':
+    'Any account created by the site owner can sign in; email or username both work.',
   密码: 'Password',
   '8–128 位。建议使用长口令或密码管理器。':
     '8–128 characters. A long passphrase or a password manager is recommended.',
@@ -118,6 +123,27 @@ const fragment: Dictionary = {
   社区站点: 'Community site',
   '访客无需账户即可阅读全部已发布内容。注册开放时间由站长决定。':
     'Visitors can read all published content without an account. The site owner decides when registration opens.',
+
+  // ---- 两步验证第二步（FSD F-04） ----
+  两步验证: 'Two-factor authentication',
+  '{site} 的这项账户开启了两步验证。打开身份验证器，输入当前的 6 位验证码；也可以用一次性恢复码。':
+    'This account on {site} uses two-factor authentication. Open your authenticator app and enter the current 6-digit code, or use a one-time recovery code.',
+  恢复码: 'Recovery code',
+  '每个恢复码只能使用一次，字母不区分大小写。':
+    'Each recovery code works once; letters are case insensitive.',
+  '验证码每 30 秒变化；同一个验证码只能使用一次。':
+    'The code changes every 30 seconds, and each code works only once.',
+  使用验证器: 'Use authenticator',
+  使用恢复码: 'Use a recovery code',
+  'XXXXXX-XXXXXX': 'XXXXXX-XXXXXX',
+  验证并登录: 'Verify and sign in',
+  返回上一步: 'Back',
+  '请输入一个恢复码。': 'Enter a recovery code.',
+  '请输入 6 位验证码。': 'Enter the 6-digit code.',
+  '验证已过期，请重新登录。': 'The verification expired. Please sign in again.',
+  '验证失败。': 'Verification failed.',
+  '演示模式固定使用 {code}。': 'In demo mode, use {code}.',
+  '验证码是 6 位数字。': 'The code is 6 digits.',
 };
 
 export default fragment;

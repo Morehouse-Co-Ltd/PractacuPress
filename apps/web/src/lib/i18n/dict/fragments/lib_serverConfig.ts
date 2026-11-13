@@ -72,6 +72,8 @@ const fragment: Dictionary = {
   '# 复制到 API 的 .env 后重启服务': '# Copy into the API .env and restart the service',
   '# 还没有设置主域名：生产环境只允许公网 IP 直连':
     '# No primary domain yet: production only allows direct public IP access',
+  '# 未设置时服务端按 https 推导绝对链接；桌面 / localhost（http）请显式写成 http://127.0.0.1:<端口>':
+    '# When unset the server assumes https for absolute links; a desktop / localhost (http) install must set it explicitly, e.g. http://127.0.0.1:<port>',
   '<服务器公网IP>': '<server public IP>',
   '# 只有多个子域名需要共享登录态时才填写父域':
     '# Fill in the parent domain only when several subdomains share a sign-in session',

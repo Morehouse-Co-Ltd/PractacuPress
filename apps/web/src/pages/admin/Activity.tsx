@@ -1,48 +1,182 @@
-import { useMemo, useState } from 'react';
-import { useBackend, isDemo } from '../../lib/backend';
+import { useEffect, useMemo, useState } from 'react';
+import { useBackend } from '../../lib/backend';
+import { useAuth } from '../../lib/session';
 import { useAsync, useTitle } from '../../lib/hooks';
-import { readActivity, clearActivity } from '../../lib/activity';
 import { activityCsv, activityTone, formatDateTime } from '../../lib/format';
+import type { ActivityEntry } from '../../types';
+import type { AuditLog } from '../../types';
 import {
   Badge,
   Button,
   Callout,
   EmptyState,
-  Input,
-  Modal,
   PageLoading,
+  Select,
 } from '../../components/ui';
-import { Icon } from '../../components/Icon';
 import { useToast } from '../../lib/toast';
 import { useT } from '../../lib/i18n';
+
+/** 与后端 audit_logs.action 对齐的常用动作；也可以直接输在筛选里。 */
+const ACTION_OPTIONS = [
+  'auth.registered',
+  'auth.login',
+  'auth.logout',
+  'auth.password_changed',
+  'auth.profile_updated',
+  'auth.email_verification_requested',
+  'auth.email_verified',
+  'content.created',
+  'content.updated',
+  'content.submitted',
+  'content.published',
+  'content.rejected',
+  'content.archived',
+  'content.restored',
+  'content.rollback',
+  'site.settings.updated',
+  'site.domain.updated',
+  'site.domain.verified',
+  'site.customization.updated',
+  'site.member.created',
+  'site.member.role_changed',
+  'site.member.profile_updated',
+  'site.member.status_changed',
+  'site.member.media_quota_updated',
+  'site.member.removed',
+  'site.member.group_changed',
+  'site.permission_group.saved',
+  'community.comment.created',
+  'community.comment.edited',
+  'community.comment.moderated',
+  'community.comment.deleted',
+  'moderation.report.created',
+  'moderation.report.assigned',
+  'moderation.report.resolved',
+  'moderation.report.ignored',
+  'moderation.report.takedown',
+  'moderation.report.ban',
+  'platform.site.created',
+  'platform.site.entered',
+];
+
+const TARGET_OPTIONS = [
+  'article',
+  'post',
+  'comment',
+  'site_member',
+  'permission_group',
+  'site',
+  'site_customization',
+  'moderation_report',
+  'user',
+];
+
+type Range = '24h' | '7d' | '30d' | 'all';
+
+function rangeStart(range: Range): string | undefined {
+  if (range === 'all') return undefined;
+  const hours = range === '24h' ? 24 : range === '7d' ? 24 * 7 : 24 * 30;
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
+
+function detailText(entry: AuditLog): string {
+  if (!entry.detail) return '';
+  const parts = Object.entries(entry.detail)
+    .slice(0, 3)
+    .map(([key, value]) => {
+      if (value === null || value === undefined) return key;
+      if (typeof value === 'object') return `${key}: …`;
+      return `${key}: ${String(value)}`;
+    });
+  return parts.join(' · ');
+}
+
+function toActivityEntry(entry: AuditLog): ActivityEntry {
+  return {
+    id: entry.id,
+    at: entry.created_at,
+    actor: entry.actor_name || entry.actor_id || '—',
+    action: entry.action,
+    target: entry.target_name || entry.target_id || entry.target_type || '—',
+    detail: entry.detail ? JSON.stringify(entry.detail) : undefined,
+  };
+}
 
 export function ActivityPage() {
   const t = useT();
   const backend = useBackend();
-  const demo = isDemo(backend) ? backend : null;
+  const { site } = useAuth();
   const toast = useToast();
-  const [query, setQuery] = useState('');
-  const [clearOpen, setClearOpen] = useState(false);
+  const [range, setRange] = useState<Range>('7d');
+  const [action, setAction] = useState('');
+  const [targetType, setTargetType] = useState('');
+  const [actorId, setActorId] = useState('');
   useTitle(t('网站日志'));
 
-  const data = useAsync(async () => {
-    if (demo) {
-      const [seeded, local] = await Promise.all([demo.activity(), Promise.resolve(readActivity())]);
-      return [...local, ...seeded].sort((a, b) => b.at.localeCompare(a.at));
+  const members = useAsync(async () => {
+    if (!site) return [];
+    try {
+      return await backend.members(site.id);
+    } catch {
+      // A non-admin should not reach this page, but degrading to "no actor filter"
+      // is safer than blocking the log itself.
+      return [];
     }
-    return readActivity();
-  }, [backend, demo]);
+  }, [backend, site?.id]);
 
-  const items = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return data.data ?? [];
-    return (data.data ?? []).filter((entry) =>
-      `${entry.actor} ${entry.action} ${entry.target} ${entry.detail ?? ''}`.toLowerCase().includes(term),
-    );
-  }, [data.data, query]);
+  const query = useMemo(
+    () => ({
+      from: rangeStart(range),
+      action: action || undefined,
+      target_type: targetType || undefined,
+      actor_id: actorId || undefined,
+      limit: 50,
+    }),
+    [range, action, targetType, actorId],
+  );
+
+  const data = useAsync(async () => {
+    if (!site) return { items: [] as AuditLog[], next_cursor: undefined };
+    return backend.auditLogs(site.id, query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend, site?.id, query]);
+
+  const [more, setMore] = useState<{ items: AuditLog[]; cursor?: string; loaded: boolean }>({
+    items: [],
+    cursor: undefined,
+    loaded: false,
+  });
+
+  // A new filter set starts a new pagination chain.
+  useEffect(() => {
+    setMore({ items: [], cursor: undefined, loaded: false });
+  }, [data.data]);
+
+  const items = useMemo(
+    () => [...(data.data?.items ?? []), ...more.items],
+    [data.data, more.items],
+  );
+
+  // Once "load more" ran, its cursor (possibly empty) is authoritative: falling back
+  // to the first page cursor would re-fetch page two forever.
+  const nextCursor = more.loaded ? more.cursor : data.data?.next_cursor;
+
+  const loadMore = async () => {
+    if (!site || !nextCursor) return;
+    try {
+      const next = await backend.auditLogs(site.id, { ...query, cursor: nextCursor });
+      setMore((prev) => ({
+        items: [...prev.items, ...next.items],
+        cursor: next.next_cursor,
+        loaded: true,
+      }));
+    } catch (err) {
+      toast.push('error', t('加载更多失败'), err instanceof Error ? err.message : undefined);
+    }
+  };
 
   const exportCsv = () => {
-    const csv = activityCsv(items);
+    const csv = activityCsv(items.map(toActivityEntry));
     const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -58,11 +192,7 @@ export function ActivityPage() {
       <div className="admin-page-head">
         <div>
           <h1>{t('网站日志')}</h1>
-          <p>
-            {demo
-              ? t('演示后端记录的站点操作与本浏览器登录记录。真实后端把审计写入 audit_logs，但 v0.1.0 没有对外查询端点。')
-              : t('真实后端没有审计查询端点；这里记录的是本浏览器内执行的管理操作与登录。')}
-          </p>
+          <p>{t('这里展示服务端 audit_logs 中属于当前站点的审计记录。')}</p>
         </div>
         <div className="admin-page-actions">
           <Button variant="secondary" size="sm" icon="download" onClick={exportCsv} disabled={!items.length}>
@@ -74,30 +204,61 @@ export function ActivityPage() {
         </div>
       </div>
 
-      <Callout tone="info" icon="info" title={t('这不是服务端审计日志')}>
+      <Callout tone="info" icon="info" title={t('服务端审计日志')}>
         {t(
-          '设计文档要求所有管理操作、权限失败与安全事件写入 audit_logs，并在服务端保留。当前 OpenAPI 没有暴露审计查询接口，因此本页只能展示：演示数据的种子记录，或此浏览器执行操作时留下的本地记录。',
-        )}{' '}
-        {t('它不能替代合规审计。')}
+          '登录、发布、删除、角色变更与站点设置修改都会写入 audit_logs。只有站点管理员可以查询本页；记录按时间倒序，可用时间、操作人、动作与目标筛选。',
+        )}
       </Callout>
 
-      <div className="toolbar mt-20">
-        <div className="inline-search" style={{ width: 280 }}>
-          <Icon name="search" size={14} />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('搜索操作者、动作或对象')}
-            aria-label={t('搜索操作日志')}
-          />
-        </div>
+      <div className="toolbar mt-20" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <Select
+          value={range}
+          aria-label={t('时间范围')}
+          onChange={(event) => setRange(event.target.value as Range)}
+        >
+          <option value="24h">{t('最近 24 小时')}</option>
+          <option value="7d">{t('最近 7 天')}</option>
+          <option value="30d">{t('最近 30 天')}</option>
+          <option value="all">{t('全部时间')}</option>
+        </Select>
+        <Select
+          value={actorId}
+          aria-label={t('操作人')}
+          onChange={(event) => setActorId(event.target.value)}
+        >
+          <option value="">{t('全部操作人')}</option>
+          {(members.data ?? []).map((member) => (
+            <option key={member.user_id} value={member.user_id}>
+              {member.display_name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={action}
+          aria-label={t('动作')}
+          onChange={(event) => setAction(event.target.value)}
+        >
+          <option value="">{t('全部动作')}</option>
+          {ACTION_OPTIONS.map((code) => (
+            <option key={code} value={code}>
+              {code}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={targetType}
+          aria-label={t('目标类型')}
+          onChange={(event) => setTargetType(event.target.value)}
+        >
+          <option value="">{t('全部目标')}</option>
+          {TARGET_OPTIONS.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </Select>
         <span className="toolbar-spacer" />
         <span className="tiny faint">{t('{count} 条', { count: items.length })}</span>
-        {!demo ? (
-          <Button variant="quiet" size="sm" icon="trash" onClick={() => setClearOpen(true)}>
-            {t('清空本地记录')}
-          </Button>
-        ) : null}
       </div>
 
       {data.loading ? (
@@ -115,49 +276,34 @@ export function ActivityPage() {
           <div className="panel-body">
             {items.map((entry) => (
               <div className="activity-row" key={entry.id}>
-                <time>{formatDateTime(entry.at)}</time>
-                <span className="act-actor">{entry.actor}</span>
+                <time>{formatDateTime(entry.created_at)}</time>
+                <span className="act-actor">
+                  {entry.actor_name || entry.actor_id || t('系统')}
+                </span>
                 <span className="act-action">
                   <Badge tone={activityTone(entry.action)}>{entry.action}</Badge>
                 </span>
-                <span className="act-target" title={entry.target}>
-                  {entry.target}
+                <span className="act-target" title={entry.target_id}>
+                  {entry.target_name || entry.target_id || entry.target_type || '—'}
                 </span>
-                {entry.detail ? <span className="act-detail">{entry.detail}</span> : null}
+                {detailText(entry) ? <span className="act-detail">{detailText(entry)}</span> : null}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <p className="tiny faint mt-16">
-        {t('记录保存在浏览器 localStorage，上限 120 条；清除浏览器数据会一并清空。服务端审计以数据库为准。')}
-      </p>
+      {nextCursor ? (
+        <div className="mt-16" style={{ textAlign: 'center' }}>
+          <Button variant="secondary" size="sm" onClick={loadMore}>
+            {t('加载更多')}
+          </Button>
+        </div>
+      ) : null}
 
-      <Modal
-        open={clearOpen}
-        title={t('清空本地操作日志？')}
-        description={t('只会删除这个浏览器里的记录，不影响服务端数据。')}
-        onClose={() => setClearOpen(false)}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setClearOpen(false)}>
-              {t('取消')}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                clearActivity();
-                setClearOpen(false);
-                data.reload();
-                toast.push('ok', t('本地记录已清空'));
-              }}
-            >
-              {t('清空')}
-            </Button>
-          </>
-        }
-      />
+      <p className="tiny faint mt-16">
+        {t('记录保存在服务端 audit_logs 表中，按站点隔离；导出 CSV 只包含当前筛选已加载的记录。')}
+      </p>
     </>
   );
 }

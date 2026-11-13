@@ -27,15 +27,39 @@ const fragment: Dictionary = {
   '{count} 个页面': { one: '1 page', other: '{count} pages' },
   等待关键词: 'Waiting for a keyword',
 
+  // ---- 服务端筛选（分类 / 标签 / 时间范围）----
+  '按分类筛选': 'Filter by category',
+  全部分类: 'All categories',
+  '按标签筛选': 'Filter by tag',
+  完整标签名: 'Exact tag name',
+  发布于: 'Published',
+  起始日期: 'From date',
+  至: 'To',
+  结束日期: 'To date',
+  清除筛选: 'Clear filters',
+
+  // ---- 降级提示 ----
+  '全文索引暂时不可用，这次结果按发布时间排序，不是相关度排序；稍后重试即可恢复。':
+    'The full text index is unavailable right now, so these results are ordered by publication time rather than relevance. Retrying shortly restores it.',
+
   // ---- 失败与空状态 ----
   搜索没有完成: 'The search did not finish',
   '请求失败。': 'Request failed.',
   输入一个词开始搜索: 'Enter a word to start searching',
-  '标题、摘要与页面正文都会参与匹配。只覆盖已发布内容与页面。':
-    'Titles, summaries and page bodies all take part in matching. Only published content and pages are covered.',
+  '标题、摘要与正文都会参与匹配。只覆盖已发布内容与页面。':
+    'Titles, summaries and bodies all take part in matching. Only published content and pages are covered.',
   '没有找到「{query}」': 'No results for "{query}"',
-  '换一个更短的词，或者去掉分类筛选。': 'Try a shorter word, or drop the type filter.',
-  搜索全部类型: 'Search all types',
+  '换一个更短的词，或者去掉分类、标签与时间筛选。':
+    'Try a shorter word, or drop the category, tag and date filters.',
+  清除全部筛选: 'Clear all filters',
+
+  // ---- 分页 ----
+  '已显示 {shown} / {count} 条': 'Showing {shown} / {count}',
+  加载更多: 'Load more',
+  '已经到底了。共 {count} 条。': {
+    one: 'That is everything. 1 result.',
+    other: 'That is everything. {count} results.',
+  },
 
   // ---- 结果条目 ----
   页: 'Page',

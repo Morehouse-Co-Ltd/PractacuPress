@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Asset, ScanStatus, StorageScope } from '../../types';
 import { useBackend, isDemo } from '../../lib/backend';
+import { useMediaSrc } from '../../lib/assetUrl';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { useT } from '../../lib/i18n';
@@ -28,6 +29,23 @@ const MIME_LABEL: Record<string, string> = {
   'application/pdf': 'PDF',
   'image/svg+xml': 'SVG',
 };
+
+/**
+ * 媒体缩略图。
+ *
+ * 站内媒体读取对 content 素材要鉴权，而 `<img src>` 带不上 Authorization，所以
+ * 统一交给 useMediaSrc 换成 blob: 地址；取不到时退回图标，不留空白框。
+ */
+function MediaThumb({ asset, src }: { asset: Asset; src: string }) {
+  const t = useT();
+  const { src: resolved, failed } = useMediaSrc(src);
+  if (failed) {
+    return <Icon name={asset.mime_type === 'application/pdf' ? 'file' : 'code'} size={26} />;
+  }
+  return resolved ? (
+    <img src={resolved} alt={asset.file_name ?? t('媒体')} loading="lazy" />
+  ) : null;
+}
 
 export function MediaPage() {
   const t = useT();
@@ -293,7 +311,7 @@ export function MediaPage() {
               <div className="media-card" key={asset.id}>
                 <div className="media-thumb">
                   {isImage ? (
-                    <img src={src} alt={asset.file_name ?? t('媒体')} loading="lazy" />
+                    <MediaThumb asset={asset} src={src} />
                   ) : (
                     <Icon name={asset.mime_type === 'application/pdf' ? 'file' : 'code'} size={26} />
                   )}

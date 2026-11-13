@@ -96,6 +96,26 @@ func (_u *UserUpdate) ClearAvatarMediaID() *UserUpdate {
 	return _u
 }
 
+// SetEmailVerifiedAt sets the "email_verified_at" field.
+func (_u *UserUpdate) SetEmailVerifiedAt(v time.Time) *UserUpdate {
+	_u.mutation.SetEmailVerifiedAt(v)
+	return _u
+}
+
+// SetNillableEmailVerifiedAt sets the "email_verified_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableEmailVerifiedAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetEmailVerifiedAt(*v)
+	}
+	return _u
+}
+
+// ClearEmailVerifiedAt clears the value of the "email_verified_at" field.
+func (_u *UserUpdate) ClearEmailVerifiedAt() *UserUpdate {
+	_u.mutation.ClearEmailVerifiedAt()
+	return _u
+}
+
 // SetLocale sets the "locale" field.
 func (_u *UserUpdate) SetLocale(v string) *UserUpdate {
 	_u.mutation.SetLocale(v)
@@ -217,6 +237,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.AvatarMediaIDCleared() {
 		_spec.ClearField(user.FieldAvatarMediaID, field.TypeString)
 	}
+	if value, ok := _u.mutation.EmailVerifiedAt(); ok {
+		_spec.SetField(user.FieldEmailVerifiedAt, field.TypeTime, value)
+	}
+	if _u.mutation.EmailVerifiedAtCleared() {
+		_spec.ClearField(user.FieldEmailVerifiedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Locale(); ok {
 		_spec.SetField(user.FieldLocale, field.TypeString, value)
 	}
@@ -308,6 +334,26 @@ func (_u *UserUpdateOne) SetNillableAvatarMediaID(v *string) *UserUpdateOne {
 // ClearAvatarMediaID clears the value of the "avatar_media_id" field.
 func (_u *UserUpdateOne) ClearAvatarMediaID() *UserUpdateOne {
 	_u.mutation.ClearAvatarMediaID()
+	return _u
+}
+
+// SetEmailVerifiedAt sets the "email_verified_at" field.
+func (_u *UserUpdateOne) SetEmailVerifiedAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetEmailVerifiedAt(v)
+	return _u
+}
+
+// SetNillableEmailVerifiedAt sets the "email_verified_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableEmailVerifiedAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetEmailVerifiedAt(*v)
+	}
+	return _u
+}
+
+// ClearEmailVerifiedAt clears the value of the "email_verified_at" field.
+func (_u *UserUpdateOne) ClearEmailVerifiedAt() *UserUpdateOne {
+	_u.mutation.ClearEmailVerifiedAt()
 	return _u
 }
 
@@ -461,6 +507,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.AvatarMediaIDCleared() {
 		_spec.ClearField(user.FieldAvatarMediaID, field.TypeString)
+	}
+	if value, ok := _u.mutation.EmailVerifiedAt(); ok {
+		_spec.SetField(user.FieldEmailVerifiedAt, field.TypeTime, value)
+	}
+	if _u.mutation.EmailVerifiedAtCleared() {
+		_spec.ClearField(user.FieldEmailVerifiedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Locale(); ok {
 		_spec.SetField(user.FieldLocale, field.TypeString, value)

@@ -169,9 +169,9 @@ func TestLoginBackoffAfterRepeatedFailures(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, w.Code, "attempt %d", attempt)
 	}
 
-	// Even the right password is refused while the account is locked.
+	// Wrong passwords keep receiving backoff responses after the account is locked.
 	locked := h.do(t, newJSONRequest(t, "/api/v1/auth/login/password", map[string]string{
-		"email": "alice@example.com", "password": "correct horse battery",
+		"email": "alice@example.com", "password": "definitely wrong",
 	}))
 	require.Equal(t, http.StatusTooManyRequests, locked.Code)
 	require.Equal(t, "rate_limited", decode(t, locked)["code"])
@@ -179,6 +179,12 @@ func TestLoginBackoffAfterRepeatedFailures(t *testing.T) {
 	retryAfter, err := strconv.Atoi(locked.Header().Get("Retry-After"))
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, retryAfter, 1)
+
+	// A failure-only backoff must not let an attacker lock the owner out.
+	accepted := h.do(t, newJSONRequest(t, "/api/v1/auth/login/password", map[string]string{
+		"email": "alice@example.com", "password": "correct horse battery",
+	}))
+	require.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
 
 	// The first backoff is one minute; a little past it the account works again.
 	clock.Advance(61 * time.Second)
@@ -204,18 +210,22 @@ func TestLoginBackoffEscalates(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, attemptWrong().Code)
 	}
 
-	// The first lock lasts one minute; the next failure escalates to two minutes.
+	// The first lock lasts one minute; a wrong password after it expires starts the
+	// next, longer backoff.
 	clock.Advance(61 * time.Second)
 	require.Equal(t, http.StatusUnauthorized, attemptWrong().Code)
 
-	locked := h.do(t, newJSONRequest(t, "/api/v1/auth/login/password", map[string]string{
-		"email": "alice@example.com", "password": "correct horse battery",
-	}))
+	locked := attemptWrong()
 	require.Equal(t, http.StatusTooManyRequests, locked.Code)
 	retryAfter, err := strconv.Atoi(locked.Header().Get("Retry-After"))
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, retryAfter, 119, "the second lock doubles to two minutes")
 	require.LessOrEqual(t, retryAfter, 120)
+
+	accepted := h.do(t, newJSONRequest(t, "/api/v1/auth/login/password", map[string]string{
+		"email": "alice@example.com", "password": "correct horse battery",
+	}))
+	require.Equal(t, http.StatusOK, accepted.Code, "backoff must not lock out the account owner")
 
 	// After the escalated lock the owner can log in again.
 	clock.Advance(121 * time.Second)

@@ -75,6 +75,27 @@ type StorageScopeConfig struct {
 	S3Prefix string
 }
 
+// CaptchaConfig is the server side human verification configuration.
+//
+// Only the secret lives here. Whether a site *wants* a challenge is site data (it
+// is part of the stored design document), because it changes from the settings page
+// without a redeploy; a deployment operator only supplies the credentials that make
+// the choice enforceable.
+//
+// The URL overrides exist for two honest reasons: the test suite points them at an
+// httptest server, and a deployment behind an egress proxy can route through a
+// gateway it controls. They are empty in production.
+type CaptchaConfig struct {
+	TurnstileSecret   string
+	HCaptchaSecret    string
+	RecaptchaSecret   string
+	TurnstileURL      string
+	HCaptchaURL       string
+	RecaptchaURL      string
+	RecaptchaMinScore float64
+	Timeout           time.Duration
+}
+
 // Config is the fully validated process configuration.
 type Config struct {
 	// AppEnv selects runtime strictness. One of development, test, production.
@@ -104,6 +125,11 @@ type Config struct {
 	// because registration, login and password reset are the endpoints worth brute
 	// forcing and each attempt costs one Argon2 hash. Zero disables the tier.
 	CredentialRateLimitPerMinute int
+	// MediaDefaultUserQuotaBytes and MediaDefaultSiteQuotaBytes are deployment-wide
+	// upload storage limits. Zero means unlimited; site/member overrides may replace
+	// these defaults independently.
+	MediaDefaultUserQuotaBytes int64
+	MediaDefaultSiteQuotaBytes int64
 	// HTTPReadTimeout bounds how long a request may take to arrive. It protects the
 	// server from slow clients holding connections open.
 	HTTPReadTimeout time.Duration
@@ -148,6 +174,8 @@ type Config struct {
 	DesktopMode bool
 	// StorageDir is the local media storage root.
 	StorageDir string
+	// BackupDir holds generated backup packages and their metadata sidecars.
+	BackupDir string
 	// StorageDriver selects local or s3.
 	StorageDriver string
 	// S3 settings, used when StorageDriver is s3.
@@ -183,6 +211,82 @@ type Config struct {
 	// means the origin of the request that asked for the reset is used, which is
 	// correct for the same origin deployment this product ships.
 	PublicBaseURL string
+
+	// Captcha holds the human verification credentials. A provider without a
+	// secret is reported as unenforced instead of silently accepting every token.
+	Captcha CaptchaConfig
+
+	// AuthOAuth holds the third party login client registrations, keyed by the
+	// provider id the API exposes ("google", "github", "wechat"). A provider whose
+	// client credentials are missing is reported as not configured: its buttons are
+	// hidden and its endpoints answer `provider_not_configured`, rather than half
+	// starting a flow that can only fail at the provider.
+	AuthOAuth map[string]OAuthProviderConfig
+	// AuthSMS describes the short message gateway used by phone code login. An
+	// unconfigured gateway disables phone login instead of accepting codes nobody
+	// can receive.
+	AuthSMS SMSConfig
+}
+
+// OAuthProviderConfig is one provider's OAuth client registration.
+//
+// Secrets live only here: they are never persisted in the site configuration
+// document or handed to a browser.
+type OAuthProviderConfig struct {
+	ClientID     string
+	ClientSecret string
+	// RedirectURI is the exact callback registered with the provider. Empty means
+	// it is derived from the request origin at start time, which is correct for the
+	// single origin deployment this product ships.
+	RedirectURI string
+	// Scope overrides the provider default.
+	Scope string
+}
+
+// Configured reports whether the provider can complete a flow at all.
+func (c OAuthProviderConfig) Configured() bool {
+	return c.ClientID != "" && c.ClientSecret != ""
+}
+
+// SMS gateway provider names accepted by AUTH_SMS_PROVIDER.
+const (
+	// SMSProviderLog writes the code to the process log. It is development only:
+	// a production install must configure a real gateway.
+	SMSProviderLog = "log"
+	// SMSProviderHTTP posts the code to a generic JSON gateway (AUTH_SMS_ENDPOINT).
+	SMSProviderHTTP = "http"
+)
+
+// SMSConfig is the short message gateway configuration.
+type SMSConfig struct {
+	// Provider is one of the SMSProvider* values. Empty means "no gateway", which
+	// disables phone login in production and falls back to the log sender in
+	// development.
+	Provider string
+	// Endpoint is the gateway URL for the http provider.
+	Endpoint string
+	// AccessKeyID and AccessKeySecret authenticate the gateway. The secret is only
+	// ever sent in an Authorization header.
+	AccessKeyID     string
+	AccessKeySecret string
+	// SignName is the sender signature the carrier shows, and TemplateCode the
+	// registered message template.
+	SignName     string
+	TemplateCode string
+	// Timeout bounds one delivery attempt.
+	Timeout time.Duration
+}
+
+// Configured reports whether a real gateway is configured.
+func (c SMSConfig) Configured() bool {
+	switch c.Provider {
+	case SMSProviderHTTP:
+		return c.Endpoint != "" && c.AccessKeySecret != ""
+	case SMSProviderLog:
+		return true
+	default:
+		return false
+	}
 }
 
 // Accepted SMTP_ENCRYPTION values.
@@ -224,6 +328,10 @@ const (
 	// under a megabyte as UTF-8, so four is generous. Upload routes carry their own,
 	// larger limit derived from the media module's attachment ceiling.
 	DefaultMaxRequestBodyBytes = 4 << 20
+	// DefaultMediaUserQuotaBytes caps accumulated media per member on fresh deployments.
+	DefaultMediaUserQuotaBytes int64 = 512 << 20
+	// DefaultMediaSiteQuotaBytes caps accumulated media per site on fresh deployments.
+	DefaultMediaSiteQuotaBytes int64 = 10 << 30
 	// maxRequestBodyBytes is the largest value an operator may configure.
 	maxRequestBodyBytes = 64 << 20
 )
@@ -337,6 +445,29 @@ func Load() (Config, error) {
 	}
 	cfg.CredentialRateLimitPerMinute = credentialRate
 
+	userQuota, err := envInt64("MEDIA_DEFAULT_USER_QUOTA_BYTES", DefaultMediaUserQuotaBytes)
+	if err != nil {
+		return Config{}, err
+	}
+	if userQuota < 0 {
+		return Config{}, &Error{
+			Code:   "invalid_media_default_user_quota_bytes",
+			Detail: "MEDIA_DEFAULT_USER_QUOTA_BYTES must not be negative",
+		}
+	}
+	siteQuota, err := envInt64("MEDIA_DEFAULT_SITE_QUOTA_BYTES", DefaultMediaSiteQuotaBytes)
+	if err != nil {
+		return Config{}, err
+	}
+	if siteQuota < 0 {
+		return Config{}, &Error{
+			Code:   "invalid_media_default_site_quota_bytes",
+			Detail: "MEDIA_DEFAULT_SITE_QUOTA_BYTES must not be negative",
+		}
+	}
+	cfg.MediaDefaultUserQuotaBytes = userQuota
+	cfg.MediaDefaultSiteQuotaBytes = siteQuota
+
 	readTimeout, err := envInt("HTTP_READ_TIMEOUT_SECONDS", int(DefaultHTTPReadTimeout/time.Second))
 	if err != nil {
 		return Config{}, err
@@ -435,6 +566,11 @@ func Load() (Config, error) {
 		cfg.StorageDir = "./data/media"
 	}
 
+	cfg.BackupDir = env("BACKUP_DIR")
+	if cfg.BackupDir == "" {
+		cfg.BackupDir = "./data/backups"
+	}
+
 	// The S3 connection settings are read regardless of the global driver: a per
 	// purpose override may select S3 while the global driver stays local, and it
 	// reuses these credentials, endpoint, region and prefix.
@@ -509,7 +645,153 @@ func Load() (Config, error) {
 		}
 	}
 
+	if err := loadCaptcha(&cfg); err != nil {
+		return Config{}, err
+	}
+
+	if err := loadAuthProviders(&cfg); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// oauthProviders are the third party login providers the API understands.
+//
+// The list is the allow-list: a provider that is not named here cannot be started
+// even if an environment variable happens to be set, so a typo cannot widen the
+// attack surface.
+var oauthProviders = []string{"google", "github", "wechat"}
+
+// loadAuthProviders reads the OAuth client registrations and the SMS gateway.
+//
+// Everything here is optional: an install that only offers email and password
+// simply has no credentials, and the login page reports the missing providers
+// instead of showing buttons that cannot work.
+func loadAuthProviders(cfg *Config) error {
+	cfg.AuthOAuth = make(map[string]OAuthProviderConfig, len(oauthProviders))
+	for _, id := range oauthProviders {
+		prefix := "AUTH_" + strings.ToUpper(id) + "_"
+		provider := OAuthProviderConfig{
+			ClientID:     env(prefix + "CLIENT_ID"),
+			ClientSecret: env(prefix + "CLIENT_SECRET"),
+			RedirectURI:  env(prefix + "REDIRECT_URI"),
+			Scope:        env(prefix + "SCOPE"),
+		}
+		// WeChat names the client pair AppID/AppSecret; accept both spellings so an
+		// operator copying the console label does not end up with a half configured
+		// provider.
+		if id == "wechat" {
+			if provider.ClientID == "" {
+				provider.ClientID = env("AUTH_WECHAT_APP_ID")
+			}
+			if provider.ClientSecret == "" {
+				provider.ClientSecret = env("AUTH_WECHAT_APP_SECRET")
+			}
+		}
+		if (provider.ClientID == "") != (provider.ClientSecret == "") {
+			return &Error{
+				Code: "incomplete_oauth_credentials",
+				Detail: prefix + "CLIENT_ID and " + prefix + "CLIENT_SECRET must be set together",
+			}
+		}
+		if provider.RedirectURI != "" {
+			parsed, err := url.Parse(provider.RedirectURI)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" ||
+				(parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return &Error{
+					Code:   "invalid_oauth_redirect_uri",
+					Detail: prefix + "REDIRECT_URI must be an absolute http or https URL",
+				}
+			}
+		}
+		cfg.AuthOAuth[id] = provider
+	}
+
+	cfg.AuthSMS = SMSConfig{
+		Provider:        strings.ToLower(env("AUTH_SMS_PROVIDER")),
+		Endpoint:        env("AUTH_SMS_ENDPOINT"),
+		AccessKeyID:     env("AUTH_SMS_ACCESS_KEY_ID"),
+		AccessKeySecret: env("AUTH_SMS_ACCESS_KEY_SECRET"),
+		SignName:        env("AUTH_SMS_SIGN_NAME"),
+		TemplateCode:    env("AUTH_SMS_TEMPLATE_CODE"),
+		Timeout:         10 * time.Second,
+	}
+	switch cfg.AuthSMS.Provider {
+	case "", SMSProviderLog, SMSProviderHTTP:
+	default:
+		return &Error{
+			Code:   "invalid_sms_provider",
+			Detail: "AUTH_SMS_PROVIDER must be one of log, http",
+		}
+	}
+	if cfg.AuthSMS.Provider == SMSProviderHTTP {
+		if cfg.AuthSMS.Endpoint == "" || cfg.AuthSMS.AccessKeySecret == "" {
+			return &Error{
+				Code: "incomplete_sms_gateway",
+				Detail: "AUTH_SMS_ENDPOINT and AUTH_SMS_ACCESS_KEY_SECRET are required " +
+					"when AUTH_SMS_PROVIDER=http",
+			}
+		}
+		parsed, err := url.Parse(cfg.AuthSMS.Endpoint)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return &Error{
+				Code:   "invalid_sms_endpoint",
+				Detail: "AUTH_SMS_ENDPOINT must be an absolute http or https URL",
+			}
+		}
+		if parsed.Scheme != "https" && !isLoopback(parsed.Hostname()) {
+			// The request carries the access key secret; plaintext to a remote host
+			// would hand it to anyone on the path.
+			return &Error{
+				Code:   "insecure_sms_endpoint",
+				Detail: "AUTH_SMS_ENDPOINT must use https unless the gateway is on localhost",
+			}
+		}
+	}
+	return nil
+}
+
+// loadCaptcha reads the human verification credentials.
+//
+// The secrets are optional: a deployment without them serves sites with the
+// captcha switch off, and a site that switched it on is reported as unenforced
+// (with a warning log) instead of being silently accepted. The timeout is short
+// because a challenge that takes longer than a login is a failed challenge.
+func loadCaptcha(cfg *Config) error {
+	cfg.Captcha = CaptchaConfig{
+		TurnstileSecret: env("CAPTCHA_TURNSTILE_SECRET"),
+		HCaptchaSecret:  env("CAPTCHA_HCAPTCHA_SECRET"),
+		RecaptchaSecret: env("CAPTCHA_RECAPTCHA_SECRET"),
+		TurnstileURL:    env("CAPTCHA_TURNSTILE_URL"),
+		HCaptchaURL:     env("CAPTCHA_HCAPTCHA_URL"),
+		RecaptchaURL:    env("CAPTCHA_RECAPTCHA_URL"),
+	}
+
+	timeout, err := envInt("CAPTCHA_TIMEOUT_SECONDS", 5)
+	if err != nil {
+		return err
+	}
+	if timeout < 1 || timeout > 30 {
+		return &Error{
+			Code:   "invalid_captcha_timeout_seconds",
+			Detail: "CAPTCHA_TIMEOUT_SECONDS must be between 1 and 30",
+		}
+	}
+	cfg.Captcha.Timeout = time.Duration(timeout) * time.Second
+
+	minScore, err := envFloat("CAPTCHA_RECAPTCHA_MIN_SCORE", 0.5)
+	if err != nil {
+		return err
+	}
+	if minScore < 0 || minScore > 1 {
+		return &Error{
+			Code:   "invalid_captcha_recaptcha_min_score",
+			Detail: "CAPTCHA_RECAPTCHA_MIN_SCORE must be between 0 and 1",
+		}
+	}
+	cfg.Captcha.RecaptchaMinScore = minScore
+	return nil
 }
 
 // loadStorageScopes reads the optional per purpose storage overrides.
@@ -703,6 +985,34 @@ func envInt(key string, def int) (int, error) {
 	n, err := strconv.Atoi(raw)
 	if err != nil {
 		return 0, &Error{Code: "invalid_" + strings.ToLower(key), Detail: key + " must be an integer"}
+	}
+	return n, nil
+}
+
+// envFloat reads a decimal number, falling back to def when unset. It is used by
+// the reCAPTCHA v3 threshold, which is a probability between 0 and 1.
+func envFloat(key string, def float64) (float64, error) {
+	raw := env(key)
+	if raw == "" {
+		return def, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, &Error{Code: "invalid_" + strings.ToLower(key), Detail: key + " must be a number"}
+	}
+	return value, nil
+}
+
+// envInt64 reads a signed 64-bit integer, falling back to def when unset. Callers
+// validate whether negative values are meaningful for their setting.
+func envInt64(key string, def int64) (int64, error) {
+	raw := env(key)
+	if raw == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, &Error{Code: "invalid_" + strings.ToLower(key), Detail: key + " must be a 64-bit integer"}
 	}
 	return n, nil
 }

@@ -50,6 +50,67 @@ export function PagesPage() {
       </div>
 
       <div className="panel mt-20">
+        <div className="panel-head">
+          <div>
+            <h3>{t('系统页面')}</h3>
+            <p>{t('首页、文章页这类由程序生成、但可以编排和换装的页面。')}</p>
+          </div>
+        </div>
+        <div className="panel-body">
+          <div className="system-page-grid">
+            <Link to="/admin/theme?target=home" className="system-page-card">
+              <span className="system-page-icon">
+                <Icon name="home" size={17} />
+              </span>
+              <span>
+                <strong>{t('首页')}</strong>
+                <span>{t('首屏文案、封面故事与首页区块编排。')}</span>
+                <em>
+                  {t('编辑首页')} <Icon name="arrow-right" size={12} />
+                </em>
+              </span>
+            </Link>
+            <Link to="/admin/theme?target=article" className="system-page-card">
+              <span className="system-page-icon">
+                <Icon name="file" size={17} />
+              </span>
+              <span>
+                <strong>{t('文章页')}</strong>
+                <span>{t('正文后的附加区块与文章页编排。')}</span>
+                <em>
+                  {t('编辑文章页')} <Icon name="arrow-right" size={12} />
+                </em>
+              </span>
+            </Link>
+            <Link to="/admin/themes" className="system-page-card">
+              <span className="system-page-icon">
+                <Icon name="palette" size={17} />
+              </span>
+              <span>
+                <strong>{t('主题设置')}</strong>
+                <span>{t('配色、字体、圆角与明暗模式。')}</span>
+                <em>
+                  {t('打开主题设置')} <Icon name="arrow-right" size={12} />
+                </em>
+              </span>
+            </Link>
+            <Link to="/admin/appearance" className="system-page-card">
+              <span className="system-page-icon">
+                <Icon name="image" size={17} />
+              </span>
+              <span>
+                <strong>{t('外观与页脚')}</strong>
+                <span>{t('首屏标题、公告、品牌副标题与自定义 CSS。')}</span>
+                <em>
+                  {t('打开外观设置')} <Icon name="arrow-right" size={12} />
+                </em>
+              </span>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel mt-20">
         {pages.length === 0 ? (
           <div className="panel-body">
             <EmptyState

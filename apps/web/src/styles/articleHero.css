@@ -1,0 +1,378 @@
+/* =========================================================
+   文章页「封面式页头」（.article-hero / .article-backdrop）
+   ---------------------------------------------------------
+   参考杂志式站点：封面图铺满整幅宽度，标题与摘要压在图上，
+   分类与元信息落在下方，正文区顶部再铺一层同图的高斯模糊，让封面自然「化」进正文。
+
+   约定：
+   - 文字永远压在深色遮罩上，所以用固定白色 + 阴影，不跟随主题令牌；
+   - 类名都与基础 .article* 区分，只有明确要改的基础规则才带 html 前缀；
+   - 封面隐藏（作者勾了「隐藏封面」）时整块不渲染，退回原来的 .article-head。
+   ========================================================= */
+
+/* ----------------------------- 结构 ----------------------------- */
+
+html .article-stage {
+  position: relative;
+  /* 模糊底图是绝对定位的装饰层，不能盖住正文的点击与选中；
+     短文章时也要把它裁在本节里，别漏到页脚上。 */
+  isolation: isolate;
+  overflow: hidden;
+  overflow: clip;
+}
+
+html .article-stage > .shell {
+  position: relative;
+  z-index: 1;
+}
+
+html .article-hero {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  overflow: hidden;
+  background: #23231e;
+  color: #fff;
+}
+
+html .article-hero-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+html .article-hero-media > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  /* 大图在小屏裁切时放大一点点，避免人脸被切在边缘。 */
+  transform: scale(1.01);
+}
+
+/* 没有上传封面时用程序化封面填满：只保留底纹，不显示它自带的大字。 */
+html .article-hero-media > .cover {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto !important;
+  border: 0;
+  border-radius: 0;
+}
+
+html .article-hero-media > .cover svg {
+  height: 100%;
+}
+
+html .article-hero-media .cover svg text {
+  display: none;
+}
+
+html .cover[data-plain='true'] svg text {
+  display: none;
+}
+
+/* 上下两层渐变：顶部轻压以便白色返回链接可读，底部加深托住标题。 */
+html .article-hero-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      rgb(12 12 10 / 0.2) 0%,
+      rgb(12 12 10 / 0.08) 28%,
+      rgb(12 12 10 / 0.42) 58%,
+      rgb(12 12 10 / 0.8) 88%,
+      rgb(12 12 10 / 0.88) 100%
+    ),
+    linear-gradient(90deg, rgb(12 12 10 / 0.3) 0%, transparent 60%);
+}
+
+html .article-hero-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: clamp(28px, 4vw, 56px);
+  /* 标题与正文列对齐：hero 里不跟 1760px 的站点外壳走，否则文字会贴到屏幕边缘。 */
+  max-width: calc(var(--article-width, 720px) + 64px);
+  margin-inline: auto;
+  min-height: clamp(300px, 26vw, 460px);
+  padding-top: 22px;
+  padding-bottom: clamp(24px, 3vw, 40px);
+}
+
+html .article-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+html .article-hero-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px 6px 10px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 999px;
+  background: rgb(16 16 13 / 0.28);
+  color: rgb(255 255 255 / 0.86);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+html .article-hero-back:hover {
+  border-color: rgb(255 255 255 / 0.55);
+  background: rgb(16 16 13 / 0.46);
+  color: #fff;
+}
+
+/* 未发布内容的黄标在深色封面上要提亮一点，否则像块脏污。 */
+html .article-hero-top .badge {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.14);
+  color: #fff;
+}
+
+html .article-hero-text {
+  max-width: 920px;
+}
+
+html .article-hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: rgb(255 255 255 / 0.74);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+html .article-hero-kicker .dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.55);
+}
+
+html .article-hero h1 {
+  margin: 0;
+  color: #fff;
+  font-family: var(--serif);
+  font-size: clamp(28px, 3.7vw, 48px);
+  font-weight: 400;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.32), 0 2px 26px rgb(0 0 0 / 0.42);
+}
+
+html .article-hero-lede {
+  max-width: 720px;
+  margin-top: 14px;
+  color: rgb(255 255 255 / 0.86);
+  font-family: var(--serif);
+  font-size: clamp(15px, 1.25vw, 17px);
+  line-height: 1.72;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.28), 0 1px 18px rgb(0 0 0 / 0.34);
+}
+
+/* ----------------------------- 封面下的元信息 ----------------------------- */
+
+html .article--hero {
+  /* 封面已经占了顶部，正文不再是「页头 + 封面」的老节奏。 */
+  padding-top: 0;
+}
+
+html .article-meta--hero {
+  max-width: var(--article-width, 720px);
+  margin: 0 auto;
+  padding: clamp(20px, 2.4vw, 28px) 0 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+html .article-taxonomy--hero {
+  max-width: var(--article-width, 720px);
+  margin: 12px auto 0;
+}
+
+html .article--hero .article-body {
+  margin-top: clamp(30px, 3.4vw, 44px);
+}
+
+/* 目录在封面版里也收进正文同宽，避免和元信息错位。 */
+html .article--hero .article-toc {
+  margin-top: 26px;
+}
+
+/* ----------------------------- 正文顶部的模糊底图 ----------------------------- */
+
+html .article-backdrop {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 0;
+  height: min(680px, 74vh);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.5;
+  /* 只保留靠近封面的上半段，尾部淡出，正文后半段回到纯纸面。 */
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 34%, transparent 96%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 34%, transparent 96%);
+}
+
+html .article-backdrop > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(52px) saturate(0.9);
+  transform: scale(1.16);
+}
+
+/* 纸白 / 夜航都靠 --bg 稀释，深色主题不会出现一整块亮斑。 */
+html .article-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 46%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 70%, transparent) 34%,
+    color-mix(in srgb, var(--bg) 94%, transparent) 72%,
+    var(--bg) 100%
+  );
+}
+
+/* ----------------------------- 顶部透明 / 悬浮页头时让封面伸到页头后面 ----------------------------- */
+
+html[data-header-style='transparent'] .article-hero,
+html[data-header-style='float'] .article-hero {
+  margin-top: calc(-1 * var(--pp-hero-header-h, 67px));
+}
+
+html[data-header-style='transparent'] {
+  --pp-hero-header-h: 67px;
+}
+
+html[data-header-style='float'] {
+  --pp-hero-header-h: 77px;
+}
+
+html[data-header-style='transparent'] .article-hero-inner {
+  padding-top: calc(var(--pp-hero-header-h, 67px) + 18px);
+}
+
+html[data-header-style='float'] .article-hero-inner {
+  padding-top: calc(var(--pp-hero-header-h, 77px) + 12px);
+}
+
+/* 封面压到页头下面时，透明 / 悬浮页头的文字换成白色；滚动后页头恢复实底，颜色回到主题默认。 */
+html[data-article-hero='on']:is([data-header-style='transparent'], [data-header-style='float'])
+  .site-header:not(.is-scrolled)
+  :is(.brand-text, .brand-sub, .site-nav a, .nav-plain, .header-actions .icon-btn, .header-actions .user-name, .header-actions .user-caret) {
+  color: #fff;
+}
+
+html[data-article-hero='on']:is([data-header-style='transparent'], [data-header-style='float'])
+  .site-header:not(.is-scrolled)
+  .brand-mark {
+  background: #fff;
+  color: #1b1b16;
+}
+
+html[data-article-hero='on']:is([data-header-style='transparent'], [data-header-style='float'])
+  .site-header:not(.is-scrolled)
+  .header-actions
+  .icon-btn:hover {
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+}
+
+/* ----------------------------- 窄屏 ----------------------------- */
+
+@media (max-width: 820px) {
+  html .article-hero-inner {
+    min-height: clamp(270px, 46vw, 380px);
+    gap: 24px;
+    padding-top: 16px;
+    padding-bottom: 22px;
+  }
+
+  html[data-header-style='transparent'] .article-hero-inner {
+    padding-top: calc(var(--pp-hero-header-h, 67px) + 12px);
+  }
+
+  html[data-header-style='float'] .article-hero-inner {
+    padding-top: calc(var(--pp-hero-header-h, 77px) + 8px);
+  }
+
+  html .article-hero h1 {
+    font-size: clamp(25px, 6.2vw, 36px);
+  }
+
+  html .article-hero-lede {
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  html .article-backdrop {
+    height: 420px;
+  }
+}
+
+@media (max-width: 560px) {
+  html .article-hero-inner {
+    min-height: 300px;
+    gap: 20px;
+  }
+
+  html .article-hero-kicker {
+    margin-bottom: 10px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+
+  html .article-hero-lede {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  html .article-meta--hero {
+    padding-top: 18px;
+  }
+}
+
+/* 打印时不铺底图，标题回到墨色。 */
+@media print {
+  html .article-hero {
+    min-height: 0;
+    background: none;
+    color: var(--ink);
+  }
+
+  html .article-hero-media,
+  html .article-hero-veil,
+  html .article-backdrop {
+    display: none;
+  }
+
+  html .article-hero h1,
+  html .article-hero-lede,
+  html .article-hero-kicker,
+  html .article-hero-back {
+    color: var(--ink);
+    text-shadow: none;
+  }
+}

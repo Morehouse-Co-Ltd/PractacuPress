@@ -10,10 +10,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/practacu/practacu-press/apps/api/internal/backup"
+	"github.com/practacu/practacu-press/apps/api/internal/feed"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
+	"github.com/practacu/practacu-press/apps/api/internal/plugins"
+	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/apidocs"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
+	"github.com/practacu/practacu-press/packages/contracts/openapi"
 )
 
 // New builds the HTTP engine.
@@ -60,6 +65,12 @@ func New(deps Dependencies) *gin.Engine {
 				Prefix: "/api/v1/media/uploads/",
 				Limit:  media.MaxAttachmentBytes + (1 << 20),
 			},
+			// A whole-site import is a zip package, not a JSON body. It has its own
+			// documented ceiling instead of sharing the ordinary request limit.
+			middleware.BodyLimitRule{
+				Suffix: "/import",
+				Limit:  backup.MaxImportBytes,
+			},
 		))
 	}
 
@@ -95,13 +106,65 @@ func New(deps Dependencies) *gin.Engine {
 	// so clients and the contract see one prefix.
 	r.GET("/api/v1/setup/status", setupStatus(deps.Install, trusted))
 
-	v1 := r.Group("/api/v1")
-	if deps.SiteResolver != nil {
-		v1.Use(middleware.ResolveSite(trusted, deps.SiteResolver))
-	}
-	v1.GET("/openapi.json", openAPIDocument)
+	// The contract and its reference page are host independent, so they sit outside
+	// the site-resolving group. The document is embedded in the binary; the page is
+	// self hosted so it works on an offline desktop install and under the strict CSP.
+	r.GET("/api/v1/openapi.json", openAPIDocument(deps.Plugins))
+	r.GET("/api/v1/docs", apiReferencePage)
+	r.GET("/api/v1/docs/app.css", apiReferenceAsset("app.css", "text/css; charset=utf-8"))
+	r.GET("/api/v1/docs/app.js", apiReferenceAsset("app.js", "text/javascript; charset=utf-8"))
 
-	if deps.Auth != nil || deps.Sites != nil || deps.Content != nil || deps.Community != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil {
+	// Crawler files and feeds live at the site root, but the content behind them is per
+	// site: the same route serves a different sitemap, robots.txt and feed on every
+	// configured hostname. The resolver is built once because all three share it.
+	var resolveSite gin.HandlerFunc
+	if deps.SiteResolver != nil {
+		resolveSite = middleware.ResolveSite(trusted, deps.SiteResolver)
+	}
+	// The IP allow and deny lists belong to the resolved site, so the guard sits right
+	// after resolution on every site-bound route. The site-root files (sitemap, robots
+	// and feeds) resolve the site per route, so they carry the same guard.
+	var siteIPGuard gin.HandlerFunc
+	if deps.IPPolicy != nil {
+		siteIPGuard = middleware.SiteIPGuard(deps.IPPolicy)
+	}
+	siteChain := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		chain := make([]gin.HandlerFunc, 0, 3)
+		if resolveSite != nil {
+			chain = append(chain, resolveSite)
+		}
+		if siteIPGuard != nil {
+			chain = append(chain, siteIPGuard)
+		}
+		return append(chain, handler)
+	}
+	if resolveSite != nil &&
+		deps.SiteFiles.Customization != nil &&
+		deps.SiteFiles.Content != nil {
+		r.GET("/sitemap.xml", siteChain(sitemapFile(deps.SiteFiles, trusted))...)
+		r.GET("/robots.txt", siteChain(robotsFile(deps.SiteFiles, trusted))...)
+	}
+	if resolveSite != nil && deps.Feed.Customization != nil && deps.Feed.Content != nil {
+		r.GET("/rss.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatRSS, feed.ScopeSite))...)
+		r.GET("/atom.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatAtom, feed.ScopeSite))...)
+		// The implementation plan names /feed.xml; it is an alias of the RSS feed so a
+		// reader configured before /rss.xml became canonical keeps working.
+		r.GET("/feed.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatRSS, feed.ScopeSite))...)
+		r.GET("/category/:slug/rss.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatRSS, feed.ScopeCategory))...)
+		r.GET("/category/:slug/atom.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatAtom, feed.ScopeCategory))...)
+		r.GET("/tag/:slug/rss.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatRSS, feed.ScopeTag))...)
+		r.GET("/tag/:slug/atom.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatAtom, feed.ScopeTag))...)
+	}
+
+	v1 := r.Group("/api/v1")
+	if resolveSite != nil {
+		v1.Use(resolveSite)
+	}
+	if siteIPGuard != nil {
+		v1.Use(siteIPGuard)
+	}
+
+	if deps.Auth != nil || deps.Sites != nil || deps.Platform != nil || deps.Content != nil || deps.Community != nil || deps.Reports != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil || deps.Audit != nil || deps.Safety != nil || deps.Backups != nil || deps.Captcha != nil || deps.System != nil || deps.Extensions != nil {
 		var guard, optionalAuth gin.HandlerFunc
 		if deps.AccessTokens != nil {
 			// The guard binds the token to the resolved site: a token minted on site A
@@ -111,6 +174,12 @@ func New(deps Dependencies) *gin.Engine {
 			// membership was suspended or removed, so revocation is immediate.
 			guard = middleware.RequireAuthForSite(deps.AccessTokens, deps.Memberships)
 			optionalAuth = middleware.OptionalAuth(deps.AccessTokens, deps.Memberships)
+			// The live membership carries the site's capability matrix. Enforcing
+			// it in the same guard slot keeps every module honest without each one
+			// repeating the path-to-capability mapping.
+			if deps.Memberships != nil {
+				guard = middleware.RequireAuthForSiteWithCapabilities(deps.AccessTokens, deps.Memberships)
+			}
 		} else {
 			guard = func(c *gin.Context) {
 				middleware.AbortProblem(c, apperr.Unauthenticated().
@@ -119,17 +188,35 @@ func New(deps Dependencies) *gin.Engine {
 			}
 			optionalAuth = func(c *gin.Context) { c.Next() }
 		}
+		// The step-up guard runs after the authentication guard: it needs the
+		// principal and only acts on the frozen list of high threat operations.
+		stepUpGuard := StepUpGuard(deps.StepUp.Enforcer)
 		if deps.Auth != nil {
-			deps.Auth.Routes(v1, guard)
+			deps.Auth.Routes(v1, guard, stepUpGuard)
+		}
+		if deps.Captcha != nil {
+			// Public on purpose: a visitor's login form has to know whether a
+			// challenge is required before it has a session. The payload holds the
+			// public site key and booleans only.
+			deps.Captcha.Routes(v1)
+		}
+		if deps.Audit != nil {
+			deps.Audit.Routes(v1, guard)
 		}
 		if deps.Sites != nil {
-			deps.Sites.Routes(v1, guard, optionalAuth)
+			deps.Sites.Routes(v1, guard, optionalAuth, stepUpGuard)
+		}
+		if deps.Platform != nil {
+			deps.Platform.Routes(v1, guard)
 		}
 		if deps.Content != nil {
 			deps.Content.Routes(v1, guard, optionalAuth)
 		}
 		if deps.Community != nil {
 			deps.Community.Routes(v1, guard, optionalAuth)
+		}
+		if deps.Reports != nil {
+			deps.Reports.Routes(v1, guard)
 		}
 		if deps.Media != nil {
 			deps.Media.Routes(v1, guard, optionalAuth)
@@ -152,6 +239,69 @@ func New(deps Dependencies) *gin.Engine {
 		if deps.Taxonomy != nil {
 			deps.Taxonomy.Routes(v1, guard, optionalAuth)
 		}
+		if deps.Safety != nil {
+			deps.Safety.Routes(v1, guard, stepUpGuard)
+		}
+		if deps.Backups != nil {
+			deps.Backups.Routes(v1, guard, stepUpGuard)
+		}
+		if deps.System != nil {
+			// Deployment wide resource panel; the handler itself requires a platform
+			// administrator seat, because the payload names host paths and processes.
+			deps.System.Routes(v1, guard)
+		}
+		if deps.Extensions != nil {
+			// Extension administration is deployment scoped for the same reason: a
+			// package can run server side code. The handler enforces the platform
+			// administrator seat because the guard is site scoped.
+			deps.Extensions.Routes(v1, guard)
+		}
+	}
+
+	// Plugins are an opt-in composition. Nil keeps every route above unchanged and
+	// leaves the shipped contract byte-for-byte as it was; a wired host adds a
+	// public boot manifest, a namespaced API and the browser bundles.
+	if deps.Plugins != nil {
+		pluginAuth := gin.HandlerFunc(func(c *gin.Context) { c.Next() })
+		if deps.AccessTokens != nil {
+			pluginAuth = middleware.OptionalAuth(deps.AccessTokens, deps.Memberships)
+		}
+		// The boot manifest is public by design: the browser needs the list before
+		// it has a session. It contains names, versions, slots and permissions, never
+		// server paths or settings values.
+		v1.GET("/plugins", func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			c.JSON(http.StatusOK, gin.H{"plugins": deps.Plugins.PublicPlugins()})
+		})
+		v1.Any("/plugins/:pluginID/*path",
+			pluginAuth,
+			pluginRequestInfo,
+			gin.WrapH(deps.Plugins.APIHandler("/api/v1/plugins/")),
+		)
+		// Browser bundles are versioned in the URL, so they are safe to cache
+		// immutably. They sit at the root because the launcher's CSP already allows
+		// same-origin scripts and the SPA's base path is the document root.
+		r.GET("/plugins/:pluginID/:version/*path",
+			gin.WrapH(deps.Plugins.AssetHandler("/plugins/")),
+		)
+	}
+
+	// Third party login. The two endpoints are anonymous by design: the visitor has no
+	// session yet, so neither a guard nor optional auth belongs on them. They stay
+	// inside the versioned group because the callback URI and the landing page are
+	// derived from the site the browser started on, which the resolver put on the
+	// request already.
+	if deps.OAuth != nil {
+		var sessions sessionCookieWriter
+		if deps.Auth != nil {
+			// The session a provider login hands out is the password login's session;
+			// the auth handler owns the cookie layout, so the issuer writes through it.
+			sessions = deps.Auth
+		}
+		oauth := v1.Group("")
+		oauth.Use(oauthSessionContext(deps.Config.DefaultSiteID, sessions))
+		oauth.GET("/auth/oauth/:provider/start", deps.OAuth.Start)
+		oauth.GET("/auth/oauth/:provider/callback", deps.OAuth.Callback)
 	}
 
 	r.NoRoute(noRoute)
@@ -202,18 +352,72 @@ func readyz(check func(context.Context) error) gin.HandlerFunc {
 	}
 }
 
-// openAPIDocument serves the contract without requiring a session. The document
-// is replaced by the generated contract once packages/contracts lands.
-func openAPIDocument(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"openapi": "3.1.0",
-		"info": gin.H{
-			"title":   "Practacu Press API",
-			"version": "0.1.0",
-		},
-		"servers": []gin.H{{"url": "/api/v1"}},
-		"paths":   gin.H{},
-	})
+// openAPIDocument serves the contract the repository ships, composed with the
+// enabled plugins' operations when a plugin host is wired.
+//
+// The base document is embedded at build time, so the endpoint needs no
+// database, no filesystem and no session: it is the same bytes the contract
+// tests check against packages/contracts/openapi/openapi.yaml.
+func openAPIDocument(provider *plugins.Host) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var document []byte
+		var err error
+		if provider != nil {
+			document, err = provider.ContractJSON()
+		} else {
+			document, err = openapi.JSON()
+		}
+		if err != nil {
+			_ = c.Error(apperr.Internal(err).WithRequestID(middleware.RequestIDFrom(c)))
+			return
+		}
+		c.Header("Cache-Control", "public, max-age=300")
+		c.Data(http.StatusOK, "application/json; charset=utf-8", document)
+	}
+}
+
+// pluginRequestInfo puts the resolved site and principal where the plugin host
+// expects them. The host stays transport agnostic; this adapter is the only
+// place that knows about gin's context keys.
+func pluginRequestInfo(c *gin.Context) {
+	info := plugins.RequestInfo{}
+	if resolved, ok := middleware.SiteFrom(c); ok {
+		info.SiteID = resolved.ID
+	}
+	if principal, ok := middleware.PrincipalFrom(c); ok {
+		info.Authenticated = true
+		info.UserID = principal.UserID
+		info.Role = string(principal.Role)
+	}
+	c.Request = c.Request.WithContext(plugins.WithRequestInfo(c.Request.Context(), info))
+	c.Next()
+}
+
+// apiReferencePage serves the self-hosted API reference.
+func apiReferencePage(c *gin.Context) {
+	page, err := apidocs.Read("index.html")
+	if err != nil {
+		_ = c.Error(apperr.Internal(err).WithRequestID(middleware.RequestIDFrom(c)))
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=300")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", page)
+}
+
+// apiReferenceAsset serves one embedded asset of the reference page.
+//
+// The names are fixed by the embed directive, so the handler cannot become a path
+// traversal sink.
+func apiReferenceAsset(name, contentType string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		asset, err := apidocs.Read(name)
+		if err != nil {
+			_ = c.Error(apperr.Internal(err).WithRequestID(middleware.RequestIDFrom(c)))
+			return
+		}
+		c.Header("Cache-Control", "public, max-age=300")
+		c.Data(http.StatusOK, contentType, asset)
+	}
 }
 
 // setupStatus tells a browser whether the install it remembers still exists.

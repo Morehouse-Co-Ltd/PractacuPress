@@ -2,6 +2,16 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`apps/web/src/pages/admin/Members.tsx` */
 const fragment: Dictionary = {
+  '媒体额度（字节）': 'Media quota (bytes)',
+  '媒体额度单位为字节；留空继承部署默认，0 表示无限。':
+    'Media quotas use bytes; leave blank to inherit the deployment default, or enter 0 for unlimited.',
+  '{name} 的媒体额度（字节）': 'Media quota (bytes) for {name}',
+  '保存{name}的媒体额度': 'Save media quota for {name}',
+  成员媒体额度已更新: 'Member media quota updated',
+  无法更新成员媒体额度: 'Could not update member media quota',
+  '修改成员媒体额度': 'Change member media quota',
+  '媒体额度必须是非负整数，且不能超过可存储上限。':
+    'Enter a non-negative whole number within the supported byte range.',
   // ---- 页面标题与用户组说明 ----
   '用户管理': 'Users',
   '评论、投稿与互动': 'Comment, submit, and interact',
@@ -30,7 +40,14 @@ const fragment: Dictionary = {
 
   // ---- 用户组变更 ----
   '用户组已更新': 'Group updated',
-  '{name} 现在是{role}': '{name} is now {role}',
+  '{name} 现在在「{group}」组': '{name} is now in the “{group}” group',
+  '自定义能力组会按矩阵立即生效，并写入操作日志。':
+    'A custom capability group applies its matrix immediately and is written to the activity log.',
+  '自定义能力组，基础角色为{role}。': 'Custom capability group with the base role {role}.',
+  '当前后端不支持分配自定义能力组。':
+    'This backend does not support assigning custom capability groups.',
+  '当前后端不支持自定义能力组': 'This backend does not support custom capability groups',
+  '用户组能做什么': 'What each group can do',
   '无法修改用户组': 'Could not change the group',
   '将 {name} 改为{role}？': 'Change {name} to {role}?',
   '确认变更': 'Confirm change',

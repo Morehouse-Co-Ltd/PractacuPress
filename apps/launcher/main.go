@@ -1,6 +1,6 @@
 // Practacu Press Windows 一键启动器。
 //
-// 双击运行：在本机 80 端口启动站点（占用时自动换端口），并打开默认浏览器。
+// 双击运行：在本机 8080 端口启动站点（占用时自动换端口），并打开默认浏览器。
 // 站点文件通过 go:embed 打进 exe，不需要安装 Node，也不需要保留 dist 目录。
 //
 // 运行时接口与 apps/web/scripts/serve.mjs 保持一致，前台「站点设置 → 访问端口」
@@ -39,7 +39,7 @@ var embedded embed.FS
 
 const (
 	appName     = "practacu-press"
-	defaultPort = 80
+	defaultPort = 8080
 	stateName   = "practacu-web.json"
 )
 
@@ -79,7 +79,7 @@ func main() {
 		}
 	}
 
-	portArg := flag.Int("port", 0, "监听端口（默认 80，可用 PP_WEB_PORT 或后台设置覆盖）")
+	portArg := flag.Int("port", 0, "监听端口（默认 8080，可用 PP_WEB_PORT 或后台设置覆盖）")
 	noBrowser := flag.Bool("no-browser", false, "启动后不自动打开浏览器")
 	modeArg := flag.String("mode", modeAuto, "运行方式：auto（有 API 就用真实环境）、demo、live")
 	apiArg := flag.String("api", "", "PractacuPressAPI.exe 的路径（默认在 exe 同目录查找）")
@@ -180,7 +180,7 @@ func main() {
 			if !isAddrInUse(err) && !isDenied(err) {
 				break
 			}
-			if candidate == preferred && preferred != 8080 {
+			if candidate == preferred {
 				fmt.Printf("端口 %d 不可用（%s），正在尝试其他端口…\n", candidate, shortErr(err))
 			}
 			continue
@@ -191,13 +191,13 @@ func main() {
 
 	if chosen == 0 {
 		fmt.Printf("\n启动失败：%v\n", lastErr)
-		fmt.Println("请检查端口占用，或换一个端口后重试：PractacuPress.exe --port 8080")
+		fmt.Println("请检查端口占用，或换一个端口后重试：PractacuPress.exe --port 8081")
 		pause()
 		return
 	}
 
 	target := originForPort(chosen)
-	printBanner(a, target, chosen)
+	printBanner(a, target, chosen, preferred)
 
 	if !*noBrowser {
 		if err := openBrowser(target); err != nil {
@@ -222,14 +222,14 @@ func main() {
 	fmt.Println("已停止。这个窗口可以直接关闭。")
 }
 
-func printBanner(a *app, target string, port int) {
+func printBanner(a *app, target string, port int, preferred int) {
 	fmt.Println()
 	fmt.Println("  ┌──────────────────────────────────────────────────┐")
 	fmt.Println("  │  Practacu Press                                  │")
 	fmt.Println("  └──────────────────────────────────────────────────┘")
 	fmt.Printf("   访问地址   %s\n", target)
 	fmt.Printf("   监听端口   %d", port)
-	if port == 80 {
+	if port == defaultPort {
 		fmt.Print("（默认）")
 	}
 	fmt.Println()
@@ -245,6 +245,10 @@ func printBanner(a *app, target string, port int) {
 		if !a.live.security {
 			fmt.Println("   提示       发布文章与完成上传需要安全服务；缺少时会被拒绝")
 		}
+		if strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")) == "" {
+			fmt.Println("   提示       未设置 PUBLIC_BASE_URL：绝对链接默认按 https 推导")
+			fmt.Printf("              需要通知邮件或第三方登录时，先设置 PUBLIC_BASE_URL=%s 再启动\n", originForPort(port))
+		}
 	} else {
 		fmt.Println("   运行方式   演示模式（只有前端，数据保存在浏览器）")
 		if a.liveErr != "" {
@@ -252,8 +256,8 @@ func printBanner(a *app, target string, port int) {
 		}
 	}
 	fmt.Println("   修改端口   管理后台 → 站点设置 → 访问端口")
-	if port != 80 {
-		fmt.Println("   提示       80 端口被占用，本次使用了备用端口")
+	if port != preferred {
+		fmt.Printf("   提示       端口 %d 不可用，本次改用 %d 端口\n", preferred, port)
 	}
 	fmt.Println()
 	fmt.Println("   关闭这个窗口即可停止站点。")
@@ -268,9 +272,12 @@ func pause() {
 
 /* ---------- 监听与端口 ---------- */
 
+// candidatePorts 返回按优先级排列的候选端口：首选端口最优先，其次是
+// 8080/8081/8082 这组常用本地端口，最后才回退到标准 HTTP 80 端口。
+// 默认端口现在是 8080，所以 8080 被占用时会先试相邻端口，80 只作为最后的兜底。
 func candidatePorts(preferred int) []int {
 	list := []int{preferred}
-	for _, p := range []int{8080, 8081, 8082} {
+	for _, p := range []int{8080, 8081, 8082, 80} {
 		if p != preferred {
 			list = append(list, p)
 		}
@@ -373,8 +380,50 @@ func shortErr(err error) string {
 
 /* ---------- HTTP ---------- */
 
+// contentSecurityPolicy is the conservative policy for the launcher's own pages.
+//
+// The site is served from this origin: scripts, styles and images are same origin
+// module assets. Inline styles stay allowed because the theme layer injects
+// <style> elements at runtime; inline scripts are not needed and therefore stay
+// blocked. A third-party reverse proxy terminates TLS, but the policy belongs to
+// the page and is always sent from here first.
+//
+// The three captcha providers are the one deliberate exception: the settings page
+// can switch a site's human verification on, and the widget only works if this
+// origin may load the provider's script and embed its challenge frame. Only the
+// documented hosts are allowed, and only the directives a widget needs; everything
+// else stays same origin.
+const contentSecurityPolicy = "default-src 'self'; " +
+	"img-src 'self' data: https:; " +
+	"style-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.gstatic.com; " +
+	"script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com https://www.google.com https://www.gstatic.com; " +
+	"frame-src https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com https://recaptcha.google.com; " +
+	"connect-src 'self' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com; " +
+	"frame-ancestors 'self'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'"
+
+// setSecurityHeaders applies the static site's security headers to every response.
+//
+// It runs before routing so API responses proxied through the launcher carry them
+// too. The API sets X-Content-Type-Options itself; setting the same value twice is
+// harmless and keeps the launcher correct when the API is unavailable.
+func setSecurityHeaders(h http.Header) {
+	h.Set("Content-Security-Policy", contentSecurityPolicy)
+	h.Set("X-Frame-Options", "SAMEORIGIN")
+	h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	h.Set("X-Content-Type-Options", "nosniff")
+}
+
 func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// The API sets the same browser security headers itself; letting the launcher set
+	// them on proxied responses too would duplicate every header (Go's reverse proxy
+	// appends upstream values). Static and control-plane responses are the launcher's
+	// own, so they get the headers here.
+	if !isAPIPath(r.URL.Path) {
+		setSecurityHeaders(w.Header())
+	}
 
 	switch {
 	case r.URL.Path == "/__pp/runtime":
@@ -403,6 +452,7 @@ func (a *app) serveAPI(w http.ResponseWriter, r *http.Request) {
 	a.mu.RUnlock()
 
 	if live == nil {
+		setSecurityHeaders(w.Header())
 		message := "启动器只提供静态站点，本机没有运行 API。"
 		if a.liveErr != "" {
 			message = "本机 API 未能启动：" + a.liveErr
@@ -416,7 +466,19 @@ func (a *app) serveAPI(w http.ResponseWriter, r *http.Request) {
 	live.proxy.ServeHTTP(w, r)
 }
 
+// handleRuntime reports the port and health of the local site.
+//
+// The endpoint is part of the local control plane, so it is restricted to loopback
+// peers *and* loopback Host headers. A same-machine reverse proxy forwards with a
+// loopback peer address, which is why the peer address alone is not enough: the
+// public hostname it was addressed to shows up in Host, and that is what tells the
+// two apart. The response is deliberately small: the page only needs mode, port and
+// origin plus enough API state to explain a failed start. Installation paths,
+// internal API addresses, log files and process ids stay on this machine.
 func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
+	if !requireLocalControl(w, r, "只允许在本机查看运行时信息。") {
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		writeJSON(w, 405, map[string]any{"code": "method_not_allowed", "message": "只支持 GET。"})
 		return
@@ -433,11 +495,7 @@ func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
 		api = map[string]any{
 			"managed":  true,
 			"ready":    live.ready.Load(),
-			"base":     live.baseURL.String(),
-			"pid":      live.pid,
 			"security": live.security,
-			"data_dir": live.dataDir,
-			"log":      live.errPath,
 		}
 	} else if liveErr != "" {
 		api["error"] = liveErr
@@ -449,8 +507,6 @@ func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
 		"name":         appName,
 		"port":         port,
 		"origin":       originFor(r, port),
-		"pid":          os.Getpid(),
-		"started_at":   a.startedAt.UTC().Format(time.RFC3339),
 		"dist_ready":   a.distReady,
 		"api":          api,
 	})
@@ -461,8 +517,7 @@ func (a *app) handlePortChange(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 405, map[string]any{"code": "method_not_allowed", "message": "只支持 POST。"})
 		return
 	}
-	if !isLoopbackRemote(r.RemoteAddr) {
-		writeJSON(w, 403, map[string]any{"code": "permission_denied", "message": "只能在运行站点的这台电脑上修改端口。"})
+	if !requireLocalControl(w, r, "只能在运行站点的这台电脑上修改端口。") {
 		return
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
@@ -532,8 +587,7 @@ func (a *app) handleStateImport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 405, map[string]any{"code": "method_not_allowed", "message": "只支持 GET。"})
 		return
 	}
-	if !isLoopbackRemote(r.RemoteAddr) {
-		writeJSON(w, 403, map[string]any{"code": "permission_denied", "message": "只能在本机读取迁移数据。"})
+	if !requireLocalControl(w, r, "只能在本机读取迁移数据。") {
 		return
 	}
 	token := strings.TrimPrefix(r.URL.Path, "/__pp/state/")
@@ -675,8 +729,68 @@ func isLoopbackRemote(remoteAddr string) bool {
 	if err != nil {
 		host = remoteAddr
 	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return isLoopbackHost(host)
+}
+
+// isLoopbackHost reports whether a Host header names this machine.
+//
+// Only the literal loopback names count: localhost, 127.0.0.0/8 and ::1, with or
+// without a port. A same-machine reverse proxy keeps forwarding to the loopback
+// listener, so RemoteAddr alone cannot tell a local operator from a proxied public
+// request; the Host header it preserves can.
+func isLoopbackHost(hostport string) bool {
+	host := strings.TrimSpace(hostport)
+	if host == "" {
+		return false
+	}
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		host = parsed
+	} else if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// requireLocalControl is the guard for the /__pp/* control plane.
+//
+// Both checks are needed: the peer address stops a directly exposed launcher from
+// answering strangers, and the Host check stops a reverse proxy on the same machine
+// from turning a public request into a "local" one. Forwarding headers are refused
+// as well, because a proxy that rewrites Host to the loopback address (the default
+// for a bare proxy_pass) would otherwise look exactly like a local request; a local
+// browser never sends X-Forwarded-*/Forwarded. It writes the 403 response itself and
+// reports whether the caller may continue.
+func requireLocalControl(w http.ResponseWriter, r *http.Request, message string) bool {
+	if isLoopbackRemote(r.RemoteAddr) && isLoopbackHost(r.Host) && !hasForwardingHeaders(r) {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]any{
+		"code":    "permission_denied",
+		"message": message,
+	})
+	return false
+}
+
+// hasForwardingHeaders reports whether a reverse proxy marked this request as
+// forwarded. The launcher's own same-origin pages never add these headers.
+func hasForwardingHeaders(r *http.Request) bool {
+	for _, name := range []string{
+		"X-Forwarded-For",
+		"X-Forwarded-Host",
+		"X-Forwarded-Proto",
+		"X-Real-IP",
+		"Forwarded",
+	} {
+		if strings.TrimSpace(r.Header.Get(name)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func isHex(value string) bool {

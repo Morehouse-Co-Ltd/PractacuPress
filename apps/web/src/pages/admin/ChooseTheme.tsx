@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { AppearanceSectionId, SiteTheme } from '../../types';
+import type { AppearanceSectionId, LayoutVariant, SiteTheme } from '../../types';
 import { useCustomization } from '../../lib/customize';
-import { defaultHomeLayout } from '../../lib/blocks';
+import { blockDef, defaultHomeLayout } from '../../lib/blocks';
 import { applyPreset, DEFAULT_THEME } from '../../lib/theme';
 import {
   APPEARANCE_SECTIONS,
@@ -27,11 +27,12 @@ import { Badge, Button, Callout, Field, Input, Modal, Textarea } from '../../com
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 
-function ThemePreview({ bundle }: { bundle: SiteTheme }) {
+function ThemePreview({ bundle, large = false }: { bundle: SiteTheme; large?: boolean }) {
   const bento = bundle.variant === 'bento';
+  const daylight = bundle.variant === 'daylight';
   return (
     <span
-      className={`theme-bundle-preview is-${bundle.variant}`}
+      className={`theme-bundle-preview is-${bundle.variant}${large ? ' is-large' : ''}`}
       style={{
         background: bundle.theme.background,
         color: bundle.theme.ink,
@@ -46,6 +47,12 @@ function ThemePreview({ bundle }: { bundle: SiteTheme }) {
             <i style={{ background: bundle.theme.accent }} />
             <i style={{ background: bundle.theme.ink }} />
           </span>
+        ) : daylight ? (
+          <span className="theme-preview-daylight">
+            <i style={{ background: bundle.theme.accent }} />
+            <i style={{ background: bundle.theme.ink }} />
+            <i style={{ background: bundle.theme.ink }} />
+          </span>
         ) : (
           <span className="theme-preview-lines">
             <i style={{ background: bundle.theme.ink }} />
@@ -53,6 +60,19 @@ function ThemePreview({ bundle }: { bundle: SiteTheme }) {
             <i style={{ background: bundle.theme.accent }} />
           </span>
         )}
+      </span>
+    </span>
+  );
+}
+
+/** 详情面板里的一枚色板：色块 + 名称 + 十六进制值。 */
+function PaletteSwatch({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="theme-swatch">
+      <i style={{ background: value }} aria-hidden />
+      <span>
+        <em>{label}</em>
+        <code>{value}</code>
       </span>
     </span>
   );
@@ -80,7 +100,7 @@ export function ChooseThemePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createNote, setCreateNote] = useState('');
-  const [createVariant, setCreateVariant] = useState<'classic' | 'bento'>('classic');
+  const [createVariant, setCreateVariant] = useState<LayoutVariant>('classic');
   const [createBase, setCreateBase] = useState<'current' | 'blank'>('current');
   const [createSections, setCreateSections] = useState<AppearanceSectionId[]>(
     DEFAULT_APPEARANCE_SECTIONS,
@@ -89,16 +109,20 @@ export function ChooseThemePage() {
 
   const customThemes = customization.themes ?? [];
   const library = themeLibrary(customThemes);
-  const selected = activeTheme(customization.active_theme, customThemes);
+  const applied = activeTheme(customization.active_theme, customThemes);
   const currentTheme = customization.theme;
-  const modified = selected
-    ? !themeMatches(currentTheme, customization.layout.variant, selected)
+  const modified = applied
+    ? !themeMatches(currentTheme, customization.layout.variant, applied)
     : true;
-  const currentName = selected?.name ?? t('自定义主题');
-  const currentId = selected?.id ?? customization.active_theme ?? 'custom';
+  const currentName = applied?.name ?? t('自定义主题');
+  const currentId = applied?.id ?? customization.active_theme ?? 'custom';
   const fallback = builtinThemeBundle('default');
   const layout = customization.layout;
-  const selectedSections = themeSections(selected);
+  const selectedSections = themeSections(applied);
+  // 右侧详情面板的选择：默认对准正在使用的主题；点击卡片只切换详情，不立即应用。
+  const [detailId, setDetailId] = useState<string>(customization.active_theme ?? 'default');
+  const detailTheme =
+    library.find((item) => item.id === detailId) ?? library[0] ?? null;
 
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
@@ -132,6 +156,7 @@ export function ChooseThemePage() {
       t('已导入并应用「{name}」', { name: pendingImport.name }),
       t('主题只包含配色、排版与版式，不包含文章或页面。'),
     );
+    setDetailId(pendingImport.id);
     setPendingImport(null);
   };
 
@@ -169,6 +194,7 @@ export function ChooseThemePage() {
         t('当前主题没有变化。'),
       );
     }
+    setDetailId(remaining[0]?.id ?? 'default');
     setDeleteTarget(null);
   };
 
@@ -187,7 +213,7 @@ export function ChooseThemePage() {
     downloadThemeFile({
       id: currentId,
       name: modified ? `${currentName}${t('（当前调整）')}` : currentName,
-      note: selected?.note ?? '',
+      note: applied?.note ?? '',
       variant: customization.layout.variant,
       theme: cloneTheme(currentTheme),
       appearance: { sections: selectedSections },
@@ -197,7 +223,8 @@ export function ChooseThemePage() {
   const openCreate = () => {
     setCreateName('');
     setCreateNote('');
-    setCreateVariant(layout.variant);
+    // 白昼版式已下架；旧站点打开新建弹窗时从单栏开始，不把 legacy 变体再写出去。
+    setCreateVariant(layout.variant === 'daylight' ? 'classic' : layout.variant);
     setCreateBase('current');
     setCreateSections([...DEFAULT_APPEARANCE_SECTIONS]);
     setCreateError('');
@@ -222,7 +249,9 @@ export function ChooseThemePage() {
     const base =
       createBase === 'current'
         ? cloneTheme(currentTheme)
-        : applyPreset(DEFAULT_THEME, createVariant === 'bento' ? 'night' : 'paper');
+        : builtinThemeBundle(
+            createVariant === 'bento' ? 'night' : 'default',
+          )?.theme ?? applyPreset(DEFAULT_THEME, 'paper');
     const item: SiteTheme = {
       id: newThemeId(),
       name,
@@ -242,6 +271,7 @@ export function ChooseThemePage() {
       active_theme: item.id,
     });
     setCreateOpen(false);
+    setDetailId(item.id);
     toast.push(
       'ok',
       t('已创建「{name}」', { name }),
@@ -252,6 +282,39 @@ export function ChooseThemePage() {
     if (thenBuild) navigate('/admin/theme');
   };
 
+  /** 详情面板的介绍段落。内置主题有手写文案，自定义主题按版式与配色生成。 */
+  const themeIntro = (bundle: SiteTheme): string => {
+    if (bundle.id === 'default') {
+      return t(
+        '纸白单栏：衬线标题、发丝线与大量留白，适合把注意力留给长文阅读。编辑排版干净克制，图片以正文宽度呈现。',
+      );
+    }
+    if (bundle.id === 'night') {
+      return t(
+        '夜航双栏：冷石墨底色与电光蓝强调，杂志式网格适合图片、专题与社区内容。切到浅色模式会得到同一套设计的冷白重配。',
+      );
+    }
+    return t('{layout}版式、{mode}配色。{note}', {
+      layout: variantLabel(bundle.variant),
+      mode: bundle.theme.mode === 'dark' ? t('深色') : t('浅色'),
+      note: bundle.note
+        ? t('主题作者备注：{note}', { note: bundle.note })
+        : t('没有备注。'),
+    });
+  };
+
+  /** 外观分区 id → 显示名（名称本身已经过 t()，这里再查一次以跟随当前语言）。 */
+  const sectionLabel = (id: AppearanceSectionId): string => {
+    const entry = APPEARANCE_SECTIONS.find((item) => item.id === id);
+    return entry ? t(entry.name) : id;
+  };
+
+  /** 这套主题的默认首页组件名，让详情页说清「用了会得到什么」。 */
+  const homeBlockLabels = (bundle: SiteTheme): string[] =>
+    defaultHomeLayout(bundle.variant).blocks.map((block) =>
+      t(blockDef(block.type)?.name ?? block.type),
+    );
+
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
@@ -259,7 +322,7 @@ export function ChooseThemePage() {
           <h1>{t('选择主题')}</h1>
           <p>
             {t(
-              '下方是全部主题；点击卡片立即应用，单栏 / 双栏版式会一起切换。也可以创建、导入或删除自己的主题。',
+              '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，左上角会出现编辑入口。',
             )}
           </p>
         </div>
@@ -308,116 +371,218 @@ export function ChooseThemePage() {
         </Callout>
       ) : null}
 
-      <div className="settings-grid no-side">
-        <div className="editor-main">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('选择主题')}</h3>
-                <p>{t('上方是当前主题；点击卡片立即应用，单栏/双栏版式会一起切换。')}</p>
-              </div>
-              <div className="row gap-8">
-                <Badge tone={modified ? 'warn' : 'accent'} dot={!modified}>
-                  {currentName}
-                  {modified ? t(' · 已微调') : ''}
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon="upload"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {t('导入')}
-                </Button>
-              </div>
+      <div className="theme-showcase">
+        <section className="panel theme-showcase-list">
+          <div className="panel-head">
+            <div>
+              <h3>{t('主题库')}</h3>
+              <p>{t('封面在上、标题与描述在下。点击卡片在右侧查看详细介绍，需要时再点“使用这套主题”。')}</p>
             </div>
-            <div className="panel-body">
-              <div className="theme-bundle-grid">
-                {library.map((bundle) => {
-                  const isSelected = customization.active_theme === bundle.id;
-                  const isBuiltin = BUILTIN_THEME_IDS.has(bundle.id);
-                  return (
-                    <div
-                      key={bundle.id}
-                      className={`theme-bundle-card${isSelected ? ' is-selected' : ''}`}
+            <div className="row gap-8">
+              <Badge tone={modified ? 'warn' : 'accent'} dot={!modified}>
+                {currentName}
+                {modified ? t(' · 已微调') : ''}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="upload"
+                onClick={() => fileRef.current?.click()}
+              >
+                {t('导入')}
+              </Button>
+            </div>
+          </div>
+          <div className="panel-body">
+            <div className="theme-gallery">
+              {library.map((bundle) => {
+                const isApplied = customization.active_theme === bundle.id;
+                const isBuiltin = BUILTIN_THEME_IDS.has(bundle.id);
+                const isDetail = detailTheme?.id === bundle.id;
+                return (
+                  <div
+                    key={bundle.id}
+                    className={`theme-tile${isApplied ? ' is-applied' : ''}${isDetail ? ' is-detail' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="theme-tile-select"
+                      onClick={() => setDetailId(bundle.id)}
+                      aria-pressed={isDetail}
+                      aria-label={t('查看「{name}」的详细介绍', { name: bundle.name })}
                     >
-                      <button
-                        type="button"
-                        className="theme-bundle-main"
-                        onClick={() => applyBundle(bundle)}
-                        aria-pressed={isSelected}
-                      >
-                        <ThemePreview bundle={bundle} />
-                        <span className="theme-bundle-copy">
-                          <span className="theme-bundle-title">
-                            <strong>{bundle.name}</strong>
-                            {isBuiltin ? (
-                              <Badge tone="muted">{t('内置')}</Badge>
-                            ) : (
-                              <Badge tone="accent">{t('自定义')}</Badge>
-                            )}
-                            {isSelected ? <Badge tone="ok">{t('使用中')}</Badge> : null}
-                          </span>
-                          <span className="theme-bundle-note">
-                            {bundle.note || t('一套自定义主题。')}
-                          </span>
-                          <span className="theme-bundle-meta">
-                            {variantLabel(bundle.variant)} ·{' '}
-                            {bundle.theme.mode === 'dark' ? t('深色') : t('浅色')}
-                          </span>
+                      <span className="theme-tile-cover">
+                        <ThemePreview bundle={bundle} large />
+                      </span>
+                      <span className="theme-tile-copy">
+                        <span className="theme-tile-title">
+                          <strong>{bundle.name}</strong>
+                          {isBuiltin ? (
+                            <Badge tone="muted">{t('内置')}</Badge>
+                          ) : (
+                            <Badge tone="accent">{t('自定义')}</Badge>
+                          )}
+                          {isApplied ? <Badge tone="ok">{t('使用中')}</Badge> : null}
                         </span>
-                      </button>
-                      <div className="theme-bundle-actions">
-                        <button
-                          type="button"
-                          className="theme-bundle-iconbtn"
-                          aria-label={t('编辑「{name}」的页面编排', { name: bundle.name })}
-                          title={t('进入页面编排：用这套主题搭首页与文章页')}
-                          onClick={() => editLayout(bundle)}
-                        >
-                          <Icon name="edit" size={14} />
-                        </button>
-                        {!isBuiltin ? (
-                          <button
-                            type="button"
-                            className="theme-bundle-iconbtn is-danger"
-                            aria-label={t('删除主题 {name}', { name: bundle.name })}
-                            title={t('删除这套主题')}
-                            onClick={() => setDeleteTarget(bundle)}
-                          >
-                            <Icon name="trash" size={14} />
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                <button type="button" className="theme-bundle-card is-new" onClick={openCreate}>
-                  <span className="theme-bundle-main">
-                    <span className="theme-new-preview" aria-hidden>
-                      <Icon name="plus" size={22} />
-                    </span>
-                    <span className="theme-bundle-copy">
-                      <span className="theme-bundle-title">
-                        <strong>{t('创建主题')}</strong>
-                        <Badge tone="accent">{t('从零开始')}</Badge>
+                        <span className="theme-tile-note">
+                          {bundle.note || t('一套自定义主题。')}
+                        </span>
+                        <span className="theme-tile-meta">
+                          {variantLabel(bundle.variant)} ·{' '}
+                          {bundle.theme.mode === 'dark' ? t('深色') : t('浅色')}
+                        </span>
                       </span>
-                      <span className="theme-bundle-note">
-                        {t('选版式、配色起点与外观功能，建好后直接进页面编排。')}
-                      </span>
-                      <span className="theme-bundle-meta">{t('单栏 / 双栏 · 自定义外观')}</span>
-                    </span>
+                    </button>
+                    {/* 鼠标移到封面上方时，左上角出现「编辑」：进入页面编排。 */}
+                    <button
+                      type="button"
+                      className="theme-tile-edit"
+                      aria-label={t('编辑「{name}」的页面编排', { name: bundle.name })}
+                      title={t('进入页面编排：用这套主题搭首页与文章页')}
+                      onClick={() => editLayout(bundle)}
+                    >
+                      <Icon name="edit" size={13} /> {t('编辑')}
+                    </button>
+                  </div>
+                );
+              })}
+              <button type="button" className="theme-tile is-new" onClick={openCreate}>
+                <span className="theme-tile-cover theme-new-preview" aria-hidden>
+                  <Icon name="plus" size={26} />
+                </span>
+                <span className="theme-tile-copy">
+                  <span className="theme-tile-title">
+                    <strong>{t('创建主题')}</strong>
+                    <Badge tone="accent">{t('从零开始')}</Badge>
                   </span>
-                </button>
-              </div>
-              {!customThemes.length ? (
-                <p className="field-hint mt-12">
-                  {t('还没有自定义主题。可以「创建主题」从零开始，导入 JSON，或把当前微调后的主题另存。')}
-                </p>
-              ) : null}
+                  <span className="theme-tile-note">
+                    {t('选版式、配色起点与外观功能，建好后直接进页面编排。')}
+                  </span>
+                  <span className="theme-tile-meta">{t('单栏 / 卡片 / 双栏 · 自定义外观')}</span>
+                </span>
+              </button>
             </div>
-          </section>
-        </div>
+            {!customThemes.length ? (
+              <p className="field-hint mt-12">
+                {t('还没有自定义主题。可以「创建主题」从零开始，导入 JSON，或把当前微调后的主题另存。')}
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        <aside className="theme-detail" aria-label={t('主题详情')}>
+          {detailTheme ? (
+            <>
+              <div className="theme-detail-cover">
+                <ThemePreview bundle={detailTheme} large />
+              </div>
+              <div className="theme-detail-body">
+                <div className="theme-detail-title">
+                  <h3>{detailTheme.name}</h3>
+                  <div className="row gap-6">
+                    {BUILTIN_THEME_IDS.has(detailTheme.id) ? (
+                      <Badge tone="muted">{t('内置')}</Badge>
+                    ) : (
+                      <Badge tone="accent">{t('自定义')}</Badge>
+                    )}
+                    {customization.active_theme === detailTheme.id ? (
+                      <Badge tone="ok">{t('使用中')}</Badge>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="theme-detail-note">{detailTheme.note || t('一套自定义主题。')}</p>
+                <p className="theme-detail-intro">{themeIntro(detailTheme)}</p>
+
+                <dl className="theme-detail-meta">
+                  <div>
+                    <dt>{t('版式')}</dt>
+                    <dd>{variantLabel(detailTheme.variant)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('明暗')}</dt>
+                    <dd>{detailTheme.theme.mode === 'dark' ? t('深色') : t('浅色')}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('标题字体')}</dt>
+                    <dd>{detailTheme.theme.heading_font === 'sans' ? t('无衬线') : t('衬线')}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('正文字号')}</dt>
+                    <dd>{detailTheme.theme.body_size}px</dd>
+                  </div>
+                  <div>
+                    <dt>{t('内容宽度')}</dt>
+                    <dd>{detailTheme.theme.content_width}px</dd>
+                  </div>
+                  <div>
+                    <dt>{t('圆角')}</dt>
+                    <dd>{detailTheme.theme.radius}px</dd>
+                  </div>
+                </dl>
+
+                <div className="theme-detail-section">
+                  <h4>{t('配色')}</h4>
+                  <div className="theme-palette">
+                    <PaletteSwatch label={t('背景')} value={detailTheme.theme.background} />
+                    <PaletteSwatch label={t('文字')} value={detailTheme.theme.ink} />
+                    <PaletteSwatch label={t('强调色')} value={detailTheme.theme.accent} />
+                  </div>
+                </div>
+
+                <div className="theme-detail-section">
+                  <h4>{t('默认首页组件')}</h4>
+                  <div className="theme-chip-list">
+                    {homeBlockLabels(detailTheme).map((label, index) => (
+                      <span className="theme-chip" key={`${index}-${label}`}>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="theme-detail-section">
+                  <h4>{t('外观分区')}</h4>
+                  <div className="theme-chip-list">
+                    {themeSections(detailTheme).map((id) => (
+                      <span className="theme-chip" key={id}>
+                        {sectionLabel(id)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="theme-detail-actions">
+                  <Button
+                    icon={customization.active_theme === detailTheme.id ? 'check' : 'palette'}
+                    disabled={customization.active_theme === detailTheme.id}
+                    onClick={() => {
+                      applyBundle(detailTheme);
+                      setDetailId(detailTheme.id);
+                    }}
+                  >
+                    {customization.active_theme === detailTheme.id
+                      ? t('正在使用')
+                      : t('使用这套主题')}
+                  </Button>
+                  <Button variant="secondary" icon="layers" onClick={() => editLayout(detailTheme)}>
+                    {t('编辑页面编排')}
+                  </Button>
+                  {!BUILTIN_THEME_IDS.has(detailTheme.id) ? (
+                    <Button variant="ghost" icon="trash" onClick={() => setDeleteTarget(detailTheme)}>
+                      {t('删除主题')}
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="theme-detail-current tiny faint">
+                  {t('当前主题：{name}', { name: currentName })}
+                  {modified ? t('（已微调）') : ''}
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="field-hint">{t('选择一个主题查看详细介绍。')}</p>
+          )}
+        </aside>
       </div>
 
       <Modal
@@ -649,7 +814,7 @@ export function ChooseThemePage() {
             ? t('导入主题「{name}」？', { name: pendingImport.name })
             : t('导入主题？')
         }
-        description={t('主题只包含配色、排版与单栏/双栏版式；不会导入文章、页面或自定义 CSS。')}
+        description={t('主题只包含配色、排版与单栏 / 卡片 / 双栏版式；不会导入文章、页面或自定义 CSS。')}
         onClose={() => setPendingImport(null)}
         footer={
           <>

@@ -20,26 +20,44 @@ var (
 	ErrSiteMissing = errors.New("auth: site missing")
 	// ErrVerificationTokenNotFound means no token matched the hash.
 	ErrVerificationTokenNotFound = errors.New("auth: verification token not found")
+	// ErrTwoFactorNotFound means the account has no authenticator row at all.
+	ErrTwoFactorNotFound = errors.New("auth: two-factor enrollment not found")
 )
 
 // UserAccount is the account fields authentication needs.
 type UserAccount struct {
-	ID          string
-	DisplayName string
-	Status      string
-	Locale      string
-	CreatedAt   time.Time
+	ID              string
+	DisplayName     string
+	Bio             string
+	AvatarMediaID   string
+	EmailVerifiedAt *time.Time
+	Status          string
+	Locale          string
+	CreatedAt       time.Time
 }
 
 // View converts an account to its client representation.
 func (u UserAccount) View() UserView {
 	return UserView{
-		ID:          u.ID,
-		DisplayName: u.DisplayName,
-		Locale:      u.Locale,
-		Status:      u.Status,
-		CreatedAt:   u.CreatedAt,
+		ID:            u.ID,
+		DisplayName:   u.DisplayName,
+		Bio:           u.Bio,
+		AvatarMediaID: u.AvatarMediaID,
+		EmailVerified: u.EmailVerifiedAt != nil,
+		Locale:        u.Locale,
+		Status:        u.Status,
+		CreatedAt:     u.CreatedAt,
 	}
+}
+
+// ProfileUpdate is the filtered write set of a profile change.
+//
+// Nil fields are not written at all, which is what keeps PATCH a partial update.
+// A pointer to the empty string clears a nullable column.
+type ProfileUpdate struct {
+	DisplayName   *string
+	Bio           *string
+	AvatarMediaID *string
 }
 
 // Identity is a login method bound to one account.
@@ -107,6 +125,20 @@ func (t VerificationToken) Live(now time.Time) bool {
 	return t.ConsumedAt == nil && now.Before(t.ExpiresAt)
 }
 
+// TwoFactorRecord is the stored TOTP enrollment of one account.
+//
+// Secret is the sealed envelope as written by the auth module; the persistence
+// layer never sees the plaintext shared secret.
+type TwoFactorRecord struct {
+	UserID      string
+	Secret      string
+	Enabled     bool
+	ConfirmedAt *time.Time
+	// LastUsedStep is the newest RFC 6238 time step that was accepted. Verification
+	// only accepts a strictly newer step, which is what makes one code single use.
+	LastUsedStep int64
+}
+
 // Repository is the persistence contract for authentication.
 //
 // It is defined here, in the domain, so the service never depends on Ent.
@@ -116,10 +148,23 @@ type Repository interface {
 	CreateAccountWithEmail(ctx context.Context, in CreateAccountInput) (UserAccount, error)
 	// FindEmailIdentity resolves a normalised email to its identity.
 	FindEmailIdentity(ctx context.Context, email string) (Identity, error)
+	// FindEmailIdentitiesByDisplayName resolves every email identity whose account
+	// display name matches (case-insensitively). Display names are not unique, so the
+	// caller decides what "more than one account" means: login treats it as an
+	// ambiguous identifier and refuses to pick one.
+	FindEmailIdentitiesByDisplayName(ctx context.Context, displayName string) ([]Identity, error)
 	// FindEmailIdentityByUser resolves the email identity of one account.
 	FindEmailIdentityByUser(ctx context.Context, userID string) (Identity, error)
 	// FindUser loads an account by id.
 	FindUser(ctx context.Context, userID string) (UserAccount, error)
+	// UpdateProfile writes the non-nil fields of a partial profile update, all in
+	// one row update, and returns the refreshed account.
+	UpdateProfile(ctx context.Context, userID string, update ProfileUpdate) (UserAccount, error)
+	// MarkEmailVerified proves both the email identity and its account level mirror.
+	//
+	// The identity timestamp is only written when it is currently NULL, so an older
+	// proof is never rewritten; the account mirror follows the same rule.
+	MarkEmailVerified(ctx context.Context, identityID, userID string, at time.Time) error
 	// UpdatePasswordHash replaces the stored hash. A non nil verifiedAt also marks
 	// the address as proven, but only when it was not proven before: a password
 	// reset must not be able to unverify anything.
@@ -152,6 +197,10 @@ type Repository interface {
 	// RevokeUserSessions revokes every live session of one account. A password
 	// change has to invalidate what an attacker may already hold.
 	RevokeUserSessions(ctx context.Context, userID, reason string, at time.Time) error
+	// RevokeOtherUserSessions revokes every live session of one account except the
+	// named one. Keeping the caller's own session alive is what lets a password
+	// change log out the other devices without logging out the current one.
+	RevokeOtherUserSessions(ctx context.Context, userID, keepSessionID, reason string, at time.Time) error
 
 	// CreateVerificationToken stores a new single use token.
 	CreateVerificationToken(ctx context.Context, token VerificationToken) error
@@ -167,4 +216,28 @@ type Repository interface {
 	// InvalidateVerificationTokens retires every live token of a kind, so a new
 	// request does not leave older links working.
 	InvalidateVerificationTokens(ctx context.Context, userID, kind string, at time.Time) error
+
+	// SaveTwoFactorEnrollment stores (or re-seeds) the pending enrollment of an
+	// account: the sealed secret is replaced, the row is left disabled and every
+	// recovery code of a previous enrollment is retired.
+	SaveTwoFactorEnrollment(ctx context.Context, userID, sealedSecret string, at time.Time) error
+	// FindTwoFactor loads the enrollment row of one account.
+	FindTwoFactor(ctx context.Context, userID string) (TwoFactorRecord, error)
+	// EnableTwoFactor marks the enrollment confirmed and replaces the recovery code
+	// hashes in one transaction, so an enabled authenticator always has its codes.
+	EnableTwoFactor(ctx context.Context, userID string, confirmedAt time.Time, recoveryCodeHashes []string) error
+	// ClearTwoFactor deletes the enrollment and every recovery code of an account.
+	// It backs both self-service disable and an administrator reset.
+	ClearTwoFactor(ctx context.Context, userID string) error
+	// ConsumeTwoFactorStep advances the replay guard. It reports false when the
+	// stored step is already at or beyond the submitted one, which is what rejects a
+	// replayed code inside the drift window under a race.
+	ConsumeTwoFactorStep(ctx context.Context, userID string, step int64) (bool, error)
+	// ReplaceRecoveryCodes retires the current codes and stores a fresh set.
+	ReplaceRecoveryCodes(ctx context.Context, userID string, recoveryCodeHashes []string, at time.Time) error
+	// ConsumeRecoveryCode marks one recovery code used. It reports false when the
+	// code was unknown or already consumed, so a code is single use under a race.
+	ConsumeRecoveryCode(ctx context.Context, userID, codeHash string, at time.Time) (bool, error)
+	// CountUnusedRecoveryCodes returns how many recovery codes remain.
+	CountUnusedRecoveryCodes(ctx context.Context, userID string) (int, error)
 }

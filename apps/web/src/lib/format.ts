@@ -226,9 +226,9 @@ export function formatBytes(bytes: number): string {
 }
 
 export function activityTone(action: string): 'neutral' | 'ok' | 'warn' | 'danger' {
-  if (/发布|创建|完成/.test(action)) return 'ok';
-  if (/退回|删除|失败/.test(action)) return 'danger';
-  if (/提交|审核|修改/.test(action)) return 'warn';
+  if (/发布|创建|完成|published|created|verified|restored|approved/.test(action)) return 'ok';
+  if (/退回|删除|失败|rejected|deleted|removed|failed|banned/.test(action)) return 'danger';
+  if (/提交|审核|修改|submitted|updated|changed|moderated|assigned/.test(action)) return 'warn';
   return 'neutral';
 }
 

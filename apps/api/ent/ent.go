@@ -16,23 +16,34 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/bookmark"
 	"github.com/practacu/practacu-press/apps/api/ent/comment"
 	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
+	"github.com/practacu/practacu-press/apps/api/ent/contentrevision"
 	"github.com/practacu/practacu-press/apps/api/ent/conversation"
 	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
+	"github.com/practacu/practacu-press/apps/api/ent/mediaquotaguard"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
 	"github.com/practacu/practacu-press/apps/api/ent/message"
 	"github.com/practacu/practacu-press/apps/api/ent/moderationreport"
 	"github.com/practacu/practacu-press/apps/api/ent/notification"
+	"github.com/practacu/practacu-press/apps/api/ent/notificationpreference"
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/pageview"
+	"github.com/practacu/practacu-press/apps/api/ent/permissiongroup"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
+	"github.com/practacu/practacu-press/apps/api/ent/readinghistory"
+	"github.com/practacu/practacu-press/apps/api/ent/recoverycode"
+	"github.com/practacu/practacu-press/apps/api/ent/sensitiveword"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
+	"github.com/practacu/practacu-press/apps/api/ent/siteconfig"
 	"github.com/practacu/practacu-press/apps/api/ent/sitecustomization"
+	"github.com/practacu/practacu-press/apps/api/ent/siteiprule"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
+	"github.com/practacu/practacu-press/apps/api/ent/sitesafetysetting"
 	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
+	"github.com/practacu/practacu-press/apps/api/ent/twofactor"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/ent/verificationtoken"
@@ -96,30 +107,41 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditlog.Table:           auditlog.ValidColumn,
-			bookmark.Table:           bookmark.ValidColumn,
-			comment.Table:            comment.ValidColumn,
-			contentitem.Table:        contentitem.ValidColumn,
-			conversation.Table:       conversation.ValidColumn,
-			conversationmember.Table: conversationmember.ValidColumn,
-			follow.Table:             follow.ValidColumn,
-			idempotencykey.Table:     idempotencykey.ValidColumn,
-			mediaasset.Table:         mediaasset.ValidColumn,
-			mediaupload.Table:        mediaupload.ValidColumn,
-			message.Table:            message.ValidColumn,
-			moderationreport.Table:   moderationreport.ValidColumn,
-			notification.Table:       notification.ValidColumn,
-			outboxevent.Table:        outboxevent.ValidColumn,
-			pageview.Table:           pageview.ValidColumn,
-			reaction.Table:           reaction.ValidColumn,
-			session.Table:            session.ValidColumn,
-			site.Table:               site.ValidColumn,
-			sitecustomization.Table:  sitecustomization.ValidColumn,
-			sitemember.Table:         sitemember.ValidColumn,
-			taxonomyterm.Table:       taxonomyterm.ValidColumn,
-			user.Table:               user.ValidColumn,
-			useridentity.Table:       useridentity.ValidColumn,
-			verificationtoken.Table:  verificationtoken.ValidColumn,
+			auditlog.Table:               auditlog.ValidColumn,
+			bookmark.Table:               bookmark.ValidColumn,
+			comment.Table:                comment.ValidColumn,
+			contentitem.Table:            contentitem.ValidColumn,
+			contentrevision.Table:        contentrevision.ValidColumn,
+			conversation.Table:           conversation.ValidColumn,
+			conversationmember.Table:     conversationmember.ValidColumn,
+			follow.Table:                 follow.ValidColumn,
+			idempotencykey.Table:         idempotencykey.ValidColumn,
+			mediaasset.Table:             mediaasset.ValidColumn,
+			mediaquotaguard.Table:        mediaquotaguard.ValidColumn,
+			mediaupload.Table:            mediaupload.ValidColumn,
+			message.Table:                message.ValidColumn,
+			moderationreport.Table:       moderationreport.ValidColumn,
+			notification.Table:           notification.ValidColumn,
+			notificationpreference.Table: notificationpreference.ValidColumn,
+			outboxevent.Table:            outboxevent.ValidColumn,
+			pageview.Table:               pageview.ValidColumn,
+			permissiongroup.Table:        permissiongroup.ValidColumn,
+			reaction.Table:               reaction.ValidColumn,
+			readinghistory.Table:         readinghistory.ValidColumn,
+			recoverycode.Table:           recoverycode.ValidColumn,
+			sensitiveword.Table:          sensitiveword.ValidColumn,
+			session.Table:                session.ValidColumn,
+			site.Table:                   site.ValidColumn,
+			siteconfig.Table:             siteconfig.ValidColumn,
+			sitecustomization.Table:      sitecustomization.ValidColumn,
+			siteiprule.Table:             siteiprule.ValidColumn,
+			sitemember.Table:             sitemember.ValidColumn,
+			sitesafetysetting.Table:      sitesafetysetting.ValidColumn,
+			taxonomyterm.Table:           taxonomyterm.ValidColumn,
+			twofactor.Table:              twofactor.ValidColumn,
+			user.Table:                   user.ValidColumn,
+			useridentity.Table:           useridentity.ValidColumn,
+			verificationtoken.Table:      verificationtoken.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

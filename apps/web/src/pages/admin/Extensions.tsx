@@ -1,210 +1,177 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { CustomExtension, ExtensionId } from '../../types';
+import type { ExtensionSummary, ServerExtensionState } from '../../types';
 import {
-  EXTENSIONS,
-  MAX_CUSTOM_EXTENSIONS,
-  useCustomization,
-} from '../../lib/customize';
-import {
-  buildExtensionBundle,
-  buildExtensionFile,
-  createExtension,
-  downloadJson,
-  extensionFileName,
-  pageScopeLabel,
-  parseExtensionFile,
-  permissionLabel,
-  slotLabel,
-} from '../../lib/extensions';
-import {
-  EXTENSION_TEMPLATES,
-  createExtensionFromTemplate,
-  extensionTemplateById,
-} from '../../lib/extensionTemplates';
-import { useT } from '../../lib/i18n';
+  BUILTIN_EXTENSIONS,
+  type BuiltinExtensionInfo,
+} from '../../lib/extensions/builtinCatalog';
+import { errorText, useT } from '../../lib/i18n';
+import { formatDateTime } from '../../lib/format';
 import { useTitle } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { Badge, Button, Callout, EmptyState, Modal, Tabs, Textarea } from '../../components/ui';
+import { useAuth } from '../../lib/session';
+import { useBackend } from '../../lib/backend';
+import { ApiError } from '../../lib/api';
+import { Badge, Button, Callout, Modal } from '../../components/ui';
 import { Icon, type IconName } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 
-const EXT_ICON: Record<ExtensionId, IconName> = {
-  reading_progress: 'file',
-  toc: 'list',
-  code_copy: 'code',
-  share: 'arrow-up-right',
-  announcement: 'message',
-  back_to_top: 'arrow-up',
-};
+/** 服务器扩展清单的加载状态。 */
+type ServerLoadState = 'idle' | 'loading' | 'ready' | 'denied' | 'unavailable' | 'error';
 
-type ExtensionTab = 'builtin' | 'mine';
+/** 左侧横条列表里的一行：服务器扩展或随应用发布的内置扩展。 */
+type ExtensionRow =
+  | { key: string; kind: 'builtin'; info: BuiltinExtensionInfo }
+  | { key: string; kind: 'server'; extension: ExtensionSummary };
+
+type Translate = ReturnType<typeof useT>;
 
 export function ExtensionsPage() {
   const t = useT();
   useTitle(t('扩展'));
-  const { customization, update } = useCustomization();
   const toast = useToast();
-  const [tab, setTab] = useState<ExtensionTab>('builtin');
-  const extensions = customization.custom_extensions;
-  const builtin = customization.extensions;
-  const builtinCount = EXTENSIONS.filter((item) => builtin[item.id]).length;
+  const backend = useBackend();
+  const { me } = useAuth();
+  const isPlatformAdmin = me?.role === 'platform_admin';
 
-  /* ---------------- 内置扩展 ---------------- */
+  /* ---------------- 服务器扩展（安装包） ---------------- */
 
-  const setBuiltinExtension = (id: ExtensionId, on: boolean) => {
-    update({ extensions: { ...builtin, [id]: on } });
-    const meta = EXTENSIONS.find((item) => item.id === id);
-    toast.push('ok', on ? t('扩展已开启') : t('扩展已关闭'), meta?.name);
-  };
+  /*
+   * 服务器扩展开关只有平台管理员能碰，且端点由并行任务实现：这里全程按「可选能力」
+   * 处理，演示模式与旧后端分别显示不同说明，绝不因为 404 / 权限不足把整页打崩。
+   * 内置扩展（BUILTIN_EXTENSIONS）与服务器扩展共用左侧横条列表，内置的永远可用。
+   */
+  const [serverItems, setServerItems] = useState<ExtensionSummary[]>([]);
+  const [serverState, setServerState] = useState<ServerLoadState>('idle');
+  const [serverError, setServerError] = useState('');
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [busyExtensionId, setBusyExtensionId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importPackageError, setImportPackageError] = useState('');
+  const [serverDeleteTarget, setServerDeleteTarget] = useState<ExtensionSummary | null>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
 
-  const setAllBuiltin = (on: boolean) => {
-    const next = { ...builtin };
-    for (const item of EXTENSIONS) next[item.id] = on;
-    update({ extensions: next });
-    toast.push('ok', on ? t('已全部开启') : t('已全部关闭'));
-  };
+  const canManageServer = isPlatformAdmin && typeof backend.listExtensions === 'function';
 
-  /* ---------------- 我的扩展：写入 / 启停 / 删除 ---------------- */
-
-  const setCustomExtensions = (next: CustomExtension[]) => update({ custom_extensions: next });
-
-  const toggleExtension = (extension: CustomExtension) => {
-    const enabled = !extension.enabled;
-    setCustomExtensions(
-      extensions.map((item) =>
-        item.id === extension.id ? { ...item, enabled, updated_at: new Date().toISOString() } : item,
-      ),
-    );
-    toast.push('ok', enabled ? t('扩展已启用') : t('扩展已停用'), extension.name);
-  };
-
-  const [deleteTarget, setDeleteTarget] = useState<CustomExtension | null>(null);
-
-  const confirmDelete = () => {
-    if (!deleteTarget) return;
-    setCustomExtensions(extensions.filter((item) => item.id !== deleteTarget.id));
-    toast.push('ok', t('扩展已删除'), deleteTarget.name);
-    setDeleteTarget(null);
-  };
-
-  const duplicateExtension = (extension: CustomExtension) => {
-    if (extensions.length >= MAX_CUSTOM_EXTENSIONS) {
-      toast.push(
-        'error',
-        t('扩展数量已达上限'),
-        t('最多 {count} 个，请先删除不用的扩展。', { count: MAX_CUSTOM_EXTENSIONS }),
-      );
+  const loadServerExtensions = useCallback(async () => {
+    if (!isPlatformAdmin) {
+      setServerState('denied');
       return;
     }
-    const copy = createExtension({
-      ...extension,
-      id: undefined,
-      name: `${extension.name} 副本`,
-      enabled: false,
-    });
-    setCustomExtensions([...extensions, copy]);
-    toast.push('ok', t('已复制扩展'), copy.name);
-  };
-
-  const exportExtension = (extension: CustomExtension) => {
-    downloadJson(extensionFileName(extension), buildExtensionFile(extension));
-    toast.push('ok', t('已导出扩展清单'), extensionFileName(extension));
-  };
-
-  const exportAll = () => {
-    if (!extensions.length) {
-      toast.push('error', t('还没有可导出的扩展'));
+    const list = backend.listExtensions;
+    if (typeof list !== 'function') {
+      // 演示后端没有安装目录；旧后端也还没有这个端点。
+      setServerState('unavailable');
       return;
     }
-    const fileName = `practacu-extensions-${new Date().toISOString().slice(0, 10)}.json`;
-    downloadJson(fileName, buildExtensionBundle(extensions));
-    toast.push('ok', t('已导出全部扩展'), fileName);
-  };
-
-  /* ---------------- 导入 ---------------- */
-
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [importText, setImportText] = useState('');
-  const [importError, setImportError] = useState('');
-
-  const importExtensions = (incoming: CustomExtension[]) => {
-    if (!incoming.length) return;
-    const next = [...extensions];
-    let added = 0;
-    let replaced = 0;
-    for (const extension of incoming) {
-      const index = next.findIndex((item) => item.id === extension.id);
-      if (index >= 0) {
-        next[index] = extension;
-        replaced += 1;
-      } else if (next.length < MAX_CUSTOM_EXTENSIONS) {
-        next.push(extension);
-        added += 1;
+    setServerState('loading');
+    setServerError('');
+    try {
+      const items = await list.call(backend);
+      setServerItems(items);
+      setServerState('ready');
+    } catch (error) {
+      setServerItems([]);
+      if (
+        error instanceof ApiError &&
+        (error.problem.status === 404 || error.problem.status === 405)
+      ) {
+        setServerState('unavailable');
+        return;
       }
+      if (
+        error instanceof ApiError &&
+        (error.problem.status === 401 || error.problem.status === 403)
+      ) {
+        setServerState('denied');
+        return;
+      }
+      setServerState('error');
+      setServerError(errorText(error));
     }
-    const dropped = incoming.length - added - replaced;
-    if (!added && !replaced) {
+  }, [backend, isPlatformAdmin]);
+
+  useEffect(() => {
+    void loadServerExtensions();
+  }, [loadServerExtensions]);
+
+  const rows: ExtensionRow[] = [
+    ...serverItems.map((extension) => ({
+      key: `server:${extension.id}`,
+      kind: 'server' as const,
+      extension,
+    })),
+    ...BUILTIN_EXTENSIONS.map((info) => ({
+      key: `builtin:${info.id}`,
+      kind: 'builtin' as const,
+      info,
+    })),
+  ];
+  const selectedRow = rows.find((row) => row.key === selectedKey) ?? rows[0];
+  const demoMissing = serverState === 'unavailable' && backend.mode === 'demo';
+
+  const toggleServerExtension = async (extension: ExtensionSummary) => {
+    const setEnabled = backend.setExtensionEnabled;
+    if (!canManageServer || typeof setEnabled !== 'function' || busyExtensionId) return;
+    setBusyExtensionId(extension.id);
+    try {
+      const updated = await setEnabled.call(backend, extension.id, !extension.enabled);
+      setServerItems((items) => items.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedKey(`server:${updated.id}`);
       toast.push(
-        'error',
-        t('没有导入任何扩展'),
-        t('最多 {count} 个，请先删除不用的扩展。', { count: MAX_CUSTOM_EXTENSIONS }),
+        'ok',
+        updated.enabled ? t('扩展已启用') : t('扩展已停用'),
+        t('是否运行由后端启动清单决定，刷新页面后生效。'),
       );
-      return;
-    }
-    setCustomExtensions(next);
-    setImportText('');
-    setImportError('');
-    const detail = [
-      replaced ? t('覆盖 {count} 个同 id 扩展', { count: replaced }) : '',
-      dropped ? t('因数量上限跳过 {count} 个', { count: dropped }) : '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    toast.push(
-      'ok',
-      t('已导入 {count} 个扩展', { count: added + replaced }),
-      detail || t('可在卡片上打开开关启用。'),
-    );
-  };
-
-  const pickFile = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      const text = await file.text();
-      importExtensions(parseExtensionFileSafe(text, setImportError));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setImportError(message);
-      toast.push('error', t('导入扩展失败'), message);
+      toast.push('error', t('切换启用状态失败'), errorText(error));
     } finally {
-      if (fileRef.current) fileRef.current.value = '';
+      setBusyExtensionId(null);
     }
   };
 
-  const importPasted = () => {
+  const pickExtensionPackage = async (file: File | undefined) => {
+    const importPackage = backend.importExtension;
+    if (!file || typeof importPackage !== 'function' || importing) return;
+    setImporting(true);
+    setImportPackageError('');
     try {
-      const list = parseExtensionFileSafe(importText, setImportError);
-      importExtensions(list);
+      const created = await importPackage.call(backend, file);
+      toast.push('ok', t('扩展包已导入'), created.name);
+      setSelectedKey(`server:${created.id}`);
+      await loadServerExtensions();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setImportError(message);
-      toast.push('error', t('导入扩展失败'), message);
+      const message = errorText(error);
+      setImportPackageError(message);
+      toast.push('error', t('导入扩展包失败'), message);
+      if (
+        error instanceof ApiError &&
+        (error.problem.status === 404 || error.problem.status === 405)
+      ) {
+        setServerState('unavailable');
+      }
+    } finally {
+      setImporting(false);
+      if (zipRef.current) zipRef.current.value = '';
     }
   };
 
-  const importSamples = () => {
-    const samples = EXTENSION_TEMPLATES.map((template) => ({
-      ...createExtensionFromTemplate(template),
-      enabled: true,
-    }));
-    importExtensions(samples);
-  };
-
-  const importSample = (templateId: string) => {
-    const template = extensionTemplateById(templateId);
-    if (!template) return;
-    importExtensions([{ ...createExtensionFromTemplate(template), enabled: true }]);
+  const confirmDeleteServerExtension = async () => {
+    const removeExtension = backend.deleteExtension;
+    if (!serverDeleteTarget || typeof removeExtension !== 'function') return;
+    const target = serverDeleteTarget;
+    setBusyExtensionId(target.id);
+    try {
+      await removeExtension.call(backend, target.id);
+      setServerItems((items) => items.filter((item) => item.id !== target.id));
+      setSelectedKey(null);
+      setServerDeleteTarget(null);
+      toast.push('ok', t('服务器扩展已删除'), target.name);
+    } catch (error) {
+      toast.push('error', t('删除扩展失败'), errorText(error));
+    } finally {
+      setBusyExtensionId(null);
+    }
   };
 
   /* ---------------- 渲染 ---------------- */
@@ -216,310 +183,563 @@ export function ExtensionsPage() {
           <h1>{t('扩展')}</h1>
           <p>
             {t(
-              '内置扩展是随前端发布的能力开关；创作者扩展是一份清单加 HTML / CSS / JS，导入后在本站前台的 sandbox iframe 里运行，可以随时启用、导出或删除。',
+              '服务器扩展以 zip 安装包导入，由后端启动清单决定是否运行；内置扩展随应用发布，免安装。点击一行在右侧查看介绍、权限与前后端能力。',
             )}
           </p>
         </div>
         <div className="admin-page-actions">
-          <Badge tone={builtinCount > 0 ? 'ok' : 'muted'}>
-            {t('内置 {on} / {total}', { on: builtinCount, total: EXTENSIONS.length })}
-          </Badge>
-          <Badge tone={extensions.length ? 'accent' : 'muted'}>
-            {t('我的扩展 {count}', { count: extensions.length })}
-          </Badge>
+          {canManageServer ? (
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                icon="upload"
+                loading={importing}
+                disabled={serverState === 'unavailable'}
+                onClick={() => zipRef.current?.click()}
+              >
+                {importing ? t('正在导入扩展包…') : t('导入扩展')}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="refresh"
+                loading={serverState === 'loading'}
+                onClick={() => void loadServerExtensions()}
+              >
+                {t('刷新')}
+              </Button>
+              <input
+                ref={zipRef}
+                type="file"
+                accept=".zip,application/zip"
+                hidden
+                onChange={(event) => void pickExtensionPackage(event.target.files?.[0])}
+              />
+            </>
+          ) : null}
+          <Link to="/admin/docs" className="btn btn-ghost btn-sm">
+            <Icon name="code" size={14} /> {t('扩展文档')}
+          </Link>
         </div>
       </div>
 
-      <Tabs<ExtensionTab>
-        value={tab}
-        onChange={setTab}
-        items={[
-          { key: 'builtin', label: t('内置扩展'), count: builtinCount },
-          { key: 'mine', label: t('我的扩展'), count: extensions.length },
-        ]}
-      />
-
-      {tab === 'builtin' ? (
-        <div className="mt-20">
-          <Callout tone="info" icon="shield" title={t('内置扩展与创作者扩展是两套机制')}>
-            {t(
-              '下面列出的是随前端发布、经过审查的内置能力，只改本站开关。创作者扩展在「我的扩展」里以 sandbox iframe 运行，不接触主站 DOM 与登录态，两者互不影响。',
-            )}
-          </Callout>
-
-          <div className="row gap-8 mt-16" style={{ justifyContent: 'flex-end' }}>
-            <Button variant="secondary" size="sm" onClick={() => setAllBuiltin(true)}>
-              {t('全部开启')}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setAllBuiltin(false)}>
-              {t('全部关闭')}
-            </Button>
-          </div>
-
-          <div className="extensions-grid mt-20">
-            {EXTENSIONS.map((item) => {
-              const on = builtin[item.id];
-              return (
-                <section key={item.id} className={`ext-card${on ? ' is-on' : ''}`}>
-                  <div className="ext-head">
-                    <span className="ext-icon">
-                      <Icon name={EXT_ICON[item.id]} size={16} />
-                    </span>
-                    <div className="ext-body">
-                      <strong>{item.name}</strong>
-                      <p>{item.description}</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={on}
-                      aria-label={item.name}
-                      className={`switch${on ? ' is-on' : ''}`}
-                      onClick={() => setBuiltinExtension(item.id, !on)}
-                    >
-                      <span />
-                    </button>
-                  </div>
-                  <p className="ext-detail">{item.detail}</p>
-                  {item.id === 'announcement' && on ? (
-                    <Link to="/admin/appearance" className="tiny" style={{ color: 'var(--accent)' }}>
-                      {t('去外观页填写公告内容 →')}
-                    </Link>
-                  ) : null}
-                </section>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {tab === 'mine' ? (
-        <div className="mt-20">
-          <div className="row gap-8" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
-            <p className="small muted" style={{ margin: 0 }}>
-              {t('启用后会出现在站点前台对应的槽位；清单保存在本地安装配置里，可随站点一起迁移。')}
-            </p>
-            <div className="row gap-8">
-              <Button variant="secondary" size="sm" icon="upload" onClick={() => fileRef.current?.click()}>
-                {t('导入扩展')}
-              </Button>
-              <Button variant="secondary" size="sm" icon="download" onClick={exportAll} disabled={!extensions.length}>
-                {t('全部导出')}
-              </Button>
-            </div>
-          </div>
-
-          {importError ? (
-            <Callout tone="danger" icon="alert" title={t('上次导入失败')}>
-              {importError}
-            </Callout>
-          ) : null}
-
-          <section className="panel mt-16">
-            <div className="panel-head">
-              <div>
-                <h3>{t('导入扩展')}</h3>
-                <p>{t('支持 `.ppext.json` 导出文件、单个裸清单或清单数组；同 id 会覆盖并提示。')}</p>
-              </div>
-              <Badge tone="muted">{t('最多 {count} 个', { count: MAX_CUSTOM_EXTENSIONS })}</Badge>
-            </div>
-            <div className="panel-body">
-              <div className="ppe-import-grid">
-                <div className="ppe-import-box">
-                  <span className="ppe-import-icon">
-                    <Icon name="upload" size={18} />
-                  </span>
-                  <strong>{t('从文件导入')}</strong>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="application/json,.json,.ppext.json"
-                    hidden
-                    onChange={(event) => void pickFile(event.target.files?.[0])}
-                  />
-                  <Button variant="secondary" size="sm" icon="upload" onClick={() => fileRef.current?.click()}>
-                    {t('选择文件')}
-                  </Button>
-                </div>
-                <div className="ppe-import-box">
-                  <strong>{t('粘贴 JSON')}</strong>
-                  <Textarea
-                    rows={4}
-                    value={importText}
-                    spellCheck={false}
-                    placeholder={t(
-                      '{\n  "format": "practacu-extension",\n  "version": 1,\n  "extension": { "name": "我的扩展", ... }\n}',
-                    )}
-                    onChange={(event) => {
-                      setImportText(event.target.value);
-                      if (importError) setImportError('');
-                    }}
-                  />
-                  <Button variant="primary" size="sm" icon="check" onClick={importPasted} disabled={!importText.trim()}>
-                    {t('导入 JSON')}
-                  </Button>
-                </div>
-              </div>
-              <div className="ppe-sample-row">
-                <span className="ppe-sample-label">{t('没有现成清单？')}</span>
-                {EXTENSION_TEMPLATES.map((template) => (
-                  <Button
-                    key={template.id}
-                    variant="ghost"
-                    size="sm"
-                    icon="sparkle"
-                    onClick={() => importSample(template.id)}
-                  >
-                    {template.name}
-                  </Button>
-                ))}
-                <Button variant="quiet" size="sm" onClick={importSamples}>
-                  {t('导入全部示例')}
-                </Button>
-              </div>
-            </div>
-          </section>
-
-          {extensions.length ? (
-            <div className="ppe-card-list mt-16">
-              {extensions.map((extension) => (
-                <article
-                  key={extension.id}
-                  className={`ppe-card${extension.enabled ? ' is-on' : ''}`}
-                  data-pp-extension-id={extension.id}
-                >
-                  <div className="ppe-card-icon" aria-hidden="true">
-                    {extension.icon || Array.from(extension.name)[0] || t('扩')}
-                  </div>
-                  <div className="ppe-card-main">
-                    <div className="ppe-card-title">
-                      <strong>{extension.name}</strong>
-                      <span className="ppe-card-version">v{extension.version}</span>
-                      {extension.enabled ? (
-                        <Badge tone="ok" dot>
-                          {t('已启用')}
-                        </Badge>
-                      ) : (
-                        <Badge tone="muted">{t('已停用')}</Badge>
-                      )}
-                    </div>
-                    <p className="ppe-card-author">{extension.author}</p>
-                    <p className="ppe-card-desc">{extension.description || t('（还没有填写描述）')}</p>
-                    <div className="ppe-card-tags">
-                      <span className="ppe-tag-label">{t('槽位')}</span>
-                      {extension.slots.map((slot) => (
-                        <span key={slot} className="ppe-tag">{slotLabel(slot)}</span>
-                      ))}
-                      <span className="ppe-tag-label">{t('页面')}</span>
-                      {extension.pages.map((page) => (
-                        <span key={page} className="ppe-tag is-soft">{pageScopeLabel(page)}</span>
-                      ))}
-                      {extension.permissions.length ? (
-                        <>
-                          <span className="ppe-tag-label">{t('权限')}</span>
-                          {extension.permissions.map((permission) => (
-                            <span key={permission} className="ppe-tag is-quiet">{permissionLabel(permission)}</span>
-                          ))}
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="ppe-card-side">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={extension.enabled}
-                      aria-label={t('{action} {name}', {
-                        action: extension.enabled ? t('停用') : t('启用'),
-                        name: extension.name,
-                      })}
-                      className={`switch${extension.enabled ? ' is-on' : ''}`}
-                      onClick={() => toggleExtension(extension)}
-                    >
-                      <span />
-                    </button>
-                    <div className="ppe-card-actions">
-                      <Button variant="ghost" size="sm" icon="copy" onClick={() => duplicateExtension(extension)}>
-                        {t('复制')}
-                      </Button>
-                      <Button variant="ghost" size="sm" icon="download" onClick={() => exportExtension(extension)}>
-                        {t('导出')}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon="trash"
-                        className="ppe-danger-btn"
-                        onClick={() => setDeleteTarget(extension)}
-                      >
-                        {t('删除')}
-                      </Button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-16">
-              <EmptyState
-                icon="sparkle"
-                title={t('还没有创作者扩展')}
-                body={t(
-                  '可以从示例开始，或者导入别人做好的清单；导入后在卡片上启用、导出或删除。',
+      {/* ---------------- 扩展管理区：横条列表 + 右侧详情 ---------------- */}
+      <div className="extm-showcase">
+        <section className="panel extm-list-panel">
+          <div className="panel-head">
+            <div>
+              <h3>{t('服务器扩展')}</h3>
+              <p>
+                {t(
+                  '服务器扩展与内置扩展都在左侧列表里；点击一行在右侧查看介绍、权限与前后端能力。',
                 )}
-                action={
-                  <div className="row gap-8" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <Button variant="primary" size="sm" icon="sparkle" onClick={importSamples}>
-                      {t('导入示例扩展（{count} 个）', { count: EXTENSION_TEMPLATES.length })}
-                    </Button>
-                  </div>
-                }
-              />
+              </p>
             </div>
+            <Badge tone="muted">{t('共 {count} 个扩展', { count: rows.length })}</Badge>
+          </div>
+          <div className="panel-body">
+            {serverState === 'loading' ? (
+              <p className="extm-list-note">
+                <span className="spinner spinner-sm" aria-hidden /> {t('正在读取服务器扩展…')}
+              </p>
+            ) : null}
+            {serverState === 'denied' ? (
+              <Callout tone="warn" icon="shield" title={t('仅平台管理员可管理服务器扩展')}>
+                {t(
+                  '服务器扩展包的导入、启用与删除需要平台管理员；内置扩展仍可正常查看。',
+                )}
+              </Callout>
+            ) : null}
+            {demoMissing ? (
+              <Callout tone="info" icon="info" title={t('演示模式没有服务器扩展')}>
+                {t(
+                  '演示数据只存在浏览器里，没有安装服务；连接真实后端后可以导入、启用或删除扩展包。这里只显示随应用发布的内置扩展。',
+                )}
+              </Callout>
+            ) : null}
+            {!demoMissing && serverState === 'unavailable' && isPlatformAdmin ? (
+              <Callout tone="warn" icon="alert" title={t('服务器扩展接口未就绪')}>
+                {t(
+                  '当前后端还没有提供扩展管理 API（/api/v1/extensions）。页面先展示随应用发布的内置扩展；后端就绪后点「刷新」重新读取。',
+                )}
+              </Callout>
+            ) : null}
+            {serverState === 'error' ? (
+              <Callout tone="danger" icon="alert" title={t('读取服务器扩展失败')}>
+                {serverError}
+              </Callout>
+            ) : null}
+            {importing ? (
+              <p className="extm-list-note">
+                <span className="spinner spinner-sm" aria-hidden /> {t('正在导入扩展包…')}
+              </p>
+            ) : null}
+            {importPackageError ? (
+              <Callout tone="danger" icon="alert" title={t('导入扩展包失败')}>
+                {importPackageError}
+              </Callout>
+            ) : null}
+            {serverState === 'ready' && serverItems.length === 0 ? (
+              <p className="extm-list-note">{t('还没有安装服务器扩展；导入一个 zip 扩展包即可。')}</p>
+            ) : null}
+
+            <div className="extm-list" role="list">
+              {rows.map((row) => {
+                const builtinInfo = row.kind === 'builtin' ? row.info : null;
+                const serverExtension = row.kind === 'server' ? row.extension : null;
+                const name = builtinInfo ? t(builtinInfo.name) : (serverExtension?.name ?? '');
+                const description = builtinInfo
+                  ? t(builtinInfo.description)
+                  : serverExtension?.description || t('（还没有填写描述）');
+                const version = builtinInfo ? builtinInfo.version : (serverExtension?.version ?? '');
+                const enabled = builtinInfo ? true : !!serverExtension?.enabled;
+                const failed = serverExtension?.state === 'failed';
+                const ability = builtinInfo
+                  ? t('前端')
+                  : serverExtension
+                    ? serverAbilityLabel(serverExtension, t)
+                    : null;
+                const icon: IconName = builtinInfo ? builtinInfo.icon : 'grid';
+                const isSelected = selectedRow?.key === row.key;
+                const stateText = serverExtension
+                  ? serverStateLabel(serverExtension.state, t)
+                  : t('始终启用');
+                return (
+                  <div
+                    key={row.key}
+                    role="listitem"
+                    className={`extm-row${isSelected ? ' is-selected' : ''}${
+                      enabled ? ' is-on' : ''
+                    }${failed ? ' is-failed' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="extm-row-select"
+                      aria-pressed={isSelected}
+                      aria-label={t('查看「{name}」的详细信息', { name })}
+                      onClick={() => setSelectedKey(row.key)}
+                    >
+                      <span className="extm-row-icon" aria-hidden>
+                        <Icon name={icon} size={18} />
+                      </span>
+                      <span className="extm-row-main">
+                        <span className="extm-row-title">
+                          <strong>{name}</strong>
+                          {builtinInfo ? <Badge tone="muted">{t('内置')}</Badge> : null}
+                          {ability ? (
+                            <Badge tone={builtinInfo ? 'muted' : 'accent'}>{ability}</Badge>
+                          ) : null}
+                          {failed ? (
+                            <Badge tone="danger" dot>
+                              {t('运行失败')}
+                            </Badge>
+                          ) : null}
+                        </span>
+                        <span className="extm-row-desc">{description}</span>
+                        <span className="extm-row-meta">
+                          <span>v{version}</span>
+                          <span aria-hidden>·</span>
+                          <span>{stateText}</span>
+                        </span>
+                      </span>
+                    </button>
+                    <span className="extm-row-side">
+                      {builtinInfo ? (
+                        <Badge tone="ok" dot>
+                          {t('始终启用')}
+                        </Badge>
+                      ) : canManageServer && serverExtension ? (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={enabled}
+                          aria-label={t('启用或禁用「{name}」', { name })}
+                          className={`switch${enabled ? ' is-on' : ''}`}
+                          disabled={busyExtensionId === serverExtension.id}
+                          onClick={() => void toggleServerExtension(serverExtension)}
+                        >
+                          <span />
+                        </button>
+                      ) : (
+                        <Badge tone={enabled ? 'ok' : 'muted'}>
+                          {enabled ? t('已启用') : t('已停用')}
+                        </Badge>
+                      )}
+                      <span className="extm-row-chevron" aria-hidden>
+                        <Icon name="chevron-right" size={14} />
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <aside className="extm-detail" aria-label={t('服务器扩展详情')}>
+          {selectedRow ? (
+            selectedRow.kind === 'server' ? (
+              <ServerExtensionDetail
+                extension={selectedRow.extension}
+                canManage={canManageServer}
+                busy={busyExtensionId === selectedRow.extension.id}
+                onToggle={() => void toggleServerExtension(selectedRow.extension)}
+                onDelete={() => setServerDeleteTarget(selectedRow.extension)}
+              />
+            ) : (
+              <BuiltinExtensionDetail info={selectedRow.info} />
+            )
+          ) : (
+            <p className="field-hint extm-detail-empty">{t('选择一个扩展查看详细信息。')}</p>
           )}
-        </div>
-      ) : null}
+        </aside>
+      </div>
 
       <Modal
-        open={!!deleteTarget}
+        open={!!serverDeleteTarget}
         title={t('删除扩展')}
         description={
-          deleteTarget ? t('确定删除「{name}」吗？', { name: deleteTarget.name }) : undefined
+          serverDeleteTarget
+            ? t('确定删除服务器扩展「{name}」吗？', { name: serverDeleteTarget.name })
+            : undefined
         }
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => setServerDeleteTarget(null)}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+            <Button variant="ghost" onClick={() => setServerDeleteTarget(null)}>
               {t('取消')}
             </Button>
-            <Button variant="danger" icon="trash" onClick={confirmDelete}>
+            <Button
+              variant="danger"
+              icon="trash"
+              loading={!!serverDeleteTarget && busyExtensionId === serverDeleteTarget.id}
+              onClick={() => void confirmDeleteServerExtension()}
+            >
               {t('删除')}
             </Button>
           </>
         }
       >
         <p className="small muted" style={{ lineHeight: 1.8 }}>
-          {t('删除后清单与 HTML / CSS / JS 都会从本地配置移除；已经导出的 `.ppext.json` 文件不受影响。')}
+          {t('删除后扩展目录会从服务器移除；内置扩展不受影响。')}
         </p>
       </Modal>
+
     </RoleGate>
   );
 }
 
-/**
- * parseExtensionFile 的包装：把错误同时写到导入区提示里。
- *
- * 文件导入与粘贴导入共用同一套错误展示；调用方负责 toast。
- */
-function parseExtensionFileSafe(
-  text: string,
-  setError: (value: string) => void,
-): CustomExtension[] {
-  try {
-    return parseExtensionFile(text);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    setError(message);
-    throw error;
+/* ---------------- 服务器扩展行 / 详情 ---------------- */
+
+/** 服务器扩展的状态标签（安装 / 启用 / 停用 / 失败）。 */
+function serverStateLabel(state: ServerExtensionState, t: Translate): string {
+  switch (state) {
+    case 'enabled':
+      return t('已启用');
+    case 'disabled':
+      return t('已停用');
+    case 'failed':
+      return t('运行失败');
+    default:
+      return t('已安装');
   }
 }
+
+/** 状态对应的徽标色调。 */
+function serverStateTone(state: ServerExtensionState): 'ok' | 'danger' | 'muted' | 'accent' {
+  switch (state) {
+    case 'enabled':
+      return 'ok';
+    case 'failed':
+      return 'danger';
+    case 'disabled':
+      return 'muted';
+    default:
+      return 'accent';
+  }
+}
+
+/** 扩展的能力类型：前端 / 后端 / 全栈；两者都没有时返回 null。 */
+function serverAbilityLabel(extension: ExtensionSummary, t: Translate): string | null {
+  const hasFrontend = extension.frontend !== null;
+  const hasBackend = extension.backend !== null;
+  if (hasFrontend && hasBackend) return t('全栈');
+  if (hasFrontend) return t('前端');
+  if (hasBackend) return t('后端');
+  return null;
+}
+
+interface ServerExtensionDetailProps {
+  extension: ExtensionSummary;
+  canManage: boolean;
+  busy: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}
+
+/** 右侧 sticky 详情：安装信息、前后端能力、权限与操作。 */
+function ServerExtensionDetail({
+  extension,
+  canManage,
+  busy,
+  onToggle,
+  onDelete,
+}: ServerExtensionDetailProps) {
+  const t = useT();
+  const ability = serverAbilityLabel(extension, t);
+  const frontend = extension.frontend;
+  const backend = extension.backend;
+
+  const metaRows: { label: string; value: ReactNode }[] = [
+    { label: t('版本'), value: `v${extension.version}` },
+  ];
+  if (extension.author) metaRows.push({ label: t('作者'), value: extension.author });
+  if (extension.license) metaRows.push({ label: t('许可'), value: extension.license });
+  if (extension.runtime) metaRows.push({ label: t('运行时'), value: extension.runtime });
+  if (extension.installed_at) {
+    metaRows.push({ label: t('安装时间'), value: formatDateTime(extension.installed_at) });
+  }
+  if (extension.enabled_at) {
+    metaRows.push({ label: t('启用时间'), value: formatDateTime(extension.enabled_at) });
+  }
+
+  return (
+    <div className="extm-detail-body">
+      <div className="extm-detail-title">
+        <span className="extm-detail-icon" aria-hidden>
+          <Icon name="grid" size={20} />
+        </span>
+        <div className="extm-detail-title-copy">
+          <h3>{extension.name}</h3>
+          <p className="extm-detail-sub">
+            v{extension.version}
+            {ability ? ` · ${ability}` : ''}
+          </p>
+        </div>
+        <Badge tone={serverStateTone(extension.state)} dot>
+          {serverStateLabel(extension.state, t)}
+        </Badge>
+      </div>
+
+      {extension.homepage ? (
+        <a
+          className="extm-detail-home"
+          href={extension.homepage}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          {extension.homepage} <Icon name="external" size={12} />
+        </a>
+      ) : null}
+
+      <p className="extm-detail-desc">
+        {extension.description || t('（还没有填写描述）')}
+      </p>
+
+      {extension.last_error ? (
+        <Callout tone="danger" icon="alert" title={t('最近一次错误')}>
+          {extension.last_error}
+        </Callout>
+      ) : null}
+
+      <dl className="extm-meta">
+        {metaRows.map((row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {frontend ? (
+        <section className="extm-section">
+          <h4>{t('前端能力')}</h4>
+          <p className="extm-kv">
+            <span>{t('入口')}</span>
+            <code>{frontend.entry}</code>
+          </p>
+          <p className="extm-kv">
+            <span>
+              {t('槽位')} · {frontend.slots.length}
+            </span>
+            {frontend.slots.length ? (
+              <span className="extm-chips">
+                {frontend.slots.map((slot) => (
+                  <span className="extm-chip" key={slot}>
+                    {slot}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="extm-empty-value">—</span>
+            )}
+          </p>
+          <p className="extm-kv">
+            <span>
+              {t('区块')} · {frontend.blocks.length}
+            </span>
+            {frontend.blocks.length ? (
+              <span className="extm-chips">
+                {frontend.blocks.map((block, index) => (
+                  <span className="extm-chip" key={`${block.type}-${index}`}>
+                    {block.name || block.type}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="extm-empty-value">—</span>
+            )}
+          </p>
+          <p className="extm-kv">
+            <span>
+              {t('样式')} · {frontend.styles.length}
+            </span>
+            {frontend.styles.length ? (
+              <span className="extm-chips">
+                {frontend.styles.map((style) => (
+                  <span className="extm-chip" key={style}>
+                    {style}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="extm-empty-value">—</span>
+            )}
+          </p>
+        </section>
+      ) : null}
+
+      {backend ? (
+        <section className="extm-section">
+          <h4>{t('后端能力')}</h4>
+          <p className="extm-kv">
+            <span>WASM</span>
+            <Badge tone={backend.wasm ? 'ok' : 'muted'}>{backend.wasm ? 'yes' : 'no'}</Badge>
+          </p>
+          <p className="extm-kv">
+            <span>
+              {t('路由')} · {backend.routes.length}
+            </span>
+            {backend.routes.length ? (
+              <ul className="extm-routes">
+                {backend.routes.map((route, index) => (
+                  <li key={`${route.method}-${route.path}-${index}`}>
+                    <code>
+                      {route.method.toUpperCase()} {route.path}
+                    </code>
+                    {route.auth ? <span className="extm-chip">{route.auth}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="extm-empty-value">—</span>
+            )}
+          </p>
+          {backend.hooks?.length ? (
+            <p className="extm-kv">
+              <span>
+                {t('钩子')} · {backend.hooks.length}
+              </span>
+              <span className="extm-chips">
+                {backend.hooks.map((hook) => (
+                  <span className="extm-chip" key={hook}>
+                    {hook}
+                  </span>
+                ))}
+              </span>
+            </p>
+          ) : null}
+          {typeof backend.timeout_ms === 'number' ? (
+            <p className="extm-kv">
+              <span>{t('超时')}</span>
+              <span>{backend.timeout_ms} ms</span>
+            </p>
+          ) : null}
+          {typeof backend.max_memory_mb === 'number' ? (
+            <p className="extm-kv">
+              <span>{t('内存上限')}</span>
+              <span>{backend.max_memory_mb} MB</span>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className="extm-section">
+        <h4>{t('权限')}</h4>
+        {extension.permissions.length ? (
+          <div className="extm-chips">
+            {extension.permissions.map((permission) => (
+              <span className="extm-chip is-permission" key={permission}>
+                {permission}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="extm-empty-value">{t('没有声明权限。')}</p>
+        )}
+      </section>
+
+      <div className="extm-detail-actions">
+        {canManage ? (
+          <>
+            <Button
+              variant={extension.enabled ? 'secondary' : 'primary'}
+              icon={extension.enabled ? 'x-circle' : 'check-circle'}
+              loading={busy}
+              onClick={onToggle}
+            >
+              {extension.enabled ? t('禁用') : t('启用')}
+            </Button>
+            <Button variant="ghost" icon="trash" disabled={busy} onClick={onDelete}>
+              {t('删除')}
+            </Button>
+          </>
+        ) : (
+          <p className="field-hint extm-readonly-hint">
+            {t('仅平台管理员可启用、禁用或删除服务器扩展。')}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 内置扩展的详情：随应用发布、始终启用、不可删除。 */
+function BuiltinExtensionDetail({ info }: { info: BuiltinExtensionInfo }) {
+  const t = useT();
+  return (
+    <div className="extm-detail-body">
+      <div className="extm-detail-title">
+        <span className="extm-detail-icon" aria-hidden>
+          <Icon name={info.icon} size={20} />
+        </span>
+        <div className="extm-detail-title-copy">
+          <h3>{t(info.name)}</h3>
+          <p className="extm-detail-sub">
+            v{info.version} · {t('前端')}
+          </p>
+        </div>
+        <Badge tone="ok" dot>
+          {t('已启用')}
+        </Badge>
+      </div>
+
+      <div className="extm-detail-badges">
+        <Badge tone="muted">{t('内置')}</Badge>
+        <Badge tone="ok">{t('始终启用')}</Badge>
+      </div>
+
+      <p className="extm-detail-desc">{t(info.description)}</p>
+
+      <p className="field-hint">{t('内置扩展，随应用发布')}</p>
+
+      <div className="extm-detail-actions">
+        <Link to={`/admin/ext/${info.pageId}`} className="btn btn-secondary btn-sm">
+          {t('打开扩展页面 →')}
+        </Link>
+      </div>
+    </div>
+  );
+}
+

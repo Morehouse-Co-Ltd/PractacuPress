@@ -2,11 +2,13 @@ package content
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/safety"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -25,21 +27,79 @@ type Sanitizer interface {
 	Sanitize(ctx context.Context, format SourceFormat, source string) (Sanitized, error)
 }
 
+// ContentGuard applies the site's sensitive word policy to a submission.
+//
+// The safety service implements it. A nil guard (tests, legacy callers) skips the
+// word list; the server always wires one.
+type ContentGuard interface {
+	CheckText(ctx context.Context, siteID, text string) (safety.TextVerdict, error)
+}
+
+// safetyResult is the aggregated word-list outcome for one content item.
+type safetyResult struct {
+	Matched []string
+	// Review is true when at least one matched word asks for human review.
+	Review bool
+}
+
+// Hit reports whether any word matched.
+func (r safetyResult) Hit() bool { return len(r.Matched) > 0 }
+
+// action names the strictest action for the audit trail.
+func (r safetyResult) action() string {
+	if r.Review {
+		return string(safety.ModeReview)
+	}
+	return string(safety.ModeReplace)
+}
+
 // Repository is the persistence contract for content.
 type Repository interface {
-	// Insert stores a new item and its audit entry.
+	// Insert stores a new item, its first history entry and its audit entry.
 	Insert(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
-	// SaveDraft updates an editable item and its audit entry.
+	// SaveDraft updates an editable item, appends a history entry and writes the
+	// audit entry in one transaction. The update only succeeds when the stored
+	// revision still equals item.Revision.
 	SaveDraft(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
 	// FindByID loads an item inside a site scope.
 	FindByID(ctx context.Context, siteID, contentID string) (Content, error)
 	// List returns items of a site filtered by what the caller may see.
 	List(ctx context.Context, filter ListFilter) ([]Content, error)
-	// Search returns published items whose title or summary matches a term.
-	Search(ctx context.Context, siteID, term string, kind Kind, limit int) ([]Content, error)
+	// Search returns one relevance ordered page of published, public items whose
+	// title, summary or body matches the filter. Implementations may fall back to
+	// a portable LIKE query and report that through SearchPage.Degraded.
+	Search(ctx context.Context, filter SearchFilter) (SearchPage, error)
 	// Transition applies a status change only when the stored status still equals
 	// from, which makes concurrent moderator decisions safe.
 	Transition(ctx context.Context, item Content, from Status, audit site.AuditEntry) (Content, error)
+	// ListRevisions returns the newest history entries of one item.
+	ListRevisions(ctx context.Context, siteID, contentID string, limit int) ([]Revision, error)
+	// FindRevision loads one history entry inside a site scope.
+	FindRevision(ctx context.Context, siteID, contentID, revisionID string) (Revision, error)
+	// RestoreRevision snapshots the current state (the backup), applies the target
+	// revision and appends the restored state in one transaction. The conditional
+	// update uses item.Revision as the optimistic guard.
+	RestoreRevision(ctx context.Context, item Content, backup Revision, audit site.AuditEntry) (Content, error)
+	// DueSchedules returns drafts whose publish_at is at or before now, oldest
+	// first. The scheduler promotes them; a conditional update makes a second
+	// replica's identical pass a no-op.
+	DueSchedules(ctx context.Context, now time.Time, limit int) ([]Content, error)
+	// RecordScheduleFailure stores the failed attempt count and optionally clears
+	// the schedule once the retry bound is exhausted.
+	RecordScheduleFailure(
+		ctx context.Context,
+		siteID, contentID string,
+		attempts int,
+		cancel bool,
+		audit site.AuditEntry,
+	) error
+	// IncrementViewCount adds one to the read counter of a published item. It must
+	// be a single incrementing update, never a read-modify-write of the row, so a
+	// concurrent edit cannot be clobbered by a reader.
+	IncrementViewCount(ctx context.Context, siteID, contentID string) error
+	// Popular returns the leaderboard candidates of one site ordered by raw view
+	// count, newest first on a tie. The service applies the time decay afterwards.
+	Popular(ctx context.Context, filter PopularFilter) ([]Content, error)
 }
 
 // DraftQuotaStore is the optional storage capability that backs the per-author draft
@@ -60,13 +120,82 @@ type DraftQuotaStore interface {
 // PublishModeFunc resolves the publishing rule of a site.
 type PublishModeFunc func(ctx context.Context, siteID string) (site.PublishMode, error)
 
+// AccessPasswordHasher hashes and verifies the password that protects an item.
+//
+// The server wires the same Argon2id implementation the authentication module uses,
+// so a password hash never leaves the security boundary; content only stores the
+// already hashed value.
+type AccessPasswordHasher interface {
+	Hash(ctx context.Context, plain string) (string, error)
+	Verify(ctx context.Context, plain, encoded string) (bool, error)
+}
+
+// UnlockTokens mints and verifies the session level authorization a password
+// protected item grants after a successful unlock (C-18).
+//
+// It is a narrow port so the content package does not depend on the auth package:
+// the server adapts auth.TokenIssuer. When it is nil the unlock endpoint reports
+// that password access is unavailable rather than weakening the check.
+type UnlockTokens interface {
+	IssueContentUnlock(ctx context.Context, siteID, contentID string) (string, time.Time, error)
+	VerifyContentUnlock(ctx context.Context, token, siteID, contentID string) bool
+}
+
+// UnlockGrant is the result of a successful unlock.
+type UnlockGrant struct {
+	Token     string
+	ExpiresAt time.Time
+}
+
+// ScheduledPublishResult reports one scheduler pass.
+type ScheduledPublishResult struct {
+	// Due is the number of due drafts the pass considered.
+	Due int
+	// Published is the number of drafts it promoted.
+	Published int
+	// Failed is the number of drafts that stayed scheduled after a failure.
+	Failed int
+	// Cancelled is the number of drafts whose schedule was dropped after the retry
+	// bound was reached.
+	Cancelled int
+}
+
+// ReviewNotification is the outcome a review decision delivers to the author.
+type ReviewNotification struct {
+	SiteID    string
+	UserID    string
+	ActorID   string
+	ContentID string
+	Kind      string
+	Title     string
+	Status    Status
+	Reason    string
+}
+
+// ReviewNotifier tells an author that a moderator decided on their submission.
+//
+// It is a narrow port so the content package does not import the notification
+// storage: the server adapts notifications.Service to it. Notification failure must
+// not undo the decision, so the service treats it as best effort.
+type ReviewNotifier interface {
+	NotifyReview(ctx context.Context, in ReviewNotification) error
+}
+
 // Service implements the content use cases.
 type Service struct {
 	repo        Repository
 	sanitizer   Sanitizer
+	guard       ContentGuard
 	publishMode PublishModeFunc
 	draftQuota  DraftQuotaStore
-	now         func() time.Time
+	notifier    ReviewNotifier
+	hasher      AccessPasswordHasher
+	unlocks     UnlockTokens
+	unlockGuard *unlockLimiter
+	// views is the in-process de-duplication table of the read counter. It is bound
+	// to the service clock so a test can move time across the window.
+	views *viewGate
+	now   func() time.Time
 }
 
 // ServiceConfig configures a Service.
@@ -77,7 +206,20 @@ type ServiceConfig struct {
 	// DraftQuota enables the per-author draft quota (V-06). When nil the quota is
 	// skipped so an unwired deployment keeps working; the server must set it.
 	DraftQuota DraftQuotaStore
-	Now        func() time.Time
+	// ReviewNotifier reports publish/reject decisions to the author. Nil disables
+	// the inbox notification; the decision itself is unaffected.
+	ReviewNotifier ReviewNotifier
+	// ContentGuard applies the site's sensitive word list to the title, summary and
+	// source body. Nil skips the word list (tests and legacy callers); the server
+	// always sets it.
+	ContentGuard ContentGuard
+	// AccessPasswordHasher hashes and verifies private item passwords (C-18). Nil
+	// disables password access: an item cannot be switched to password mode.
+	AccessPasswordHasher AccessPasswordHasher
+	// UnlockTokens mints the session grant the unlock endpoint returns. Nil disables
+	// password access in the same way as a missing hasher.
+	UnlockTokens UnlockTokens
+	Now          func() time.Time
 }
 
 // NewService builds a Service.
@@ -92,8 +234,12 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	service := &Service{
 		repo:        cfg.Repository,
 		sanitizer:   cfg.Sanitizer,
+		guard:       cfg.ContentGuard,
 		publishMode: cfg.PublishMode,
 		draftQuota:  cfg.DraftQuota,
+		notifier:    cfg.ReviewNotifier,
+		hasher:      cfg.AccessPasswordHasher,
+		unlocks:     cfg.UnlockTokens,
 		now:         cfg.Now,
 	}
 	if service.publishMode == nil {
@@ -105,6 +251,10 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	if service.now == nil {
 		service.now = func() time.Time { return time.Now().UTC() }
 	}
+	// The limiter must share the service clock so tests can move time.
+	service.unlockGuard = newUnlockLimiter(service.now)
+	// So must the read counter's de-duplication window.
+	service.views = newViewGate(service.now, ViewDedupeWindow, MaxTrackedViewKeys)
 	return service, nil
 }
 
@@ -148,14 +298,46 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 	if item.Slug == "" {
 		item.Slug = SlugFromTitle(item.Title)
 	}
+	// Access mode, password hash and the comment override are part of the draft, so
+	// they are validated and written before sanitization changes the status.
+	if err := s.applyAccessFields(ctx, &item, validated, true); err != nil {
+		return Content{}, err
+	}
+	if err := s.applySchedule(ctx, actor, &item, validated.PublishAt, now); err != nil {
+		return Content{}, err
+	}
+
+	// The word list runs on the submitted text before sanitization so replace-mode
+	// matches are already rewritten when the rendered HTML is produced. A reject match
+	// aborts the write; a review match files the item in the moderation queue.
+	safetyOutcome, safetyErr := s.applyContentSafety(ctx, &item)
+	if safetyErr != nil {
+		return Content{}, safetyErr
+	}
 
 	securityErr := s.applySanitization(ctx, &item)
+	if safetyOutcome.Review && item.Status == StatusDraft {
+		item.Status = StatusPendingReview
+	}
+	// Only a draft can be scheduled. A review hold means a human must decide
+	// first, so the pending schedule is dropped instead of waiting forever.
+	if item.Status != StatusDraft {
+		item.PublishAt = nil
+		item.PublishAttempts = 0
+	}
 
+	auditDetail := map[string]any{"kind": string(kind)}
+	if safetyOutcome.Hit() {
+		auditDetail["content_safety"] = map[string]any{
+			"matched": safetyOutcome.Matched,
+			"action":  safetyOutcome.action(),
+		}
+	}
 	audit := site.AuditEntry{
 		SiteID:  item.SiteID,
 		ActorID: actor.UserID,
 		Action:  "content.created",
-		Detail:  map[string]any{"kind": string(kind)},
+		Detail:  auditDetail,
 		At:      now,
 	}
 	saved, err := s.repo.Insert(ctx, item, audit)
@@ -204,10 +386,13 @@ func (s *Service) checkDraftByteQuota(ctx context.Context, actor Actor, growth i
 	return nil
 }
 
-// UpdateDraft edits an item that has not been published yet.
+// UpdateDraft edits an item the caller may still write.
 //
-// Published content is immutable: a correction is a new revision that goes through
-// review again, so an editor cannot silently rewrite something readers already saw.
+// The editable states are draft, rejected, pending_security_check and published.
+// A published item is revised in place, but every save applies the same checks it
+// had before: the body is sanitized again, the author (or an editor) must own the
+// item, and the previous state is kept as a history entry, so an editorial
+// correction never destroys what readers saw (C-20).
 func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string, in DraftInput) (Content, error) {
 	item, err := s.load(ctx, actor, contentID)
 	if err != nil {
@@ -226,14 +411,16 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	}
 	// Editing a draft can grow its source, so the same byte quota applies to growth
 	// here: otherwise an author could create small drafts and then inflate each one
-	// past the limit. The quota belongs to the item's author, not to an editor who is
-	// rewriting someone else's draft.
-	if err := s.checkDraftByteQuota(
-		ctx,
-		Actor{SiteID: item.SiteID, UserID: item.AuthorID},
-		int64(len(validated.SourceBody))-int64(len(item.SourceBody)),
-	); err != nil {
-		return Content{}, err
+	// past the limit. Published content no longer counts as an active draft, so a
+	// revision of it is not charged against the draft quota.
+	if item.Status != StatusPublished {
+		if err := s.checkDraftByteQuota(
+			ctx,
+			Actor{SiteID: item.SiteID, UserID: item.AuthorID},
+			int64(len(validated.SourceBody))-int64(len(item.SourceBody)),
+		); err != nil {
+			return Content{}, err
+		}
 	}
 
 	item.Title = validated.Title
@@ -247,13 +434,69 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	item.CategoryID = validated.CategoryID
 	item.Tags = validated.Tags
 	item.UpdatedAt = s.now()
+	if err := s.applyAccessFields(ctx, &item, validated, false); err != nil {
+		return Content{}, err
+	}
+	// Scheduling only applies to a draft: a published item is already live, and a
+	// pending/rejected item has to pass its review first.
+	if validated.PublishAt != nil && item.Status != StatusDraft {
+		return Content{}, ErrScheduleNotAllowed
+	}
+	if item.Status != StatusDraft {
+		item.PublishAt = nil
+		item.PublishAttempts = 0
+	} else if err := s.applySchedule(ctx, actor, &item, validated.PublishAt, item.UpdatedAt); err != nil {
+		// The scheduler may not have run yet for an instant that just passed. An
+		// edit that keeps the existing schedule must still save, so the author can
+		// fix the item instead of being locked out by a past timestamp.
+		unchanged := validated.PublishAt != nil && item.PublishAt != nil &&
+			validated.PublishAt.UTC().Truncate(time.Minute).Equal(item.PublishAt.UTC()) &&
+			errors.Is(err, ErrInvalidInput)
+		if !unchanged {
+			return Content{}, err
+		}
+	}
 
+	// A failed sanitization holds an unpublished draft for a retry, but it must
+	// never take a live item offline: publishing an empty rendered body would be a
+	// silent outage, so a published revision fails closed without being saved.
+	wasPublished := item.Status == StatusPublished
+	// The word list runs before sanitization for the same reason as CreateDraft. A
+	// review match only queues unpublished items: silently unpublishing a live
+	// article because an editor fixed a typo would be a bigger harm than the word.
+	safetyOutcome, safetyErr := s.applyContentSafety(ctx, &item)
+	if safetyErr != nil {
+		return Content{}, safetyErr
+	}
 	securityErr := s.applySanitization(ctx, &item)
+	if safetyOutcome.Review && !wasPublished && item.Status == StatusDraft {
+		item.Status = StatusPendingReview
+	}
+	// A review hold cancels the pending schedule; only a draft may be scheduled.
+	if item.Status != StatusDraft {
+		item.PublishAt = nil
+		item.PublishAttempts = 0
+	}
+	if securityErr != nil && wasPublished {
+		return Content{}, ErrSecurityUnavailable
+	}
+
+	auditDetail := map[string]any(nil)
+	if safetyOutcome.Hit() {
+		auditDetail = map[string]any{
+			"content_safety": map[string]any{
+				"matched": safetyOutcome.Matched,
+				"action":  safetyOutcome.action(),
+			},
+		}
+	}
 
 	saved, err := s.repo.SaveDraft(ctx, item, site.AuditEntry{
 		SiteID:  item.SiteID,
 		ActorID: actor.UserID,
 		Action:  "content.updated",
+		Target:  item.ID,
+		Detail:  auditDetail,
 		At:      s.now(),
 	})
 	if err != nil {
@@ -279,6 +522,21 @@ func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, acti
 		return Content{}, err
 	}
 
+	// A word added after the draft was written must not slip out through a publish
+	// action. Reject mode refuses the transition; review mode downgrades it to the
+	// moderation queue instead of publishing. Replace mode cannot rewrite stored text
+	// at this point, so it leaves the transition alone.
+	if next == StatusPublished {
+		probe := item
+		safetyOutcome, safetyErr := s.applyContentSafety(ctx, &probe)
+		if safetyErr != nil {
+			return Content{}, safetyErr
+		}
+		if safetyOutcome.Review {
+			next = StatusPendingReview
+		}
+	}
+
 	// Publication requires a revision that passed sanitization under the current
 	// policy. Without it, publishing would serve unaudited HTML.
 	if next == StatusPublished && !item.IsSanitized() {
@@ -292,11 +550,24 @@ func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, acti
 	switch next {
 	case StatusPublished:
 		updated.PublishedAt = &now
+		// A manual publish consumes the schedule: keeping it would let the
+		// background publisher act on an item that is already live.
+		updated.PublishAt = nil
+		updated.PublishAttempts = 0
 	case StatusArchived:
 		updated.ArchivedAt = &now
+		updated.PublishAt = nil
+		updated.PublishAttempts = 0
 	case StatusDraft:
 		updated.PublishedAt = nil
 		updated.ArchivedAt = nil
+		updated.PublishAt = nil
+		updated.PublishAttempts = 0
+	case StatusPendingReview, StatusRejected:
+		// A pending or rejected item is not schedulable, so a stale schedule is
+		// cancelled with the transition.
+		updated.PublishAt = nil
+		updated.PublishAttempts = 0
 	}
 
 	detail := map[string]any{
@@ -307,7 +578,7 @@ func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, acti
 		detail["reason"] = reason
 	}
 
-	return s.repo.Transition(ctx, updated, item.Status, site.AuditEntry{
+	saved, err := s.repo.Transition(ctx, updated, item.Status, site.AuditEntry{
 		SiteID:  item.SiteID,
 		ActorID: actor.UserID,
 		Action:  "content." + string(action),
@@ -315,6 +586,27 @@ func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, acti
 		Detail:  detail,
 		At:      now,
 	})
+	if err != nil {
+		return Content{}, err
+	}
+
+	// Approval and rejection are the two decisions an author waits for. A self
+	// decision (the author is also an editor) is not a notification, and a failed
+	// notification must not turn a committed decision into an API error.
+	if s.notifier != nil && item.AuthorID != "" && item.AuthorID != actor.UserID &&
+		(next == StatusPublished || next == StatusRejected) {
+		_ = s.notifier.NotifyReview(ctx, ReviewNotification{
+			SiteID:    item.SiteID,
+			UserID:    item.AuthorID,
+			ActorID:   actor.UserID,
+			ContentID: item.ID,
+			Kind:      string(item.Kind),
+			Title:     item.Title,
+			Status:    next,
+			Reason:    strings.TrimSpace(reason),
+		})
+	}
+	return saved, nil
 }
 
 // RetrySecurityCheck re-runs sanitization on an item held for security review.
@@ -342,6 +634,101 @@ func (s *Service) RetrySecurityCheck(ctx context.Context, actor Actor, contentID
 		CategoryID:   item.CategoryID,
 		Tags:         item.Tags,
 	})
+}
+
+// ListRevisions returns the newest history entries of an item.
+//
+// History exposes the raw source text, which may contain markup the sanitizer
+// removed, so it is readable only by the item's author and by editors. Anyone
+// else receives ErrNotFound rather than a permission error: the history must not
+// confirm that a private item exists.
+func (s *Service) ListRevisions(ctx context.Context, actor Actor, contentID string) ([]Revision, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return nil, err
+	}
+	if !canReadHistory(item, actor) {
+		return nil, ErrNotFound
+	}
+	return s.repo.ListRevisions(ctx, actor.SiteID, contentID, RevisionRetention)
+}
+
+// GetRevision returns one full history snapshot, including its source body.
+func (s *Service) GetRevision(ctx context.Context, actor Actor, contentID, revisionID string) (Revision, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return Revision{}, err
+	}
+	if !canReadHistory(item, actor) {
+		return Revision{}, ErrNotFound
+	}
+	revision, err := s.repo.FindRevision(ctx, actor.SiteID, contentID, revisionID)
+	if err != nil {
+		return Revision{}, err
+	}
+	return revision, nil
+}
+
+// RestoreRevision rolls an item back to a stored history entry.
+//
+// The current state is snapshotted as a rollback_backup row before the target is
+// applied, so a rollback can itself be undone, and the restored state is stored
+// as the newest version. The workflow status is preserved: restoring text must
+// not republish or archive the item behind an editor's back. Restoration goes
+// through the same sanitizer as an ordinary save, and a published item is never
+// taken offline by a failed check.
+func (s *Service) RestoreRevision(
+	ctx context.Context,
+	actor Actor,
+	contentID,
+	revisionID string,
+) (Content, error) {
+	item, err := s.load(ctx, actor, contentID)
+	if err != nil {
+		return Content{}, err
+	}
+	if !canReadHistory(item, actor) {
+		return Content{}, ErrNotFound
+	}
+	if !editable(item.Status) {
+		return Content{}, ErrInvalidTransition
+	}
+
+	target, err := s.repo.FindRevision(ctx, actor.SiteID, contentID, revisionID)
+	if err != nil {
+		return Content{}, err
+	}
+
+	now := s.now()
+	backup := item.Snapshot(item.Revision+1, actor.UserID, RevisionRollbackBackup, now)
+
+	restored := item
+	restored.applyRevision(target)
+	restored.UpdatedAt = now
+
+	wasPublished := item.Status == StatusPublished
+	securityErr := s.applySanitization(ctx, &restored)
+	if securityErr != nil && wasPublished {
+		return Content{}, ErrSecurityUnavailable
+	}
+
+	saved, err := s.repo.RestoreRevision(ctx, restored, backup, site.AuditEntry{
+		SiteID:  item.SiteID,
+		ActorID: actor.UserID,
+		Action:  "content.rollback",
+		Target:  item.ID,
+		Detail:  map[string]any{"revision_id": target.ID, "version": target.Version},
+		At:      now,
+	})
+	if err != nil {
+		return Content{}, err
+	}
+	return saved, securityErr
+}
+
+// canReadHistory reports whether the actor may see an item's raw source history.
+func canReadHistory(item Content, actor Actor) bool {
+	return item.IsAuthor(actor) || actor.Role.AtLeast(site.RoleEditor)
 }
 
 // Actions reports what the actor may do to an item right now.
@@ -385,6 +772,9 @@ type ListFilter struct {
 	Kind   Kind
 	// Statuses restricts the result; empty means every status the caller may see.
 	Statuses []Status
+	// AccessModes restricts the result to these access modes. Empty means every
+	// mode; public listings always set it to public only.
+	AccessModes []AccessMode
 	// AuthorID restricts the result to one author.
 	AuthorID string
 	// CategoryID restricts the result to one category. Empty means any.
@@ -405,8 +795,8 @@ type ListFilter struct {
 // The returned name never contains a double quote or a backslash. That is what makes
 // the quoted token match in the repository safe: the value cannot break out of the
 // JSON array text it is compared against. An empty result means the value is not a tag
-// name at all — blank, too long, or carrying a character the JSON encoding would
-// escape — and the caller must refuse it instead of dropping the filter, because a
+// name at all —blank, too long, or carrying a character the JSON encoding would
+// escape —and the caller must refuse it instead of dropping the filter, because a
 // dropped filter would widen the page.
 func NormalizeTag(raw string) string {
 	name := strings.TrimSpace(raw)
@@ -482,6 +872,9 @@ func (s *Service) listFilter(
 	// Visibility is recomputed, never inherited from the caller's filter.
 	if !actor.Role.AtLeast(site.RoleEditor) {
 		filter.Statuses = []Status{StatusPublished}
+		// Password and members-only items are direct-link-only: they are excluded
+		// from every listing surface so a reader cannot discover them by browsing.
+		filter.AccessModes = []AccessMode{AccessPublic}
 	}
 
 	return filter, nil
@@ -595,47 +988,171 @@ const (
 	DefaultSearchLimit = 20
 )
 
-// Search finds published content by title or summary.
+// Search finds published public content by title, summary or body.
 //
-// Only published items are searched: a draft leaking through search would be the same
-// disclosure the read endpoint exists to prevent. The term is trimmed and bounded here
-// so the repository never receives an unbounded pattern.
-func (s *Service) Search(
-	ctx context.Context,
-	actor Actor,
-	term string,
-	kind Kind,
-	limit int,
-) ([]Content, error) {
-	if kind != "" && !kind.Valid() {
-		return nil, ErrInvalidInput
+// Only published, public items are searched: a draft or a password/members-only
+// item leaking through search would be the same disclosure the read endpoint
+// exists to prevent (C-18). The term is trimmed, bounded and normalized here so
+// the repository never receives an unbounded pattern, and a term made only of
+// punctuation yields an empty page rather than an error.
+func (s *Service) Search(ctx context.Context, actor Actor, query SearchQuery) (SearchResult, error) {
+	if query.Kind != "" && !query.Kind.Valid() {
+		return SearchResult{}, ErrInvalidInput
 	}
 
-	term = strings.TrimSpace(term)
+	term := strings.TrimSpace(query.Term)
 	if len([]rune(term)) < MinSearchTerm {
-		return nil, ErrInvalidInput
+		return SearchResult{}, ErrInvalidInput
 	}
 	if len([]rune(term)) > MaxSearchTerm {
 		term = string([]rune(term)[:MaxSearchTerm])
 	}
+	if !query.Until.IsZero() && !query.Since.IsZero() && query.Until.Before(query.Since) {
+		return SearchResult{}, fmt.Errorf("%w: until is before since", ErrInvalidInput)
+	}
+
+	categoryID := strings.TrimSpace(query.CategoryID)
+	if len([]rune(categoryID)) > maxCategoryIDLength {
+		return SearchResult{}, fmt.Errorf("%w: category id is malformed", ErrInvalidInput)
+	}
+	tag := ""
+	if raw := strings.TrimSpace(query.Tag); raw != "" {
+		tag = NormalizeTag(raw)
+		if tag == "" {
+			return SearchResult{}, fmt.Errorf("%w: tag is malformed", ErrInvalidInput)
+		}
+	}
+
+	limit := query.Limit
 	if limit <= 0 || limit > 100 {
 		limit = DefaultSearchLimit
 	}
 
-	return s.repo.Search(ctx, actor.SiteID, term, kind, limit)
+	// Punctuation-only terms have no searchable token. Returning an empty page
+	// keeps the endpoint total and avoids a match-everything prefix query.
+	if !SearchHasTokens(term) {
+		return SearchResult{Hits: []SearchHit{}}, nil
+	}
+
+	pageResult, err := s.repo.Search(ctx, SearchFilter{
+		SiteID:     actor.SiteID,
+		Term:       term,
+		Kind:       query.Kind,
+		CategoryID: categoryID,
+		Tag:        tag,
+		AuthorID:   strings.TrimSpace(query.AuthorID),
+		Since:      query.Since,
+		Until:      query.Until,
+		After:      query.After,
+		Limit:      limit,
+	})
+	if err != nil {
+		return SearchResult{}, err
+	}
+
+	hits := make([]SearchHit, 0, len(pageResult.Items))
+	for _, item := range pageResult.Items {
+		hit := SearchHit{Content: item}
+		if query.Highlight {
+			body := PlainText(item.RenderedHTML, item.SourceBody, item.SourceFormat)
+			hit.Snippet = SearchSnippet(body, term, 160)
+			if hit.Snippet == "" {
+				hit.Snippet = SearchSnippet(item.Summary, term, 160)
+			}
+		}
+		hits = append(hits, hit)
+	}
+
+	return SearchResult{
+		Hits:       hits,
+		Total:      pageResult.Total,
+		NextCursor: pageResult.NextCursor,
+		Degraded:   pageResult.Degraded,
+	}, nil
 }
 
 // Get returns one item, restricted to what the actor may read.
+//
+// It is the internal read used by moderation and other services: a password
+// protected item is returned because those callers are authors or moderators.
+// The public read path goes through Read, which also carries the session grant.
 func (s *Service) Get(ctx context.Context, actor Actor, contentID string) (Content, error) {
+	return s.Read(ctx, actor, contentID, false)
+}
+
+// Read returns one item for a reader that may have unlocked it in this session.
+//
+// Visibility order is deliberate:
+//   - unpublished content is only visible to its author and to moderators, and
+//     anyone else receives ErrNotFound so its existence is not disclosed;
+//   - the author and moderators always may read their own item;
+//   - public items are readable by everyone;
+//   - members-only items need a signed in caller;
+//   - password items need the session grant the unlock endpoint issues.
+func (s *Service) Read(ctx context.Context, actor Actor, contentID string, unlocked bool) (Content, error) {
 	item, err := s.load(ctx, actor, contentID)
 	if err != nil {
 		return Content{}, err
 	}
-	// Unpublished content is visible to its author and to moderators only.
-	if !item.Status.IsPublic() && !item.IsAuthor(actor) && !actor.Role.AtLeast(site.RoleEditor) {
-		return Content{}, ErrNotFound
+	if err := readableBy(item, actor, unlocked); err != nil {
+		return Content{}, err
 	}
 	return item, nil
+}
+
+// readableBy applies the read access rules to a loaded item.
+func readableBy(item Content, actor Actor, unlocked bool) error {
+	privileged := item.IsAuthor(actor) || actor.Role.AtLeast(site.RoleEditor)
+	if !item.Status.IsPublic() {
+		// Unpublished content is visible to its author and to moderators only.
+		if privileged {
+			return nil
+		}
+		return ErrNotFound
+	}
+	if privileged {
+		return nil
+	}
+	switch item.AccessMode {
+	case AccessPassword:
+		if !unlocked {
+			return ErrPasswordRequired
+		}
+	case AccessMembers:
+		if actor.UserID == "" {
+			return ErrMembersOnly
+		}
+	}
+	return nil
+}
+
+// applyContentSafety runs the sensitive word list over the three author supplied
+// text fields and rewrites replace-mode matches in place.
+//
+// The fields are evaluated separately so a replacement never spans a field boundary
+// and a hit in the title is audited with the title's own text context. A reject match
+// returns safety.ErrRejected and leaves the mutation to the caller's undo (the item
+// is not saved).
+func (s *Service) applyContentSafety(ctx context.Context, item *Content) (safetyResult, error) {
+	if s.guard == nil {
+		return safetyResult{}, nil
+	}
+	result := safetyResult{}
+	fields := []*string{&item.Title, &item.Summary, &item.SourceBody}
+	for _, field := range fields {
+		verdict, err := s.guard.CheckText(ctx, item.SiteID, *field)
+		if err != nil {
+			return result, err
+		}
+		if verdict.Hit() {
+			result.Matched = append(result.Matched, verdict.Matched...)
+		}
+		if verdict.RequiresReview() {
+			result.Review = true
+		}
+		*field = verdict.Text
+	}
+	return result, nil
 }
 
 // applySanitization fills the rendered HTML or marks the item as held.
@@ -687,9 +1204,13 @@ func (c Content) IsSanitized() bool {
 	return c.RenderedHTML != "" && c.PolicyVersion != ""
 }
 
+// editable reports whether a save may write to the item in this state.
+//
+// Published content stays editable: a correction is a save that keeps the item
+// live while the previous state is preserved in its revision history.
 func editable(status Status) bool {
 	switch status {
-	case StatusDraft, StatusRejected, StatusPendingSecurityCheck:
+	case StatusDraft, StatusRejected, StatusPendingSecurityCheck, StatusPublished:
 		return true
 	default:
 		return false

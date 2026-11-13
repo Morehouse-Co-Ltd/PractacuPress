@@ -18,11 +18,11 @@
 | **Small footprint** | The Windows launcher is 8.3 MB and **embeds the entire frontend**; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The container deployment is three images: API, security service, static site. |
 | **Fast** | Requests pass through exactly one layer (Gin); Ent-generated code talks straight to `database/sql`; the pool and SQLite's WAL / busy_timeout are configured by the server itself. The frontend is a static single-page app with **no Node at runtime** and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets, while first-screen request coalescing and media lazy-loading are configurable in the admin. |
 | **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API + security service + frontend) in one command. Backup means copying the `data/` directory. |
-| **Easy to make your own** | 2 built-in themes + 7 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (51 paths / 64 operations), so you can build your own frontend against it. |
+| **Easy to make your own** | 3 built-in themes + 8 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 124 paths / 148 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
 
 **What it does**
 
-- **Writing**: toolbar editor plus Markdown, live preview, word count on the rendered text
+- **Writing**: toolbar editor plus Markdown, live preview, word count on the rendered text; insert mind maps, logic charts, statistical charts (bar / line / donut / pie) and fishbone diagrams, stored in the body as `pp-diagram` fenced blocks
 - **Community**: comments, likes, bookmarks, follows, DMs, notifications and reports, with a 5-state review flow
 - **Operations**: themes, page composition, SEO, access limits, domains and SSL, storage policies, analytics
 - **Security**: Argon2id, HTML allow-list sanitization and upload inspection live in the Rust service; if it is unreachable the API fails closed with 503
@@ -40,7 +40,8 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 - **Go API** (`apps/api`): identity, sites, content, community, media, notifications, direct messages, event catch-up
 - **Rust security service** (`services/security`): Argon2id password hashing, content sanitization, upload inspection
 - **Contract** (`packages/contracts`): OpenAPI 3.1 and protobuf
-- **React frontend** (`apps/web`): site frontend, admin console, seven-step setup wizard, theme library and page composition (independently per desktop / tablet / phone), custom pages, built-in extensions, access limits, domains and SSL certificates, performance settings and loading animations
+- **React frontend** (`apps/web`): site frontend, admin console, seven-step setup wizard (including high-risk action protection), email-or-username sign-in (centered form over a themed background), theme library and page composition (independently per desktop / tablet / phone, with per-block corner radius, shadow and crop plus a button block), article writing (mind maps / logic charts / statistical charts / fishbone diagrams), custom pages, extension system (built-in extensions plus zip import: browser-only extensions and Go/WASM backend extensions; the performance panel is itself a built-in extension), site updates (display name / version / auto-check toggle, update server may stay empty), access limits, domains and SSL certificates plus the served port, performance settings and loading animations, and a performance panel with ring gauges for this app's and other processes' CPU / memory / disk use
+- **High-risk action re-authentication**: deleting or editing accounts, resetting two-factor authentication, overwriting a site import, and deleting sensitive words / IP rules ask for the password again once protection is on. The fifth setup step enables it and lets you use the account password or a dedicated security password (changeable later in Site settings → High-risk action protection).
 
 ### Writing and reading
 
@@ -48,7 +49,7 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 - **Markdown**: the server first converts Markdown to HTML with goldmark (GFM: tables, strikethrough, task lists, images, autolinks), then hands it to the security service for allow-list sanitization — so `headings`, `tables` and `images` are real tags in a real deployment, not literals. Blocks inserted from the writing toolbar are HTML the allow-list preserves (columns are carried by `table.pp-columns`, and video is a cover card rather than an iframe).
 - **Search**: the site header has a permanent search box that queries as you type (220 ms debounce, top 6 results), `/` focuses it, Enter opens the full result page; narrow screens keep only the magnifier.
 - **SEO**: title templates, description, keywords, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site-verification meta, a site-wide noindex switch, and a downloadable `sitemap.xml` / `robots.txt`. For the limits, see the notes in [Admin → SEO](apps/web/src/pages/admin/Seo.tsx): tags are written into `<head>` by the frontend, so social crawlers that do not execute JS only ever see the defaults from `index.html`.
-- **Themes**: Admin → Theme settings switches colours, typography and one-/two-column layout together as a single "big theme". Built in: the original (paper-white, single column) and Night Flight (warm dark, two columns). The theme picker can import a JSON theme, export the current one, save it as a custom theme, and delete custom themes. Page composition, appearance (brand / footer) and loading animation share one navigation group; switching themes only replaces the default components while the home page still uses the default composition. Every part of the footer (brand title / subtitle / blurb, status chips, columns and their items, copyright and bottom note) can be customised item by item under Theme settings → Navigation and footer. The top navigation is fully configurable too: each tab can take a built-in icon and a left/right position, tabs reorder freely, and up to 8 second-level entries can hang off a tab — rendered either as a capsule bar under the header or folded into a dropdown. The top-left of the header (Night Flight) and the area above the footer bar can carry a row of configurable software / social shortcut links (GitHub, X, Mastodon, RSS, email, any website). Theme fine-tuning adds softening and transitions: background glow, component blending, transition duration and header blur, all of which degrade automatically when the system requests reduced motion.
+- **Themes**: Admin → Theme settings switches colours, typography and single-column / cards / two-column layout together as a single "big theme". Built in: the original (paper-white, single column), Daylight (white daily front page, single-row pill tabs, full-bleed article cover, single-column article) and Night Flight (warm dark, two columns). The theme picker can import a JSON theme, export the current one, save it as a custom theme, and delete custom themes. Page composition, appearance (brand / footer) and loading animation share one navigation group; switching themes only replaces the default components while the home page still uses the default composition. Every part of the footer (brand title / subtitle / blurb, status chips, columns and their items, copyright and bottom note) can be customised item by item under Theme settings → Navigation and footer. The top navigation is fully configurable too: each tab can take a built-in icon and a left/right position, tabs reorder freely, and up to 8 second-level entries can hang off a tab — rendered either as a capsule bar under the header or folded into a dropdown. The top-left of the header (Night Flight) and the area above the footer bar can carry a row of configurable software / social shortcut links (GitHub, X, Mastodon, RSS, email, any website). Theme fine-tuning adds softening and transitions: background glow, component blending, transition duration and header blur, all of which degrade automatically when the system requests reduced motion. Night Flight's home article cards can further switch between "Cover on top" (the default) and "Blurred background" (the cover fills the whole card with a gaussian blur while the title and summary sit on a frosted panel inside); this only changes presentation, never the content or its order.
 - **Access and performance**: Admin → Access limits constrains page switches, page requests and concurrent pages per browser, and generates Nginx `limit_req` / `limit_conn` plus API `.env` snippets. Access and domains sets the primary domain, the alias allow-list, SSL certificates (Let's Encrypt / manual), CORS, cookie scope and trusted proxies; with no primary domain configured, production only allows direct access by public IP. Performance tuning reduces first-screen reads, coalesces duplicate requests and lazy-loads media, and generates gateway compression/caching plus API timeout and database pool parameters. Storage policies start from a global local directory or S3-compatible object storage (AWS, MinIO, Alibaba OSS, Tencent COS) and can then be overridden per purpose: article media, site images, user avatars and user data/attachments may each pick a local directory or a bucket/prefix, emitting `STORAGE_<SCOPE>_*` server snippets. Loading animation builds the frontend loading screen. All of these settings live in the local installation config; server parameters take effect once the snippet is deployed and the service restarted.
 - **One-click reset**: page composition can restore the default components for the current home page or a custom page (title, path and publish state unchanged); Appearance can reset brand copy, home/page composition, loading animation, performance, access limits and access/domains by scope; Theme settings can restore the current theme definition or fall back to the original theme.
 
@@ -147,7 +148,7 @@ npm run build
 npm start
 ```
 
-`http://localhost` (port 80 by default, so the address bar needs no port). Admin → Site settings → Access port changes the port; the server starts listening on the new port immediately and remembers the choice. For development use `npm run dev`, also on port 80 by default, which proxies `/api`, `/healthz` and `/readyz` to `127.0.0.1:8080`.
+`http://localhost:8080` (port 8080 by default). Admin → Site settings → Access & domains → Port changes the port; the server starts listening on the new port immediately and remembers the choice. For development use `npm run dev`, which stays on port 80 so it does not collide with the API on 8080, and proxies `/api`, `/healthz` and `/readyz` to `127.0.0.1:8080`.
 
 The first visit opens the setup wizard; with no backend you can choose demo data to explore the complete frontend and admin console. Details in the [frontend guide](apps/web/README.md).
 
@@ -195,12 +196,18 @@ CI can call the underlying script directly (same pipeline):
 `node scripts\package-windows.mjs [--skip-security] [--skip-smoke] [--no-zip] [--release-dir <dir>]`.
 On a machine without a Rust toolchain, a package built with `-SkipSecurity` still browses, writes and demos — only publishing articles and completing uploads return 503.
 
-The launcher serves the site on port 80 by default and opens the browser; if 80 is taken it uses 8080 and shows the actual address in its window. Changing Admin → Site settings → Access port writes to `practacu-web.json` next to the exe, and the next start reuses it. The site only listens on the loopback address, closing the window stops it, and the API and security service it started exit with it.
+The launcher serves the site on port 8080 by default and opens the browser; if 8080 is taken it tries 8081 and 8082, then falls back to the standard HTTP port 80, and shows the actual address in its window. Changing Admin → Site settings → Access & domains → Port writes to `practacu-web.json` next to the exe, and the next start reuses it. The site only listens on the loopback address, closing the window stops it, and the API and security service it started exit with it.
 
 Both setup-wizard modes work out of the box:
 
 - **Demo data**: writes only to the browser's `localStorage`, no service required;
 - **Real environment**: the launcher already runs the API behind the same origin and the wizard connects automatically, with no address to type. The database is `data/practacu.db` next to the exe (pure-Go SQLite); the first start creates the tables and the default site, and the first account created in the wizard is the platform administrator. `/api`, `/healthz` and `/readyz` are reverse-proxied to the local API by the launcher, so there is no cross-origin configuration and cookies and WebSocket are treated as same-origin.
+
+> The launcher serves over **http**. Absolute links such as notification mail and third
+> party login callbacks assume https when `PUBLIC_BASE_URL` is unset, so set it in the
+> launcher environment before starting: `PUBLIC_BASE_URL=http://127.0.0.1:<port>` (use
+> the actual address shown in the window). The last setup-wizard step shows the exact
+> line. Password reset links fall back to the current request origin.
 
 Real-environment data all lives in `data/`: `practacu.db`, `media/`, `api.log`, `api.err.log` — close the window and copy the folder to back it up. When the exe directory is not writable it falls back to `%LOCALAPPDATA%\PractacuPress\data`. To force a frontend-only session, run `PractacuPress.exe --mode demo`.
 
@@ -288,6 +295,7 @@ See [.env.example](.env.example). A few things that bite:
 | `AUTH_JWT_ED25519_PRIVATE_KEY` | Required in production; in development a temporary key is generated with a warning |
 | `TRUSTED_PROXIES` | Empty means no proxy is trusted and every `X-Forwarded-*` header is ignored |
 | `RATE_LIMIT_PER_MINUTE` | API requests per IP per minute; `0` disables it. Browser-side limits are not a substitute |
+| `MEDIA_DEFAULT_USER_QUOTA_BYTES` / `MEDIA_DEFAULT_SITE_QUOTA_BYTES` | Default cumulative media limits (512 MiB / 10 GiB); admins can override per member and site, and `0` means unlimited |
 | `HTTP_READ_TIMEOUT_SECONDS` / `HTTP_IDLE_TIMEOUT_SECONDS` | HTTP read timeout and idle keep-alive timeout, 30 / 120 seconds by default |
 | `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` | Database pool; `0` keeps the driver defaults (SQLite 1, MySQL/Postgres 25) |
 | `DB_CONN_MAX_LIFETIME_SECONDS` | Connection lifetime; 1800 seconds by default, `0` means never recycle |
@@ -296,13 +304,22 @@ See [.env.example](.env.example). A few things that bite:
 | `SMTP_ENCRYPTION` | `starttls` (587) / `ssl` (465) / `none` (25, local relay only) |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | Must be set together; only TLS beyond a local relay |
 | `SMTP_FROM` | Sender address, defaults to `SMTP_USERNAME` |
-| `PUBLIC_BASE_URL` | Prefix for reset links; empty uses the request's own origin |
+| `PUBLIC_BASE_URL` | Prefix for absolute links. Empty makes the server assume https (third party login callbacks and mail links depend on it); a desktop or localhost install served over http must set it explicitly |
 
 The full password-reset path: login page → "Forgot password" → `POST /auth/password-reset/request`
 (returns 202 whether or not the email exists) → the `?token=` link in the email opens `/reset-password` →
 `POST /auth/password-reset/confirm` sets a new password and revokes every session for that account.
 Tokens expire after 30 minutes and work once; a single account can send one email per 60 seconds.
 Admin → Login settings → Email notifications generates this `.env` block directly.
+
+> **When `PUBLIC_BASE_URL` is unset the server assumes https wherever no request
+> context exists.** Third party login callbacks are built from the site domain as
+> `https://`, and notification mail depends on it for its in-site link. A desktop
+> launcher, a local `http://localhost` site or any other http deployment must set it
+> explicitly, for example `PUBLIC_BASE_URL=http://127.0.0.1:80` (use the site's real
+> port); otherwise those links point at an https address that does not exist. The API
+> logs a warning at startup, and the last setup-wizard step shows the exact line to
+> paste.
 
 ---
 
@@ -318,12 +335,12 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | Browser-side access limits | Only constrain visitors using this site's scripts; IP-level request/concurrency limits are enforced by Nginx/Cloudflare, the admin only generates snippets |
 | Domain aliases | The server resolves a single site from the Host header; alias domains need a reverse proxy to rewrite Host to the primary domain (the generated snippet includes this) |
 | S3 upload memory | SigV4 requires buffering first, capped at the per-file limit (25 MiB) |
-| Email | Only password reset is implemented; verification and reply-notification templates are not wired up |
+| Email | Password reset and email verification are wired up; comment-reply and review-result notification templates are not |
 | SEO | Tags are written into `<head>` by the frontend; crawlers that do not execute JS only see the defaults from `index.html` |
-| sitemap / robots | Generated and downloadable from the admin; with static hosting you must place them in the site root manually |
+| sitemap / robots | The Go API serves `/sitemap.xml` and `/robots.txt` at the site root per Host, and the admin can download static copies; static-only hosting must still place them in the site root manually |
 | Not implemented | Frontend SDK generation, OAuth adapters, SMS codes, search pagination cursors |
 
-For the detailed picture see the [delivery status report](docs/superpowers/reports/2026-10-20-delivery-status.md).
+For the detailed picture see [Current implementation vs. documentation](docs/superpowers/reports/2026-11-07-documentation-reality-check.md). The [2026-10-20 delivery status report](docs/superpowers/reports/2026-10-20-delivery-status.md) is a historical snapshot; its "not implemented" list no longer describes the current code.
 
 ---
 

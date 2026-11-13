@@ -1,0 +1,229 @@
+/* =========================================================
+   后台明暗模式
+   ---------------------------------------------------------
+   令牌本身由 lib/theme.ts 注入：
+     html[data-surface="admin"]                              → 纸白
+     html[data-surface="admin"][data-admin-theme="dark"]     → 冷石墨
+   这个文件只做两件事：画顶栏的亮色 / 暗色切换入口，并把后台历史遗留的
+   硬编码浅色（#fff、#ecece6 等）在深色下改回令牌。所有覆盖都带
+   html[data-surface="admin"] 前缀，站点前台与安装向导完全不受影响。
+   ========================================================= */
+
+/* ---------- 顶栏切换入口 ---------- */
+.admin-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 3px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 999px;
+  background: var(--admin-panel-alt, var(--bg-subtle));
+}
+.admin-theme-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.admin-theme-switch button:hover {
+  background: var(--admin-hover, var(--bg-sunken));
+  color: var(--ink);
+}
+.admin-theme-switch button.is-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+.admin-theme-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 900px) {
+  .admin-theme-switch button span { display: none; }
+  .admin-theme-switch button { width: 28px; padding: 0; }
+}
+
+/* ---------- 深色：语义色 ---------- */
+/* 状态色在浅色下是深绿 / 赭黄 / 砖红；直接放到石墨底上会读不清。
+   深色后台换成更亮的同色系，并用低比例混色得到可跟随面板的浅底。 */
+html[data-surface='admin'][data-admin-theme='dark'] {
+  --ok: #74c69d;
+  --warn: #e0bd6b;
+  --danger: #f08a76;
+  --ok-soft: color-mix(in srgb, var(--ok) 16%, var(--bg));
+  --warn-soft: color-mix(in srgb, var(--warn) 16%, var(--bg));
+  --danger-soft: color-mix(in srgb, var(--danger) 16%, var(--bg));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .badge-ok {
+  border-color: color-mix(in srgb, var(--ok) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .badge-warn {
+  border-color: color-mix(in srgb, var(--warn) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .badge-danger {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .badge-accent {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell :is(
+    .checklist-item.is-done .checklist-mark,
+    .check-item.is-ok .check-mark
+  ) {
+  border-color: color-mix(in srgb, var(--ok) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .check-item.is-warn .check-mark {
+  border-color: color-mix(in srgb, var(--warn) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .check-item.is-fail .check-mark {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--admin-border));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .pill.is-on {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--admin-border));
+}
+
+/* ---------- 深色：外壳 ---------- */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell {
+  background:
+    radial-gradient(900px 460px at 16% -14%, var(--admin-glow) 0%, transparent 68%),
+    var(--bg);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell::before {
+  background: var(--bg);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-side {
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-topbar {
+  border-color: var(--admin-border);
+  background: var(--admin-glass);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-nav-link.is-active {
+  background: var(--admin-hover);
+  box-shadow: inset 0 0 0 1px var(--admin-border-soft);
+}
+
+/* ---------- 深色：内容卡片 ---------- */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell :is(
+    .panel,
+    .stat,
+    .dash-analytics,
+    .review-card,
+    .media-card,
+    .page-template-card,
+    .theme-bundle-card,
+    .live-panel,
+    .two-factor-status,
+    .tabs,
+    .ext-card,
+    .page-editor-preview,
+    .group-stat,
+    .group-choice,
+    .taxonomy-stat,
+    .login-summary-card,
+    .live-card,
+    .publish-state
+  ) {
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell :is(
+    .media-cell,
+    .icon-cell,
+    .quick-link-icon,
+    .publish-state-dot
+  ) {
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .tool-btn:hover:not(:disabled) {
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .live-card-online {
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 18%, transparent), transparent 65%),
+    var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .range-switch button.is-on {
+  background: var(--admin-panel);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+/* 危险操作区：保留一点红色倾向，但底色跟随后台面板。 */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--admin-border));
+  background: color-mix(in srgb, var(--danger) 7%, var(--admin-panel));
+}
+
+/* ---------- 深色：表单选项与次要按钮 ---------- */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .option {
+  border-color: var(--line-strong);
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .option:hover {
+  border-color: var(--muted);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .option.is-selected {
+  border-color: var(--ink);
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .option.is-selected .option-icon {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .btn-secondary:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+/* ---------- 深色：二级导航与收起按钮 ---------- */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-subnav {
+  border-color: var(--admin-border);
+  background: var(--admin-glass-strong);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-subnav::before {
+  background: linear-gradient(
+    to bottom,
+    var(--admin-panel) 0%,
+    var(--admin-panel) 58%,
+    color-mix(in srgb, var(--admin-panel) 92%, transparent) 100%
+  );
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-subnav-link.is-active {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 0 10px 20px -14px color-mix(in srgb, var(--ink) 55%, transparent);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-subnav-link.is-active svg {
+  color: var(--bg);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-side-expand {
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+}
+
+/* ---------- 深色：页面编排工作台的浮层 ---------- */
+html[data-surface='admin'][data-admin-theme='dark'] .builder-float {
+  background: color-mix(in srgb, var(--admin-panel) 96%, transparent);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .builder-float.is-dragging {
+  background: var(--admin-panel);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .builder-floating-top,
+html[data-surface='admin'][data-admin-theme='dark'] .builder-fullscreen .builder-preview-toolbar {
+  border-color: var(--admin-border);
+  background: var(--admin-glass);
+}

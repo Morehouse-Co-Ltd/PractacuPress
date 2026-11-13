@@ -20,6 +20,10 @@ export type PublishMode = 'open' | 'review' | 'role_based';
 export type TargetType = 'article' | 'post' | 'comment' | 'user' | 'page';
 export type ContentKind = 'article' | 'post';
 export type SourceFormat = 'markdown' | 'html' | 'plain';
+/** 内容级访问权限：公开 / 密码 / 仅登录（C-18）。 */
+export type ContentAccessMode = 'public' | 'password' | 'members';
+/** 单篇评论策略：跟随站点 / 开启 / 关闭 / 先审后发（C-19）。 */
+export type ContentCommentPolicy = 'inherit' | 'open' | 'disabled' | 'review';
 export type ContentStatus =
   | 'draft'
   | 'pending_review'
@@ -37,6 +41,8 @@ export type ContentAction =
 export type CommentStatus = 'visible' | 'hidden' | 'deleted' | 'pending_review';
 export type ScanStatus = 'pending' | 'clean' | 'rejected' | 'needs_manual_review';
 export type UploadStatus = 'pending' | 'uploaded' | 'completed' | 'expired';
+/** Byte count from JSON; large int64 values stay decimal strings to preserve precision. */
+export type MediaQuotaBytes = number | string | null;
 
 export interface User {
   id: string;
@@ -44,6 +50,25 @@ export interface User {
   locale: string;
   status: 'active' | 'disabled';
   created_at: string;
+  /** 账户自己的邮箱；公开资料不会返回。 */
+  email?: string;
+  /** 邮箱身份是否已经通过验证链接证明过归属。 */
+  email_verified?: boolean;
+  bio?: string;
+  avatar_media_id?: string;
+}
+
+/** 自助资料编辑；省略的字段保持不变，空字符串清空简介 / 头像。 */
+export interface ProfileInput {
+  display_name?: string;
+  bio?: string | null;
+  avatar_media_id?: string | null;
+}
+
+/** 修改密码；必须重新提供当前密码。 */
+export interface ChangePasswordInput {
+  current_password: string;
+  new_password: string;
 }
 
 export interface Session {
@@ -55,10 +80,83 @@ export interface Session {
   csrf_token: string;
 }
 
+/**
+ * Second step challenge (FSD F-04).
+ *
+ * A password login of an account with TOTP enabled returns this instead of a
+ * Session: no access token is issued until the code (or a recovery code) is
+ * redeemed. The token is short lived, single use and cannot be used as an access
+ * token.
+ */
+export interface TwoFactorChallenge {
+  two_factor_required: true;
+  challenge_token: string;
+  expires_in: number;
+  expires_at: string;
+}
+
+/** What a password login can answer: a session, or the second step. */
+export type PasswordLoginResult =
+  | { status: 'session'; session: Session }
+  | { status: 'two_factor_required'; challenge: TwoFactorChallenge };
+
+/** The caller's own two-factor state. Secrets and codes are never included. */
+export interface TwoFactorStatus {
+  enabled: boolean;
+  recovery_codes_remaining: number;
+  confirmed_at?: string;
+}
+
+/** A started enrollment: the secret is shown once, as a QR payload and manually. */
+export interface TwoFactorEnrollment {
+  secret: string;
+  otpauth_uri: string;
+  qr_content: string;
+  expires_in: number;
+}
+
+/** One-time recovery code set. Plaintext only exists in this response. */
+export interface TwoFactorRecoveryCodes {
+  recovery_codes: string[];
+}
+
+/* ---------- 高威胁操作二次验证（step-up） ---------- */
+
+/**
+ * 站点级的高威胁操作保护设置（`GET/PUT /sites/{siteID}/step-up`）。
+ *
+ * 服务端只返回 `password_set`，绝不返回专用密码或其哈希。
+ */
+export interface StepUpSettings {
+  /** 保护总开关；关闭后受保护的路由直通。 */
+  enabled: boolean;
+  /** 是否设置了“专用安全密码”；false 时验证使用账户登录密码。 */
+  password_set: boolean;
+  /** 一次验证后令牌的有效期（秒）。 */
+  window_seconds: number;
+}
+
+/** 保存保护设置：三个字段都是可选的补丁，而不是整份文档。 */
+export interface StepUpSettingsUpdate {
+  enabled?: boolean;
+  /** 专用安全密码；留空同时也不选择清除时表示保持原值。 */
+  password?: string;
+  /** 清除专用密码，恢复为使用账户登录密码验证。 */
+  clear_password?: boolean;
+}
+
+/** `POST /auth/step-up` 的响应：短时令牌，请求受保护路由时放进 `X-PP-Step-Up`。 */
+export interface StepUpVerifyResult {
+  token: string;
+  expires_in: number;
+}
+
 export interface Me {
   user: User;
   role: Role;
   site_id: string;
+  /** 服务端分配的能力组；旧后端不返回时按角色映射。 */
+  group_key?: string;
 }
 
 export interface Site {
@@ -78,6 +176,236 @@ export interface Site {
    * 一个注册入口代价大得多。
    */
   registration_open?: boolean;
+  /** 站点级评论开关（服务端强制）；缺失按开启处理。 */
+  comments_enabled?: boolean;
+  /** 新评论是否进入待审核队列；缺失按直接发布处理。 */
+  comments_require_review?: boolean;
+  /** 站点媒体额度，null 表示继承部署默认。 */
+  media_quota_bytes?: MediaQuotaBytes;
+}
+
+/* ---------- 平台站点控制台 ---------- */
+
+/**
+ * 平台控制台里的一个站点。
+ *
+ * 与前台 `Site` 的区别：这里是跨站点运维视角，带成员计数与创建时间，不包含评论、
+ * 注册开关等单站点设置字段。字段来自 `GET /platform/sites`。
+ */
+export interface PlatformSite {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  domain: string;
+  domain_verified: boolean;
+  visibility_mode: VisibilityMode;
+  publish_mode: PublishMode;
+  disabled: boolean;
+  member_count: number;
+  admin_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 新站点的第一个管理员账户（始终是站点管理员）。 */
+export interface CreateSiteOwnerInput {
+  email: string;
+  display_name: string;
+  password: string;
+}
+
+/** 新建站点。主域名必填，创建后仍需完成 TXT 归属验证。 */
+export interface CreateSiteInput {
+  name: string;
+  slug: string;
+  description?: string;
+  domain: string;
+  visibility_mode?: VisibilityMode;
+  publish_mode?: PublishMode;
+  owner: CreateSiteOwnerInput;
+}
+
+/** 建站结果：站点与它的第一个管理员。 */
+export interface CreatedSite {
+  site: PlatformSite;
+  owner: {
+    user_id: string;
+    display_name: string;
+    role: Role;
+  };
+}
+
+/** 单站点详情：站点快照、调用者角色与主域名挑战状态。 */
+export interface PlatformSiteDetail {
+  site: PlatformSite;
+  role: Role;
+  /** 新建站点在域名验证前无法通过主机名访问，控制台在这里展示并兑换 TXT 挑战。 */
+  domain_status: SiteDomainVerification;
+}
+
+/**
+ * 「进入站点」的结果。
+ *
+ * `switchable` 为 false 时 `reason` 说明原因（domain_missing / domain_unverified /
+ * site_disabled）；为 true 且目标不是本站时，`switch_token` 是投递给目标站点源的
+ * 短期交接令牌，由目标源兑换成正常会话。
+ */
+export interface PlatformSiteEntry {
+  site: PlatformSite;
+  role: Role;
+  switchable: boolean;
+  reason?: string;
+  switch_token?: string;
+  expires_at?: string;
+}
+
+/* ---------- 平台总览 / 跨站审计 / 平台用户 ---------- */
+
+/**
+ * 部署级总览的合计列（`GET /platform/overview` 的 `totals`）。
+ *
+ * 库存类计数（站点、成员、内容、评论、账户）是「现在」的总量；只有每站的近期活动与
+ * 故障计数受 `window_days` 影响。字段与后端 `overviewTotalsResponse` 一一对应。
+ */
+export interface PlatformOverviewTotals {
+  sites: number;
+  disabled_sites: number;
+  unverified_sites: number;
+  members: number;
+  active_members: number;
+  admins: number;
+  content: number;
+  published_content: number;
+  pending_content: number;
+  comments: number;
+  pending_comments: number;
+  accounts: number;
+  verified_accounts: number;
+  two_factor_accounts: number;
+}
+
+/** 「先看这里」的信号列；每个数字都能在现有页面里处理掉。 */
+export interface PlatformOverviewSignals {
+  open_reports: number;
+  pending_comments: number;
+  failed_actions: number;
+  disabled_sites: number;
+  unverified_sites: number;
+  unverified_emails: number;
+  quiet_sites: number;
+}
+
+/** 总览表里的一行：站点状态 + 计数。 */
+export interface PlatformOverviewSite {
+  id: string;
+  slug: string;
+  name: string;
+  domain: string;
+  domain_verified: boolean;
+  visibility_mode: VisibilityMode;
+  publish_mode: PublishMode;
+  disabled: boolean;
+  member_count: number;
+  active_member_count: number;
+  admin_count: number;
+  content_count: number;
+  published_content_count: number;
+  pending_content_count: number;
+  draft_count: number;
+  comment_count: number;
+  pending_comment_count: number;
+  open_report_count: number;
+  recent_activity_count: number;
+  recent_failure_count: number;
+  created_at: string;
+}
+
+/** 总览里的一条跨站审计行：审计行 + 所属站点名。 */
+export interface PlatformActivityRow extends AuditLog {
+  site_name?: string;
+}
+
+/** `GET /platform/overview` 的完整响应。 */
+export interface PlatformOverview {
+  generated_at: string;
+  window_days: number;
+  window_start: string;
+  totals: PlatformOverviewTotals;
+  signals: PlatformOverviewSignals;
+  sites: PlatformOverviewSite[];
+  recent_activity: PlatformActivityRow[];
+}
+
+/** 跨站审计查询：与站点内审计相同，多了可选的 `site_id`（省略 = 全部站点）。 */
+export interface PlatformAuditQuery extends AuditLogQuery {
+  site_id?: string;
+}
+
+/** 平台用户目录里的一条成员关系。 */
+export interface PlatformAccountMembership {
+  site_id: string;
+  site_name: string;
+  site_slug: string;
+  role: Role;
+  status: string;
+}
+
+/**
+ * 平台用户目录里的一行。
+ *
+ * 只读视图：邮箱验证与两步验证都是布尔值，响应里没有密码哈希、密钥或令牌。
+ */
+export interface PlatformAccount {
+  user_id: string;
+  display_name: string;
+  email: string;
+  email_verified: boolean;
+  two_factor_enabled: boolean;
+  status: string;
+  created_at: string;
+  memberships: PlatformAccountMembership[];
+}
+
+/** 平台用户目录查询；`site_id` 省略时是全部署账户。 */
+export interface PlatformAccountQuery {
+  site_id?: string;
+  q?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface PlatformAccountPage {
+  items: PlatformAccount[];
+  next_cursor?: string;
+}
+
+/* ---------- 社区举报 ---------- */
+
+export type ReportTargetType = 'article' | 'post' | 'comment' | 'user';
+export type ReportReason = 'spam' | 'abuse' | 'illegal' | 'other';
+export type ReportStatus = 'open' | 'assigned' | 'resolved' | 'dismissed';
+/** 处理动作：忽略、下架内容、封禁目标账户。 */
+export type ReportAction = 'ignore' | 'takedown' | 'ban';
+
+export interface Report {
+  id: string;
+  reporter_id: string;
+  target_type: ReportTargetType;
+  target_id: string;
+  reason: ReportReason;
+  note?: string;
+  status: ReportStatus;
+  assignee_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReportInput {
+  target_type: ReportTargetType;
+  target_id: string;
+  reason: ReportReason;
+  note?: string;
 }
 
 /** 主域名的 TXT 归属验证信息（V-12）。 */
@@ -103,6 +431,12 @@ export interface Member {
   role: Role;
   status: 'active' | 'invited' | 'suspended';
   email?: string;
+  /** 成员媒体额度，null 表示继承站点或部署默认。 */
+  media_quota_bytes?: MediaQuotaBytes;
+  /** 能力组标识；未分配时是角色对应的内置组。 */
+  group_key?: string;
+  /** 自定义组名；内置组未改名时为空，界面回退到 i18n 名称。 */
+  group_name?: string;
 }
 
 /**
@@ -113,8 +447,44 @@ export interface Member {
 export interface PublicProfile {
   user_id: string;
   display_name: string;
+  bio?: string;
+  avatar_media_id?: string;
   role: Role;
   created_at: string;
+}
+
+/** 服务端审计行；字段与 audit_logs 列一一对应。 */
+export interface AuditLog {
+  id: string;
+  site_id?: string;
+  actor_id?: string;
+  actor_name?: string;
+  action: string;
+  target_type?: string;
+  target_id?: string;
+  target_name?: string;
+  request_id?: string;
+  outcome: string;
+  detail?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLog[];
+  next_cursor?: string;
+}
+
+/** 审计查询；空字段表示不筛选，from / to 都是包含边界。 */
+export interface AuditLogQuery {
+  from?: string;
+  to?: string;
+  actor_id?: string;
+  action?: string;
+  target_type?: string;
+  target_id?: string;
+  outcome?: string;
+  limit?: number;
+  cursor?: string;
 }
 
 /** 管理员创建账户。 */
@@ -137,23 +507,120 @@ export interface Content {
   rendered_html: string;
   policy_version: string;
   published_at?: string;
+  /** 预约发布时间（C-17）；已发布或取消预约后为空。 */
+  publish_at?: string;
+  /** 访问权限（C-18）。不返回密码或哈希。 */
+  access_mode?: ContentAccessMode;
+  /** 是否已设置访问密码。 */
+  has_access_password?: boolean;
+  /** 单篇评论策略（C-19）。 */
+  comment_policy?: ContentCommentPolicy;
+  /**
+   * 单篇阅读量（FSD A-16）：服务端去重后的真实阅读次数。
+   *
+   * 列表与详情都会返回；作者与编辑自己的访问不计入，同一读者 30 分钟内只算一次。
+   * 旧后端没有这个字段时按 undefined 处理，界面据此隐藏。
+   */
+  view_count?: number;
   created_at: string;
   updated_at: string;
   actions: ContentAction[];
   /** 演示数据扩展：契约 v0.1.0 的 Content 不含作者字段。 */
   author_id?: string;
   author_name?: string;
-  /** 演示数据扩展：契约没有读取草稿源文的端点，编辑时可能缺失。 */
+  /** 当前版本号；配合 revision 接口做历史查看与回滚。 */
+  revision?: number;
+  /** 作者或编辑可见的源文；公开读者只会拿到 rendered_html。 */
   source_body?: string;
   category_id?: string;
   /** 文章标签以名称保存；主题与后台都按名称展示。 */
   tags?: string[];
 }
 
+/** 内容版本历史中的一个不可变快照。 */
+export interface ContentRevision {
+  id: string;
+  content_id: string;
+  /** 从 1 开始的版本号。 */
+  version: number;
+  editor_id: string;
+  editor_name?: string;
+  action: 'created' | 'updated' | 'rollback_backup' | 'rollback';
+  status: ContentStatus;
+  title: string;
+  slug: string;
+  summary?: string;
+  source_format: SourceFormat;
+  category_id?: string;
+  tags?: string[];
+  created_at: string;
+  /** 只有读取单个版本的接口会返回源文。 */
+  source_body?: string;
+  rendered_html?: string;
+  policy_version?: string;
+}
+
+export interface ContentRevisionPage {
+  items: ContentRevision[];
+}
+
 export interface ContentPage {
   items: Content[];
   next_cursor: string;
   has_more: boolean;
+}
+
+/** 热门内容的排序窗口：既是参评范围，也是时间衰减的尺度。 */
+export type PopularWindow = '7d' | '30d' | '90d';
+
+/**
+ * 一页热门内容（`GET /content/popular`）。
+ *
+ * 服务端按「阅读量 / (发布小时数 + 2)^1.5」排序：只统计窗口内发布的已发布公开
+ * 内容，所以一条旧的热门文章会逐步让位给新内容。没有阅读数据时按发布时间倒序。
+ */
+export interface PopularContentPage {
+  items: Content[];
+  /** 服务端实际使用的窗口。 */
+  window: PopularWindow;
+}
+
+/** 一条搜索结果：内容本身加上服务端给出的纯文本摘要片段。 */
+export interface SearchHit extends Content {
+  /** 首个命中附近的纯文本片段，永远不含 HTML；高亮由前端自己做。 */
+  snippet?: string;
+}
+
+/** GET /search 的可选筛选与分页参数；省略即不筛选。 */
+export interface SearchQuery {
+  kind?: ContentKind;
+  category_id?: string;
+  tag?: string;
+  author_id?: string;
+  /** RFC 3339 时间下界，包含边界。 */
+  since?: string;
+  /** RFC 3339 时间上界，包含边界。 */
+  until?: string;
+  /** 上一页返回的 next_cursor；空串表示第一页。 */
+  cursor?: string;
+  limit?: number;
+  /** 服务端默认开启；传 false 表示只要内容不要片段。 */
+  highlight?: boolean;
+}
+
+/**
+ * 一页搜索结果。
+ *
+ * total 是全量命中数，不是本页条数：分页时用 next_cursor，显示总数时用 total。
+ * degraded 为 true 表示服务端全文索引不可用、退回了 LIKE 兜底，此时结果是按时间
+ * 排序而不是相关度，界面应当说明这一点。
+ */
+export interface SearchResult {
+  items: SearchHit[];
+  total: number;
+  next_cursor: string;
+  has_more: boolean;
+  degraded?: boolean;
 }
 
 export interface DraftInput {
@@ -164,6 +631,18 @@ export interface DraftInput {
   source_body: string;
   category_id?: string;
   tags?: string[];
+  /** RFC 3339 预约发布时刻；省略或空串取消预约。 */
+  publish_at?: string | null;
+  access_mode?: ContentAccessMode;
+  /** 只写字段；留空保持原密码，切换为公开/仅登录时服务端清除。 */
+  access_password?: string;
+  comment_policy?: ContentCommentPolicy;
+}
+
+/** 密码文章解锁成功的结果；授权本身保存在 HttpOnly Cookie 里。 */
+export interface ContentUnlockResult {
+  unlocked: boolean;
+  expires_at: string;
 }
 
 export interface Comment {
@@ -182,6 +661,75 @@ export interface Comment {
 
 export interface ToggleResult {
   active: boolean;
+}
+
+/** 当前登录用户对一条内容的互动状态。匿名请求在公开站点上返回全 false。 */
+export interface InteractionState {
+  liked: boolean;
+  bookmarked: boolean;
+  following: boolean;
+}
+
+/** 批量状态查询里的单条目标状态。 */
+export interface InteractionStateItem {
+  target_id: string;
+  liked: boolean;
+  bookmarked: boolean;
+}
+
+export interface FollowStateItem {
+  user_id: string;
+  following: boolean;
+}
+
+export interface InteractionStates {
+  items: InteractionStateItem[];
+  follows: FollowStateItem[];
+}
+
+/**
+ * 我的收藏 / 我的点赞列表项。
+ *
+ * 标题、类型与作者是服务端联表补的只读展示字段；目标被归档或删除后
+ * `available` 为 false，页面应以墓碑样式展示而不是给出打不开的链接。
+ */
+export interface InteractionEntry {
+  target_type: TargetType;
+  target_id: string;
+  /** 收藏 / 点赞发生的时间。 */
+  created_at: string;
+  title?: string;
+  summary?: string;
+  kind?: ContentKind;
+  author_id?: string;
+  author_name?: string;
+  published_at?: string;
+  available: boolean;
+}
+
+/** 阅读历史项：同一用户与同一目标只保留一行，重复访问只更新时间与次数。 */
+export interface ReadingHistoryEntry {
+  target_type: TargetType;
+  target_id: string;
+  last_viewed_at: string;
+  view_count: number;
+  title?: string;
+  summary?: string;
+  kind?: ContentKind;
+  author_id?: string;
+  author_name?: string;
+  published_at?: string;
+  available: boolean;
+}
+
+/** 关注 / 粉丝列表里的成员。 */
+export interface FollowEntry {
+  user_id: string;
+  display_name: string;
+  bio?: string;
+  avatar_media_id?: string;
+  /** 关注关系建立的时间。 */
+  since: string;
 }
 
 export interface Upload {
@@ -240,6 +788,23 @@ export interface Notification {
   read: boolean;
   read_at?: string;
   created_at: string;
+}
+
+/** 一个通知渠道（站内 / 邮件）的总开关与分类开关。 */
+export interface NotificationChannelPreferences {
+  enabled: boolean;
+  comments: boolean;
+  reactions: boolean;
+  follows: boolean;
+  moderation: boolean;
+}
+
+/** 通知偏好；服务端对从未保存过的账户返回默认值（站内全开、邮件关闭）。 */
+export interface NotificationPreferences {
+  in_app: NotificationChannelPreferences;
+  email: NotificationChannelPreferences;
+  /** 部署是否配置了 SMTP；false 时邮件开关暂时没有效果。 */
+  email_configured: boolean;
 }
 
 export interface AppEvent {
@@ -302,7 +867,7 @@ export interface CommentPage {
   counts?: Partial<Record<CommentStatus | 'all', number>>;
 }
 
-export type CommentModerationAction = 'approve' | 'hide' | 'delete';
+export type CommentModerationAction = 'approve' | 'hide' | 'reject' | 'delete';
 
 export interface SessionState {
   status: 'loading' | 'ready' | 'anonymous';
@@ -334,8 +899,18 @@ export type ThemeTokenKey =
   | 'accent_ink'
   | 'prose';
 
-/** 布局变体：classic 编辑排版风（纸白），bento 杂志网格风（夜航）。 */
-export type LayoutVariant = 'classic' | 'bento';
+/** 布局变体：classic 编辑排版风（纸白），bento 杂志网格风（夜航），daylight 卡片化现代编辑风（白昼）。 */
+export type LayoutVariant = 'classic' | 'bento' | 'daylight';
+
+/**
+ * 夜航首页文章卡的外观。
+ *
+ * - `cover`：封面在上、文字在下，是夜航一直以来的卡片；
+ * - `blur`：封面铺满整张卡片并高斯模糊，标题、简介与元信息压在图上。
+ *
+ * 只影响展示，不改内容、排序或区块结构。
+ */
+export type ArticleCardStyle = 'cover' | 'blur';
 
 /** 区块入场动画。全部走 CSS 类，reduce 动效时自动降级。 */
 export type BlockAnimation = 'none' | 'fade' | 'fade-up' | 'slide-left' | 'slide-right' | 'zoom';
@@ -395,7 +970,7 @@ export interface ThemeAppearance {
 /**
  * 一套“大主题”：完整配色与排版 + 布局变体。
  *
- * 原版（classic 单栏）与夜航（bento 双栏）是内置主题；导入、创建或另存的主题
+ * 原版（classic 单栏）、白昼（daylight 卡片）与夜航（bento 双栏）是内置主题；导入、创建或另存的主题
  * 保存在 `SiteCustomization.themes`，选中 id 保存在 `active_theme`。
  */
 export interface SiteTheme {
@@ -678,6 +1253,11 @@ export interface LayoutSettings {
   header_blur_amount?: number;
   /** 向下滚动多少像素后切换到「滚动后」样式。 */
   header_threshold?: number;
+  /**
+   * 夜航首页文章卡外观；缺省 `cover`（封面在上、文字在下）。
+   * `blur` 会把封面铺满卡片并高斯模糊，标题与简介压在图上。
+   */
+  article_card_style?: ArticleCardStyle;
   footer_text: string;
   /**
    * 顶部导航 Tab。
@@ -725,7 +1305,7 @@ export interface LayoutSettings {
   announcement: string;
   announcement_link: string;
   hero: HeroSettings;
-  /** 布局变体。bento 下右栏常驻，侧栏开关被忽略。 */
+  /** 布局变体。bento 与 daylight 下右栏常驻，侧栏开关被忽略。 */
   variant: LayoutVariant;
 }
 
@@ -734,20 +1314,48 @@ export interface LayoutSettings {
 /**
  * 人机验证（CAPTCHA）设置。
  *
- * 契约 v0.1.0 没有验证端点，因此这里保存的是站点侧的配置意图：是否启用、
- * 用哪家服务与要保护哪些表单。密钥只用于生成服务端环境变量，不写入安装配置。
+ * 这里保存的是站点侧的配置意图：是否启用、用哪家服务与要保护哪些表单。
+ * 服务端从同一份设计文档读出意图，但只有它自己持有 Secret 时才会真正执行；
+ * 组件是否显示以 `GET /captcha/status` 的 `effective` 为准，不能只看这里的开关。
+ * Secret 只存在于服务端环境变量，不写入任何前端数据。
  */
 export type HumanVerificationProvider = 'turnstile' | 'hcaptcha' | 'recaptcha';
+
+/** reCAPTCHA 的两种模式：v2 是可见复选框，v3 是无感评分。 */
+export type RecaptchaVersion = 'v2' | 'v3';
 
 export interface HumanVerificationSettings {
   enabled: boolean;
   provider: HumanVerificationProvider;
   /** 前端可见的 Site Key。 */
   site_key: string;
+  /** 仅 reCAPTCHA 使用：v2 显示复选框，v3 按场景执行无感评分。 */
+  recaptcha_version: RecaptchaVersion;
   /** 要保护的表单场景。 */
   on_login: boolean;
   on_register: boolean;
   on_comment: boolean;
+  /** 找回密码「发送重置链接」一步。 */
+  on_password_reset: boolean;
+}
+
+/** 受保护的表单场景。值同时是 reCAPTCHA v3 的 action。 */
+export type CaptchaScene = 'login' | 'register' | 'password_reset' | 'comment';
+
+/**
+ * 服务端真正执行的验证规则（`GET /captcha/status`）。
+ *
+ * `effective` 是唯一可以据此渲染组件的字段：站点开关打开但服务端没有密钥时，
+ * 服务端会以「未启用」处理并记警告，组件不该显示出来骗人。
+ */
+export interface CaptchaStatus {
+  enabled: boolean;
+  provider: HumanVerificationProvider;
+  site_key: string;
+  scenes: Record<CaptchaScene, boolean>;
+  server_configured: boolean;
+  effective: boolean;
+  checked_at: string;
 }
 
 /* ---------- 评论 ---------- */
@@ -761,6 +1369,45 @@ export interface CommentSettings {
   require_review: boolean;
   /** 评论须知，显示在评论框上方；留空则不显示。 */
   notice: string;
+}
+
+/* ---------- 内容安全 ---------- */
+
+/** 敏感词命中后的动作：拒绝 / 替换占位符 / 标记待审。 */
+export type SensitiveWordMode = 'reject' | 'replace' | 'review';
+
+/** 站点级敏感词。服务端存储时已去空白并小写化。 */
+export interface SensitiveWord {
+  id: string;
+  word: string;
+  mode: SensitiveWordMode;
+  replacement: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 站点级 IP 白名单 / 黑名单条目，value 为单个地址或 CIDR。 */
+export interface SiteIPRule {
+  id: string;
+  kind: 'allow' | 'deny';
+  value: string;
+  note?: string;
+  created_at: string;
+}
+
+/** 评论频率限制：每用户、每 IP 的窗口阈值；0 表示停用该计数器。 */
+export interface SafetyRateLimit {
+  user_per_window: number;
+  ip_per_window: number;
+  window_seconds: number;
+}
+
+/** GET /sites/{id}/safety 的完整安全策略。 */
+export interface SafetyPolicy {
+  rate_limit: SafetyRateLimit;
+  words: SensitiveWord[];
+  ip_rules: SiteIPRule[];
 }
 
 /* ---------- 权限组 ---------- */
@@ -790,6 +1437,34 @@ export interface PermissionGroup {
 }
 
 export type PermissionSettings = Record<PermissionGroupId, PermissionGroup>;
+
+/**
+ * 服务端可配置的能力组。
+ *
+ * `key` 是稳定标识：内置组（guest/member/moderator/admin/owner）永不改名，因此
+ * 重命名只更新 `name`，不会移动成员或改变角色映射。自定义组从 `member` / `editor` /
+ * `site_admin` 中选一个基础角色，能力只能是该角色的子集。
+ */
+export interface PermissionGroupConfig {
+  key: string;
+  /** 空字符串表示使用界面语言里的内置名称。 */
+  name: string;
+  /** 游客组没有账户，为 null。 */
+  base_role: Role | null;
+  capabilities: Record<CapabilityId, boolean>;
+  admin_access: boolean;
+  /** 四个内置组为 true；自定义组为 false。 */
+  builtin: boolean;
+}
+
+/** 保存一个能力组的请求体；PUT 是整组替换。 */
+export interface PermissionGroupInput {
+  name: string;
+  base_role: Role | null;
+  capabilities: Record<CapabilityId, boolean>;
+  admin_access: boolean;
+}
+
 
 /** 组件通用外观：圆角档位。 */
 export type BlockRadius = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -1055,8 +1730,15 @@ export interface SiteCustomization {
   taxonomy: TaxonomySettings;
   /** 社区站点的权限组配置；个人博客忽略这份配置，所有账户都是最高权限。 */
   permissions: PermissionSettings;
+  /**
+   * 服务端能力组的本地镜像。连接真实后端时以 `GET /permission-groups` 为准，
+   * 这里保存最近一次看到的值，离线或演示模式仍能渲染同一套名称与矩阵。
+   */
+  permission_groups?: PermissionGroupConfig[];
   /** 搜索引擎与分享卡片的站点级设置。 */
   seo: SeoSettings;
+  /** RSS / Atom 订阅源的开关、条数与全文设置。 */
+  feed: FeedSettings;
   custom_css: string;
 }
 
@@ -1112,6 +1794,24 @@ export interface SeoSettings {
     baidu: string;
     bing: string;
   };
+}
+
+/**
+ * RSS / Atom 订阅源设置。
+ *
+ * 这些字段随站点设计一起保存，由服务端读取：`/rss.xml`、`/atom.xml` 与
+ * `/category/{slug}/…`、`/tag/{slug}/…` 是否可用、输出全文还是摘要、每个源最多
+ * 多少条，都在这里控制。关闭后服务端返回 404，前端也不再声明 autodiscovery。
+ */
+export interface FeedSettings {
+  /** 总开关。关闭时所有订阅源返回 404。 */
+  enabled: boolean;
+  /** 输出清洗后的正文；关闭时只输出摘要。 */
+  full_text: boolean;
+  /** 每个源最多包含多少条。 */
+  limit: number;
+  /** 是否提供分类 / 标签订阅源。 */
+  include_taxonomy: boolean;
 }
 
 /* ---------- 访问限制 / 域名绑定 / 性能优化 / 加载动画 ---------- */
@@ -1238,6 +1938,37 @@ export type StorageDriver = 'local' | 's3';
 /** 存储用途：文章媒体、站点图片、用户头像、用户数据/附件。 */
 export type StorageScope = 'content' | 'site' | 'avatar' | 'attachment';
 
+/** 单个用途的分配方式：一套策略，或多套按容量切换。 */
+export type StorageAllocationMode = 'single' | 'quota';
+
+/** 当前策略达到容量上限后的行为。 */
+export type StorageOverflowPolicy = 'switch' | 'stop';
+
+/**
+ * 一个用途里的一套策略分配。
+ *
+ * `quota_gb` 是这一套策略在该用途下的容量上限（GB），0 表示不限。
+ * 容量按用途分别记录：同一套策略可以被不同用途分配成不同的上限。
+ */
+export interface StorageAllocationEntry {
+  /** 引用 `StorageStrategy.id`。 */
+  strategy_id: string;
+  /** 该策略在这个用途下的容量上限（GB）；0 表示不限。 */
+  quota_gb: number;
+}
+
+/**
+ * 一个用途的完整分配：单策略或多策略、策略顺序与容量上限。
+ *
+ * `entries` 的顺序就是写入顺序：第一套是主策略，只有前面一套达到上限后才会
+ * 使用下一套。单策略模式只读取第一项，但保留其余项，方便随时切回多策略。
+ */
+export interface StorageScopeAllocation {
+  mode: StorageAllocationMode;
+  entries: StorageAllocationEntry[];
+  overflow: StorageOverflowPolicy;
+}
+
 /**
  * 一套命名的储存策略。
  *
@@ -1287,8 +2018,14 @@ export interface StorageStrategy {
 export interface StorageSettings {
   /** 至少一套，最多 8 套。 */
   strategies: StorageStrategy[];
-  /** 值 = strategies 里某个策略的 id；四个键必须齐全且都是合法 id。 */
+  /**
+   * 每个用途的主策略 id（多策略时就是第一套）。
+   *
+   * 保留这个字段是兼容旧配置与部署片段：真正完整的分配在 `allocations` 里。
+   */
   scopes: Record<StorageScope, string>;
+  /** 每个用途的完整分配；旧配置缺省时由 `scopes` 迁移成单策略。 */
+  allocations?: Record<StorageScope, StorageScopeAllocation>;
   /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 与安全服务决定。 */
   max_upload_mb: number;
 }
@@ -1373,10 +2110,40 @@ export interface WebConfig {
   /** 站点前台加载动画。旧配置缺省时关闭。 */
   loading?: LoadingSettings;
   /**
+   * 站点更新设置。更新服务尚未接入，字段先保存在本机后台配置里；
+   * 更新服务端地址 / 端口允许为空，不影响其它功能。
+   */
+  update?: SiteUpdateSettings;
+  /**
    * 切到个人博客前的角色快照。个人博客会把所有账户提升为站点管理员，
    * 这里记住原角色，切回社区站点时逐一恢复。
    */
   role_snapshot?: Record<string, Role>;
+}
+
+/** 更新通道：稳定版 / 测试版。 */
+export type SiteUpdateChannel = 'stable' | 'beta';
+
+/** 自动检查更新的时机；更新服务接入后由它决定检查频率。 */
+export type SiteUpdateFrequency = 'startup' | 'daily' | 'weekly';
+
+/**
+ * 站点更新设置。
+ *
+ * 目前没有真实的更新服务，所以服务器地址 / 端口可以为空；页面会明确提示
+ * 「更新服务暂未接入」，不会把空配置当成错误。
+ */
+export interface SiteUpdateSettings {
+  /** 是否自动检查更新（默认关闭；自动安装始终不支持）。 */
+  auto_update: boolean;
+  channel: SiteUpdateChannel;
+  frequency: SiteUpdateFrequency;
+  /** 更新服务端地址，例如 https://updates.example.com；暂时允许为空。 */
+  server_url: string;
+  /** 更新服务端端口；空字符串表示使用协议默认端口。 */
+  server_port: string;
+  /** 最近一次检查时间（ISO 字符串）；从未检查时缺省。 */
+  last_checked_at?: string;
 }
 
 export interface ActivityEntry {
@@ -1386,4 +2153,192 @@ export interface ActivityEntry {
   action: string;
   target: string;
   detail?: string;
+}
+
+/** 数据与备份：一个已生成的实例备份包。 */
+export interface BackupArtifact {
+  id: string;
+  file_name: string;
+  size: number;
+  sha256: string;
+  created_at: string;
+  driver: string;
+  dialect: string;
+  includes_media: boolean;
+  warnings?: string[];
+}
+
+/** 导入时 slug 冲突的处理策略。 */
+export type ImportConflictStrategy = 'rename' | 'skip' | 'fail' | 'overwrite';
+
+/** 导入报告里的单条结果。 */
+export interface SiteImportItem {
+  file: string;
+  title: string;
+  slug: string;
+  kind: string;
+  original_status?: string;
+  action: 'imported' | 'overwritten' | 'skipped' | 'failed';
+  content_id?: string;
+  status?: string;
+  reason?: string;
+}
+
+/** 全站导入的逐条报告。 */
+export interface SiteImportReport {
+  format: string;
+  format_version: number;
+  site_id: string;
+  imported: number;
+  overwritten: number;
+  skipped: number;
+  failed: number;
+  media_imported: number;
+  media_reused: number;
+  items: SiteImportItem[];
+  warnings?: string[];
+}
+
+/* ------------------------------------------------------------------ *
+ * 性能面板（可选模块）：本机与服务端进程的资源占用
+ * ------------------------------------------------------------------ */
+
+/** 本软件的一个进程。CPU 是占整机算力的比例（与主机 CPU 同一口径）。 */
+export interface SystemProcess {
+  pid: number;
+  name: string;
+  /** api / security / launcher / web / app；由服务端按进程名与安装目录识别。 */
+  role: string;
+  cpu_percent: number;
+  memory_bytes: number;
+}
+
+/** 其他软件按可执行文件聚合后的行。 */
+export interface SystemAggregateProcess {
+  name: string;
+  processes: number;
+  cpu_percent: number;
+  memory_bytes: number;
+}
+
+/** 本软件自己的磁盘占用（数据目录内部拆分）。 */
+export interface SystemStorageFootprint {
+  data_dir: string;
+  total_bytes: number;
+  database_bytes: number;
+  media_bytes: number;
+  backup_bytes: number;
+  other_bytes: number;
+}
+
+/** `GET /api/v1/system/metrics` 的一份缓存采样。 */
+export interface SystemMetrics {
+  sampled_at: string;
+  platform: {
+    os: string;
+    arch: string;
+    hostname: string;
+    uptime_seconds: number;
+  };
+  cpu: {
+    usage_percent: number;
+    cores: number;
+    model: string;
+  };
+  memory: {
+    total_bytes: number;
+    used_bytes: number;
+    free_bytes: number;
+    usage_percent: number;
+  };
+  disk: {
+    path: string;
+    total_bytes: number;
+    used_bytes: number;
+    free_bytes: number;
+    usage_percent: number;
+  };
+  app: {
+    processes: SystemProcess[];
+    cpu_percent: number;
+    memory_bytes: number;
+    storage: SystemStorageFootprint;
+  };
+  others: {
+    cpu_percent: number;
+    memory_bytes: number;
+    process_count: number;
+    top_processes: SystemAggregateProcess[];
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * 服务器扩展（安装包扩展）
+ *
+ * 与「内置扩展」（随前端发布）和「创作者扩展」（站点级 HTML/CSS/JS）都不同：
+ * 这里描述的是以 zip 扩展包形式安装到服务端的扩展，由后端启动清单决定是否运行。
+ * 字段与 `GET /api/v1/extensions` 的 Extension DTO 一一对应（JSON snake_case）。
+ * ------------------------------------------------------------------ */
+
+/** 服务器扩展的安装状态。 */
+export type ServerExtensionState = 'installed' | 'enabled' | 'disabled' | 'failed';
+
+/** 前端扩展声明的一个区块类型。 */
+export interface ExtensionFrontendBlock {
+  type: string;
+  name?: string;
+}
+
+/** 前端扩展能力：入口脚本、样式、挂载槽位与区块类型。 */
+export interface ExtensionFrontendInfo {
+  /** 入口脚本的站点内路径（由后端给出，例如 /plugins/{id}/{version}/index.js）。 */
+  entry: string;
+  styles: string[];
+  slots: string[];
+  blocks: ExtensionFrontendBlock[];
+}
+
+/** 后端扩展声明的一条 HTTP 路由。 */
+export interface ExtensionBackendRoute {
+  method: string;
+  path: string;
+  /** 路由要求的授权方式；缺省表示与扩展宿主一致。 */
+  auth?: string;
+}
+
+/** 后端扩展能力：WASM 宿主路由、钩子与资源限制。 */
+export interface ExtensionBackendInfo {
+  wasm: boolean;
+  routes: ExtensionBackendRoute[];
+  hooks?: string[];
+  timeout_ms?: number;
+  max_memory_mb?: number;
+}
+
+/**
+ * 一个已安装的服务器扩展。
+ *
+ * 页面只读这些字段做展示与操作；是否运行由后端启动清单决定，页面不做热加载。
+ */
+export interface ExtensionSummary {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  license?: string;
+  /** 扩展主页（http/https）。 */
+  homepage?: string;
+  state: ServerExtensionState;
+  enabled: boolean;
+  /** 运行时标识，例如 `wasm` / `node` / `none`。 */
+  runtime: string;
+  /** 扩展申请的权限标识，后端不做本地化。 */
+  permissions: string[];
+  frontend: ExtensionFrontendInfo | null;
+  backend: ExtensionBackendInfo | null;
+  /** 安装或启用失败时的最近一次错误。 */
+  last_error?: string;
+  installed_at?: string;
+  enabled_at?: string;
 }

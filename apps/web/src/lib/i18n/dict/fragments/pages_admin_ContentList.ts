@@ -75,6 +75,11 @@ const fragment: Dictionary = {
     'Archiving removes the content from public lists, but existing links keep working.',
   '恢复后内容会重新进入公开列表。': 'Restoring puts the content back into public lists.',
   '确认{action}': 'Confirm {action}',
+
+  // ---- 预约与访问状态 ----
+  '预约 {time}': 'Scheduled {time}',
+  密码访问: 'Password',
+  仅登录读者: 'Members only',
 };
 
 export default fragment;

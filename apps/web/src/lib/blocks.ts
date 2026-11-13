@@ -154,7 +154,7 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
     name: t('订阅横幅'),
     description: t('页面底部的一条号召横幅，可改文案与按钮。'),
     group: 'classic',
-    variants: ['classic'],
+    variants: ['classic', 'daylight'],
     defaults: { title: '', body: '', primary: '', secondary: '' },
     schema: [
       { key: 'title', label: t('标题'), type: 'text', hint: t('留空使用默认文案。') },
@@ -163,11 +163,68 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
       { key: 'secondary', label: t('次按钮'), type: 'text' },
     ],
   },
+  /* ---------------- 白昼 ---------------- */
+  {
+    type: 'daylight-front',
+    name: t('白昼头版'),
+    description: t('左侧刊头文案、右侧封面故事；白昼首页的分栏头版。'),
+    group: 'shared',
+    variants: ['daylight'],
+    defaults: { kicker: '', title: '', lede: '', cta: '', secondary: '' },
+    schema: [
+      { key: 'kicker', label: t('眉题'), type: 'text', hint: t('留空使用「外观 → 首页首屏」的眉题或站点名。') },
+      { key: 'title', label: t('主标题'), type: 'textarea', hint: t('留空使用「外观 → 首页首屏」的标题；支持换行与 *斜体强调*。') },
+      { key: 'lede', label: t('副标题'), type: 'textarea', hint: t('留空使用外观里的副标题或站点简介。') },
+      { key: 'cta', label: t('主按钮'), type: 'text', hint: t('留空显示「开始阅读」。') },
+      { key: 'secondary', label: t('次按钮'), type: 'text', hint: t('留空显示「全部文章」。') },
+    ],
+  },
+  {
+    type: 'daylight-topics',
+    name: t('栏目导轨'),
+    description: t('横向排列栏目与文章数，适合日报式首页的分区导航。'),
+    group: 'shared',
+    variants: ['daylight'],
+    defaults: { heading: '栏目', limit: 6 },
+    schema: [
+      { key: 'heading', label: t('标题'), type: 'text', hint: t('留空显示「栏目」。') },
+      { key: 'limit', label: t('最多几个栏目'), type: 'number', min: 1, max: 12, step: 1 },
+    ],
+  },
+  {
+    type: 'daylight-stories',
+    name: t('三列故事'),
+    description: t('三列封面故事卡，白昼首页的主内容区。'),
+    group: 'shared',
+    variants: ['daylight'],
+    defaults: { heading: '最新文章', offset: 1, limit: 6, show_summary: true, show_meta: true },
+    schema: [
+      { key: 'heading', label: t('小节标题'), type: 'text', hint: t('留空显示「最新文章」。') },
+      { key: 'offset', label: t('跳过前几篇'), type: 'number', min: 0, max: 20, step: 1, hint: t('避免和头版的封面故事重复。') },
+      { key: 'limit', label: t('展示篇数'), type: 'number', min: 3, max: 12, step: 1 },
+      { key: 'show_summary', label: t('显示摘要'), type: 'toggle' },
+      { key: 'show_meta', label: t('显示时间与阅读时长'), type: 'toggle' },
+    ],
+  },
+  {
+    type: 'daylight-briefs',
+    name: t('文字简报'),
+    description: t('双列、无封面的文字条目，给首页留出不同于图片卡的阅读节奏。'),
+    group: 'shared',
+    variants: ['daylight'],
+    defaults: { heading: '继续阅读', offset: 7, limit: 4, show_summary: true },
+    schema: [
+      { key: 'heading', label: t('小节标题'), type: 'text', hint: t('留空显示「继续阅读」。') },
+      { key: 'offset', label: t('跳过前几篇'), type: 'number', min: 0, max: 30, step: 1 },
+      { key: 'limit', label: t('展示篇数'), type: 'number', min: 2, max: 12, step: 1 },
+      { key: 'show_summary', label: t('显示摘要'), type: 'toggle' },
+    ],
+  },
   /* ---------------- 夜航 ---------------- */
   {
     type: 'bento-hero',
-    name: t('夜航首屏'),
-    description: t('双卡首屏：左侧大黑卡（可换背景图 + 大标题 + 搜索框）/ 右侧是紧凑的热门榜单，也可以换回彩虹渐变卡。'),
+    name: t('双卡首屏'),
+    description: t('双卡首屏：主卡放标题、说明与搜索框，侧卡放热门榜或欢迎卡；卡片外观随主题变化。'),
     group: 'nightflight',
     variants: ['bento'],
     defaults: {
@@ -189,14 +246,14 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
       popular_cover: false,
     },
     schema: [
-      { key: 'title', label: t('黑卡大标题'), type: 'textarea', hint: t('留空使用「外观 → 首页首屏」的标题；支持换行与 *斜体强调*，最多两行。') },
-      { key: 'show_domain', label: t('黑卡显示域名'), type: 'toggle' },
-      { key: 'show_search', label: t('黑卡底部搜索框'), type: 'toggle' },
+      { key: 'title', label: t('主卡大标题'), type: 'textarea', hint: t('留空使用「外观 → 首页首屏」的标题；支持换行与 *斜体强调*，最多两行。') },
+      { key: 'show_domain', label: t('主卡显示域名'), type: 'toggle' },
+      { key: 'show_search', label: t('主卡底部搜索框'), type: 'toggle' },
       { key: 'search_placeholder', label: t('搜索框占位文字'), type: 'text', hint: t('留空使用「搜索文章」。') },
-      { key: 'bg_color', label: t('黑卡底色'), type: 'color', hint: t('没有背景图时使用，默认纯黑。') },
+      { key: 'bg_color', label: t('主卡底色'), type: 'color', hint: t('没有背景图时使用。夜航默认纯黑；白昼使用主题的卡片底色。') },
       {
         key: 'bg_image',
-        label: t('黑卡背景图'),
+        label: t('主卡背景图'),
         type: 'text',
         hint: t('可选，填图片地址（http(s) 或 /media/...）。留空就是上面的纯色底。'),
       },
@@ -210,7 +267,7 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
           { value: 'wider', label: t('左更宽 · 2 : 1') },
           { value: 'even', label: t('左右等宽') },
         ],
-        hint: t('左边是标题卡，右边是热门榜。'),
+        hint: t('左侧是主卡，右侧是热门榜或欢迎卡。'),
       },
       {
         key: 'right_mode',
@@ -452,7 +509,7 @@ const RAW_BLOCK_DEFS: BlockDefinition[] = [
   {
     type: 'archive',
     name: t('按月归档'),
-    description: t('从已发布内容统计每个月发了多少篇，参考站的「八月 2026 · 1 篇」。'),
+    description: t('从已发布内容统计每个月发了多少篇，例如「八月 2026 · 1 篇」。'),
     group: 'nightflight',
     variants: ['bento'],
     defaults: { heading: '归档', limit: 3 },
@@ -1722,7 +1779,19 @@ export function cloneBlocks(blocks: BlockInstance[]): BlockInstance[] {
 }
 
 /** 按布局变体生成默认首页编排。 */
-export function defaultHomeLayout(variant: LayoutVariant): ScreenLayout {  if (variant === 'bento') {
+export function defaultHomeLayout(variant: LayoutVariant): ScreenLayout {
+  if (variant === 'daylight') {
+    return {
+      blocks: [
+        createBlock('daylight-front'),
+        createBlock('daylight-topics'),
+        createBlock('daylight-stories'),
+        createBlock('daylight-briefs'),
+        createBlock('join-band'),
+      ],
+    };
+  }
+  if (variant === 'bento') {
     return {
       blocks: [
         createBlock('bento-hero'),
@@ -1739,6 +1808,57 @@ export function defaultHomeLayout(variant: LayoutVariant): ScreenLayout {  if (v
   return {
     blocks: [createBlock('classic-hero'), createBlock('feed'), createBlock('join-band')],
   };
+}
+
+/** 旧版 Daylight 默认首页（复用夜航区块）。只用于读取迁移。 */
+export function legacyDaylightHome(): ScreenLayout {
+  const grid = createBlock('post-grid');
+  grid.props = { ...grid.props, limit: 6 };
+  return {
+    blocks: [
+      createBlock('bento-hero'),
+      createBlock('category-pills'),
+      createBlock('spotlight'),
+      grid,
+      createBlock('join-band'),
+      createBlock('author-card'),
+      createBlock('stat-list'),
+      createBlock('tag-cloud'),
+    ],
+  };
+}
+
+function sameProps(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * 旧 Daylight 默认首页识别：类型、属性、无子区块 / 无设备拆分 / 无外观覆盖。
+ * 站长只要改过标题、条数或展示设置，就不再算默认，避免迁移时覆盖自定义编排。
+ */
+export function isLegacyDaylightHome(layout: ScreenLayout): boolean {
+  if (layout.device_split || layout.devices) return false;
+  const expected = legacyDaylightHome().blocks;
+  const blocks = layout.blocks;
+  if (blocks.length !== expected.length) return false;
+  return blocks.every((block, index) => {
+    const target = expected[index];
+    if (!target || block.type !== target.type) return false;
+    if (!sameProps(block.props, target.props)) return false;
+    return (
+      !block.children?.length &&
+      !block.custom_css &&
+      !block.appearance &&
+      !block.at &&
+      !block.visible &&
+      !block.width &&
+      !block.height &&
+      !block.area &&
+      !block.anchor &&
+      !block.span &&
+      !block.offset
+    );
+  });
 }
 
 /** 读取区块的一个属性，类型不符时回退到默认值。 */
@@ -1774,8 +1894,15 @@ export function blockItems(block: BlockInstance, key: string): Record<string, st
   }
 }
 
-/** 当前变体下可添加的区块。 */
+/** 当前变体下可添加的区块。白昼用专用组件 + 通用共享组件，不向作者暴露夜航首页块。 */
 export function availableBlocks(variant: LayoutVariant): BlockDefinition[] {
+  if (variant === 'daylight') {
+    return BLOCK_DEFS.filter(
+      (item) =>
+        item.variants.includes('daylight') ||
+        (item.variants.includes('classic') && item.variants.includes('bento')),
+    );
+  }
   return BLOCK_DEFS.filter((item) => item.variants.includes(variant));
 }
 

@@ -20,6 +20,23 @@ type fakeRepo struct {
 	seq       int
 }
 
+type fakeNotifier struct {
+	items []Notification
+}
+
+func (f *fakeNotifier) NotifyInteraction(_ context.Context, in Notification) error {
+	f.items = append(f.items, in)
+	return nil
+}
+
+type fixedAuthors struct {
+	author string
+}
+
+func (f fixedAuthors) AuthorOf(context.Context, string, TargetType, string) (string, error) {
+	return f.author, nil
+}
+
 func newFakeRepo() *fakeRepo {
 	return &fakeRepo{
 		comments:  map[string]Comment{},
@@ -114,6 +131,14 @@ func newService(t *testing.T, repo Repository) *Service {
 	service, err := NewService(repo, nil)
 	require.NoError(t, err)
 	return service
+}
+
+func newNotifiedService(t *testing.T, repo Repository, author string) (*Service, *fakeNotifier) {
+	t.Helper()
+	notifier := &fakeNotifier{}
+	service, err := NewService(repo, fixedAuthors{author: author}, WithNotifier(notifier))
+	require.NoError(t, err)
+	return service, notifier
 }
 
 func TestNewServiceRequiresRepository(t *testing.T) {
@@ -322,4 +347,104 @@ func TestToggleBookmarkIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, active)
 	require.Equal(t, 1, repo.writes, "repeating the intent must not write")
+}
+
+func TestCommentNotifiesTargetAuthor(t *testing.T) {
+	repo := newFakeRepo()
+	service, notifier := newNotifiedService(t, repo, "u2")
+	ctx := context.Background()
+
+	created, err := service.AddComment(ctx, Actor{UserID: "u1", SiteID: "s1"},
+		NewCommentInput{TargetType: TargetArticle, TargetID: "a1", Body: "hello"})
+	require.NoError(t, err)
+
+	require.Len(t, notifier.items, 1)
+	item := notifier.items[0]
+	require.Equal(t, NotificationComment, item.Type)
+	require.Equal(t, "u2", item.UserID)
+	require.Equal(t, "u1", item.ActorID)
+	require.Equal(t, created.ID, item.SubjectID)
+	require.Equal(t, "article", item.Payload["target_type"])
+	require.Equal(t, "a1", item.Payload["target_id"])
+	require.Equal(t, "hello", item.Payload["excerpt"])
+}
+
+func TestReplyNotifiesParentAuthor(t *testing.T) {
+	repo := newFakeRepo()
+	service, notifier := newNotifiedService(t, repo, "u2")
+	ctx := context.Background()
+
+	root, err := service.AddComment(ctx, Actor{UserID: "u1", SiteID: "s1"},
+		NewCommentInput{TargetType: TargetArticle, TargetID: "a1", Body: "root"})
+	require.NoError(t, err)
+	notifier.items = nil
+
+	_, err = service.AddComment(ctx, Actor{UserID: "u3", SiteID: "s1"},
+		NewCommentInput{TargetType: TargetComment, TargetID: root.ID, ParentID: root.ID, Body: "reply"})
+	require.NoError(t, err)
+
+	require.Len(t, notifier.items, 1)
+	require.Equal(t, NotificationComment, notifier.items[0].Type)
+	require.Equal(t, "1", notifier.items[0].Payload["reply"])
+	require.Equal(t, root.ID, notifier.items[0].Payload["reply_to_comment_id"])
+}
+
+func TestSelfInteractionDoesNotNotify(t *testing.T) {
+	repo := newFakeRepo()
+	notifier := &fakeNotifier{}
+	service, err := NewService(repo, fixedAuthors{author: "u1"}, WithNotifier(notifier))
+	require.NoError(t, err)
+
+	_, err = service.AddComment(context.Background(), Actor{UserID: "u1", SiteID: "s1"},
+		NewCommentInput{TargetType: TargetArticle, TargetID: "a1", Body: "self"})
+	require.NoError(t, err)
+	require.Empty(t, notifier.items)
+}
+
+func TestReactionAndFollowNotify(t *testing.T) {
+	repo := newFakeRepo()
+	service, notifier := newNotifiedService(t, repo, "u2")
+	ctx := context.Background()
+	actor := Actor{UserID: "u1", SiteID: "s1"}
+
+	active := true
+	_, err := service.ToggleReaction(ctx, actor, TargetArticle, "a1", "like", &active)
+	require.NoError(t, err)
+	require.Len(t, notifier.items, 1)
+	require.Equal(t, NotificationReaction, notifier.items[0].Type)
+	require.Equal(t, "u2", notifier.items[0].UserID)
+	require.Contains(t, notifier.items[0].DedupeKey, "reaction:u1:article:a1:like")
+
+	_, err = service.ToggleFollow(ctx, actor, "u2", &active)
+	require.NoError(t, err)
+	require.Len(t, notifier.items, 2)
+	require.Equal(t, NotificationFollow, notifier.items[1].Type)
+	require.Equal(t, "u2", notifier.items[1].UserID)
+	require.Equal(t, "follow:u1", notifier.items[1].DedupeKey)
+}
+
+func TestReviewNotifiesCommentAuthor(t *testing.T) {
+	repo := newFakeRepo()
+	repo.comments["c1"] = Comment{
+		ID: "c1", SiteID: "s1", AuthorID: "u2", TargetType: TargetArticle,
+		TargetID: "a1", Body: "pending body", Status: CommentStatusPending,
+	}
+	service, notifier := newNotifiedService(t, repo, "u9")
+	ctx := context.Background()
+	moderator := Actor{UserID: "m1", SiteID: "s1", Role: site.RoleEditor}
+
+	_, err := service.ApproveComment(ctx, moderator, "c1")
+	require.NoError(t, err)
+	require.Len(t, notifier.items, 2, "the author learns the decision and the target author learns the comment is public")
+
+	moderated := notifier.items[0]
+	require.Equal(t, NotificationModeration, moderated.Type)
+	require.Equal(t, "u2", moderated.UserID)
+	require.Equal(t, CommentStatusVisible, moderated.Payload["status"])
+	require.Equal(t, "pending body", moderated.Payload["excerpt"])
+
+	published := notifier.items[1]
+	require.Equal(t, NotificationComment, published.Type)
+	require.Equal(t, "u9", published.UserID)
+	require.Equal(t, "u2", published.ActorID)
 }

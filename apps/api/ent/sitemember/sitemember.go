@@ -21,6 +21,10 @@ const (
 	FieldRole = "role"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldGroupKey holds the string denoting the group_key field in the database.
+	FieldGroupKey = "group_key"
+	// FieldMediaQuotaBytes holds the string denoting the media_quota_bytes field in the database.
+	FieldMediaQuotaBytes = "media_quota_bytes"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -36,6 +40,8 @@ var Columns = []string{
 	FieldUserID,
 	FieldRole,
 	FieldStatus,
+	FieldGroupKey,
+	FieldMediaQuotaBytes,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -63,6 +69,10 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultGroupKey holds the default value on creation for the "group_key" field.
+	DefaultGroupKey string
+	// GroupKeyValidator is a validator for the "group_key" field. It is called by the builders before save.
+	GroupKeyValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -101,6 +111,16 @@ func ByRole(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByGroupKey orders the results by the group_key field.
+func ByGroupKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupKey, opts...).ToFunc()
+}
+
+// ByMediaQuotaBytes orders the results by the media_quota_bytes field.
+func ByMediaQuotaBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMediaQuotaBytes, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
