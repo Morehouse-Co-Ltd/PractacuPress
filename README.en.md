@@ -25,7 +25,7 @@
 - **Writing**: toolbar editor plus Markdown, live preview, word count on the rendered text; insert mind maps, logic charts, statistical charts (bar / line / donut / pie) and fishbone diagrams, stored in the body as `pp-diagram` fenced blocks
 - **Community**: comments, likes, bookmarks, follows, DMs, notifications and reports, with a 5-state review flow
 - **Operations**: themes, page composition, SEO, access limits, domains and SSL, storage policies, analytics
-- **Security**: Argon2id, HTML allow-list sanitization and upload inspection live in the Rust service; if it is unreachable the API fails closed with 503
+- **Security**: Argon2id, HTML allow-list sanitization and upload inspection live in the Rust service; if it is unreachable the API fails closed with 503. The local authorized security audit report is in [`docs/security/2026-11-14-security-audit.md`](docs/security/2026-11-14-security-audit.md)
 - **Multi-site**: single-site out of the box; isolate content, members, themes, review rules and permissions per site when you need to
 
 **Platform and license**: Windows / Linux, via source, the Windows launcher or Docker Compose; SQLite, MySQL and PostgreSQL are supported.

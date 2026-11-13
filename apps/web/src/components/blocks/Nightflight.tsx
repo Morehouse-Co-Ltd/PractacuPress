@@ -8,6 +8,7 @@ import { Avatar, EmptyState, Skeleton, SkeletonPanel } from '../ui';
 import { Icon } from '../Icon';
 import { ContentCover } from '../Cover';
 import { blockItems, blockProp } from '../../lib/blocks';
+import { safeUrl } from '../../lib/safeUrl';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { dispatchInterfaceCommand } from '../../lib/interfaceCommands';
 import { useRangeAnalytics } from '../../lib/useAnalytics';
@@ -669,7 +670,13 @@ function AuthorCard({ block }: { block: BlockInstance }) {
     blockProp(block, 'bio', '').trim() ||
     site?.description ||
     t('写作者拥有自己的稿子，读者被当作邻居。');
-  const links = blockItems(block, 'links').filter((item) => item.link);
+  // 作者卡链接来自可编辑内容；渲染前统一过 safeUrl，避免 javascript:/协议相对地址
+  // 绕过其它区块都在用的白名单。空链接直接丢弃，不渲染成可点击元素。
+  const links: Record<string, string>[] = [];
+  for (const item of blockItems(block, 'links')) {
+    const link = safeUrl(item.link);
+    if (link) links.push({ ...item, link });
+  }
   return (
     <aside className="nf-widget nf-author">
       <p className="nf-author-hi">{t('欢迎光临')}</p>

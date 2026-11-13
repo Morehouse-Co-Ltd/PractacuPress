@@ -238,7 +238,7 @@ export function SiteChrome() {
   const announceLink = layout.announcement_link.trim();
   const announceHref = /^https?:\/\//.test(announceLink)
     ? announceLink
-    : announceLink.startsWith('/')
+    : announceLink.startsWith('/') && !announceLink.startsWith('//')
       ? announceLink
       : '';
   const [closedAnnounce, setClosedAnnounce] = useState(() => {

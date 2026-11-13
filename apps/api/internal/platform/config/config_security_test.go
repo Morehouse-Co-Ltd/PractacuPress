@@ -55,3 +55,47 @@ func TestLoadRejectsNegativeRateLimit(t *testing.T) {
 	_, err := Load()
 	require.Error(t, err)
 }
+
+// TestLoadRequiresPublicBaseURLWhenSMTPIsConfigured pins the fix for Host header
+// poisoning of one-time mail links: once mail can leave the machine, the link
+// origin must come from configuration, never from the request Host header.
+func TestLoadRequiresPublicBaseURLWhenSMTPIsConfigured(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("SMTP_HOST", "127.0.0.1")
+	t.Setenv("SMTP_FROM", "noreply@example.com")
+	t.Setenv("PUBLIC_BASE_URL", "")
+
+	_, err := Load()
+	require.Error(t, err)
+
+	var cfgErr *Error
+	require.ErrorAs(t, err, &cfgErr)
+	require.Equal(t, "invalid_public_base_url", cfgErr.Code)
+}
+
+func TestLoadAcceptsSMTPWithPublicBaseURL(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("SMTP_HOST", "127.0.0.1")
+	t.Setenv("SMTP_FROM", "noreply@example.com")
+	t.Setenv("PUBLIC_BASE_URL", "https://press.example.com")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "https://press.example.com", cfg.PublicBaseURL)
+	require.Equal(t, "127.0.0.1", cfg.SMTPHost)
+}
+
+// Desktop installs are loopback-only and keep the request origin fallback, so a
+// local SMTP relay still works without PUBLIC_BASE_URL.
+func TestDesktopModeKeepsRequestOriginFallbackWithoutPublicBaseURL(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("PP_DESKTOP", "1")
+	t.Setenv("SMTP_HOST", "127.0.0.1")
+	t.Setenv("SMTP_FROM", "noreply@example.com")
+	t.Setenv("PUBLIC_BASE_URL", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.DesktopMode)
+	require.Empty(t, cfg.PublicBaseURL)
+}

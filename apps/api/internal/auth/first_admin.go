@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,11 +23,30 @@ type FirstAdminFunc func(*gin.Context) bool
 // platform administrator. The desktop launcher binds loopback and proxies to the API,
 // so its setup wizard still works; a reverse proxy that publishes a not yet claimed
 // instance leaves registration possible for plain members but not for the owner role.
+//
+// Both checks are required: the Host header alone is attacker controlled on a direct
+// connection (any client can send "Host: 127.0.0.1"), and the socket peer alone is
+// loopback for every request that arrives through a same-machine reverse proxy. The
+// first admin claim needs a loopback peer *and* a loopback Host.
 func AllowFirstAdminFromLoopback(c *gin.Context) bool {
 	if c == nil || c.Request == nil {
 		return false
 	}
-	return isLoopbackHost(c.Request.Host)
+	if !isLoopbackHost(c.Request.Host) {
+		return false
+	}
+	return isLoopbackPeer(c.Request.RemoteAddr)
+}
+
+// isLoopbackPeer reports whether the direct TCP peer is this machine.
+func isLoopbackPeer(remoteAddr string) bool {
+	host := remoteAddr
+	if parsed, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		host = parsed
+	}
+	host = strings.Trim(host, "[]")
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // isLoopbackHost reports whether a Host header value names this machine.

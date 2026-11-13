@@ -644,6 +644,18 @@ func Load() (Config, error) {
 			}
 		}
 	}
+	// Mail links are one-time credentials. Without a configured public origin the
+	// auth layer would fall back to the request Host header, which an attacker can
+	// influence (password reset / email verification link poisoning). Require the
+	// operator to pin the origin instead of silently trusting Host once SMTP is on.
+	// Desktop installs are loopback-only and keep the request-origin fallback.
+	if cfg.SMTPHost != "" && cfg.PublicBaseURL == "" && !cfg.DesktopMode {
+		return Config{}, &Error{
+			Code: "invalid_public_base_url",
+			Detail: "PUBLIC_BASE_URL is required when SMTP is configured, so reset and " +
+				"verification links cannot be pointed at a forged Host header",
+		}
+	}
 
 	if err := loadCaptcha(&cfg); err != nil {
 		return Config{}, err
@@ -691,7 +703,7 @@ func loadAuthProviders(cfg *Config) error {
 		}
 		if (provider.ClientID == "") != (provider.ClientSecret == "") {
 			return &Error{
-				Code: "incomplete_oauth_credentials",
+				Code:   "incomplete_oauth_credentials",
 				Detail: prefix + "CLIENT_ID and " + prefix + "CLIENT_SECRET must be set together",
 			}
 		}

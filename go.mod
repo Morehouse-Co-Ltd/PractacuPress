@@ -2,7 +2,7 @@ module github.com/practacu/practacu-press
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.4
 
 require (
 	entgo.io/ent v0.14.6
@@ -21,7 +21,7 @@ require (
 	github.com/tetratelabs/wazero v1.12.0
 	github.com/yuin/goldmark v1.7.17
 	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
-	golang.org/x/image v0.24.0
+	golang.org/x/image v0.45.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1

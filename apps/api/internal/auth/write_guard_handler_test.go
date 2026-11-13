@@ -28,8 +28,17 @@ func postJSONWithHeaders(
 		contentType = "application/json"
 	}
 	req.Header.Set("Content-Type", contentType)
+	// Model the socket peer as well as the Host header: the first-admin bootstrap
+	// requires both to be loopback, so a loopback Host must also come from a
+	// loopback peer in tests.
+	req.RemoteAddr = "192.0.2.1:40000"
 	if host != "" {
 		req.Host = host
+		if strings.HasPrefix(host, "127.0.0.1") ||
+			strings.HasPrefix(host, "localhost") ||
+			strings.HasPrefix(host, "[::1]") {
+			req.RemoteAddr = "127.0.0.1:40000"
+		}
 	}
 	if origin != "" {
 		req.Header.Set("Origin", origin)

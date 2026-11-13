@@ -199,6 +199,7 @@ func TestMailIsOptional(t *testing.T) {
 
 func TestMailDefaultsToStartTLS(t *testing.T) {
 	setValidEnv(t)
+	t.Setenv("PUBLIC_BASE_URL", "https://press.example.com")
 	t.Setenv("SMTP_HOST", "smtp.example.com")
 	t.Setenv("SMTP_FROM", "noreply@example.com")
 
@@ -210,6 +211,7 @@ func TestMailDefaultsToStartTLS(t *testing.T) {
 
 func TestMailPortDefaultsFollowEncryption(t *testing.T) {
 	setValidEnv(t)
+	t.Setenv("PUBLIC_BASE_URL", "https://press.example.com")
 	t.Setenv("SMTP_HOST", "smtp.example.com")
 	t.Setenv("SMTP_FROM", "noreply@example.com")
 
@@ -226,6 +228,7 @@ func TestMailPortDefaultsFollowEncryption(t *testing.T) {
 
 func TestMailFromFallsBackToUsername(t *testing.T) {
 	setValidEnv(t)
+	t.Setenv("PUBLIC_BASE_URL", "https://press.example.com")
 	t.Setenv("SMTP_HOST", "smtp.example.com")
 	t.Setenv("SMTP_USERNAME", "noreply@example.com")
 	t.Setenv("SMTP_PASSWORD", "secret")
@@ -250,6 +253,7 @@ func TestMailRejectsIncompleteCredentials(t *testing.T) {
 
 func TestMailRejectsPlaintextCredentialsOffLoopback(t *testing.T) {
 	setValidEnv(t)
+	t.Setenv("PUBLIC_BASE_URL", "https://press.example.com")
 	t.Setenv("SMTP_HOST", "smtp.example.com")
 	t.Setenv("SMTP_FROM", "noreply@example.com")
 	t.Setenv("SMTP_USERNAME", "noreply@example.com")

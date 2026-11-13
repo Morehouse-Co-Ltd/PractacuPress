@@ -24,7 +24,7 @@
 - **写作**：工具栏编辑器 + Markdown、实时预览、按渲染后的纯文本计字数；可插入思维导图、逻辑图、统计图（柱状 / 折线 / 环形 / 饼图）与鱼骨图，保存在正文的 `pp-diagram` 围栏里
 - **社区**：评论、点赞、收藏、关注、私信、通知、举报，配 5 状态审核流
 - **运营**：主题、页面编排、SEO、访问限制、域名与 SSL、存储策略、访问统计
-- **安全**：Argon2id、HTML 白名单清洗、上传检查都在 Rust 服务里；连不上就 fail-closed 返回 503
+- **安全**：Argon2id、HTML 白名单清洗、上传检查都在 Rust 服务里；连不上就 fail-closed 返回 503。本地授权安全审计报告见 [`docs/security/2026-11-14-security-audit.md`](docs/security/2026-11-14-security-audit.md)
 - **多站点**：单站点开箱即用；需要时按站点隔离内容、成员、主题、审核规则与权限边界
 
 **平台与许可**：Windows / Linux 皆可（源码、Windows 启动器、Docker Compose）；数据库支持 SQLite、MySQL、PostgreSQL。
