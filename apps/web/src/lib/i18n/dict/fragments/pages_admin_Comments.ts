@@ -152,6 +152,27 @@ const fragment: Dictionary = {
   '还没有 IP 规则': 'No IP rules yet',
   '添加黑名单可拒绝特定来源；添加白名单后仅放行名单内地址。':
     'Add a deny rule to refuse a source, or an allow rule to serve only listed addresses.',
+  'AI 审核': 'AI moderation',
+  '本地风险评分，不把评论正文发送到外部服务。':
+    'Local risk scoring; comment text is never sent to an external service.',
+  '启用 AI 审核辅助': 'Enable AI moderation assist',
+  '在评论列表里标出高风险评论，并给审核员处理建议；不会自动删除评论。':
+    'Flags risky comments in the list and suggests an action; comments are never deleted automatically.',
+  敏感度: 'Sensitivity',
+  '低（只报明显风险）': 'Low (only obvious risks)',
+  '中（默认）': 'Medium (default)',
+  '高（宁可多报）': 'High (report more)',
+  处理方式: 'Response',
+  '「自动标记」会把高风险评论在列表中标红，并在打开时提示先处理。':
+    '“Auto flag” highlights high-risk comments in the list and reminds you to handle them first.',
+  只给建议: 'Suggest only',
+  自动标记高风险: 'Auto flag high risk',
+  自定义风险词: 'Custom risk terms',
+  '用逗号分隔；命中一次加 5 分。':
+    'Separate with commas; each hit adds 5 points.',
+  '例如：竞品名、引流词': 'e.g. a competitor name or a spam term',
+  'AI：高风险': 'AI: high risk',
+  'AI：需留意': 'AI: needs a look',
 };
 
 export default fragment;

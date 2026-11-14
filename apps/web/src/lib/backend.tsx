@@ -11,6 +11,7 @@ import type {
   AuthProviderId,
   BackupArtifact,
   BackendMode,
+  CaptchaScene,
   CaptchaStatus,
   ChangePasswordInput,
   CommentModerationAction,
@@ -31,6 +32,8 @@ import type {
   FollowEntry,
   ImportConflictStrategy,
   InteractionEntry,
+  LocalCaptchaChallenge,
+  LocalCaptchaSolution,
   Me,
   Member,
   MediaQuotaBytes,
@@ -151,6 +154,18 @@ export interface Backend {
    * 可选：演示后端与旧后端没有这个端点，调用方按「未启用」处理即可。
    */
   captchaStatus?(): Promise<CaptchaStatus>;
+  /**
+   * 本地（自托管）人机验证：取一道算术题。
+   *
+   * 可选：只有真实后端实现了本地验证，旧后端与演示后端没有这些端点。
+   */
+  captchaLocalChallenge?(scene: CaptchaScene): Promise<LocalCaptchaChallenge>;
+  /** 本地（自托管）人机验证：提交答案，换一个一次性 token。 */
+  captchaLocalVerify?(input: {
+    challenge_id: string;
+    answer: number;
+    scene: CaptchaScene;
+  }): Promise<LocalCaptchaSolution>;
   /** 仅演示后端：模拟手机 / 第三方登录，以站点管理员身份进入。 */
   demoProviderLogin?(provider: AuthProviderId): Promise<Session>;
   refresh(): Promise<Session>;

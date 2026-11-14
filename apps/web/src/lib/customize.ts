@@ -151,7 +151,6 @@ export const DEFAULT_VERIFICATION: HumanVerificationSettings = {
   enabled: false,
   provider: 'turnstile',
   site_key: '',
-  recaptcha_version: 'v2',
   on_login: true,
   on_register: true,
   on_comment: false,
@@ -1221,7 +1220,7 @@ function normalizeTaxonomy(value: unknown): TaxonomySettings {
   return { categories, tags };
 }
 
-const VERIFICATION_PROVIDERS: HumanVerificationProvider[] = ['turnstile', 'hcaptcha', 'recaptcha'];
+const VERIFICATION_PROVIDERS: HumanVerificationProvider[] = ['turnstile', 'hcaptcha', 'local'];
 
 /** 页头样式枚举；未知值回退经典吸顶。 */
 const HEADER_STYLES: HeaderStyle[] = ['classic', 'transparent', 'float'];
@@ -1244,6 +1243,9 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 }
 
 function normalizeVerificationProvider(value: unknown): HumanVerificationProvider {
+  // 旧配置里的 Google reCAPTCHA 已从产品移除：按 Turnstile 读，旧站点不会因此
+  // 失去验证，也不会因为未知服务商而让表单拒绝提交。
+  if (value === 'recaptcha') return 'turnstile';
   return typeof value === 'string' && (VERIFICATION_PROVIDERS as string[]).includes(value)
     ? (value as HumanVerificationProvider)
     : DEFAULT_VERIFICATION.provider;
@@ -1384,12 +1386,28 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
       enabled: bool(raw.comments?.enabled, DEFAULT_COMMENT_SETTINGS.enabled),
       require_review: bool(raw.comments?.require_review, DEFAULT_COMMENT_SETTINGS.require_review),
       notice: text(raw.comments?.notice, '', 400),
+      ai: {
+        enabled: bool(raw.comments?.ai?.enabled, false),
+        mode: raw.comments?.ai?.mode === 'auto_hold' ? 'auto_hold' : 'suggest',
+        sensitivity:
+          raw.comments?.ai?.sensitivity === 'low'
+            ? 'low'
+            : raw.comments?.ai?.sensitivity === 'high'
+              ? 'high'
+              : 'medium',
+        blocked_terms: Array.isArray(raw.comments?.ai?.blocked_terms)
+          ? raw.comments.ai.blocked_terms
+              .filter((term): term is string => typeof term === 'string')
+              .map((term) => term.trim().toLowerCase().slice(0, 40))
+              .filter(Boolean)
+              .slice(0, 50)
+          : [],
+      },
     },
     verification: {
       enabled: bool(raw.verification?.enabled, DEFAULT_VERIFICATION.enabled),
       provider: normalizeVerificationProvider(raw.verification?.provider),
       site_key: text(raw.verification?.site_key, '', 200),
-      recaptcha_version: raw.verification?.recaptcha_version === 'v3' ? 'v3' : 'v2',
       on_login: bool(raw.verification?.on_login, DEFAULT_VERIFICATION.on_login),
       on_register: bool(raw.verification?.on_register, DEFAULT_VERIFICATION.on_register),
       on_comment: bool(raw.verification?.on_comment, DEFAULT_VERIFICATION.on_comment),

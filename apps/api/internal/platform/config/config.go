@@ -85,15 +85,15 @@ type StorageScopeConfig struct {
 // The URL overrides exist for two honest reasons: the test suite points them at an
 // httptest server, and a deployment behind an egress proxy can route through a
 // gateway it controls. They are empty in production.
+//
+// The built-in local provider needs neither a secret nor a URL: it is always
+// available in the API process.
 type CaptchaConfig struct {
-	TurnstileSecret   string
-	HCaptchaSecret    string
-	RecaptchaSecret   string
-	TurnstileURL      string
-	HCaptchaURL       string
-	RecaptchaURL      string
-	RecaptchaMinScore float64
-	Timeout           time.Duration
+	TurnstileSecret string
+	HCaptchaSecret  string
+	TurnstileURL    string
+	HCaptchaURL     string
+	Timeout         time.Duration
 }
 
 // Config is the fully validated process configuration.
@@ -774,10 +774,8 @@ func loadCaptcha(cfg *Config) error {
 	cfg.Captcha = CaptchaConfig{
 		TurnstileSecret: env("CAPTCHA_TURNSTILE_SECRET"),
 		HCaptchaSecret:  env("CAPTCHA_HCAPTCHA_SECRET"),
-		RecaptchaSecret: env("CAPTCHA_RECAPTCHA_SECRET"),
 		TurnstileURL:    env("CAPTCHA_TURNSTILE_URL"),
 		HCaptchaURL:     env("CAPTCHA_HCAPTCHA_URL"),
-		RecaptchaURL:    env("CAPTCHA_RECAPTCHA_URL"),
 	}
 
 	timeout, err := envInt("CAPTCHA_TIMEOUT_SECONDS", 5)
@@ -791,18 +789,6 @@ func loadCaptcha(cfg *Config) error {
 		}
 	}
 	cfg.Captcha.Timeout = time.Duration(timeout) * time.Second
-
-	minScore, err := envFloat("CAPTCHA_RECAPTCHA_MIN_SCORE", 0.5)
-	if err != nil {
-		return err
-	}
-	if minScore < 0 || minScore > 1 {
-		return &Error{
-			Code:   "invalid_captcha_recaptcha_min_score",
-			Detail: "CAPTCHA_RECAPTCHA_MIN_SCORE must be between 0 and 1",
-		}
-	}
-	cfg.Captcha.RecaptchaMinScore = minScore
 	return nil
 }
 
@@ -999,20 +985,6 @@ func envInt(key string, def int) (int, error) {
 		return 0, &Error{Code: "invalid_" + strings.ToLower(key), Detail: key + " must be an integer"}
 	}
 	return n, nil
-}
-
-// envFloat reads a decimal number, falling back to def when unset. It is used by
-// the reCAPTCHA v3 threshold, which is a probability between 0 and 1.
-func envFloat(key string, def float64) (float64, error) {
-	raw := env(key)
-	if raw == "" {
-		return def, nil
-	}
-	value, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0, &Error{Code: "invalid_" + strings.ToLower(key), Detail: key + " must be a number"}
-	}
-	return value, nil
 }
 
 // envInt64 reads a signed 64-bit integer, falling back to def when unset. Callers

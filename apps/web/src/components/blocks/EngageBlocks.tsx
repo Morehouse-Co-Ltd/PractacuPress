@@ -159,7 +159,6 @@ export function Guestbook({ block }: { block: BlockInstance }): ReactElement {
               scene="comment"
               status={captcha.status}
               onToken={setCaptchaToken}
-              recaptchaVersion={customization.verification.recaptcha_version ?? 'v2'}
               resetKey={captchaNonce}
               onFailure={setCaptchaFailure}
             />

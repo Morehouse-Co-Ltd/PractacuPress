@@ -359,10 +359,14 @@ paths:
                     description: The site's stored switch, regardless of whether it can be enforced.
                   provider:
                     type: string
-                    enum: [turnstile, hcaptcha, recaptcha]
+                    enum: [turnstile, hcaptcha, local]
+                    description: |
+                      The selected service. `local` is the built-in arithmetic
+                      challenge served by this API process; it needs no site key and
+                      no server secret.
                   site_key:
                     type: string
-                    description: Public widget key; empty when the site never saved one.
+                    description: Public widget key; empty when the site never saved one or selected `local`.
                   scenes:
                     type: object
                     description: Scenes that are really challenged right now.
@@ -381,6 +385,99 @@ paths:
                   checked_at:
                     type: string
                     format: date-time
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /captcha/local/challenge:
+    get:
+      tags: [auth]
+      summary: Issue a self-hosted arithmetic challenge
+      description: |
+        Issues a short-lived arithmetic question for the built-in `local` provider.
+        Public on purpose: the login, registration, password reset and comment forms
+        call it before rendering their widget, exactly like they call
+        `/captcha/status` first.
+
+        The answer never leaves the server: the browser posts it back to
+        `/captcha/local/verify`, which returns the token the protected endpoint
+        expects. A deployment that does not wire the local challenge store answers
+        503, and `/captcha/status` never reports the provider as effective there.
+
+        The local provider is stateful per process: the challenge and the verify call
+        (and later the protected request) must reach the same API instance.
+      security: []
+      parameters:
+        - name: scene
+          in: query
+          required: true
+          description: The protected form the challenge is for.
+          schema: { type: string, enum: [login, register, password_reset, comment] }
+      responses:
+        '200':
+          description: One issued challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challenge_id, question, expires_at]
+                properties:
+                  challenge_id:
+                    type: string
+                    description: Opaque id to submit with the answer; single use.
+                  question:
+                    type: string
+                    example: 8 + 3 = ?
+                    description: Human readable arithmetic question.
+                  expires_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/SecurityUnavailable'
+
+  /captcha/local/verify:
+    post:
+      tags: [auth]
+      summary: Solve a self-hosted arithmetic challenge
+      description: |
+        Checks the answer to a challenge issued by `/captcha/local/challenge` and
+        mints a one-shot token bound to the scene. A wrong answer consumes the
+        challenge too (the browser asks for another one), so a script cannot probe
+        one question until it hits the right number.
+
+        The returned token is submitted as `captcha_token` to the protected endpoint,
+        exactly like a Turnstile or hCaptcha token, and is valid for five minutes at
+        most.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, answer, scene]
+              properties:
+                challenge_id: { type: string }
+                answer: { type: integer }
+                scene: { type: string, enum: [login, register, password_reset, comment] }
+      responses:
+        '200':
+          description: The solved token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expires_at]
+                properties:
+                  token:
+                    type: string
+                    description: One-shot token for the protected endpoint.
+                  expires_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
         '503':
           $ref: '#/components/responses/SecurityUnavailable'
 

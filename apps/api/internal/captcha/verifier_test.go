@@ -2,7 +2,6 @@ package captcha
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +34,7 @@ func testVerifier(t *testing.T, endpoint string, secrets map[Provider]string, op
 	t.Helper()
 	cfg := Config{
 		Secrets:   secrets,
-		Endpoints: map[Provider]string{ProviderTurnstile: endpoint, ProviderHCaptcha: endpoint, ProviderRecaptcha: endpoint},
+		Endpoints: map[Provider]string{ProviderTurnstile: endpoint, ProviderHCaptcha: endpoint},
 		Timeout:   2 * time.Second,
 	}
 	for _, option := range options {
@@ -189,81 +188,12 @@ func TestVerifySendsSiteKeyToHCaptcha(t *testing.T) {
 	require.Equal(t, "10000000-ffff-ffff-ffff-000000000001", seen["sitekey"])
 }
 
-func TestVerifyRecaptchaV3EnforcesTheScore(t *testing.T) {
-	server := newSiteVerify(t, func(*http.Request, map[string]string) (int, string) {
-		body, _ := json.Marshal(map[string]any{
-			"success": true,
-			"score":   0.2,
-			"action":  "login",
-		})
-		return http.StatusOK, string(body)
-	})
-
-	verifier := testVerifier(t, server.URL, map[Provider]string{ProviderRecaptcha: "s"}, func(cfg *Config) {
-		cfg.MinScore = 0.5
-	})
-	_, err := verifier.Verify(context.Background(), Request{
-		Provider: ProviderRecaptcha,
-		Token:    "low",
-		Scene:    SceneLogin,
-	})
-	require.ErrorIs(t, err, ErrScoreTooLow)
-
-	// A low score is a refusal (solve again), not a used token: the visitor gets
-	// another attempt.
-	require.False(t, verifier.seen(ProviderRecaptcha, "low"))
-}
-
-func TestVerifyRecaptchaV3EnforcesTheAction(t *testing.T) {
-	server := newSiteVerify(t, func(*http.Request, map[string]string) (int, string) {
-		return http.StatusOK, `{"success":true,"score":0.9,"action":"comment"}`
-	})
-
-	verifier := testVerifier(t, server.URL, map[Provider]string{ProviderRecaptcha: "s"})
-	_, err := verifier.Verify(context.Background(), Request{
-		Provider: ProviderRecaptcha,
-		Token:    "wrong-form",
-		Scene:    SceneLogin,
-	})
-	require.ErrorIs(t, err, ErrActionMismatch)
-}
-
-func TestVerifyRecaptchaV2HasNoScoreOrAction(t *testing.T) {
-	// reCAPTCHA v2 answers with neither score nor action; treating a missing score
-	// as zero would reject every v2 deployment.
-	server := newSiteVerify(t, func(*http.Request, map[string]string) (int, string) {
-		return http.StatusOK, `{"success":true,"hostname":"press.example"}`
-	})
-
-	verifier := testVerifier(t, server.URL, map[Provider]string{ProviderRecaptcha: "s"})
-	_, err := verifier.Verify(context.Background(), Request{
-		Provider: ProviderRecaptcha,
-		Token:    "v2",
-		Scene:    SceneLogin,
-	})
-	require.NoError(t, err)
-}
-
-func TestVerifyRecaptchaV3AcceptsAMatchingAction(t *testing.T) {
-	server := newSiteVerify(t, func(*http.Request, map[string]string) (int, string) {
-		return http.StatusOK, `{"success":true,"score":0.9,"action":"register"}`
-	})
-
-	verifier := testVerifier(t, server.URL, map[Provider]string{ProviderRecaptcha: "s"})
-	result, err := verifier.Verify(context.Background(), Request{
-		Provider: ProviderRecaptcha,
-		Token:    "ok",
-		Scene:    SceneRegister,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, result.Score)
-	require.InDelta(t, 0.9, *result.Score, 0.001)
-}
-
 func TestVerifyUsesTheOfficialEndpointByDefault(t *testing.T) {
 	require.Contains(t, defaultEndpoint(ProviderTurnstile), "challenges.cloudflare.com")
 	require.Contains(t, defaultEndpoint(ProviderHCaptcha), "hcaptcha.com")
-	require.Contains(t, defaultEndpoint(ProviderRecaptcha), "google.com")
+	// The local provider has no siteverify endpoint at all; it is redeemed in
+	// process, and no provider selection can turn that into an HTTP call.
+	require.Empty(t, defaultEndpoint(ProviderLocal))
 }
 
 func TestVerifyRejectsAnUnknownProvider(t *testing.T) {

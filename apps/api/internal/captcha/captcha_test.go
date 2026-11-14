@@ -58,6 +58,37 @@ func TestParseSettingsDisablesAnUnknownProvider(t *testing.T) {
 	require.False(t, settings.Enabled)
 }
 
+// TestParseSettingsNormalizesLegacyRecaptcha is the upgrade contract: Google
+// reCAPTCHA was removed from the product, but a site that saved it must not be
+// locked out (unknown provider would read as off). The stored intent is rewritten
+// to Turnstile, which every deployment can still render.
+func TestParseSettingsNormalizesLegacyRecaptcha(t *testing.T) {
+	settings := ParseSettings([]byte(`{
+		"verification": {
+			"enabled": true,
+			"provider": "recaptcha",
+			"site_key": "legacy-site-key",
+			"on_login": true
+		}
+	}`))
+	require.True(t, settings.Enabled)
+	require.Equal(t, ProviderTurnstile, settings.Provider)
+	require.Equal(t, "legacy-site-key", settings.SiteKey)
+	require.True(t, settings.SceneEnabled(SceneLogin))
+}
+
+// TestProvidersListsTheSelectableProviders pins the settings page order and keeps the
+// removed reCAPTCHA provider from creeping back in.
+func TestProvidersListsTheSelectableProviders(t *testing.T) {
+	require.Equal(t, []Provider{ProviderTurnstile, ProviderHCaptcha, ProviderLocal}, Providers)
+	require.True(t, ProviderLocal.Valid())
+	require.False(t, Provider("recaptcha").Valid(), "reCAPTCHA is removed; only the legacy name is normalised")
+	require.Equal(t, ProviderTurnstile, Provider("recaptcha").Normalize())
+	require.Equal(t, "本地算术验证", ProviderLocal.Label())
+	require.False(t, ProviderLocal.RequiresSiteKey())
+	require.True(t, ProviderTurnstile.RequiresSiteKey())
+}
+
 func TestParseSettingsKeepsExplicitFalseSwitches(t *testing.T) {
 	settings := ParseSettings([]byte(`{
 		"verification": {"enabled": true, "provider": "turnstile", "site_key": "k", "on_login": false}

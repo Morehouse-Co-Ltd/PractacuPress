@@ -1354,18 +1354,13 @@ export interface LayoutSettings {
  * 组件是否显示以 `GET /captcha/status` 的 `effective` 为准，不能只看这里的开关。
  * Secret 只存在于服务端环境变量，不写入任何前端数据。
  */
-export type HumanVerificationProvider = 'turnstile' | 'hcaptcha' | 'recaptcha';
-
-/** reCAPTCHA 的两种模式：v2 是可见复选框，v3 是无感评分。 */
-export type RecaptchaVersion = 'v2' | 'v3';
+export type HumanVerificationProvider = 'turnstile' | 'hcaptcha' | 'local';
 
 export interface HumanVerificationSettings {
   enabled: boolean;
   provider: HumanVerificationProvider;
-  /** 前端可见的 Site Key。 */
+  /** 前端可见的 Site Key；仅第三方服务商使用，本地验证不需要。 */
   site_key: string;
-  /** 仅 reCAPTCHA 使用：v2 显示复选框，v3 按场景执行无感评分。 */
-  recaptcha_version: RecaptchaVersion;
   /** 要保护的表单场景。 */
   on_login: boolean;
   on_register: boolean;
@@ -1374,7 +1369,7 @@ export interface HumanVerificationSettings {
   on_password_reset: boolean;
 }
 
-/** 受保护的表单场景。值同时是 reCAPTCHA v3 的 action。 */
+/** 受保护的表单场景。值同时是组件 action 与本地验证 token 绑定的场景。 */
 export type CaptchaScene = 'login' | 'register' | 'password_reset' | 'comment';
 
 /**
@@ -1393,17 +1388,51 @@ export interface CaptchaStatus {
   checked_at: string;
 }
 
+/**
+ * 本地（自托管）验证的一道题（`GET /captcha/local/challenge`）。
+ *
+ * 问题与答案都由本站服务端生成与校验，不需要 Site Key 或环境变量；答案只存在
+ * 服务端内存里，前端拿到的只有题面。挑战一次性、短时有效。
+ */
+export interface LocalCaptchaChallenge {
+  challenge_id: string;
+  question: string;
+  expires_at: string;
+}
+
+/**
+ * 本地验证答对后换到的 token（`POST /captcha/local/verify`）。
+ *
+ * 和第三方服务商的 token 一样提交给受保护接口，一次性、有效期约五分钟。
+ */
+export interface LocalCaptchaSolution {
+  token: string;
+  expires_at: string;
+}
+
 /* ---------- 评论 ---------- */
 
 /**
  * 评论设置。契约 v0.1.0 没有站点级评论配置端点，因此和主题一样保存在本地安装配置里。
  * `require_review` 为真时，新评论进入 pending_review，需要通过后台「评论管理」放行。
  */
+/** AI 审核辅助：目前使用本地启发式评分，不上传评论正文到外部服务。 */
+export interface AiModerationSettings {
+  enabled: boolean;
+  /** suggest：只给审核员建议；auto_hold：命中时在列表里默认标红并建议先隐藏。 */
+  mode: 'suggest' | 'auto_hold';
+  sensitivity: 'low' | 'medium' | 'high';
+  /** 自定义高风险词，逗号分隔；留空时只用内置规则。 */
+  blocked_terms: string[];
+}
+
 export interface CommentSettings {
   enabled: boolean;
   require_review: boolean;
   /** 评论须知，显示在评论框上方；留空则不显示。 */
   notice: string;
+  /** AI 审核辅助设置；旧配置缺省时关闭。 */
+  ai?: AiModerationSettings;
 }
 
 /* ---------- 内容安全 ---------- */

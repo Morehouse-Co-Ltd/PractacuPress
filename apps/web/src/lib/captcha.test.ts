@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   CAPTCHA_SCENES,
+  asProvider,
   captchaAction,
   captchaEnvSnippet,
+  captchaProviderNeedsSiteKey,
   captchaReasonText,
   captchaSceneRequired,
   captchaScriptUrl,
@@ -37,6 +39,17 @@ describe('readCaptchaStatus', () => {
       expect(status.site_key).toBe('');
       for (const scene of CAPTCHA_SCENES) expect(status.scenes[scene]).toBe(false);
     }
+  });
+
+  it('旧的 recaptcha 配置按 turnstile 读，不会因为服务商被移除而失效', () => {
+    expect(asProvider('recaptcha')).toBe('turnstile');
+    const status = readCaptchaStatus({ provider: 'recaptcha', enabled: true, effective: true });
+    expect(status.provider).toBe('turnstile');
+  });
+
+  it('识别本地（自托管）服务商', () => {
+    const status = readCaptchaStatus({ provider: 'local', effective: true });
+    expect(status.provider).toBe('local');
   });
 
   it('场景表总是包含全部场景', () => {
@@ -76,13 +89,20 @@ describe('captchaSceneRequired', () => {
 
 describe('captchaScriptUrl', () => {
   it('按服务商给出脚本地址', () => {
-    expect(captchaScriptUrl('turnstile', 'k')).toContain('challenges.cloudflare.com');
-    expect(captchaScriptUrl('hcaptcha', 'k')).toContain('js.hcaptcha.com');
-    expect(captchaScriptUrl('recaptcha', 'k', 'v2')).toContain('render=explicit');
+    expect(captchaScriptUrl('turnstile')).toContain('challenges.cloudflare.com');
+    expect(captchaScriptUrl('hcaptcha')).toContain('js.hcaptcha.com');
   });
 
-  it('reCAPTCHA v3 的脚本地址带上 Site Key', () => {
-    expect(captchaScriptUrl('recaptcha', 'site-key', 'v3')).toContain('render=site-key');
+  it('本地验证不加载任何外部脚本', () => {
+    expect(captchaScriptUrl('local')).toBe('');
+  });
+});
+
+describe('captchaProviderNeedsSiteKey', () => {
+  it('只有本地验证不需要 Site Key', () => {
+    expect(captchaProviderNeedsSiteKey('turnstile')).toBe(true);
+    expect(captchaProviderNeedsSiteKey('hcaptcha')).toBe(true);
+    expect(captchaProviderNeedsSiteKey('local')).toBe(false);
   });
 });
 
@@ -99,12 +119,13 @@ describe('captchaEnvSnippet', () => {
   it('使用后端真正读取的环境变量名', () => {
     expect(captchaEnvSnippet('turnstile')).toContain('CAPTCHA_TURNSTILE_SECRET');
     expect(captchaEnvSnippet('hcaptcha')).toContain('CAPTCHA_HCAPTCHA_SECRET');
-    expect(captchaEnvSnippet('recaptcha')).toContain('CAPTCHA_RECAPTCHA_SECRET');
   });
 
-  it('reCAPTCHA 片段带分数阈值，其它服务商不带', () => {
-    expect(captchaEnvSnippet('recaptcha')).toContain('CAPTCHA_RECAPTCHA_MIN_SCORE');
-    expect(captchaEnvSnippet('turnstile')).not.toContain('CAPTCHA_RECAPTCHA_MIN_SCORE');
+  it('本地验证片段说明不需要密钥', () => {
+    const snippet = captchaEnvSnippet('local');
+    expect(snippet).not.toContain('CAPTCHA_TURNSTILE_SECRET');
+    expect(snippet).not.toContain('CAPTCHA_HCAPTCHA_SECRET');
+    expect(snippet.toLowerCase()).toContain('no secret');
   });
 });
 

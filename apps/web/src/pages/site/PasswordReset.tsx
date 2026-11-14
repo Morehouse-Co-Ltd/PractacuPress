@@ -63,7 +63,6 @@ function errorMessage(err: unknown, t: Translator): string {
 export function ForgotPasswordPage() {
   const t = useT();
   const backend = useBackend();
-  const { config } = useAuth();
   const [params] = useSearchParams();
   const [email, setEmail] = useState(params.get('email') ?? '');
   const [ticket, setTicket] = useState<{ token?: string; expires_in: number } | null>(null);
@@ -77,7 +76,6 @@ export function ForgotPasswordPage() {
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaFailure, setCaptchaFailure] = useState('');
-  const recaptchaVersion = config.customization?.verification.recaptcha_version ?? 'v2';
 
   const policy = useAsync(async () => backend.passwordResetPolicy(), [backend]);
 
@@ -188,7 +186,6 @@ export function ForgotPasswordPage() {
             scene="password_reset"
             status={captcha.status}
             onToken={setCaptchaToken}
-            recaptchaVersion={recaptchaVersion}
             resetKey={captchaNonce}
             onFailure={setCaptchaFailure}
           />

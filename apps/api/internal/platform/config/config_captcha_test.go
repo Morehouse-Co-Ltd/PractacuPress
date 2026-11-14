@@ -15,12 +15,9 @@ func clearCaptchaEnv(t *testing.T) {
 	for _, name := range []string{
 		"CAPTCHA_TURNSTILE_SECRET",
 		"CAPTCHA_HCAPTCHA_SECRET",
-		"CAPTCHA_RECAPTCHA_SECRET",
 		"CAPTCHA_TURNSTILE_URL",
 		"CAPTCHA_HCAPTCHA_URL",
-		"CAPTCHA_RECAPTCHA_URL",
 		"CAPTCHA_TIMEOUT_SECONDS",
-		"CAPTCHA_RECAPTCHA_MIN_SCORE",
 	} {
 		t.Setenv(name, "")
 	}
@@ -37,9 +34,7 @@ func TestCaptchaIsOptional(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cfg.Captcha.TurnstileSecret)
 	require.Empty(t, cfg.Captcha.HCaptchaSecret)
-	require.Empty(t, cfg.Captcha.RecaptchaSecret)
 	require.Equal(t, 5*time.Second, cfg.Captcha.Timeout)
-	require.Equal(t, 0.5, cfg.Captcha.RecaptchaMinScore)
 }
 
 // TestCaptchaReadsSecretsAndOverrides proves the secrets come from the environment
@@ -50,23 +45,33 @@ func TestCaptchaReadsSecretsAndOverrides(t *testing.T) {
 	clearCaptchaEnv(t)
 	t.Setenv("CAPTCHA_TURNSTILE_SECRET", "turnstile-secret")
 	t.Setenv("CAPTCHA_HCAPTCHA_SECRET", "hcaptcha-secret")
-	t.Setenv("CAPTCHA_RECAPTCHA_SECRET", "recaptcha-secret")
 	t.Setenv("CAPTCHA_TURNSTILE_URL", "https://turnstile.gateway.test/siteverify")
 	t.Setenv("CAPTCHA_HCAPTCHA_URL", "https://hcaptcha.gateway.test/siteverify")
-	t.Setenv("CAPTCHA_RECAPTCHA_URL", "https://recaptcha.gateway.test/siteverify")
 	t.Setenv("CAPTCHA_TIMEOUT_SECONDS", "12")
-	t.Setenv("CAPTCHA_RECAPTCHA_MIN_SCORE", "0.7")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "turnstile-secret", cfg.Captcha.TurnstileSecret)
 	require.Equal(t, "hcaptcha-secret", cfg.Captcha.HCaptchaSecret)
-	require.Equal(t, "recaptcha-secret", cfg.Captcha.RecaptchaSecret)
 	require.Equal(t, "https://turnstile.gateway.test/siteverify", cfg.Captcha.TurnstileURL)
 	require.Equal(t, "https://hcaptcha.gateway.test/siteverify", cfg.Captcha.HCaptchaURL)
-	require.Equal(t, "https://recaptcha.gateway.test/siteverify", cfg.Captcha.RecaptchaURL)
 	require.Equal(t, 12*time.Second, cfg.Captcha.Timeout)
-	require.Equal(t, 0.7, cfg.Captcha.RecaptchaMinScore)
+}
+
+// TestCaptchaIgnoresRemovedRecaptchaVariables keeps the upgrade honest: a
+// deployment that still exports the old reCAPTCHA variables must boot normally, and
+// the values must not creep back into the configuration struct.
+func TestCaptchaIgnoresRemovedRecaptchaVariables(t *testing.T) {
+	setValidEnv(t)
+	clearCaptchaEnv(t)
+	t.Setenv("CAPTCHA_RECAPTCHA_SECRET", "left-over-secret")
+	t.Setenv("CAPTCHA_RECAPTCHA_URL", "https://recaptcha.gateway.test/siteverify")
+	t.Setenv("CAPTCHA_RECAPTCHA_MIN_SCORE", "not-a-number")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Empty(t, cfg.Captcha.TurnstileSecret)
+	require.Empty(t, cfg.Captcha.HCaptchaSecret)
 }
 
 // TestCaptchaTimeoutBounds keeps a pathological value from holding a login open or
@@ -104,51 +109,4 @@ func TestCaptchaTimeoutBounds(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, time.Second, cfg.Captcha.Timeout)
-}
-
-// TestCaptchaMinScoreBounds covers the reCAPTCHA v3 threshold, including the two
-// boundary values an operator is allowed to pick (0 accepts every token, 1 rejects
-// everything that is not a perfect score).
-func TestCaptchaMinScoreBounds(t *testing.T) {
-	for _, tc := range []struct {
-		value string
-		want  float64
-	}{
-		{value: "0", want: 0},
-		{value: "1", want: 1},
-	} {
-		t.Run("accepts "+tc.value, func(t *testing.T) {
-			setValidEnv(t)
-			clearCaptchaEnv(t)
-			t.Setenv("CAPTCHA_RECAPTCHA_MIN_SCORE", tc.value)
-
-			cfg, err := Load()
-			require.NoError(t, err)
-			require.Equal(t, tc.want, cfg.Captcha.RecaptchaMinScore)
-		})
-	}
-
-	cases := []struct {
-		name  string
-		value string
-	}{
-		{name: "below zero", value: "-0.1"},
-		{name: "above one", value: "1.5"},
-		{name: "not a number", value: "high"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			setValidEnv(t)
-			clearCaptchaEnv(t)
-			t.Setenv("CAPTCHA_RECAPTCHA_MIN_SCORE", tc.value)
-
-			_, err := Load()
-			require.Error(t, err)
-
-			var cfgErr *Error
-			require.True(t, errors.As(err, &cfgErr))
-			require.Equal(t, "invalid_captcha_recaptcha_min_score", cfgErr.Code)
-		})
-	}
 }

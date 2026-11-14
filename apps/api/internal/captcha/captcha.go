@@ -1,20 +1,24 @@
 // Package captcha verifies human-challenge tokens (Cloudflare Turnstile,
-// hCaptcha and Google reCAPTCHA) and decides which site forms require one.
+// hCaptcha, or the built-in self-hosted arithmetic challenge) and decides which
+// site forms require one.
 //
 // The package is transport agnostic: it names the protected scenes, reads the
 // site's intent from the stored design document, calls the provider's siteverify
-// endpoint and reports sentinel errors. Mapping those errors onto HTTP status
-// codes and problem+json lives in the handlers, exactly like every other module.
+// endpoint (or the in-process local challenge store) and reports sentinel errors.
+// Mapping those errors onto HTTP status codes and problem+json lives in the
+// handlers, exactly like every other module.
 //
 // Two boundaries are deliberate:
 //
 //   - The secret never leaves the process. It is read from the environment at
 //     startup (see Config.Secrets) and sent only to the provider's siteverify
 //     endpoint, never to the browser and never stored in the site configuration.
+//     The local provider needs no secret at all: its challenge and its token are
+//     issued and redeemed by this process.
 //   - The stored site configuration holds the *intent* (which provider, which
 //     forms, the public site key). Whether that intent is enforced is decided
-//     here from the server's own secret, so a site that switched the switch on
-//     without configuring the secret is reported as unenforced instead of
+//     here from the server's own capability, so a site that switched the switch
+//     on without configuring the provider is reported as unenforced instead of
 //     silently pretending to check tokens.
 package captcha
 
@@ -33,20 +37,41 @@ type Provider string
 const (
 	ProviderTurnstile Provider = "turnstile"
 	ProviderHCaptcha  Provider = "hcaptcha"
-	ProviderRecaptcha Provider = "recaptcha"
+	// ProviderLocal is the built-in, self-hosted arithmetic challenge. It needs no
+	// external service, no site key and no server secret: this process issues the
+	// question and remembers the answer.
+	ProviderLocal Provider = "local"
 )
 
+// legacyProviderRecaptcha is the value old sites stored before Google reCAPTCHA was
+// removed. A stored document naming it is normalised to turnstile instead of being
+// rejected: the provider is gone, but a site that never revisits the settings page
+// must keep working with the remaining widget rather than silently disabling all
+// validation (or worse, failing every protected form).
+const legacyProviderRecaptcha = "recaptcha"
+
 // Providers lists every accepted provider in the order the settings page shows them.
-var Providers = []Provider{ProviderTurnstile, ProviderHCaptcha, ProviderRecaptcha}
+var Providers = []Provider{ProviderTurnstile, ProviderHCaptcha, ProviderLocal}
 
 // Valid reports whether p is a known provider.
 func (p Provider) Valid() bool {
 	switch p {
-	case ProviderTurnstile, ProviderHCaptcha, ProviderRecaptcha:
+	case ProviderTurnstile, ProviderHCaptcha, ProviderLocal:
 		return true
 	default:
 		return false
 	}
+}
+
+// Normalize maps a stored provider value onto the providers this build supports.
+//
+// Only the legacy reCAPTCHA name is rewritten; an unknown provider stays unknown so
+// the caller can treat the stored intent as unverifiable instead of guessing.
+func (p Provider) Normalize() Provider {
+	if p == legacyProviderRecaptcha {
+		return ProviderTurnstile
+	}
+	return p
 }
 
 // Label is the operator facing name of a provider.
@@ -56,17 +81,23 @@ func (p Provider) Label() string {
 		return "Cloudflare Turnstile"
 	case ProviderHCaptcha:
 		return "hCaptcha"
-	case ProviderRecaptcha:
-		return "Google reCAPTCHA"
+	case ProviderLocal:
+		return "本地算术验证"
 	default:
 		return string(p)
 	}
 }
 
-// Scene names one protected form. The value doubles as the reCAPTCHA v3 action:
-// the widget is told to run with this action and the server refuses a token whose
-// action does not match, which is what keeps a token harvested on one form from
-// being replayed on another.
+// RequiresSiteKey reports whether a browser side widget key is part of the
+// provider's protocol. The local challenge is served by this process itself, so a
+// site never has to paste a key for it.
+func (p Provider) RequiresSiteKey() bool {
+	return p != ProviderLocal
+}
+
+// Scene names one protected form. The value also travels inside the provider
+// protocol (as the widget action or as the local token's bound scene), which is
+// what keeps a token harvested on one form from being replayed on another.
 type Scene string
 
 // The protected scenes.
@@ -87,7 +118,9 @@ func (s Scene) Valid() bool {
 	}
 }
 
-// Action is the reCAPTCHA v3 action a widget must execute for this scene.
+// Action is the widget action a provider must execute for this scene. It is the
+// scene name itself, so the two sides cannot drift; the local provider binds its
+// tokens to the same value.
 func (s Scene) Action() string { return string(s) }
 
 // Settings is the site's stored intent, mirroring the frontend
@@ -199,7 +232,7 @@ func ParseSettings(document []byte) Settings {
 		settings.OnPasswordReset = *stored.OnPasswordReset
 	}
 
-	if provider := Provider(strings.TrimSpace(stored.Provider)); provider.Valid() {
+	if provider := Provider(strings.TrimSpace(stored.Provider)).Normalize(); provider.Valid() {
 		settings.Provider = provider
 	} else if stored.Provider != "" {
 		// An unknown provider is not a reason to guess: a site that saved one
@@ -214,16 +247,18 @@ func ParseSettings(document []byte) Settings {
 
 // Policy is the effective rule the server enforces for one site.
 //
-// Effective is the only field a form should trust: intent without a server secret
-// cannot be enforced, and rendering a widget for a rule that is not applied would
-// teach visitors that the check is decorative.
+// Effective is the only field a form should trust: intent without the means to
+// enforce it cannot be enforced, and rendering a widget for a rule that is not
+// applied would teach visitors that the check is decorative.
 type Policy struct {
 	Settings Settings
-	// SecretConfigured reports whether the process holds a secret for the
-	// provider the site selected.
+	// SecretConfigured reports whether the process can verify the provider the
+	// site selected. For the local provider it means the in-memory challenge store
+	// is wired, not that a secret was supplied.
 	SecretConfigured bool
 	// Effective is true when the check really runs: the site enabled it, the
-	// provider secret is configured and a public site key is present.
+	// process can verify the provider and (for third party providers) a public
+	// site key is present.
 	Effective bool
 }
 
@@ -253,9 +288,14 @@ var (
 	ErrRejected = errors.New("captcha: token was rejected")
 	// ErrReplay means the same token was already redeemed.
 	ErrReplay = errors.New("captcha: token was already redeemed")
-	// ErrScoreTooLow means a reCAPTCHA v3 score fell below the threshold.
+	// ErrScoreTooLow and ErrActionMismatch are kept in the stable reason vocabulary
+	// even though the provider that produced them (Google reCAPTCHA) is no longer
+	// selectable: older clients still translate those strings, and the SPA shows
+	// the fallback text for anything it does not know.
+	//
+	// ErrScoreTooLow means a provider score fell below the threshold.
 	ErrScoreTooLow = errors.New("captcha: score is below the threshold")
-	// ErrActionMismatch means a reCAPTCHA v3 token was issued for another form.
+	// ErrActionMismatch means a token was issued for another protected form.
 	ErrActionMismatch = errors.New("captcha: action does not match the protected form")
 	// ErrTimeout means the siteverify call did not answer in time.
 	ErrTimeout = errors.New("captcha: verification timed out")

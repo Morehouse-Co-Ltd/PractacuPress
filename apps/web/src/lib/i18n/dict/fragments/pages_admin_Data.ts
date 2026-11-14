@@ -6,6 +6,8 @@ const fragment: Dictionary = {
   '数据与备份': 'Data and backups',
   '导出可迁移的 Markdown 与图片，或为整个实例生成可校验的备份包。':
     'Export portable Markdown and images, or create a verifiable package for the whole instance.',
+  '导出可迁移的 Markdown 与图片、WordPress / Typecho XML，或为整个实例生成可校验的备份包。':
+    'Export portable Markdown and images, WordPress / Typecho XML, or a verifiable package for the whole instance.',
   '真实后端': 'Live backend',
   '演示模式': 'Demo mode',
   '演示模式不生成真实文件': 'Demo mode does not create real files',
@@ -96,6 +98,118 @@ const fragment: Dictionary = {
   '在仓库根目录执行：': 'Run from the repository root:',
   'MySQL / PostgreSQL 不使用此命令：请用 mysqldump / pg_dump 备份数据库，媒体目录单独复制。S3 媒体不进入备份包，需要按桶单独备份。':
     'MySQL / PostgreSQL do not use this command: back up the database with mysqldump / pg_dump and copy the media directory separately. S3 media is not packaged and must be backed up per bucket.',
+
+  // ---- WordPress / Typecho 导出 ----
+  '导出到 WordPress / Typecho': 'Export to WordPress / Typecho',
+  '生成标准 XML，供 WordPress 的 WXR 导入器或 Typecho 迁移工具读取。':
+    'Generate standards-shaped XML for the WordPress WXR importer or Typecho migration tools.',
+  '导出格式': 'Export format',
+  'WordPress 使用 WXR 1.2；Typecho 使用备份风格的 posts / comments XML。':
+    'WordPress uses WXR 1.2; Typecho uses a backup-style posts / comments XML.',
+  'WordPress WXR XML': 'WordPress WXR XML',
+  'Typecho XML': 'Typecho XML',
+  '内容范围': 'Content scope',
+  '只导出所选类型；分类与标签会一起写进 XML。':
+    'Only the selected kinds are exported; categories and tags are written into the XML too.',
+  '文章与帖子': 'Articles and posts',
+  '仅文章': 'Articles only',
+  '仅帖子': 'Posts only',
+  '状态范围': 'Status scope',
+  '草稿在 WordPress / Typecho 里也会是草稿状态。':
+    'Drafts stay drafts in WordPress / Typecho as well.',
+  '全部内容（含草稿）': 'Everything (including drafts)',
+  '包含评论': 'Include comments',
+  '仅评论列表可用时生效；无法关联到所选内容的评论会被跳过。':
+    'Only works when the comment list is available; comments that cannot be matched to the selected content are skipped.',
+  '媒体文件不会进入 XML': 'Media files are not part of the XML',
+  '正文里的站内图片会改写成站点绝对地址；导入 WordPress / Typecho 后仍需由对方抓取或重新上传这些媒体。':
+    'In-site images in the body are rewritten to absolute site URLs; WordPress / Typecho still has to fetch or re-upload those media after import.',
+  '导出 XML': 'Export XML',
+  '评论作者与发布时间会一起写入。': 'Comment authors and timestamps are written too.',
+  '没有符合条件的内容，文件里只有站点信息。':
+    'No content matched the filters, so the file only contains site information.',
+  '当前后端没有评论列表接口，本次导出不含评论。':
+    'This backend has no comment list endpoint, so this export contains no comments.',
+  '只导出了与所选内容关联的 {count} 条评论。':
+    'Only {count} comments that belong to the selected content were exported.',
+  'XML 不含媒体文件：正文里的图片已改写为绝对地址，WordPress / Typecho 导入后需要抓取或重新上传。':
+    'The XML contains no media files: images in the body were rewritten to absolute URLs, and WordPress / Typecho must fetch or re-upload them after import.',
+
+  // ---- WordPress / Typecho 导入 ----
+  '从 WordPress / Typecho 导入': 'Import from WordPress / Typecho',
+  '读取 WXR 或 Typecho XML：先预览格式与数量，确认后创建草稿或按选择发布。':
+    'Read a WXR or Typecho XML file: preview its format and counts, then create drafts or publish as chosen.',
+  'XML 文件': 'XML file',
+  '支持 WordPress WXR 1.2 与 Typecho 备份 XML；文件只在浏览器里解析，不会上传到服务器。':
+    'Supports WordPress WXR 1.2 and Typecho backup XML; the file is parsed in the browser and never uploaded to the server.',
+  '正在解析…': 'Parsing…',
+  'XML 文件不能超过 20 MB。': 'The XML file must not exceed 20 MB.',
+  '文件里没有找到可导入的文章或评论。':
+    'No importable articles or comments were found in the file.',
+  '无法识别这个 XML：请选择 WordPress WXR 或 Typecho 备份文件。':
+    'Unrecognised XML: choose a WordPress WXR or Typecho backup file.',
+  'XML 解析失败：文件可能已损坏。': 'Failed to parse the XML: the file may be damaged.',
+  'XML 含 DOCTYPE / ENTITY 声明，出于安全考虑已拒绝解析。':
+    'The XML contains DOCTYPE / ENTITY declarations; parsing was refused for safety.',
+  '文章 {count}': 'Articles {count}',
+  '帖子 {count}': 'Posts {count}',
+  '评论 {count}': 'Comments {count}',
+  '来源站点：{name}': 'Source site: {name}',
+  '解析提示': 'Parse notes',
+  '跳过 {count} 条不支持的内容类型：{type}':
+    'Skipped {count} items of an unsupported type: {type}',
+  '有 {count} 条内容缺少标题，导入时会跳过。':
+    '{count} items have no title and will be skipped on import.',
+  '有 {count} 条内容缺少正文，导入时会跳过。':
+    '{count} items have no body and will be skipped on import.',
+  '跳过 {count} 条空评论。': 'Skipped {count} empty comments.',
+  '跳过 {count} 条无法关联到文章的评论。':
+    'Skipped {count} comments that could not be matched to an article.',
+  '有 {count} 条时间无法解析，已留空。':
+    '{count} timestamps could not be parsed and were left empty.',
+  '文件没有 wp:wxr_version，已按 WXR 1.x 尽力解析。':
+    'The file has no wp:wxr_version and was parsed on a best-effort WXR 1.x basis.',
+  '只显示前 10 条，确认导入时会处理全部 {count} 条。':
+    'Only the first 10 are shown; confirming the import processes all {count} items.',
+  '导入后的状态': 'Status after import',
+  '先创建草稿，再按这里的选项切换；没有发布权限时会在报告里说明。':
+    'Drafts are created first and then switched to this status; if you lack publish permission the report says so.',
+  '保持草稿': 'Keep as draft',
+  '直接发布（需要发布权限）': 'Publish directly (requires publish permission)',
+  '导入评论': 'Import comments',
+  '评论会挂到对应的新文章下；作者无法通过 API 指定，原名会写进正文前缀。':
+    'Comments are attached to the matching new article; the API cannot set their author, so the original name is written into a body prefix.',
+  '导入说明': 'Import notes',
+  '导入以当前管理员账户写入，无法保留原作者身份；分类与标签会尽量复用站点分类法，slug 冲突时会自动追加后缀。':
+    'The import writes under the current admin account and cannot preserve original authorship; categories and tags reuse the site taxonomy where possible, and duplicate slugs get a numeric suffix.',
+  '确认导入': 'Confirm import',
+  '已处理 {done} / {total}': 'Processed {done} / {total}',
+  '站点信息尚未就绪。': 'Site information is not ready yet.',
+  '读取现有内容失败，slug 冲突检测已跳过；服务端若拒绝重复地址会逐条报错。':
+    'Failed to read existing content, so duplicate-slug detection was skipped; if the server rejects a duplicate URL it is reported per item.',
+  '一篇内容只能有一个分类，多余分类已忽略。':
+    'Content can only have one category, so extra categories were ignored.',
+  '缺少标题': 'Missing title',
+  '缺少正文': 'Missing body',
+  '未命名': 'Untitled',
+  'slug 冲突，已改为 {slug}': 'Slug conflict, renamed to {slug}',
+  '正文超过 20 万字符，已截断。': 'The body exceeded 200,000 characters and was truncated.',
+  '草稿已创建，但状态切换失败：{reason}':
+    'The draft was created but the status change failed: {reason}',
+  '原评论作者：{author}': 'Original comment author: {author}',
+  '由导入创建的评论': 'Comment created by import',
+  '原评论在来源站点未通过审核': 'The original comment was not approved on the source site',
+  '文件里没有评论，已跳过评论导入。':
+    'The file contains no comments, so comment import was skipped.',
+  '本次选择不导入评论，已跳过 {count} 条。':
+    'Comments are disabled for this import, so {count} were skipped.',
+  '导入 WordPress / Typecho 内容': 'Import WordPress / Typecho content',
+  '导入 {count}': 'Imported {count}',
+  '发布 {count}': 'Published {count}',
+  '提交 {count}': 'Submitted {count}',
+  '跳过评论 {count}': 'Comments skipped {count}',
+  '已导入 {imported} · 跳过 {skipped} · 失败 {failed}':
+    'Imported {imported} · Skipped {skipped} · Failed {failed}',
 };
 
 export default fragment;

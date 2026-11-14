@@ -260,7 +260,6 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaFailure, setCaptchaFailure] = useState('');
   const captchaBlocked = captchaRequired && !!captchaFailure;
-  const recaptchaVersion = customization.verification.recaptcha_version ?? 'v2';
   // 密码文章的解锁表单：密码只提交给 /unlock，成功授权保存在 HttpOnly Cookie。
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
@@ -1017,7 +1016,6 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                             scene="comment"
                             status={captcha.status}
                             onToken={setCaptchaToken}
-                            recaptchaVersion={recaptchaVersion}
                             resetKey={captchaNonce}
                             onFailure={setCaptchaFailure}
                           />
@@ -1086,7 +1084,6 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                             scene="comment"
                             status={captcha.status}
                             onToken={setCaptchaToken}
-                            recaptchaVersion={recaptchaVersion}
                             resetKey={captchaNonce}
                             onFailure={setCaptchaFailure}
                           />

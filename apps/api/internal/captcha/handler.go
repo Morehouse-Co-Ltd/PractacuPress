@@ -18,10 +18,14 @@ type PolicyReader interface {
 	Policy(ctx context.Context, siteID string) (Policy, error)
 }
 
-// HandlerConfig configures the status endpoint.
+// HandlerConfig configures the public captcha endpoints.
 type HandlerConfig struct {
 	// Policy reports the effective rule. Nil answers "off".
 	Policy PolicyReader
+	// Local serves the self-hosted arithmetic challenge. Nil answers 503 on the
+	// local endpoints, which is what a process that does not run the local provider
+	// should say.
+	Local *LocalStore
 	// SiteID resolves the site the request belongs to.
 	SiteID func(*gin.Context) string
 	// RequestID returns the correlation id, for the problem payload.
@@ -30,9 +34,10 @@ type HandlerConfig struct {
 	Now func() time.Time
 }
 
-// Handler serves the public captcha status endpoint.
+// Handler serves the public captcha endpoints.
 type Handler struct {
 	policy    PolicyReader
+	local     *LocalStore
 	siteID    func(*gin.Context) string
 	requestID func(*gin.Context) string
 	now       func() time.Time
@@ -52,19 +57,30 @@ func NewHandler(cfg HandlerConfig) *Handler {
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
-	return &Handler{policy: cfg.Policy, siteID: siteID, requestID: requestID, now: now}
+	return &Handler{
+		policy:    cfg.Policy,
+		local:     cfg.Local,
+		siteID:    siteID,
+		requestID: requestID,
+		now:       now,
+	}
 }
 
-// Routes mounts the endpoint under /api/v1.
+// Routes mounts the endpoints under /api/v1.
 //
-// It is public on purpose: the login, registration and password reset forms have
+// They are public on purpose: the login, registration and password reset forms have
 // to know whether to draw a widget *before* the visitor has a session, and the
 // payload contains nothing a visitor cannot already read from the design
-// document. The one server-only fact it exposes is a boolean: whether this
-// process holds the provider secret. That is exactly what the forms and the
-// settings page need in order to stop promising a check that is not applied.
+// document. The one server-only fact the status endpoint exposes is a boolean:
+// whether this process can verify the selected provider. That is exactly what the
+// forms and the settings page need in order to stop promising a check that is not
+// applied.
 func (h *Handler) Routes(r gin.IRouter) {
 	r.GET("/captcha/status", h.Status)
+	// The local provider issues and solves its challenge here. The resulting token
+	// is then submitted to the protected endpoint exactly like a third party token.
+	r.GET("/captcha/local/challenge", h.LocalChallenge)
+	r.POST("/captcha/local/verify", h.LocalVerify)
 }
 
 // statusResponse is the effective rule a browser may rely on.

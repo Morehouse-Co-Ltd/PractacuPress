@@ -92,7 +92,10 @@ func (g *Guard) Policy(ctx context.Context, siteID string) (Policy, error) {
 		Settings:         settings,
 		SecretConfigured: g.verifier.Configured(settings.Provider),
 	}
-	policy.Effective = settings.Enabled && policy.SecretConfigured && settings.SiteKey != ""
+	// The local provider serves its own challenge, so it needs no site key; the
+	// third party widgets do, because the browser embeds it.
+	siteKeyReady := !settings.Provider.RequiresSiteKey() || settings.SiteKey != ""
+	policy.Effective = settings.Enabled && policy.SecretConfigured && siteKeyReady
 	return policy, nil
 }
 
@@ -156,7 +159,9 @@ func (g *Guard) Require(ctx context.Context, in RequireInput) error {
 // warnUnenforced logs the operator mistake behind an unenforced scene.
 func (g *Guard) warnUnenforced(siteID string, policy Policy) {
 	reason := "no secret is configured for this provider"
-	if policy.Settings.SiteKey == "" {
+	if policy.Settings.Provider == ProviderLocal {
+		reason = "the local challenge store is not available in this process"
+	} else if policy.Settings.SiteKey == "" {
 		reason = "no site key is saved for this provider"
 	}
 
@@ -178,24 +183,26 @@ func (g *Guard) warnUnenforced(siteID string, policy Policy) {
 	g.warnedAt[key] = now
 	g.mu.Unlock()
 
-	g.logger.Warn("captcha is enabled for this site but cannot be enforced: "+reason,
+	attrs := []any{
 		"site_id", siteID,
 		"provider", policy.Settings.Provider,
-		"set_env", secretEnvName(policy.Settings.Provider),
-	)
+	}
+	if envName := secretEnvName(policy.Settings.Provider); envName != "" {
+		attrs = append(attrs, "set_env", envName)
+	}
+	g.logger.Warn("captcha is enabled for this site but cannot be enforced: "+reason, attrs...)
 }
 
-// secretEnvName names the variable an operator has to set.
+// secretEnvName names the variable an operator has to set. The local provider has
+// none: it is enabled by wiring the in-process store, not by a secret.
 func secretEnvName(provider Provider) string {
 	switch provider {
 	case ProviderTurnstile:
 		return "CAPTCHA_TURNSTILE_SECRET"
 	case ProviderHCaptcha:
 		return "CAPTCHA_HCAPTCHA_SECRET"
-	case ProviderRecaptcha:
-		return "CAPTCHA_RECAPTCHA_SECRET"
 	default:
-		return "CAPTCHA_<PROVIDER>_SECRET"
+		return ""
 	}
 }
 

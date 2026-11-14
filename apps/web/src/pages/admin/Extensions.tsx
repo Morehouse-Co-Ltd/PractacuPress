@@ -49,6 +49,7 @@ export function ExtensionsPage() {
   const [importing, setImporting] = useState(false);
   const [importPackageError, setImportPackageError] = useState('');
   const [serverDeleteTarget, setServerDeleteTarget] = useState<ExtensionSummary | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const zipRef = useRef<HTMLInputElement>(null);
 
   const canManageServer = isPlatformAdmin && typeof backend.listExtensions === 'function';
@@ -108,6 +109,11 @@ export function ExtensionsPage() {
     })),
   ];
   const selectedRow = rows.find((row) => row.key === selectedKey) ?? rows[0];
+  const selectedName = selectedRow
+    ? selectedRow.kind === 'builtin'
+      ? t(selectedRow.info.name)
+      : selectedRow.extension.name
+    : '';
   const demoMissing = serverState === 'unavailable' && backend.mode === 'demo';
 
   const toggleServerExtension = async (extension: ExtensionSummary) => {
@@ -183,7 +189,7 @@ export function ExtensionsPage() {
           <h1>{t('扩展')}</h1>
           <p>
             {t(
-              '服务器扩展以 zip 安装包导入，由后端启动清单决定是否运行；内置扩展随应用发布，免安装。点击一行在右侧查看介绍、权限与前后端能力。',
+              '服务器扩展以 zip 安装包导入，由后端启动清单决定是否运行；内置扩展随应用发布，免安装。每个扩展以小组件卡片展示，点开卡片查看介绍、权限与前后端能力。',
             )}
           </p>
         </div>
@@ -224,15 +230,15 @@ export function ExtensionsPage() {
         </div>
       </div>
 
-      {/* ---------------- 扩展管理区：横条列表 + 右侧详情 ---------------- */}
-      <div className="extm-showcase">
-        <section className="panel extm-list-panel">
+      {/* ---------------- 扩展管理区：小组件卡片 ---------------- */}
+      <div className="extm-widgets">
+        <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>{t('服务器扩展')}</h3>
+              <h3>{t('扩展小组件')}</h3>
               <p>
                 {t(
-                  '服务器扩展与内置扩展都在左侧列表里；点击一行在右侧查看介绍、权限与前后端能力。',
+                  '服务器扩展与内置扩展都以卡片展示；点击卡片查看介绍、权限与前后端能力。',
                 )}
               </p>
             </div>
@@ -284,7 +290,7 @@ export function ExtensionsPage() {
               <p className="extm-list-note">{t('还没有安装服务器扩展；导入一个 zip 扩展包即可。')}</p>
             ) : null}
 
-            <div className="extm-list" role="list">
+            <div className="extm-widget-grid" role="list">
               {rows.map((row) => {
                 const builtinInfo = row.kind === 'builtin' ? row.info : null;
                 const serverExtension = row.kind === 'server' ? row.extension : null;
@@ -305,46 +311,45 @@ export function ExtensionsPage() {
                 const stateText = serverExtension
                   ? serverStateLabel(serverExtension.state, t)
                   : t('始终启用');
+                const openDetail = () => {
+                  setSelectedKey(row.key);
+                  setDetailOpen(true);
+                };
                 return (
                   <div
                     key={row.key}
                     role="listitem"
-                    className={`extm-row${isSelected ? ' is-selected' : ''}${
+                    className={`extm-widget${isSelected ? ' is-selected' : ''}${
                       enabled ? ' is-on' : ''
                     }${failed ? ' is-failed' : ''}`}
                   >
                     <button
                       type="button"
-                      className="extm-row-select"
-                      aria-pressed={isSelected}
+                      className="extm-widget-main"
                       aria-label={t('查看「{name}」的详细信息', { name })}
-                      onClick={() => setSelectedKey(row.key)}
+                      onClick={openDetail}
                     >
-                      <span className="extm-row-icon" aria-hidden>
-                        <Icon name={icon} size={18} />
+                      <span className="extm-widget-icon" aria-hidden>
+                        <Icon name={icon} size={22} />
                       </span>
-                      <span className="extm-row-main">
-                        <span className="extm-row-title">
+                      <span className="extm-widget-body">
+                        <span className="extm-widget-title">
                           <strong>{name}</strong>
                           {builtinInfo ? <Badge tone="muted">{t('内置')}</Badge> : null}
-                          {ability ? (
-                            <Badge tone={builtinInfo ? 'muted' : 'accent'}>{ability}</Badge>
-                          ) : null}
+                          {ability ? <Badge tone={builtinInfo ? 'muted' : 'accent'}>{ability}</Badge> : null}
                           {failed ? (
                             <Badge tone="danger" dot>
                               {t('运行失败')}
                             </Badge>
                           ) : null}
                         </span>
-                        <span className="extm-row-desc">{description}</span>
-                        <span className="extm-row-meta">
-                          <span>v{version}</span>
-                          <span aria-hidden>·</span>
-                          <span>{stateText}</span>
+                        <span className="extm-widget-desc">{description}</span>
+                        <span className="extm-widget-meta">
+                          v{version} · {stateText}
                         </span>
                       </span>
                     </button>
-                    <span className="extm-row-side">
+                    <div className="extm-widget-foot">
                       {builtinInfo ? (
                         <Badge tone="ok" dot>
                           {t('始终启用')}
@@ -366,35 +371,42 @@ export function ExtensionsPage() {
                           {enabled ? t('已启用') : t('已停用')}
                         </Badge>
                       )}
-                      <span className="extm-row-chevron" aria-hidden>
-                        <Icon name="chevron-right" size={14} />
-                      </span>
-                    </span>
+                      <button type="button" className="extm-widget-link" onClick={openDetail}>
+                        {t('详情')} <Icon name="arrow-right" size={12} />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
         </section>
-
-        <aside className="extm-detail" aria-label={t('服务器扩展详情')}>
-          {selectedRow ? (
-            selectedRow.kind === 'server' ? (
-              <ServerExtensionDetail
-                extension={selectedRow.extension}
-                canManage={canManageServer}
-                busy={busyExtensionId === selectedRow.extension.id}
-                onToggle={() => void toggleServerExtension(selectedRow.extension)}
-                onDelete={() => setServerDeleteTarget(selectedRow.extension)}
-              />
-            ) : (
-              <BuiltinExtensionDetail info={selectedRow.info} />
-            )
-          ) : (
-            <p className="field-hint extm-detail-empty">{t('选择一个扩展查看详细信息。')}</p>
-          )}
-        </aside>
       </div>
+
+      <Modal
+        open={detailOpen && !!selectedRow}
+        title={selectedName}
+        onClose={() => setDetailOpen(false)}
+        width={760}
+        footer={<Button onClick={() => setDetailOpen(false)}>{t('关闭')}</Button>}
+      >
+        {selectedRow ? (
+          selectedRow.kind === 'server' ? (
+            <ServerExtensionDetail
+              extension={selectedRow.extension}
+              canManage={canManageServer}
+              busy={busyExtensionId === selectedRow.extension.id}
+              onToggle={() => void toggleServerExtension(selectedRow.extension)}
+              onDelete={() => {
+                setDetailOpen(false);
+                setServerDeleteTarget(selectedRow.extension);
+              }}
+            />
+          ) : (
+            <BuiltinExtensionDetail info={selectedRow.info} />
+          )
+        ) : null}
+      </Modal>
 
       <Modal
         open={!!serverDeleteTarget}

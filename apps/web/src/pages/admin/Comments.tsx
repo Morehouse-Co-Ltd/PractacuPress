@@ -44,6 +44,62 @@ const STATUS_TONE: Record<CommentStatus, 'ok' | 'warn' | 'muted' | 'danger'> = {
   deleted: 'danger',
 };
 
+/**
+ * AI 审核辅助的本地启发式评分。
+ *
+ * 不把评论正文发送到外部服务：用常见的垃圾评论特征（引流词、外链数量、促销词、
+ * 异常大写/标点）算一个风险分，审核员据此决定是否隐藏。真正的拦截仍由「先审后发」、
+ * 敏感词与 IP 规则在服务端执行。
+ */
+const AI_SPAM_PATTERNS: { pattern: RegExp; weight: number; reason: string }[] = [
+  { pattern: /加(微信|vx|v信|qq)|联系方式|扫码/i, weight: 4, reason: '引导私下联系' },
+  { pattern: /代购|刷单|返利|兼职|赚钱|贷款|博彩|赌博|色情|发票|办证/i, weight: 4, reason: '商业推广' },
+  { pattern: /免费领取|限时优惠|点击链接|立即购买|全网最低/i, weight: 3, reason: '促销话术' },
+  { pattern: /telegram|whatsapp|t\.me|wa\.me/i, weight: 3, reason: '站外引流' },
+  { pattern: /(https?:\/\/\S+){2,}/i, weight: 2, reason: '多条外链' },
+  { pattern: /!{3,}|！{3,}|[A-Z]{10,}/, weight: 1, reason: '异常强调' },
+];
+
+export interface AiCommentRisk {
+  score: number;
+  level: 'low' | 'medium' | 'high';
+  reasons: string[];
+}
+
+export function assessCommentRisk(
+  body: string,
+  settings: { sensitivity: 'low' | 'medium' | 'high'; blocked_terms: string[] },
+): AiCommentRisk {
+  const text = body.trim();
+  let score = 0;
+  const reasons: string[] = [];
+  for (const rule of AI_SPAM_PATTERNS) {
+    if (rule.pattern.test(text)) {
+      score += rule.weight;
+      reasons.push(rule.reason);
+    }
+  }
+  const lower = text.toLowerCase();
+  for (const term of settings.blocked_terms) {
+    if (term && lower.includes(term)) {
+      score += 5;
+      reasons.push(`自定义词：${term}`);
+    }
+  }
+  if (text.length > 600) {
+    score += 1;
+    reasons.push('篇幅异常');
+  }
+  const thresholds =
+    settings.sensitivity === 'high'
+      ? { medium: 2, high: 4 }
+      : settings.sensitivity === 'low'
+        ? { medium: 6, high: 10 }
+        : { medium: 4, high: 7 };
+  const level = score >= thresholds.high ? 'high' : score >= thresholds.medium ? 'medium' : 'low';
+  return { score, level, reasons: Array.from(new Set(reasons)).slice(0, 4) };
+}
+
 export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
   const { me, site, applySite } = useAuth();
@@ -188,6 +244,15 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
   const saveComments = (patch: Partial<typeof comments>) => {
     update({ comments: { ...comments, ...patch } });
   };
+
+  /** AI 审核辅助设置；旧配置没有这一段时用关闭的默认值。 */
+  const ai = comments.ai ?? {
+    enabled: false,
+    mode: 'suggest' as const,
+    sensitivity: 'medium' as const,
+    blocked_terms: [],
+  };
+  const saveAi = (patch: Partial<typeof ai>) => saveComments({ ai: { ...ai, ...patch } });
 
   // 真实后端：评论开关是站点级字段，保存后由 API 强制执行（关闭时 POST /comments 返回 403）。
   const saveServerPolicy = async (patch: {
@@ -476,6 +541,76 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
                   '审核员与管理员可以隐藏任何评论；作者可以删除自己的评论。删除是软删除，不会抹掉上下文。',
                 )}
               </p>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{t('AI 审核')}</h3>
+                <p>{t('本地风险评分，不把评论正文发送到外部服务。')}</p>
+              </div>
+              <Badge tone={ai.enabled ? 'ok' : 'muted'}>
+                {ai.enabled ? t('已开启') : t('已关闭')}
+              </Badge>
+            </div>
+            <div className="panel-body form-stack">
+              <Toggle
+                checked={ai.enabled}
+                onChange={(enabled) => saveAi({ enabled })}
+                label={t('启用 AI 审核辅助')}
+                description={t('在评论列表里标出高风险评论，并给审核员处理建议；不会自动删除评论。')}
+              />
+              <Field label={t('敏感度')} htmlFor="ai-sensitivity">
+                <Select
+                  id="ai-sensitivity"
+                  value={ai.sensitivity}
+                  disabled={!ai.enabled}
+                  onChange={(event) =>
+                    saveAi({ sensitivity: event.target.value as typeof ai.sensitivity })
+                  }
+                >
+                  <option value="low">{t('低（只报明显风险）')}</option>
+                  <option value="medium">{t('中（默认）')}</option>
+                  <option value="high">{t('高（宁可多报）')}</option>
+                </Select>
+              </Field>
+              <Field
+                label={t('处理方式')}
+                htmlFor="ai-mode"
+                hint={t('「自动标记」会把高风险评论在列表中标红，并在打开时提示先处理。')}
+              >
+                <Select
+                  id="ai-mode"
+                  value={ai.mode}
+                  disabled={!ai.enabled}
+                  onChange={(event) => saveAi({ mode: event.target.value as typeof ai.mode })}
+                >
+                  <option value="suggest">{t('只给建议')}</option>
+                  <option value="auto_hold">{t('自动标记高风险')}</option>
+                </Select>
+              </Field>
+              <Field
+                label={t('自定义风险词')}
+                htmlFor="ai-blocked-terms"
+                hint={t('用逗号分隔；命中一次加 5 分。')}
+              >
+                <Input
+                  id="ai-blocked-terms"
+                  value={ai.blocked_terms.join(', ')}
+                  disabled={!ai.enabled}
+                  placeholder={t('例如：竞品名、引流词')}
+                  onChange={(event) =>
+                    saveAi({
+                      blocked_terms: event.target.value
+                        .split(/[,，\n]/)
+                        .map((term) => term.trim().toLowerCase())
+                        .filter(Boolean)
+                        .slice(0, 50),
+                    })
+                  }
+                />
+              </Field>
             </div>
           </section>
         </aside>
@@ -880,6 +1015,7 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
               <tbody>
                 {items.map((comment) => {
                   const target = targetOf(comment);
+                  const risk = ai.enabled ? assessCommentRisk(comment.body, ai) : null;
                   return (
                     <tr key={comment.id}>
                       <td style={{ maxWidth: 360 }}>
@@ -909,6 +1045,16 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
                         <Badge tone={STATUS_TONE[comment.status]} dot>
                           {statusLabel[comment.status]}
                         </Badge>
+                        {risk && risk.level !== 'low' ? (
+                          <div className="mt-6">
+                            <Badge tone={risk.level === 'high' ? 'danger' : 'warn'}>
+                              {risk.level === 'high' ? t('AI：高风险') : t('AI：需留意')}
+                            </Badge>
+                            {risk.reasons.length ? (
+                              <div className="tiny faint mt-4">{risk.reasons.join(' · ')}</div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="tiny muted">{formatDateTime(comment.created_at)}</td>
                       <td>

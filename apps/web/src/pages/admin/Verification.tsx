@@ -7,7 +7,7 @@ import { DEFAULT_VERIFICATION, useCustomization } from '../../lib/customize';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
 import { useT } from '../../lib/i18n';
-import { captchaEnvSnippet, readCaptchaStatus } from '../../lib/captcha';
+import { captchaEnvSnippet, captchaProviderNeedsSiteKey, readCaptchaStatus } from '../../lib/captcha';
 import { clearCaptchaStatusCache } from '../../components/Captcha';
 import { Badge, Button, Callout, CopyButton, Field, Input, Toggle } from '../../components/ui';
 import { Icon } from '../../components/Icon';
@@ -25,7 +25,11 @@ function providerChoices(t: Translator): { value: HumanVerificationProvider; lab
   return [
     { value: 'turnstile', label: 'Cloudflare Turnstile', note: t('免费、无感，推荐海外站点使用。') },
     { value: 'hcaptcha', label: 'hCaptcha', note: t('隐私友好，可配置难度与主题。') },
-    { value: 'recaptcha', label: 'Google reCAPTCHA', note: t('兼容性最好，国内访问可能受限。') },
+    {
+      value: 'local',
+      label: t('本地算术验证'),
+      note: t('本站服务端出题，无需外部服务、Site Key 或密钥；适合离线与内网部署。'),
+    },
   ];
 }
 
@@ -77,6 +81,8 @@ export function VerificationPage() {
   const providers = providerChoices(t);
   const scenes = sceneChoices(t);
   const provider = providers.find((item) => item.value === draft.provider) ?? providers[0];
+  /** 本地验证由本站服务端出题，没有 Site Key / Secret，相关输入框整块隐藏。 */
+  const needsSiteKey = captchaProviderNeedsSiteKey(draft.provider);
 
   // 服务端真实状态：Secret 是否配置、哪些场景真的会校验。
   const status = useAsync(
@@ -207,8 +213,8 @@ export function VerificationPage() {
     {
       icon: 'lock',
       label: 'Site Key',
-      value: draft.site_key ? t('已填写') : t('未填写'),
-      note: t('前端可见'),
+      value: needsSiteKey ? (draft.site_key ? t('已填写') : t('未填写')) : t('不需要'),
+      note: needsSiteKey ? t('前端可见') : t('本地验证由本站出题'),
     },
     {
       icon: 'layers',
@@ -219,8 +225,22 @@ export function VerificationPage() {
     {
       icon: 'server',
       label: t('服务端'),
-      value: statusUnreadable ? t('读取失败') : serverReady ? t('已配置密钥') : t('未配置密钥'),
-      note: status.loading ? t('正在读取服务端状态…') : t('按服务端实际配置'),
+      value: needsSiteKey
+        ? statusUnreadable
+          ? t('读取失败')
+          : serverReady
+            ? t('已配置密钥')
+            : t('未配置密钥')
+        : statusUnreadable
+          ? t('读取失败')
+          : serverReady
+            ? t('已就绪')
+            : t('待生效'),
+      note: status.loading
+        ? t('正在读取服务端状态…')
+        : needsSiteKey
+          ? t('按服务端实际配置')
+          : t('本地出题，无需密钥'),
     },
   ];
 
@@ -238,7 +258,7 @@ export function VerificationPage() {
 
       <Callout tone="info" icon="shield" title={t('校验发生在接口上')}>
         {t(
-          '人机验证由登录、注册、找回密码与评论接口执行；验证 token 只能使用一次，所以没有单独的校验端点。开启后前台表单会显示对应服务商的组件，服务端没有 Secret 时不会校验、也不会显示组件。',
+          '人机验证由登录、注册、找回密码与评论接口执行；验证 token 只能使用一次。开启后前台表单会显示对应服务商的组件；本地验证会先调用本站的出题与答题接口换一次性 token，再提交给受保护接口。服务端不具备校验能力时不会校验、也不会显示组件。',
         )}
       </Callout>
 
@@ -248,7 +268,7 @@ export function VerificationPage() {
         </Callout>
       ) : null}
 
-      {draft.enabled && !serverReady && !statusUnreadable ? (
+      {draft.enabled && !serverReady && !statusUnreadable && needsSiteKey ? (
         <Callout
           tone="warn"
           icon="alert"
@@ -256,7 +276,7 @@ export function VerificationPage() {
         >
           {t(
             '把下面片段里的 {env} 加进服务端环境变量并重启，验证才会真正生效；在此之前前台不会显示组件。',
-            { env: draft.provider === 'hcaptcha' ? 'CAPTCHA_HCAPTCHA_SECRET' : draft.provider === 'recaptcha' ? 'CAPTCHA_RECAPTCHA_SECRET' : 'CAPTCHA_TURNSTILE_SECRET' },
+            { env: draft.provider === 'hcaptcha' ? 'CAPTCHA_HCAPTCHA_SECRET' : 'CAPTCHA_TURNSTILE_SECRET' },
           )}
         </Callout>
       ) : null}
@@ -273,7 +293,13 @@ export function VerificationPage() {
                 {t('刷新状态')}
               </Button>
               <Badge tone={enforced ? 'ok' : 'muted'} dot={enforced}>
-                {enforced ? t('校验已生效') : draft.enabled ? t('待配置密钥') : t('未启用')}
+                {enforced
+                  ? t('校验已生效')
+                  : draft.enabled
+                    ? needsSiteKey
+                      ? t('待配置密钥')
+                      : t('待保存生效')
+                    : t('未启用')}
               </Badge>
             </div>
           </div>
@@ -286,7 +312,11 @@ export function VerificationPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('验证服务')}</h3>
-                <p>{t('选择服务商并填写前端可见的 Site Key。')}</p>
+                <p>
+                  {needsSiteKey
+                    ? t('选择服务商并填写前端可见的 Site Key。')
+                    : t('选择本地方案：题目由本站生成，无需 Site Key。')}
+                </p>
               </div>
               <Badge tone={draft.enabled ? 'ok' : 'muted'} dot={draft.enabled}>
                 {draft.enabled ? t('已启用') : t('未启用')}
@@ -300,7 +330,7 @@ export function VerificationPage() {
                   label={t('启用站点人机验证')}
                   description={t('关闭时下面的服务与场景配置会保留，但前台不会显示验证组件。')}
                 />
-                <Field label={t('服务商')} hint={t('三家都使用同样的前端挂载方式，切换只影响脚本与密钥。')}>
+                <Field label={t('服务商')} hint={t('第三方服务商从 CDN 加载组件；本地验证由本站服务端出题，不需要任何外部服务。')}>
                   <div className="option-grid three">
                     {providers.map((item) => (
                       <button
@@ -321,62 +351,46 @@ export function VerificationPage() {
                     ))}
                   </div>
                 </Field>
-                {draft.provider === 'recaptcha' ? (
-                  <Field
-                    label={t('reCAPTCHA 模式')}
-                    hint={t('v2 显示复选框，兼容性最好；v3 无感评分，需要服务端设置分数阈值。')}
-                  >
-                    <div className="option-grid two">
-                      {(['v2', 'v3'] as const).map((version) => (
-                        <button
-                          key={version}
-                          type="button"
-                          className={`option${draft.recaptcha_version === version ? ' is-selected' : ''}`}
-                          onClick={() => patch({ recaptcha_version: version })}
-                          aria-pressed={draft.recaptcha_version === version}
-                        >
-                          <span className="option-body">
-                            <strong>{version.toUpperCase()}</strong>
-                            <p>
-                              {version === 'v2'
-                                ? t('可见复选框，token 由用户点击产生。')
-                                : t('无感执行，按场景 action 取 token，低分会被服务端拒绝。')}
-                            </p>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </Field>
+                {!needsSiteKey ? (
+                  <Callout tone="info" icon="info" title={t('本地验证不需要 Site Key')}>
+                    {t(
+                      '题目由本站服务端生成并校验，答案只保存在服务端内存中，无需环境变量，也不会向任何外部服务发送数据。由于题目存在单个进程内，多实例部署请改用 Turnstile 或 hCaptcha。',
+                    )}
+                  </Callout>
                 ) : null}
                 <div className="form-grid">
-                  <Field
-                    label="Site Key"
-                    htmlFor="verification-site-key"
-                    hint={t('会写进页面脚本，可以公开；不要填 Secret。')}
-                  >
-                    <Input
-                      id="verification-site-key"
-                      value={draft.site_key}
-                      maxLength={200}
-                      placeholder="0x4AAAAAAA…"
-                      onChange={(event) => patch({ site_key: event.target.value })}
-                    />
-                  </Field>
-                  <Field
-                    label="Secret Key"
-                    htmlFor="verification-secret"
-                    hint={t('不会保存；只用来生成下面的服务端环境变量片段。')}
-                    aside={secret ? <Badge tone="accent">{t('仅本次')}</Badge> : null}
-                  >
-                    <Input
-                      id="verification-secret"
-                      type="password"
-                      value={secret}
-                      autoComplete="off"
-                      placeholder={t('服务端保存的密钥')}
-                      onChange={(event) => setSecret(event.target.value)}
-                    />
-                  </Field>
+                  {needsSiteKey ? (
+                    <Field
+                      label="Site Key"
+                      htmlFor="verification-site-key"
+                      hint={t('会写进页面脚本，可以公开；不要填 Secret。')}
+                    >
+                      <Input
+                        id="verification-site-key"
+                        value={draft.site_key}
+                        maxLength={200}
+                        placeholder="0x4AAAAAAA…"
+                        onChange={(event) => patch({ site_key: event.target.value })}
+                      />
+                    </Field>
+                  ) : null}
+                  {needsSiteKey ? (
+                    <Field
+                      label="Secret Key"
+                      htmlFor="verification-secret"
+                      hint={t('不会保存；只用来生成下面的服务端环境变量片段。')}
+                      aside={secret ? <Badge tone="accent">{t('仅本次')}</Badge> : null}
+                    >
+                      <Input
+                        id="verification-secret"
+                        type="password"
+                        value={secret}
+                        autoComplete="off"
+                        placeholder={t('服务端保存的密钥')}
+                        onChange={(event) => setSecret(event.target.value)}
+                      />
+                    </Field>
+                  ) : null}
                 </div>
                 <Toggle
                   checked={draft.on_login}
@@ -410,16 +424,22 @@ export function VerificationPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('服务端环境变量')}</h3>
-                <p>{t('复制到服务端并重启后，接口才会真正校验 token。')}</p>
+                <p>
+                  {needsSiteKey
+                    ? t('复制到服务端并重启后，接口才会真正校验 token。')
+                    : t('本地验证不需要环境变量；这里只是说明它不依赖外部服务。')}
+                </p>
               </div>
               <CopyButton value={env} label={t('复制 .env')} />
             </div>
             <div className="panel-body">
               <pre className="auth-env-code">{env}</pre>
               <p className="field-hint">
-                {t(
-                  'Site Key 随站点设置保存在服务端文档里；只有 Secret 走环境变量。组件脚本从服务商 CDN 加载，离线或网络受限时显示不出来，表单会给出可读提示。',
-                )}
+                {needsSiteKey
+                  ? t(
+                      'Site Key 随站点设置保存在服务端文档里；只有 Secret 走环境变量。组件脚本从服务商 CDN 加载，离线或网络受限时显示不出来，表单会给出可读提示。',
+                    )
+                  : t('本地验证的题目与答案都在本站服务端生成和校验，不依赖 CDN 或任何外部服务，离线部署也能使用。')}
               </p>
             </div>
           </section>

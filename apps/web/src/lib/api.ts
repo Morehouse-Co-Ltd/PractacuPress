@@ -4,6 +4,7 @@ import type {
   AuditLogQuery,
   BackupArtifact,
   BackendMode,
+  CaptchaScene,
   CaptchaStatus,
   ChangePasswordInput,
   CommentModerationAction,
@@ -26,6 +27,8 @@ import type {
   InteractionEntry,
   InteractionState,
   InteractionStates,
+  LocalCaptchaChallenge,
+  LocalCaptchaSolution,
   ImportConflictStrategy,
   Me,
   ReadingHistoryEntry,
@@ -827,6 +830,35 @@ export class HttpBackend {
       }
       throw err;
     }
+  }
+
+  /**
+   * 本地（自托管）人机验证：取一道题。
+   *
+   * 题目与答案都在本站服务端，前端只拿到题面与一次性的 challenge_id；答对后
+   * `captchaLocalVerify` 换到的 token 和第三方服务商的 token 一样提交给受保护接口。
+   */
+  async captchaLocalChallenge(scene: CaptchaScene): Promise<LocalCaptchaChallenge> {
+    // 题目必须每次都新取：走 `request` 的 GET 缓存会复用同一个 challenge_id，
+    // 而服务端一次答题就作废它。第三个参数关掉重试（公共 GET 没有 401 可重试），
+    // 同时也绕过请求缓存。
+    return this.request<LocalCaptchaChallenge>(
+      `/captcha/local/challenge?scene=${encodeURIComponent(scene)}`,
+      {},
+      false,
+    );
+  }
+
+  /** 本地（自托管）人机验证：提交答案，换一次性 token。 */
+  async captchaLocalVerify(input: {
+    challenge_id: string;
+    answer: number;
+    scene: CaptchaScene;
+  }): Promise<LocalCaptchaSolution> {
+    return this.request<LocalCaptchaSolution>('/captcha/local/verify', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   async requestPasswordReset(email: string, captchaToken?: string): Promise<PasswordResetTicket> {

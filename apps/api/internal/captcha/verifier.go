@@ -17,18 +17,17 @@ import (
 
 // Provider siteverify endpoints. They are constants rather than configuration so a
 // typo cannot send a secret to an arbitrary host; Config.Endpoints exists only so
-// tests and a self-hosted gateway can point at a fake.
+// tests and a self-hosted gateway can point at a fake. The local provider has no
+// endpoint: its tokens are redeemed against an in-process LocalStore.
 const (
 	endpointTurnstile = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 	endpointHCaptcha  = "https://api.hcaptcha.com/siteverify"
-	endpointRecaptcha = "https://www.google.com/recaptcha/api/siteverify"
 )
 
 // Defaults for the verifier. The timeout is deliberately short: a login should not
 // hang for the provider's full patience, and a slow siteverify is a failed check.
 const (
 	DefaultTimeout    = 5 * time.Second
-	DefaultMinScore   = 0.5
 	DefaultReplayTTL  = 10 * time.Minute
 	DefaultReplaySize = 4096
 	// maxResponseBytes bounds the siteverify body. Every provider answers with a
@@ -38,21 +37,22 @@ const (
 
 // Config configures a Verifier.
 type Config struct {
-	// Secrets maps each provider to the server secret. An empty or missing entry
-	// means that provider is not configured, and the guard treats a site that
-	// selected it as unenforced rather than silently passing.
+	// Secrets maps each third party provider to the server secret. An empty or
+	// missing entry means that provider is not configured, and the guard treats a
+	// site that selected it as unenforced rather than silently passing.
 	Secrets map[Provider]string
 	// Endpoints overrides the provider siteverify URL per provider. Tests point
 	// this at an httptest server; production leaves it empty.
 	Endpoints map[Provider]string
+	// Local is the in-process challenge store behind ProviderLocal. Nil means the
+	// local provider is not available in this process (and is reported as
+	// unconfigured, exactly like a third party provider without a secret).
+	Local *LocalStore
 	// HTTPClient performs the siteverify call. Nil uses an http.Client with
 	// Timeout.
 	HTTPClient *http.Client
 	// Timeout bounds one verification. Zero uses DefaultTimeout.
 	Timeout time.Duration
-	// MinScore is the reCAPTCHA v3 threshold. Zero uses DefaultMinScore; a
-	// negative value disables the score check.
-	MinScore float64
 	// ReplayTTL is how long a redeemed token is remembered. Zero uses
 	// DefaultReplayTTL.
 	ReplayTTL time.Duration
@@ -84,17 +84,19 @@ type Request struct {
 	// SiteKey is only needed by hCaptcha, which echoes it in its server side
 	// verification.
 	SiteKey string
-	// Scene is the protected form. It becomes the expected reCAPTCHA v3 action.
+	// Scene is the protected form. A local token is bound to it; Turnstile widgets
+	// may carry it as their action.
 	Scene Scene
 }
 
-// Verifier redeems challenge tokens against a provider's siteverify endpoint.
+// Verifier redeems challenge tokens against a provider's siteverify endpoint or,
+// for the local provider, against the in-process challenge store.
 type Verifier struct {
 	secrets   map[Provider]string
 	endpoints map[Provider]string
+	local     *LocalStore
 	client    *http.Client
 	timeout   time.Duration
-	minScore  float64
 	logger    *slog.Logger
 	now       func() time.Time
 
@@ -118,10 +120,6 @@ func NewVerifier(cfg Config) *Verifier {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = DefaultTimeout
-	}
-	minScore := cfg.MinScore
-	if minScore == 0 {
-		minScore = DefaultMinScore
 	}
 	replayTTL := cfg.ReplayTTL
 	if replayTTL <= 0 {
@@ -157,9 +155,9 @@ func NewVerifier(cfg Config) *Verifier {
 	return &Verifier{
 		secrets:    secrets,
 		endpoints:  endpoints,
+		local:      cfg.Local,
 		client:     client,
 		timeout:    timeout,
-		minScore:   minScore,
 		logger:     logger,
 		now:        now,
 		replayTTL:  replayTTL,
@@ -168,8 +166,14 @@ func NewVerifier(cfg Config) *Verifier {
 	}
 }
 
-// Configured reports whether the process holds a secret for p.
+// Configured reports whether the process can verify p.
+//
+// The local provider is configured when the in-memory store is wired; it needs no
+// secret. A third party provider is configured when a secret was supplied.
 func (v *Verifier) Configured(p Provider) bool {
+	if p == ProviderLocal {
+		return v.local != nil
+	}
 	_, ok := v.secrets[p]
 	return ok
 }
@@ -203,13 +207,20 @@ type siteVerifyResponse struct {
 
 // Verify redeems one token.
 //
-// A token is accepted at most once. The replay table is what turns the provider's
-// "this token was already solved" guarantee into a server side one: without it a
-// captured token could be submitted to the same endpoint twice before the provider
-// noticed, and both requests would look valid.
+// A token is accepted at most once. For third party providers the replay table is
+// what turns the provider's "this token was already solved" guarantee into a server
+// side one: without it a captured token could be submitted to the same endpoint
+// twice before the provider noticed, and both requests would look valid. The local
+// provider's store consumes the token on redemption, so it needs no second table.
 func (v *Verifier) Verify(ctx context.Context, req Request) (Result, error) {
 	if !req.Provider.Valid() {
 		return Result{}, fmt.Errorf("%w: %q", ErrProviderUnknown, req.Provider)
+	}
+	if req.Provider == ProviderLocal {
+		if v.local == nil {
+			return Result{}, fmt.Errorf("%w: %s", ErrNotConfigured, req.Provider)
+		}
+		return v.local.Redeem(req.Token, req.Scene)
 	}
 	secret, ok := v.secrets[req.Provider]
 	if !ok {
@@ -283,41 +294,7 @@ func (v *Verifier) Verify(ctx context.Context, req Request) (Result, error) {
 		return result, fmt.Errorf("%w: %s %s", ErrRejected, req.Provider, errorCodeList(answer.ErrorCodes))
 	}
 
-	result, err = v.applyThresholds(req, result)
-	if err != nil {
-		return result, err
-	}
-
-	// The token is only burned once it passed every local rule: a score failure
-	// must not make the visitor's next attempt look like a replay.
 	v.remember(req.Provider, token)
-	return result, nil
-}
-
-// applyThresholds enforces the reCAPTCHA v3 score and action rules.
-//
-// They only apply to an answer that carries the v3 fields. reCAPTCHA v2 answers
-// with neither, and Turnstile answers with an action only when the widget was
-// rendered with one; treating a missing score as "zero" would reject every v2
-// deployment, so the fields decide the branch instead of the provider name.
-func (v *Verifier) applyThresholds(req Request, result Result) (Result, error) {
-	if result.Score != nil && v.minScore >= 0 {
-		if *result.Score < v.minScore {
-			return result, fmt.Errorf(
-				"%w: %s scored %.2f (minimum %.2f)",
-				ErrScoreTooLow, req.Provider, *result.Score, v.minScore,
-			)
-		}
-	}
-	if req.Provider == ProviderRecaptcha &&
-		result.Action != "" &&
-		req.Scene.Valid() &&
-		result.Action != req.Scene.Action() {
-		return result, fmt.Errorf(
-			"%w: %s token for %q submitted to %q",
-			ErrActionMismatch, req.Provider, result.Action, req.Scene.Action(),
-		)
-	}
 	return result, nil
 }
 
@@ -376,7 +353,7 @@ func defaultEndpoint(provider Provider) string {
 	case ProviderHCaptcha:
 		return endpointHCaptcha
 	default:
-		return endpointRecaptcha
+		return ""
 	}
 }
 

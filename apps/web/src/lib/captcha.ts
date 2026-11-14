@@ -2,7 +2,6 @@ import type {
   CaptchaScene,
   CaptchaStatus,
   HumanVerificationProvider,
-  RecaptchaVersion,
 } from '../types';
 
 /**
@@ -16,7 +15,7 @@ import type {
  * - 设置页要展示的环境变量名（`captchaEnvSnippet`）。
  *
  * 「要不要显示组件」只有一个来源：`GET /captcha/status` 的 `effective`。站点设置里
- * 的开关只是意图；服务端没有 Secret 时它会以「未启用」处理并记警告，此时若前端仍
+ * 的开关只是意图；服务端没有能力校验时它会以「未启用」处理并记警告，此时若前端仍
  * 按开关渲染组件，用户会以为验证生效了——这正是这一版要修掉的谎。
  */
 
@@ -24,38 +23,46 @@ import type {
 export const CAPTCHA_SCENES: CaptchaScene[] = ['login', 'register', 'password_reset', 'comment'];
 
 /**
- * 场景对应的 reCAPTCHA v3 action。
+ * 场景对应的组件 action。
  *
- * 服务端会用同一个字符串校验 `action`，所以两边必须来自同一份定义：前端执行
- * `grecaptcha.execute(key, { action })`，服务端比对响应里的 action 是否等于场景名。
+ * 第三方组件用它区分表单；本地验证则把 token 绑定到同一个场景名，服务端按它比对，
+ * 所以两边必须来自同一份定义。
  */
 export function captchaAction(scene: CaptchaScene): string {
   return scene;
 }
 
-/** 各服务商的脚本地址。脚本都来自服务商 CDN，这是这条路的固定代价。 */
-export function captchaScriptUrl(
-  provider: HumanVerificationProvider,
-  siteKey: string,
-  version: RecaptchaVersion = 'v2',
-): string {
+/**
+ * 第三方服务商的脚本地址。
+ *
+ * 本地（自托管）验证没有外部脚本：题目由本站接口下发，返回空串，调用方不会加载。
+ */
+export function captchaScriptUrl(provider: HumanVerificationProvider): string {
   switch (provider) {
     case 'turnstile':
       return 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
     case 'hcaptcha':
       return 'https://js.hcaptcha.com/1/api.js?render=explicit&hl=zh';
-    case 'recaptcha':
-      return version === 'v3'
-        ? `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}&hl=zh-CN`
-        : 'https://www.google.com/recaptcha/api.js?render=explicit&hl=zh-CN';
+    case 'local':
+      return '';
   }
 }
 
-/** 脚本加载后挂到 window 上的全局对象名。 */
+/**
+ * 服务商是否需要前端 Site Key。
+ *
+ * 本地验证由本站服务端出题，既没有 Site Key 也不需要 Secret；设置页据此隐藏输入框，
+ * 状态端点也不会把「没填 Site Key」当成未配置。
+ */
+export function captchaProviderNeedsSiteKey(provider: HumanVerificationProvider): boolean {
+  return provider !== 'local';
+}
+
+/** 脚本加载后挂到 window 上的全局对象名；本地验证没有脚本，空串表示不适用。 */
 export const CAPTCHA_GLOBAL: Record<HumanVerificationProvider, string> = {
   turnstile: 'turnstile',
   hcaptcha: 'hcaptcha',
-  recaptcha: 'grecaptcha',
+  local: '',
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -64,8 +71,15 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function asProvider(value: unknown): HumanVerificationProvider {
-  return value === 'hcaptcha' || value === 'recaptcha' || value === 'turnstile'
+/**
+ * 收敛服务商字符串。
+ *
+ * `recaptcha` 是旧版本保存的值：Google reCAPTCHA 已从产品中移除，旧配置一律按
+ * Turnstile 处理，行为和旧站点保持一致，而不是让表单失去验证。
+ */
+export function asProvider(value: unknown): HumanVerificationProvider {
+  if (value === 'recaptcha') return 'turnstile';
+  return value === 'hcaptcha' || value === 'local' || value === 'turnstile'
     ? value
     : 'turnstile';
 }
@@ -105,25 +119,23 @@ export function captchaSceneRequired(status: CaptchaStatus | null, scene: Captch
  *
  * 名字必须和后端 `internal/platform/config` 读的一致，否则站长照着填了也不会生效，
  * 又回到「看起来打开了、其实没校验」的老问题。Site Key 不在这里：它属于站点文档，
- * 保存设置时由服务端接收，只有 Secret 才走环境变量。
+ * 保存设置时由服务端接收，只有 Secret 才走环境变量。本地验证完全不需要环境变量。
  */
 export function captchaEnvSnippet(provider: HumanVerificationProvider): string {
+  if (provider === 'local') {
+    return [
+      '# the local provider runs inside the API process',
+      '# no secret, site key or extra environment variable is required',
+      'CAPTCHA_TIMEOUT_SECONDS=5',
+    ].join('\n');
+  }
   const secret =
-    provider === 'hcaptcha'
-      ? 'CAPTCHA_HCAPTCHA_SECRET'
-      : provider === 'recaptcha'
-        ? 'CAPTCHA_RECAPTCHA_SECRET'
-        : 'CAPTCHA_TURNSTILE_SECRET';
-  const lines = [
+    provider === 'hcaptcha' ? 'CAPTCHA_HCAPTCHA_SECRET' : 'CAPTCHA_TURNSTILE_SECRET';
+  return [
     '# server environment (apps/api)',
     `${secret}=your-secret-key`,
     'CAPTCHA_TIMEOUT_SECONDS=5',
-  ];
-  if (provider === 'recaptcha') {
-    // v3 按这个阈值拒绝低分 token；v2 的应答没有 score，这一项不会被用到。
-    lines.push('CAPTCHA_RECAPTCHA_MIN_SCORE=0.5');
-  }
-  return lines.join('\n');
+  ].join('\n');
 }
 
 /**

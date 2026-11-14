@@ -2502,8 +2502,8 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   border: 0;
   background: none;
   font-family: inherit;
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.1em;
   color: var(--faint);
   text-transform: uppercase;
   text-align: left;
@@ -9048,8 +9048,8 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   padding: 0 11px 0 7px;
   margin-right: 2px;
   border-right: 1px solid var(--line);
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
   color: var(--faint);
   text-transform: uppercase;
   white-space: nowrap;
@@ -9058,9 +9058,9 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 12px;
+  padding: 9px 13px;
   border-radius: 9px;
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--muted);
   white-space: nowrap;
   transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;

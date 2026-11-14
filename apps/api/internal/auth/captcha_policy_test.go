@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -203,20 +204,64 @@ func TestSiteEnabledWithoutAServerSecretIsNotEnforced(t *testing.T) {
 	require.Empty(t, provider.calls)
 }
 
-// TestRecaptchaV3TokenFromAnotherFormIsRefused covers the v3 action rule end to end:
-// a token solved for registration cannot be spent on the login form.
-func TestRecaptchaV3TokenFromAnotherFormIsRefused(t *testing.T) {
-	provider := &providerStub{}
-	server := provider.server(t, `{"success":true,"score":0.9,"action":"register"}`)
-	h := newAPIHarnessWithOptions(t, apiHarnessOptions{
-		captcha: realGuard(captcha.ProviderRecaptcha, captcha.SceneLogin, server.URL, "recaptcha-secret"),
+// TestLocalChallengeTokenIsEnforcedEndToEnd proves the self-hosted provider goes
+// through the exact same guard path on the login endpoint: no token is refused, an
+// issued-and-solved token lets the credential check run, and the token cannot be
+// spent twice.
+func TestLocalChallengeTokenIsEnforcedEndToEnd(t *testing.T) {
+	store := captcha.NewLocalStore(captcha.LocalStoreConfig{})
+	guard := captcha.NewGuard(captcha.GuardConfig{
+		Verifier: captcha.NewVerifier(captcha.Config{Local: store}),
+		Customization: func(context.Context, string) ([]byte, error) {
+			return siteDocument(captcha.ProviderLocal, captcha.SceneLogin), nil
+		},
 	})
+	h := newAPIHarnessWithOptions(t, apiHarnessOptions{captcha: guard})
 
-	w := postJSON(t, h, "/api/v1/auth/login/password", map[string]string{
+	refused := postJSON(t, h, "/api/v1/auth/login/password", map[string]string{
+		"email":    "alice@example.com",
+		"password": "correct horse battery",
+	})
+	require.Equal(t, http.StatusBadRequest, refused.Code)
+	require.Equal(t, "captcha_required", problemReason(t, refused))
+
+	challenge, err := store.Issue(captcha.SceneLogin)
+	require.NoError(t, err)
+	token, _, err := store.Solve(challenge.ID, localAnswer(t, challenge.Question), captcha.SceneLogin)
+	require.NoError(t, err)
+
+	accepted := postJSON(t, h, "/api/v1/auth/login/password", map[string]string{
 		"email":         "alice@example.com",
 		"password":      "correct horse battery",
-		"captcha_token": "from-the-register-form",
+		"captcha_token": token,
 	})
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Equal(t, "captcha_action_mismatch", problemReason(t, w))
+	// The local challenge passed, so the answer is the credential check's: no such
+	// account.
+	require.Equal(t, http.StatusUnauthorized, accepted.Code)
+
+	replayed := postJSON(t, h, "/api/v1/auth/login/password", map[string]string{
+		"email":         "alice@example.com",
+		"password":      "correct horse battery",
+		"captcha_token": token,
+	})
+	require.Equal(t, http.StatusBadRequest, replayed.Code)
+	require.Equal(t, "captcha_replayed", problemReason(t, replayed))
+}
+
+// localAnswer solves the arithmetic question the way a visitor would.
+func localAnswer(t *testing.T, question string) int {
+	t.Helper()
+	var left, right int
+	var operation string
+	_, err := fmt.Sscanf(question, "%d %s %d = ?", &left, &operation, &right)
+	require.NoError(t, err, "question %q is not an arithmetic challenge", question)
+	switch operation {
+	case "+":
+		return left + right
+	case "-":
+		return left - right
+	default:
+		t.Fatalf("unknown local challenge operation %q", operation)
+		return 0
+	}
 }

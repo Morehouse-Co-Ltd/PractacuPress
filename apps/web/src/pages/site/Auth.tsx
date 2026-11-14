@@ -70,7 +70,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaFailure, setCaptchaFailure] = useState('');
-  const recaptchaVersion = config.customization?.verification.recaptcha_version ?? 'v2';
   useTitle(
     mode === 'login'
       ? personal
@@ -533,7 +532,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               scene={captchaScene}
               status={captcha.status}
               onToken={setCaptchaToken}
-              recaptchaVersion={recaptchaVersion}
               resetKey={captchaNonce}
               onFailure={setCaptchaFailure}
             />

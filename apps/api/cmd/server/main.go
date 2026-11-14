@@ -197,21 +197,21 @@ func run() error {
 	// while *which* forms are protected is site data read from each site's design
 	// document, so an operator can change the policy from the settings page without
 	// a redeploy and the server cannot be talked into enforcing a rule it does not
-	// have a secret for.
+	// have the means to verify. The local provider needs no secret or site key: one
+	// in-process store issues and redeems its challenges.
+	captchaLocal := captcha.NewLocalStore(captcha.LocalStoreConfig{})
 	captchaVerifier := captcha.NewVerifier(captcha.Config{
 		Secrets: map[captcha.Provider]string{
 			captcha.ProviderTurnstile: cfg.Captcha.TurnstileSecret,
 			captcha.ProviderHCaptcha:  cfg.Captcha.HCaptchaSecret,
-			captcha.ProviderRecaptcha: cfg.Captcha.RecaptchaSecret,
 		},
 		Endpoints: map[captcha.Provider]string{
 			captcha.ProviderTurnstile: cfg.Captcha.TurnstileURL,
 			captcha.ProviderHCaptcha:  cfg.Captcha.HCaptchaURL,
-			captcha.ProviderRecaptcha: cfg.Captcha.RecaptchaURL,
 		},
-		Timeout:  cfg.Captcha.Timeout,
-		MinScore: cfg.Captcha.RecaptchaMinScore,
-		Logger:   logger,
+		Local:   captchaLocal,
+		Timeout: cfg.Captcha.Timeout,
+		Logger:  logger,
 	})
 	if configured := captchaVerifier.ConfiguredProviders(); len(configured) == 0 {
 		logger.Info("human verification has no server secret: sites that enable it are reported as unenforced")
@@ -241,6 +241,10 @@ func run() error {
 	})
 	captchaHandler := captcha.NewHandler(captcha.HandlerConfig{
 		Policy: captchaGuard,
+		// The same store the verifier redeems against: the challenge endpoint and
+		// the protected form must share one process (that is the local provider's
+		// deployment boundary).
+		Local: captchaLocal,
 		SiteID: func(c *gin.Context) string {
 			if resolved, ok := middleware.SiteFrom(c); ok {
 				return resolved.ID

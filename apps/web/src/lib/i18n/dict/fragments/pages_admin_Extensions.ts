@@ -160,6 +160,13 @@ const fragment: Dictionary = {
   '确定删除「{name}」吗？': 'Delete “{name}”?',
   '删除后清单与 HTML / CSS / JS 都会从本地配置移除；已经导出的 `.ppext.json` 文件不受影响。':
     'Deleting removes the manifest and the HTML / CSS / JS from the local config; `.ppext.json` files you already exported are untouched.',
+  扩展小组件: 'Extension widgets',
+  '服务器扩展以 zip 安装包导入，由后端启动清单决定是否运行；内置扩展随应用发布，免安装。每个扩展以小组件卡片展示，点开卡片查看介绍、权限与前后端能力。':
+    'Server extensions are imported as zip packages and the backend manifest decides whether they run; built-in extensions ship with the app and need no install. Each extension is shown as a small widget card; open a card to see its introduction, permissions and front-end/back-end abilities.',
+  '服务器扩展与内置扩展都以卡片展示；点击卡片查看介绍、权限与前后端能力。':
+    'Server and built-in extensions are shown as cards; open a card to see its introduction, permissions and front-end/back-end abilities.',
+  详情: 'Details',
+  '共 {count} 个扩展': { one: '1 extension', other: '{count} extensions' },
 };
 
 export default fragment;
