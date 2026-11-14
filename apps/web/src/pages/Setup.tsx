@@ -77,6 +77,8 @@ function cloneAuth(source: AuthSettings): AuthSettings {
     google: { ...source.google },
     github: { ...source.github },
     wechat: { ...source.wechat },
+    qq: { ...source.qq },
+    authenticator: { ...source.authenticator },
   };
 }
 

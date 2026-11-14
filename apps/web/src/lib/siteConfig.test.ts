@@ -85,6 +85,8 @@ describe('readSiteConfig', () => {
         google: { enabled: false, client_id: 'local-client', redirect_uri: '', extra: '', note: '' },
         github: { enabled: false, client_id: '', redirect_uri: '', extra: '', note: '' },
         wechat: { enabled: false, client_id: '', redirect_uri: '', extra: '', note: '' },
+        qq: { enabled: false, client_id: '', redirect_uri: '', extra: '', note: '' },
+        authenticator: { enabled: false, client_id: '', redirect_uri: '', extra: '', note: '' },
       },
     });
 

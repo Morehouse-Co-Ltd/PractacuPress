@@ -32,6 +32,27 @@ const fragment: Dictionary = {
   账号类型: 'Account type',
   '开放平台网站应用 / 公众号': 'Open Platform website app / Official account',
   '微信 AppSecret': 'WeChat AppSecret',
+  腾讯云短信: 'Tencent Cloud SMS',
+  阿里云短信: 'Aliyun SMS',
+  短信宝: 'SMSBao',
+  '接入哪家服务商只决定服务端用哪套签名算法；密钥仍只存服务端。':
+    'The provider only selects which server-side signing routine is used; the secret still lives on the server.',
+  '用 QQ 账户授权登录。': 'Sign in with a QQ account.',
+  '需要在 QQ 互联创建网站应用，并登记回调地址。':
+    'Create a website app in QQ Connect and register the callback URL.',
+  AppID: 'AppID',
+  '必须与 QQ 互联后台登记的回调地址完全一致。':
+    'It must match the callback URL registered in the QQ Connect console exactly.',
+  'QQ 互联 AppKey': 'QQ Connect AppKey',
+  身份验证器: 'Authenticator',
+  '用身份验证器 App 的动态验证码登录。':
+    'Sign in with a one-time code from an authenticator app.',
+  '基于 TOTP；用户需要先在账户安全里绑定身份验证器。':
+    'Based on TOTP; users must first bind an authenticator app under account security.',
+  发行方名称: 'Issuer name',
+  动态码位数: 'Code digits',
+  服务端加密密钥: 'Server encryption key',
+  '只在服务端配置': 'Configured on the server only',
 
   // ---- authEnvSnippet 的注释与占位符（变量名、URL 保持原样）----
   '# 由 Practacu Press 安装引导生成':

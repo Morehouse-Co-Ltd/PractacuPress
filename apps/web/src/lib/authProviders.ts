@@ -16,7 +16,14 @@ import { liveCatalog } from './i18n/live';
  * Client Secret / 短信密钥不会写入 localStorage，也不应该由前端持有。
  */
 
-export const AUTH_PROVIDER_IDS: AuthProviderId[] = ['phone', 'google', 'github', 'wechat'];
+export const AUTH_PROVIDER_IDS: AuthProviderId[] = [
+  'phone',
+  'google',
+  'github',
+  'wechat',
+  'qq',
+  'authenticator',
+];
 
 export interface ProviderField {
   key: 'client_id' | 'redirect_uri' | 'extra' | 'note';
@@ -24,6 +31,9 @@ export interface ProviderField {
   placeholder: string;
   hint?: string;
   required?: boolean;
+  /** select 字段用于固定枚举（例如短信服务商）；缺省为文本输入。 */
+  type?: 'text' | 'select';
+  options?: { value: string; label: string }[];
 }
 
 export interface ProviderMeta {
@@ -51,7 +61,14 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
       {
         key: 'note',
         label: t('短信服务商'),
-        placeholder: t('阿里云短信 / 腾讯云短信'),
+        placeholder: 'tencent',
+        type: 'select',
+        options: [
+          { value: 'tencent', label: t('腾讯云短信') },
+          { value: 'aliyun', label: t('阿里云短信') },
+          { value: 'smsbao', label: t('短信宝') },
+        ],
+        hint: t('接入哪家服务商只决定服务端用哪套签名算法；密钥仍只存服务端。'),
       },
       {
         key: 'client_id',
@@ -130,6 +147,40 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     secretPlaceholder: t('微信 AppSecret'),
     endpoint: 'GET /api/v1/auth/oauth/wechat/start',
   },
+  {
+    id: 'qq',
+    name: 'QQ',
+    icon: 'message',
+    summary: t('用 QQ 账户授权登录。'),
+    detail: t('需要在 QQ 互联创建网站应用，并登记回调地址。'),
+    fields: [
+      { key: 'client_id', label: t('AppID'), placeholder: '101000000', required: true },
+      {
+        key: 'redirect_uri',
+        label: t('回调地址'),
+        placeholder: 'https://press.example.com/api/v1/auth/oauth/qq/callback',
+        hint: t('必须与 QQ 互联后台登记的回调地址完全一致。'),
+      },
+      { key: 'extra', label: 'Scope', placeholder: 'get_user_info' },
+    ],
+    secretLabel: 'AppKey',
+    secretPlaceholder: t('QQ 互联 AppKey'),
+    endpoint: 'GET /api/v1/auth/oauth/qq/start',
+  },
+  {
+    id: 'authenticator',
+    name: t('身份验证器'),
+    icon: 'shield',
+    summary: t('用身份验证器 App 的动态验证码登录。'),
+    detail: t('基于 TOTP；用户需要先在账户安全里绑定身份验证器。'),
+    fields: [
+      { key: 'note', label: t('发行方名称'), placeholder: 'Practacu Press' },
+      { key: 'extra', label: t('动态码位数'), placeholder: '6' },
+    ],
+    secretLabel: t('服务端加密密钥'),
+    secretPlaceholder: t('只在服务端配置'),
+    endpoint: 'POST /api/v1/auth/authenticator/verify',
+  },
 ];
 
 /** 目录中文在读取时翻译，切换语言后立即生效（见 i18n/live.ts）。 */
@@ -149,6 +200,8 @@ export const DEFAULT_AUTH: AuthSettings = {
   google: emptyProvider(),
   github: emptyProvider(),
   wechat: emptyProvider(),
+  qq: emptyProvider(),
+  authenticator: emptyProvider(),
 };
 
 function text(value: unknown, max = 400): string {
@@ -173,6 +226,8 @@ export function readAuthSettings(config: Pick<WebConfig, 'auth'>): AuthSettings 
     google: read('google'),
     github: read('github'),
     wechat: read('wechat'),
+    qq: read('qq'),
+    authenticator: read('authenticator'),
   };
 }
 
@@ -216,7 +271,7 @@ export function authEnvSnippet(
     lines.push(`AUTH_${prefix}_ENABLED=true`);
     if (item.client_id) {
       lines.push(
-        `${id === 'wechat' ? 'WECHAT_APP_ID' : id === 'phone' ? 'SMS_SIGN_NAME' : `${prefix}_CLIENT_ID`}=${item.client_id}`,
+        `${id === 'wechat' ? 'WECHAT_APP_ID' : id === 'phone' ? 'SMS_SIGN_NAME' : id === 'qq' ? 'QQ_APP_ID' : `${prefix}_CLIENT_ID`}=${item.client_id}`,
       );
     }
     if (id === 'phone') {
@@ -224,10 +279,19 @@ export function authEnvSnippet(
       if (item.extra) lines.push(`SMS_TEMPLATE_CODE=${item.extra}`);
       lines.push(`SMS_ACCESS_KEY_ID=${t('<在服务端填写>')}`);
       lines.push(`SMS_ACCESS_SECRET=${secrets.phone?.trim() || t('<在服务端填写>')}`);
+    } else if (id === 'authenticator') {
+      if (item.note) lines.push(`TOTP_ISSUER=${item.note}`);
+      if (item.extra) lines.push(`TOTP_DIGITS=${item.extra}`);
+      lines.push(`TOTP_ENCRYPTION_KEY=${secrets.authenticator?.trim() || t('<在服务端填写>')}`);
     } else {
       if (item.redirect_uri) lines.push(`${prefix}_REDIRECT_URI=${item.redirect_uri}`);
       if (item.extra) lines.push(`${prefix}_SCOPE=${item.extra}`);
-      const secretKey = id === 'wechat' ? 'WECHAT_APP_SECRET' : `${prefix}_CLIENT_SECRET`;
+      const secretKey =
+        id === 'wechat'
+          ? 'WECHAT_APP_SECRET'
+          : id === 'qq'
+            ? 'QQ_APP_KEY'
+            : `${prefix}_CLIENT_SECRET`;
       lines.push(`${secretKey}=${secrets[id]?.trim() || t('<在服务端填写>')}`);
     }
   }

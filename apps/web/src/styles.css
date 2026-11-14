@@ -2971,6 +2971,46 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px 20px;
 }
+/* 标题上方的「发布与访问」折叠栏，默认收起。 */
+.editor-publish-fold {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-subtle);
+}
+.editor-publish-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.editor-publish-summary::-webkit-details-marker { display: none; }
+.editor-publish-summary:hover { background: color-mix(in srgb, var(--bg) 55%, transparent); }
+.editor-publish-summary-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.editor-publish-summary-main strong { font-size: 13px; font-weight: 500; }
+.editor-publish-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.editor-publish-summary-meta svg { transition: transform 160ms ease; }
+.editor-publish-fold[open] .editor-publish-summary-meta svg { transform: rotate(180deg); }
+.editor-publish-body {
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
 @media (max-width: 1100px) {
   .editor-meta-bar { grid-template-columns: 104px minmax(0, 1fr); }
   .editor-meta-bar .editor-meta-block:last-child { grid-column: 1 / -1; }
@@ -8269,7 +8309,8 @@ body.builder-mode .admin-side { display: none !important; }
 .theme-tile-note { font-size: 12px; line-height: 1.6; color: var(--muted); }
 .theme-tile-meta { font-size: 10.5px; letter-spacing: .05em; color: var(--faint); }
 /* 鼠标移到封面上方时，左上角出现「编辑」。 */
-.theme-tile-edit {
+/* 正在使用的主题：左上角（原编辑按钮的位置）常驻「使用中」。 */
+.theme-tile-applied {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -8278,31 +8319,33 @@ body.builder-mode .admin-side { display: none !important; }
   align-items: center;
   gap: 5px;
   padding: 5px 10px;
-  border: 1px solid var(--admin-border, var(--line));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--admin-panel, var(--bg)) 90%, transparent);
-  color: var(--ink-soft);
+  background: var(--ink);
+  color: #fff;
   font-size: 11px;
-  cursor: pointer;
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease, color 160ms ease;
-  backdrop-filter: blur(8px);
+  font-weight: 500;
   box-shadow: 0 8px 20px -14px rgb(20 20 15 / .6);
 }
-.theme-tile:hover .theme-tile-edit,
-.theme-tile:focus-within .theme-tile-edit,
-.theme-tile.is-detail .theme-tile-edit {
-  opacity: 1;
-  transform: none;
-}
-.theme-tile-edit:hover { color: var(--accent); border-color: var(--accent); }
-/* 未使用的主题：悬停时封面中心浮出「预览主题」。 */
-.theme-tile-preview {
+/* 悬停时封面中心浮出同款胶囊按钮：预览主题 / 编辑。 */
+.theme-tile-actions {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translate(-50%, -46%);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.theme-tile:hover .theme-tile-actions,
+.theme-tile:focus-within .theme-tile-actions,
+.theme-tile.is-detail .theme-tile-actions {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+.theme-tile-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -8311,21 +8354,17 @@ body.builder-mode .admin-side { display: none !important; }
   border-radius: 999px;
   background: color-mix(in srgb, var(--admin-panel, #fff) 92%, transparent);
   color: var(--ink);
+  font-family: inherit;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  opacity: 0;
-  transform: translate(-50%, -46%);
-  transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease;
+  white-space: nowrap;
   backdrop-filter: blur(10px);
   box-shadow: 0 14px 30px -18px rgb(20 20 15 / .6);
+  transition: border-color 160ms ease, color 160ms ease;
 }
-.theme-tile:hover .theme-tile-preview,
-.theme-tile:focus-within .theme-tile-preview {
-  opacity: 1;
-  transform: translate(-50%, -50%);
-}
-.theme-tile-preview:hover { border-color: var(--ink); }
+.theme-tile-action:hover { border-color: var(--ink); }
+.theme-tile-action.is-ghost { background: color-mix(in srgb, var(--admin-panel, #fff) 70%, transparent); }
 .theme-preview-modal-cover {
   max-height: 320px;
   overflow: hidden;

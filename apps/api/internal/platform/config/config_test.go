@@ -16,6 +16,7 @@ func setValidEnv(t *testing.T) {
 	t.Setenv("DATABASE_DRIVER", DriverSQLite)
 	t.Setenv("DATABASE_DSN", "file:test.db")
 	t.Setenv("SECURITY_GRPC_ADDR", "127.0.0.1:9001")
+	t.Setenv("SECURITY_GO_GRPC_ADDR", "")
 }
 
 func TestLoadRequiresEnv(t *testing.T) {
@@ -154,11 +155,46 @@ func TestLoadRequiresDSN(t *testing.T) {
 func TestLoadRequiresSecurityAddr(t *testing.T) {
 	setValidEnv(t)
 	t.Setenv("SECURITY_GRPC_ADDR", "")
+	t.Setenv("SECURITY_GO_GRPC_ADDR", "")
 
 	_, err := Load()
 	var cfgErr *Error
 	require.ErrorAs(t, err, &cfgErr)
 	require.Equal(t, "missing_security_grpc_addr", cfgErr.Code)
+	require.Contains(t, cfgErr.Detail, "SECURITY_GO_GRPC_ADDR")
+}
+
+func TestLoadAcceptsOnlyTheGoSecurityAddr(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("SECURITY_GRPC_ADDR", "")
+	t.Setenv("SECURITY_GO_GRPC_ADDR", "127.0.0.1:9002")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Empty(t, cfg.SecurityGRPCAddr)
+	require.Equal(t, "127.0.0.1:9002", cfg.SecurityGoGRPCAddr)
+}
+
+func TestLoadAcceptsOnlyTheRustSecurityAddr(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("SECURITY_GRPC_ADDR", "127.0.0.1:9001")
+	t.Setenv("SECURITY_GO_GRPC_ADDR", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1:9001", cfg.SecurityGRPCAddr)
+	require.Empty(t, cfg.SecurityGoGRPCAddr)
+}
+
+func TestLoadAcceptsBothSecurityAddrs(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("SECURITY_GRPC_ADDR", "127.0.0.1:9001")
+	t.Setenv("SECURITY_GO_GRPC_ADDR", "127.0.0.1:9002")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1:9001", cfg.SecurityGRPCAddr)
+	require.Equal(t, "127.0.0.1:9002", cfg.SecurityGoGRPCAddr)
 }
 
 func TestNormalizeDriver(t *testing.T) {

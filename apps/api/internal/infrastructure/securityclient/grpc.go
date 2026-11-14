@@ -29,7 +29,8 @@ type GRPCConfig struct {
 	DialOptions []grpc.DialOption
 }
 
-// GRPC is the Client backed by the Rust security service.
+// GRPC is the Client backed by a gRPC security service: either the Go service
+// or the Rust service, which speak the same contract.
 type GRPC struct {
 	conn    *grpc.ClientConn
 	client  securityv1.SecurityServiceClient

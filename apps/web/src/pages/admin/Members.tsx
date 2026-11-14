@@ -877,14 +877,12 @@ export function MembersPage() {
                   <span className="field-aside">{t('决定后台入口与可用能力')}</span>
                 </div>
                 <div className="group-choice-grid">
-                  {ROLES.map((role) => {
-                    const disabled = role === 'platform_admin' && me?.role !== 'platform_admin';
+                  {ROLES.filter((role) => role !== 'platform_admin').map((role) => {
                     return (
                       <button
                         key={role}
                         type="button"
                         className={`group-choice${draft.role === role ? ' is-on' : ''}`}
-                        disabled={disabled}
                         onClick={() => setDraft({ ...draft, role })}
                       >
                         <span className="group-choice-icon">
@@ -899,6 +897,9 @@ export function MembersPage() {
                     );
                   })}
                 </div>
+                <p className="field-hint mt-8">
+                  {t('新增用户不能直接设为最高管理员；如需平台管理员，请创建后在用户组里单独调整。')}
+                </p>
               </div>
             )}
 

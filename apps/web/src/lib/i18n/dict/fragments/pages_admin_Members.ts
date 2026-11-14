@@ -162,6 +162,8 @@ const fragment: Dictionary = {
   '站点形态：{kind}。': 'Site type: {kind}.',
   '8–128 位，且至少包含两类字符（小写、大写、数字、符号）。创建后请通过安全渠道交给对方。':
     '8–128 characters, combining at least two of: lowercase, uppercase, digits, symbols. Hand the initial password over through a safe channel.',
+  '新增用户不能直接设为最高管理员；如需平台管理员，请创建后在用户组里单独调整。':
+    'New users cannot be created as platform administrators; create the account first and grant the role separately if needed.',
 };
 
 export default fragment;

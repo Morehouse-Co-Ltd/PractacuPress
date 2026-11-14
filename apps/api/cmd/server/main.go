@@ -1007,9 +1007,10 @@ func (s securitySanitizer) Sanitize(
 
 // choosePasswordHasher picks the password hashing implementation.
 //
-// Production always delegates to the Rust security service. Until that service is
-// deployed the stub fails every call, so a production login fails closed instead of
-// silently falling back to a weaker local implementation.
+// Production always delegates to the security service (the Go service is
+// preferred, with the Rust service as a transport fallback). Until a security
+// service is reachable the stub fails every call, so a production login fails
+// closed instead of silently falling back to a weaker local implementation.
 func choosePasswordHasher(cfg config.Config, logger *slog.Logger, security securityclient.Client) auth.PasswordHasher {
 	if _, unavailable := security.(securityclient.Unavailable); !unavailable {
 		logger.Info("password hashing delegates to the security service")
@@ -1080,31 +1081,69 @@ func systemMetricsDisabled() bool {
 	}
 }
 
-// dialSecurity connects to the security service.
+// dialSecurity connects to the configured security service(s).
 //
-// A failed connection is not fatal: the API keeps serving and every operation that
-// needs a security verdict fails closed, which is the behaviour the design asks for
-// during an outage.
+// SECURITY_GO_GRPC_ADDR (the Go service) is preferred; SECURITY_GRPC_ADDR (the
+// Rust service) is the fallback. When both are configured the API uses
+// securityclient.Fallback: a call that fails with a transport or availability
+// error is retried on the Rust service, while a validation rejection (invalid
+// password, rejected content or upload) is authoritative and is not retried.
+// When only one address is configured that backend is used alone.
+//
+// A failed connection is not fatal: the API keeps serving and every operation
+// that needs a security verdict fails closed, which is the behaviour the design
+// asks for during an outage.
 func dialSecurity(ctx context.Context, cfg config.Config, logger *slog.Logger) (securityclient.Client, func()) {
 	dialCtx, cancel := context.WithTimeout(ctx, startupTimeout)
 	defer cancel()
 
-	client, err := securityclient.Dial(dialCtx, securityclient.GRPCConfig{Addr: cfg.SecurityGRPCAddr})
-	if err != nil {
-		logger.Warn("security service unavailable; content publishing and uploads will be held",
-			"addr", cfg.SecurityGRPCAddr, "error", err)
-		return securityclient.Unavailable{}, func() {}
+	// A successful dial is reported even when the startup ping fails: gRPC
+	// connections reconnect on demand, and a backend that is not up yet is still
+	// a better fallback than none. The ping only tells an operator what to
+	// expect at startup.
+	dial := func(service, addr string) *securityclient.GRPC {
+		if strings.TrimSpace(addr) == "" {
+			return nil
+		}
+		client, err := securityclient.Dial(dialCtx, securityclient.GRPCConfig{Addr: addr})
+		if err != nil {
+			logger.Warn("security service endpoint could not be dialled",
+				"service", service, "addr", addr, "error", err)
+			return nil
+		}
+		if pingErr := client.Ping(dialCtx); pingErr != nil {
+			logger.Warn("security service did not answer at startup; calls will fail closed or use the fallback",
+				"service", service, "addr", addr, "error", pingErr)
+		} else {
+			logger.Info("security service connected", "service", service, "addr", addr)
+		}
+		return client
 	}
 
-	if pingErr := client.Ping(dialCtx); pingErr != nil {
-		logger.Warn("security service did not answer; content publishing and uploads will be held",
-			"addr", cfg.SecurityGRPCAddr, "error", pingErr)
-		_ = client.Close()
-		return securityclient.Unavailable{}, func() {}
+	goClient := dial("go", cfg.SecurityGoGRPCAddr)
+	rustClient := dial("rust", cfg.SecurityGRPCAddr)
+
+	closeAll := func() {
+		if goClient != nil {
+			_ = goClient.Close()
+		}
+		if rustClient != nil {
+			_ = rustClient.Close()
+		}
 	}
 
-	logger.Info("security service connected", "addr", cfg.SecurityGRPCAddr)
-	return client, func() { _ = client.Close() }
+	switch {
+	case goClient != nil && rustClient != nil:
+		logger.Info("security calls prefer the Go service and fall back to Rust on a transport failure")
+		return securityclient.NewFallback(goClient, rustClient, logger), closeAll
+	case goClient != nil:
+		return goClient, closeAll
+	case rustClient != nil:
+		return rustClient, closeAll
+	default:
+		logger.Warn("security service unavailable; content publishing and uploads will be held")
+		return securityclient.Unavailable{}, func() {}
+	}
 }
 
 // securityScanner adapts the security client to the media module's Scanner port.

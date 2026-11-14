@@ -108,6 +108,10 @@ type Config struct {
 	DatabaseDSN string
 	// SecurityGRPCAddr is the Rust security service gRPC endpoint.
 	SecurityGRPCAddr string
+	// SecurityGoGRPCAddr is the Go security service gRPC endpoint. When both
+	// addresses are set the API prefers the Go service and falls back to the
+	// Rust one on a transport failure; when only one is set it is used alone.
+	SecurityGoGRPCAddr string
 
 	// CORSAllowedOrigins lists browser origins allowed to call the API. Empty
 	// means cross origin browser access is disabled, which is the safe default.
@@ -351,11 +355,12 @@ func (e *Error) Error() string { return e.Code + ": " + e.Detail }
 // Load reads the environment, validates it and returns a Config.
 func Load() (Config, error) {
 	cfg := Config{
-		AppEnv:           env("APP_ENV"),
-		HTTPAddr:         env("HTTP_ADDR"),
-		DatabaseDriver:   env("DATABASE_DRIVER"),
-		DatabaseDSN:      env("DATABASE_DSN"),
-		SecurityGRPCAddr: env("SECURITY_GRPC_ADDR"),
+		AppEnv:             env("APP_ENV"),
+		HTTPAddr:           env("HTTP_ADDR"),
+		DatabaseDriver:     env("DATABASE_DRIVER"),
+		DatabaseDSN:        env("DATABASE_DSN"),
+		SecurityGRPCAddr:   env("SECURITY_GRPC_ADDR"),
+		SecurityGoGRPCAddr: env("SECURITY_GO_GRPC_ADDR"),
 	}
 
 	switch cfg.AppEnv {
@@ -394,10 +399,15 @@ func Load() (Config, error) {
 		return Config{}, &Error{Code: "missing_database_dsn", Detail: "DATABASE_DSN is required"}
 	}
 
-	if cfg.SecurityGRPCAddr == "" {
+	// At least one security backend is required. SECURITY_GO_GRPC_ADDR is the
+	// Go service (preferred); SECURITY_GRPC_ADDR is the Rust service (fallback
+	// and the only backend on deployments that have not rolled the Go service
+	// out yet). The error code keeps the historical name so existing runbooks
+	// and operators still recognise it.
+	if cfg.SecurityGRPCAddr == "" && cfg.SecurityGoGRPCAddr == "" {
 		return Config{}, &Error{
 			Code:   "missing_security_grpc_addr",
-			Detail: "SECURITY_GRPC_ADDR is required",
+			Detail: "SECURITY_GRPC_ADDR or SECURITY_GO_GRPC_ADDR is required",
 		}
 	}
 

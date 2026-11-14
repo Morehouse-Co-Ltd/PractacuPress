@@ -21,9 +21,9 @@ import { RoleGate } from '../../components/Guards';
 type LoginTab = 'email' | AuthProviderId;
 
 /**
- * 登录设置：用顶部五种方式当分页。
+ * 登录设置：用顶部登录方式当分页。
  *
- * 邮箱与密码是基础方式（内含邮件通知 / 找回密码），其余四种第三方登录各自
+ * 邮箱与密码是基础方式（内含邮件通知 / 找回密码），其余登录方式各自
  * 只有自己的配置项；服务端环境变量片段在分页下方统一生成。
  */
 export function LoginSettingsPage() {
@@ -50,7 +50,7 @@ export function LoginSettingsPage() {
           <h1>{t('登录设置')}</h1>
           <p>
             {t(
-              '点击上方五种登录方式切换配置；每种方式只显示自己的参数。开关自动保存到站点服务端，登录页对所有访客显示同一组方式。',
+              '点击上方登录方式切换配置；每种方式只显示自己的参数。开关自动保存到站点服务端，登录页对所有访客显示同一组方式。',
             )}
           </p>
         </div>
@@ -203,7 +203,7 @@ export function LoginSettingsPage() {
         <div className="panel-head">
           <div>
             <h3>{t('服务端环境变量')}</h3>
-            <p>{t('五种方式共用；密钥只用于拼接片段，不会写入浏览器配置。')}</p>
+            <p>{t('所有方式共用；密钥只用于拼接片段，不会写入浏览器配置。')}</p>
           </div>
           <div className="row gap-8">
             {secretsReady ? <Badge tone="accent">{t('含本次填写密钥')}</Badge> : null}

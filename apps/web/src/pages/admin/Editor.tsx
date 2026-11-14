@@ -892,7 +892,129 @@ function EditorWorkspace() {
 
       <div className="editor-grid">
           <div className="editor-main">
-            {/* 顶部元信息条：封面 / 分类与标签 / 发布状态横向排在标题上方。 */}
+            {/* 发布与访问：标题上方的折叠栏，默认收起。 */}
+            <details className="editor-publish-fold">
+              <summary className="editor-publish-summary">
+                <span className="editor-publish-summary-main">
+                  <Icon name="settings" size={14} />
+                  <strong>{t('发布与访问')}</strong>
+                  <span className="tiny faint">{t('预约发布时间、访问权限与单篇评论策略。')}</span>
+                </span>
+                <span className="editor-publish-summary-meta">
+                  {form.access_mode === 'public'
+                    ? t('公开')
+                    : form.access_mode === 'password'
+                      ? t('密码访问')
+                      : t('仅登录读者')}
+                  <Icon name="chevron-down" size={14} />
+                </span>
+              </summary>
+              <div className="editor-publish-body">
+                <div className="editor-publish-grid">
+                                  <Field
+                                    label={t('预约发布时间')}
+                                    htmlFor="editor-publish-at"
+                                    hint={
+                                      !canPublishDirectly
+                                        ? t('站点要求先审核，审核通过后才能预约或直接发布。')
+                                        : form.publish_at
+                                          ? t('保存后到点自动发布；手动发布会清除预约。')
+                                          : t('留空表示不预约。到点后由服务端自动发布。')
+                                    }
+                                  >
+                                    <div className="row gap-8">
+                                      <Input
+                                        id="editor-publish-at"
+                                        type="datetime-local"
+                                        value={form.publish_at}
+                                        disabled={!editable || published || !canPublishDirectly}
+                                        onChange={(event) => update({ publish_at: event.target.value })}
+                                      />
+                                      {form.publish_at && canPublishDirectly ? (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          disabled={!editable || published}
+                                          onClick={() => update({ publish_at: '' })}
+                                        >
+                                          {t('取消预约')}
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  </Field>
+
+                                  <Field
+                                    label={t('访问权限')}
+                                    htmlFor="editor-access-mode"
+                                    hint={
+                                      form.access_mode === 'public'
+                                        ? t('公开内容会出现在列表、搜索与订阅源里。')
+                                        : t('密码与仅登录内容只能通过链接访问，不会出现在列表、搜索、订阅源或站点地图里。')
+                                    }
+                                  >
+                                    <Select
+                                      id="editor-access-mode"
+                                      value={form.access_mode}
+                                      disabled={!editable}
+                                      onChange={(event) =>
+                                        update({
+                                          access_mode: event.target.value as ContentAccessMode,
+                                          access_password: '',
+                                        })
+                                      }
+                                    >
+                                      <option value="public">{t('公开')}</option>
+                                      <option value="password">{t('密码访问')}</option>
+                                      <option value="members">{t('仅登录读者')}</option>
+                                    </Select>
+                                  </Field>
+
+                                  {form.access_mode === 'password' ? (
+                                    <Field
+                                      label={t('访问密码')}
+                                      htmlFor="editor-access-password"
+                                      hint={
+                                        item?.has_access_password
+                                          ? t('已设置访问密码；留空表示保持不变。')
+                                          : t('至少 4 个字符，保存后只保留哈希。')
+                                      }
+                                    >
+                                      <Input
+                                        id="editor-access-password"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={form.access_password}
+                                        maxLength={128}
+                                        disabled={!editable}
+                                        placeholder={item?.has_access_password ? t('留空保持不变') : t('设置访问密码')}
+                                        onChange={(event) => update({ access_password: event.target.value })}
+                                      />
+                                    </Field>
+                                  ) : null}
+
+                                  <Field
+                                    label={t('评论策略')}
+                                    htmlFor="editor-comment-policy"
+                                    hint={t('单篇设置优先于站点级评论开关。')}
+                                  >
+                                    <Select
+                                      id="editor-comment-policy"
+                                      value={form.comment_policy}
+                                      disabled={!editable}
+                                      onChange={(event) =>
+                                        update({ comment_policy: event.target.value as ContentCommentPolicy })
+                                      }
+                                    >
+                                      <option value="inherit">{t('跟随站点设置')}</option>
+                                      <option value="open">{t('开启评论')}</option>
+                                      <option value="disabled">{t('关闭评论')}</option>
+                                      <option value="review">{t('先审后发')}</option>
+                                    </Select>
+                                  </Field>
+                </div>
+              </div>
+            </details>
+
             <div className="editor-meta-bar">
               <button
                 type="button"
@@ -1001,120 +1123,6 @@ function EditorWorkspace() {
                 placeholder={t('用一两句话说明这篇稿子。')}
               />
             </Field>
-
-            {/* 发布与访问横向排在摘要与正文之间，不再占用右侧信息栏。 */}
-            <section className="panel editor-publish-strip">
-              <div className="panel-head">
-                <div>
-                  <h3>{t('发布与访问')}</h3>
-                  <p>{t('预约发布时间、访问权限与单篇评论策略。')}</p>
-                </div>
-              </div>
-              <div className="panel-body">
-                <div className="editor-publish-grid">
-                  <Field
-                    label={t('预约发布时间')}
-                    htmlFor="editor-publish-at"
-                    hint={
-                      !canPublishDirectly
-                        ? t('站点要求先审核，审核通过后才能预约或直接发布。')
-                        : form.publish_at
-                          ? t('保存后到点自动发布；手动发布会清除预约。')
-                          : t('留空表示不预约。到点后由服务端自动发布。')
-                    }
-                  >
-                    <div className="row gap-8">
-                      <Input
-                        id="editor-publish-at"
-                        type="datetime-local"
-                        value={form.publish_at}
-                        disabled={!editable || published || !canPublishDirectly}
-                        onChange={(event) => update({ publish_at: event.target.value })}
-                      />
-                      {form.publish_at && canPublishDirectly ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={!editable || published}
-                          onClick={() => update({ publish_at: '' })}
-                        >
-                          {t('取消预约')}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </Field>
-
-                  <Field
-                    label={t('访问权限')}
-                    htmlFor="editor-access-mode"
-                    hint={
-                      form.access_mode === 'public'
-                        ? t('公开内容会出现在列表、搜索与订阅源里。')
-                        : t('密码与仅登录内容只能通过链接访问，不会出现在列表、搜索、订阅源或站点地图里。')
-                    }
-                  >
-                    <Select
-                      id="editor-access-mode"
-                      value={form.access_mode}
-                      disabled={!editable}
-                      onChange={(event) =>
-                        update({
-                          access_mode: event.target.value as ContentAccessMode,
-                          access_password: '',
-                        })
-                      }
-                    >
-                      <option value="public">{t('公开')}</option>
-                      <option value="password">{t('密码访问')}</option>
-                      <option value="members">{t('仅登录读者')}</option>
-                    </Select>
-                  </Field>
-
-                  {form.access_mode === 'password' ? (
-                    <Field
-                      label={t('访问密码')}
-                      htmlFor="editor-access-password"
-                      hint={
-                        item?.has_access_password
-                          ? t('已设置访问密码；留空表示保持不变。')
-                          : t('至少 4 个字符，保存后只保留哈希。')
-                      }
-                    >
-                      <Input
-                        id="editor-access-password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={form.access_password}
-                        maxLength={128}
-                        disabled={!editable}
-                        placeholder={item?.has_access_password ? t('留空保持不变') : t('设置访问密码')}
-                        onChange={(event) => update({ access_password: event.target.value })}
-                      />
-                    </Field>
-                  ) : null}
-
-                  <Field
-                    label={t('评论策略')}
-                    htmlFor="editor-comment-policy"
-                    hint={t('单篇设置优先于站点级评论开关。')}
-                  >
-                    <Select
-                      id="editor-comment-policy"
-                      value={form.comment_policy}
-                      disabled={!editable}
-                      onChange={(event) =>
-                        update({ comment_policy: event.target.value as ContentCommentPolicy })
-                      }
-                    >
-                      <option value="inherit">{t('跟随站点设置')}</option>
-                      <option value="open">{t('开启评论')}</option>
-                      <option value="disabled">{t('关闭评论')}</option>
-                      <option value="review">{t('先审后发')}</option>
-                    </Select>
-                  </Field>
-                </div>
-              </div>
-            </section>
 
             <div className="editor-controls">
               <div className="editor-mode">

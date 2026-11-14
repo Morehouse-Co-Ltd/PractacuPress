@@ -6,7 +6,7 @@ import {
   authEnvSnippet,
   providerReady,
 } from '../lib/authProviders';
-import { Badge, Callout, CopyButton, Field, Input } from './ui';
+import { Badge, Callout, CopyButton, Field, Input, Select } from './ui';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 
@@ -92,13 +92,28 @@ export function AuthProvidersEditor({
                       htmlFor={`${idPrefix}-${id}-${field.key}`}
                       hint={field.hint}
                     >
-                      <Input
-                        id={`${idPrefix}-${id}-${field.key}`}
-                        value={item[field.key]}
-                        placeholder={field.placeholder}
-                        maxLength={field.key === 'redirect_uri' ? 500 : 200}
-                        onChange={(event) => patch(id, { [field.key]: event.target.value })}
-                      />
+                      {field.type === 'select' && field.options ? (
+                        <Select
+                          id={`${idPrefix}-${id}-${field.key}`}
+                          value={item[field.key]}
+                          onChange={(event) => patch(id, { [field.key]: event.target.value })}
+                        >
+                          <option value="">{t('请选择')}</option>
+                          {field.options.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Input
+                          id={`${idPrefix}-${id}-${field.key}`}
+                          value={item[field.key]}
+                          placeholder={field.placeholder}
+                          maxLength={field.key === 'redirect_uri' ? 500 : 200}
+                          onChange={(event) => patch(id, { [field.key]: event.target.value })}
+                        />
+                      )}
                     </Field>
                   ))}
                   <Field

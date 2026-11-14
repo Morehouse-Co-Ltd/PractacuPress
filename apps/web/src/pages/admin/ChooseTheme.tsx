@@ -437,7 +437,7 @@ export function ChooseThemePage() {
           <h1>{t('选择主题')}</h1>
           <p>
             {t(
-              '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，左上角会出现编辑入口。',
+              '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，中间会出现与预览同款的编辑入口。',
             )}
           </p>
         </div>
@@ -533,7 +533,6 @@ export function ChooseThemePage() {
                           ) : (
                             <Badge tone="accent">{t('自定义')}</Badge>
                           )}
-                          {isApplied ? <Badge tone="ok">{t('使用中')}</Badge> : null}
                         </span>
                         <span className="theme-tile-note">
                           {bundle.note || t('一套自定义主题。')}
@@ -544,44 +543,51 @@ export function ChooseThemePage() {
                         </span>
                       </span>
                     </button>
-                    {/* 未使用的主题悬停时，封面中心浮出「预览主题」。 */}
-                    {!isApplied ? (
+                    {/* 正在使用的主题：左上角（原编辑按钮的位置）显示「使用中」。 */}
+                    {isApplied ? (
+                      <span className="theme-tile-applied">
+                        <Icon name="check" size={12} /> {t('使用中')}
+                      </span>
+                    ) : null}
+                    {/* 悬停时封面中心浮出与「预览主题」同款的按钮。 */}
+                    <div className="theme-tile-actions">
+                      {!isApplied ? (
+                        <button
+                          type="button"
+                          className="theme-tile-action"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (previewTimer.current !== null) {
+                              window.clearTimeout(previewTimer.current);
+                              previewTimer.current = null;
+                            }
+                            // 双击预览按钮 = 直接使用该主题；单击 = 打开预览弹窗。
+                            if (event.detail >= 2) {
+                              setDetailId(bundle.id);
+                              applyBundle(bundle);
+                              return;
+                            }
+                            previewTimer.current = window.setTimeout(() => {
+                              previewTimer.current = null;
+                              setPreviewId(bundle.id);
+                            }, 220);
+                          }}
+                          aria-label={t('预览「{name}」', { name: bundle.name })}
+                          title={t('预览主题')}
+                        >
+                          <Icon name="eye" size={15} /> {t('预览主题')}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        className="theme-tile-preview"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (previewTimer.current !== null) {
-                            window.clearTimeout(previewTimer.current);
-                            previewTimer.current = null;
-                          }
-                          // 双击预览按钮 = 直接使用该主题；单击 = 打开预览弹窗。
-                          if (event.detail >= 2) {
-                            setDetailId(bundle.id);
-                            applyBundle(bundle);
-                            return;
-                          }
-                          previewTimer.current = window.setTimeout(() => {
-                            previewTimer.current = null;
-                            setPreviewId(bundle.id);
-                          }, 220);
-                        }}
-                        aria-label={t('预览「{name}」', { name: bundle.name })}
-                        title={t('预览主题')}
+                        className="theme-tile-action"
+                        aria-label={t('编辑「{name}」的页面编排', { name: bundle.name })}
+                        title={t('进入页面编排：用这套主题搭首页与文章页')}
+                        onClick={() => editLayout(bundle)}
                       >
-                        <Icon name="eye" size={15} /> {t('预览主题')}
+                        <Icon name="edit" size={14} /> {t('编辑')}
                       </button>
-                    ) : null}
-                    {/* 鼠标移到封面上方时，左上角出现「编辑」：进入页面编排。 */}
-                    <button
-                      type="button"
-                      className="theme-tile-edit"
-                      aria-label={t('编辑「{name}」的页面编排', { name: bundle.name })}
-                      title={t('进入页面编排：用这套主题搭首页与文章页')}
-                      onClick={() => editLayout(bundle)}
-                    >
-                      <Icon name="edit" size={13} /> {t('编辑')}
-                    </button>
+                    </div>
                   </div>
                 );
               })}

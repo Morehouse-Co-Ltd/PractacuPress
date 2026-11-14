@@ -27,6 +27,7 @@ const fragment: Dictionary = {
   收起: 'Collapse',
   展开: 'Expand',
   密钥不经过前端保存: 'Secrets are never stored by the front end',
+  请选择: 'Choose…',
   '浏览器的 localStorage 对同域脚本可读。Client Secret、短信 AccessSecret 与 JWT 私钥只应该存在于服务端环境变量， 这里填写的值仅用于拼接上面的片段。':
     'Browser localStorage is readable by scripts on the same origin. Client secrets, SMS AccessSecrets, and JWT private keys should only live in server environment variables; the values entered here are only used to build the snippet above.',
 };

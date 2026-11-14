@@ -71,6 +71,8 @@ const fragment: Dictionary = {
   '预览「{name}」': 'Preview “{name}”',
   预览主题: 'Preview theme',
   这个主题正在使用: 'This theme is in use',
+  '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，中间会出现与预览同款的编辑入口。':
+    'Each theme shows a cover, title and description; click a card to read the details on the right, then apply it. Hover the cover and the same centred pill buttons as Preview appear, including Edit.',
 };
 
 export default fragment;

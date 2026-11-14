@@ -1692,7 +1692,13 @@ export interface LogicSettings {
   chains: LogicChain[];
 }
 
-export type AuthProviderId = 'phone' | 'google' | 'github' | 'wechat';
+export type AuthProviderId =
+  | 'phone'
+  | 'google'
+  | 'github'
+  | 'wechat'
+  | 'qq'
+  | 'authenticator';
 
 /**
  * 一种额外的登录方式。client_id / redirect_uri / scope / note 都是非机密配置，

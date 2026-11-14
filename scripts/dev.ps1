@@ -5,17 +5,24 @@
 # What it does:
 #   1. puts the 64-bit Go toolchain on PATH (the PATH entry is a 32-bit install)
 #   2. creates and seeds the SQLite database once
-#   3. starts the Rust security service on $SecurityPort
-#   4. starts the Go API on $ApiPort and waits until /healthz answers
+#   3. builds and starts the Go security service on $GoSecurityPort (preferred)
+#   4. starts the Rust security service on $SecurityPort (fallback)
+#   5. starts the Go API on $ApiPort and waits until /healthz answers
 #
-# Both child processes are stopped when you press Ctrl+C, so nothing is left running.
+# The API talks to the Go security service first and falls back to the Rust one
+# on a transport failure. If the Go service cannot be built or started, the dev
+# stack keeps running against the Rust service alone.
+#
+# Both child services are stopped when you press Ctrl+C, so nothing is left running.
 
 param(
     [int]$ApiPort = 8080,
     [int]$SecurityPort = 9001,
+    [int]$GoSecurityPort = 9002,
     [string]$DataDir = '',
     [switch]$SkipSecurity,
-    [switch]$RebuildSecurity
+    [switch]$RebuildSecurity,
+    [switch]$SkipGoSecurity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,14 +59,25 @@ $env:SECURITY_GRPC_ADDR = "127.0.0.1:$SecurityPort"
 $env:STORAGE_DRIVER = 'local'
 $env:STORAGE_DIR = Join-Path $DataDir 'media'
 $env:SECURITY_GRPC_BIND = "127.0.0.1:$SecurityPort"
+# The Go security service is the preferred backend. Its address is only exported
+# once the binary is confirmed to be running, so a failed build or a crash on
+# startup leaves the API configured with the Rust service alone.
+$env:SECURITY_GO_GRPC_ADDR = ''
+$env:SECURITY_GO_GRPC_BIND = "127.0.0.1:$GoSecurityPort"
 # One-click local installs have no operator console: the first account must be a
 # platform administrator, and a database created before this flag existed is repaired
 # at startup. Server deployments start the API without this flag.
 $env:PP_DESKTOP = 'true'
 
 $children = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+# The Go security service is supervised separately: if it exits the dev stack
+# keeps running on the Rust fallback instead of treating it as a fatal component.
+$goSecurityProcess = $null
 
 function Stop-Children {
+    if ($goSecurityProcess -and -not $goSecurityProcess.HasExited) {
+        try { Stop-Process -Id $goSecurityProcess.Id -Force -ErrorAction SilentlyContinue } catch { }
+    }
     foreach ($child in $children) {
         if (-not $child.HasExited) {
             try { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue } catch { }
@@ -106,7 +124,47 @@ try {
         }
     }
     else {
-        Write-Host '> security service skipped: publishing and upload completion will fail closed'
+        Write-Host '> Rust security service skipped: the Go service (if it starts) is used alone'
+    }
+
+    # The Go security service is started even when the Rust service is skipped.
+    # Build and startup are best effort: any failure here leaves
+    # $env:SECURITY_GO_GRPC_ADDR empty and the API runs against the Rust service.
+    if (-not $SkipGoSecurity) {
+        $goSecurityExe = Join-Path $DataDir 'practacu-security-go.exe'
+        $goSecurityBuilt = $false
+        try {
+            Write-Host '> building the Go security service'
+            & $go build -o $goSecurityExe ./services/security-go/cmd/security-go
+            if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
+            $goSecurityBuilt = $true
+        }
+        catch {
+            Write-Host "  Go security service build failed: $_"
+            Write-Host '  the API will use the Rust security service only'
+        }
+
+        if ($goSecurityBuilt) {
+            Write-Host "> starting Go security service  $goSecurityExe"
+            $goSecurityProcess = Start-Process -FilePath $goSecurityExe -PassThru -NoNewWindow `
+                -RedirectStandardOutput (Join-Path $DataDir 'security-go.log') `
+                -RedirectStandardError (Join-Path $DataDir 'security-go.err.log')
+            # A binary that exits immediately (bad bind address, port in use) must
+            # not take the dev stack down with it.
+            Start-Sleep -Milliseconds 500
+            if ($goSecurityProcess.HasExited) {
+                Write-Host "  Go security service exited during startup (code $($goSecurityProcess.ExitCode))"
+                Write-Host '  the API will use the Rust security service only'
+                $goSecurityProcess = $null
+            }
+            else {
+                $env:SECURITY_GO_GRPC_ADDR = "127.0.0.1:$GoSecurityPort"
+                Write-Host "  Go security service preferred; Rust is the fallback"
+            }
+        }
+    }
+    else {
+        Write-Host '> Go security service skipped: the API will use the Rust service only'
     }
 
     # The server is built first and then started directly. Running it through "go run"

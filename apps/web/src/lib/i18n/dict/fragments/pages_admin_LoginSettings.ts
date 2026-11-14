@@ -4,6 +4,8 @@ import type { Dictionary } from '../../plural';
 const fragment: Dictionary = {
   '登录设置': 'Sign-in settings',
   '站点管理员': 'Site admin',
+  '点击上方登录方式切换配置；每种方式只显示自己的参数。开关自动保存到站点服务端，登录页对所有访客显示同一组方式。':
+    'Click a sign-in method above to switch configuration; each method only shows its own parameters. Switches save to the site server automatically and every visitor sees the same methods.',
   '点击上方五种登录方式切换配置；每种方式只显示自己的参数。':
     'Click one of the five sign-in methods above to switch configuration; each method only shows its own parameters.',
   '返回站点设置': 'Back to site settings',
@@ -30,6 +32,8 @@ const fragment: Dictionary = {
   '登录页只显示必填项完整的方式。连接真实后端时，对应端点需要由服务端实现；演示模式可以直接模拟授权。':
     'The sign-in page only shows methods whose required fields are all filled in. With a real backend, the matching endpoints must be implemented on the server; demo mode can simulate authorization directly.',
   服务端环境变量: 'Server environment variables',
+  '所有方式共用；密钥只用于拼接片段，不会写入浏览器配置。':
+    'Shared by every method; secrets are only used to build the snippet and are never written to the browser configuration.',
   '五种方式共用；密钥只用于拼接片段，不会写入浏览器配置。':
     'Shared by all five methods; secrets are only used to build the snippet and are never written to the browser configuration.',
   含本次填写密钥: 'Includes secrets entered here',

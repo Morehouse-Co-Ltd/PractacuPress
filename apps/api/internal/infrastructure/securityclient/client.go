@@ -1,7 +1,13 @@
-// Package securityclient is the contract to the Rust security service.
+// Package securityclient is the contract to the security services.
 //
-// The service owns password hashing, content sanitization and upload inspection.
-// It never owns users, articles or permissions: those stay in the Go application.
+// The services own password hashing, content sanitization and upload
+// inspection. They never own users, articles or permissions: those stay in the
+// Go application.
+//
+// The Go API prefers the Go security service (services/security-go) and falls
+// back to the Rust service (services/security) when a call fails with a
+// transport or availability error; see Fallback. Callers only see this
+// interface, so which implementation answered is an infrastructure detail.
 package securityclient
 
 import (

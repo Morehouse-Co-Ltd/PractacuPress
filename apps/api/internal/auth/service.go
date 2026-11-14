@@ -325,7 +325,10 @@ func (s *Service) CreateMember(
 	if !role.Valid() {
 		return UserView{}, fmt.Errorf("%w: unknown role", ErrInvalidInput)
 	}
-	if role == site.RolePlatformAdmin && actor.Role != site.RolePlatformAdmin {
+	// New accounts can never be minted as platform administrators: the deployment
+	// owner role is granted only by an existing platform administrator through an
+	// explicit role change, never as a side effect of creating a member.
+	if role == site.RolePlatformAdmin {
 		return UserView{}, ErrActionNotAllowed
 	}
 
