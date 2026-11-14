@@ -237,7 +237,9 @@ func TestClassifyProcess(t *testing.T) {
 		"practacu-security": "security",
 		"practacupress":     "launcher",
 	})
-	dirs := []string{`C:\Users\owner\Practacu Press`}
+	// Both spellings are always configured, and the same cases are asserted on every
+	// platform: the classification must not depend on the host that runs the test.
+	dirs := []string{`C:\Users\owner\Practacu Press`, "/opt/practacu/app"}
 
 	cases := []struct {
 		name    string
@@ -253,6 +255,13 @@ func TestClassifyProcess(t *testing.T) {
 		// A terminal or automation host that merely mentions the directory is not us.
 		{"DeepSeek Harness.exe", `C:\Users\owner\AppData\Local\Programs\DeepSeek Harness\DeepSeek Harness.exe`, `runner.js -- powershell -Command "Set-Location 'C:\Users\owner\Practacu Press'; npm run dev"`, ""},
 		{"helper.exe", `C:\Users\owner\Practacu Press\tools\helper.exe`, "", "app"},
+		{"helper.exe", `C:/Users/owner/Practacu Press/tools/helper.exe`, "", "app"},
+		// POSIX-style paths and directories must classify exactly like Windows ones.
+		{"helper", "/opt/practacu/app/tools/helper", "", "app"},
+		{"helper", "/opt/practacu/app", "", "app"},
+		{"helper", "/usr/local/bin/helper", "", ""},
+		// A sibling whose name merely starts with the directory is not inside it.
+		{"helper", "/opt/practacu/application/tools/helper", "", ""},
 		{"chrome.exe", `C:\Program Files\Google\Chrome\chrome.exe`, `chrome --type=renderer`, ""},
 		{"", "", "", ""},
 	}

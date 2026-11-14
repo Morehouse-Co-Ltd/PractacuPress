@@ -574,13 +574,15 @@ func classifyProcess(name, exe, cmdline string, appNames map[string]string, appD
 	if lowerExe == "" {
 		return ""
 	}
+	// Compare after folding both spellings of the separator to "/": the decision must not
+	// depend on the host OS (a Windows path can be classified on Linux, and vice versa).
+	exePath := strings.ReplaceAll(lowerExe, `\`, "/")
 	for _, dir := range appDirs {
 		if dir == "" {
 			continue
 		}
-		lowered := strings.ToLower(dir)
-		if lowerExe == lowered || strings.HasPrefix(lowerExe, lowered+string(filepath.Separator)) ||
-			strings.HasPrefix(lowerExe, lowered+"/") {
+		dirPath := strings.ReplaceAll(strings.ToLower(dir), `\`, "/")
+		if exePath == dirPath || strings.HasPrefix(exePath, dirPath+"/") {
 			return "app"
 		}
 	}
