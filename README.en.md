@@ -61,10 +61,63 @@ Three ways in: **Docker** (recommended for Linux and servers), the **Windows lau
 
 ### Docker (Linux / servers)
 
-The repository ships a `docker-compose.yml` and three image definitions; one command starts the stack:
+#### Install Docker first (skip if you already have it)
+
+You need Docker Engine and Compose v2: the command is `docker compose` (a subcommand), not the older
+`docker-compose`. If `docker compose version` prints a version after these steps, you are set.
+
+Ubuntu / Debian (Docker's official apt repository; `${ID}` resolves to `ubuntu` or `debian`):
+
+```bash
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+. /etc/os-release
+curl -fsSL "https://download.docker.com/linux/${ID}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"   # log out and back in (or run newgrp docker) to drop sudo
+docker compose version
+```
+
+> On derivatives such as Linux Mint, set `${ID}` to `ubuntu` and make sure `${VERSION_CODENAME}`
+> exists in the official repository.
+
+RHEL / CentOS / Rocky (dnf family):
+
+```bash
+sudo dnf -y install dnf-plugins-core
+# RHEL 9 / 10:
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+# Rocky / AlmaLinux / CentOS Stream: use the centos repository instead:
+# sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+docker compose version
+```
+
+> On dnf5 systems (e.g. RHEL 10) where `config-manager --add-repo` is missing, use
+> `sudo dnf config-manager addrepo --from-repofile=<the .repo URL above>`.
+
+#### Build and start
+
+The repository ships `docker-compose.yml` and three image definitions (API / security service / static
+site). From the repository root:
 
 ```bash
 docker compose up -d --build
+```
+
+The first build pulls base images and compiles three images; allow a few minutes on a slow network.
+Then check health:
+
+```bash
+docker compose ps                      # api / security / web all running; api and security healthy
+curl -fsS http://127.0.0.1:8080/healthz
 ```
 
 Open **http://localhost:8080** and complete the seven-step wizard; **the first account it creates is the platform administrator**.
@@ -74,9 +127,143 @@ Open **http://localhost:8080** and complete the seven-step wizard; **the first a
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
 - **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows launcher (create tables, create the default site, promote the first account). Set it to `false` for multi-site / SaaS and prepare the database and an administrator yourself.
 - **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`.
+- **Production deployment**: `docker-compose.prod.yml` + `deploy/production/nginx.conf` provide production semantics, a persistent JWT signing key, Secure cookies, TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [docs/deployment/production-profile.md](docs/deployment/production-profile.md).
 - **Build one image**: `docker build -f deploy/docker/api.Dockerfile .` (likewise `security.Dockerfile` and `web.Dockerfile`).
 
 > There is no Docker on the development machine, so **this compose file and these images have never been run for real** — only the YAML, the file references and the health-check chain were statically validated. Open an issue if your first build fails.
+
+### Linux native package (tar.gz)
+
+If you would rather not use Docker and do not want Go / Node / Rust on the server, use the
+prebuilt native package: Linux x86_64 binaries for the API, seed and migrate commands, the Rust
+security service, the static frontend, and an **interactive install wizard** (`install.sh`).
+The target machine only needs systemd and Nginx; no development toolchain.
+
+```bash
+tar -xzf PractacuPress-Linux-x64.tar.gz
+cd PractacuPress-Linux-x64
+sudo ./install.sh
+```
+
+The wizard asks for the program directory, data directory, ports and whether to configure Nginx,
+then creates the system user and directories, generates the Ed25519 signing key, installs the
+systemd units, creates the database, and exposes the setup wizard on `127.0.0.1:8080` only —
+**the first administrator can only be registered from loopback**, so remote servers need an SSH
+tunnel (`ssh -L 8080:127.0.0.1:8080 user@server`) or a local browser. Once the seven-step wizard
+is done, switch to the access mode you need:
+
+```bash
+sudo /opt/practacu-press/install.sh --finalize --mode lan                    # intranet / single-host HTTP
+sudo /opt/practacu-press/install.sh --finalize --mode public --domain a.com  # public HTTPS (issues the certificate)
+```
+
+`--status` shows the state, re-running `sudo ./install.sh` is an upgrade (keeps data, keys and
+access mode), and `uninstall.sh` removes the installation (data kept by default). The full steps —
+SSH tunnel, domain verification, backup/upgrade/uninstall and troubleshooting — are in
+[deploy/linux/INSTALL.md](deploy/linux/INSTALL.md).
+
+Build the package yourself with `node scripts/package-linux.mjs` (works on Windows and Linux build
+hosts: web build, cross-compiled Go and Rust, ELF/script/template self-checks, tar.gz + sha256 in
+`release/`).
+
+### Linux from source (bash)
+
+If you would rather not use containers, run the sources directly (development, debugging or
+self-hosting). Prerequisites: **Go 1.26+**, **Node.js 22+**, Git; Rust stable is optional — without the
+security service the API starts in a degraded mode and publishing articles or completing uploads return
+503 by design.
+
+```bash
+# Ubuntu / Debian base tools and Node.js 22 (Go / Rust below)
+sudo apt-get update && sudo apt-get install -y git build-essential
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Go 1.26+: download a linux-amd64 tarball from https://go.dev/dl/, unpack to /usr/local, add it to PATH.
+# Example with go1.26.0 (any patch release >= the 1.26 in go.mod works):
+#   curl -fsSLO https://go.dev/dl/go1.26.0.linux-amd64.tar.gz
+#   sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
+#   export PATH=/usr/local/go/bin:$PATH
+
+# Rust (optional, only needed to build the security service)
+#   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+> On RHEL family systems replace the first line with `sudo dnf install -y git gcc-c++ make`, and install
+> Node.js 22 from NodeSource's RPM repo: `curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -`
+> then `sudo dnf install -y nodejs`. For Go / Rust use the official releases too (distribution package
+> versions are usually older than required).
+
+```bash
+cd practacu-press                      # repository root (git clone or unzip first)
+
+# 1) Frontend: build once; the output is plain static files in apps/web/dist
+cd apps/web && npm ci && npm run build && cd ../..
+
+# 2) Rust security service (optional; if you skip it, do not start it below)
+cd services/security && cargo build --release && cd ../..
+# output: services/security/target/release/practacu-security
+
+# 3) Environment: keep it in ~/.practacu-env.sh and source it in every shell
+#    (a new terminal does not inherit exported variables)
+cat > ~/.practacu-env.sh <<'EOF'
+export APP_ENV=development
+export HTTP_ADDR=127.0.0.1:8080
+export DATABASE_DRIVER=sqlite
+export DATABASE_DSN='file:./data/practacu.db'
+export STORAGE_DRIVER=local
+export STORAGE_DIR=./data/media
+export SECURITY_GRPC_ADDR=127.0.0.1:9001
+# Single-site self-hosting: the first registered account becomes platform admin.
+# Leave this off for multi-site / SaaS deployments.
+export PP_DESKTOP=true
+EOF
+source ~/.practacu-env.sh
+mkdir -p data/media
+```
+
+Create the database and the default site (once). A new terminal does not inherit the environment, so
+source the file again in each one:
+
+```bash
+# once: create tables + default site
+source ~/.practacu-env.sh
+go run ./apps/api/cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
+
+# terminal A: Rust security service (listens on 127.0.0.1:9001 by default)
+source ~/.practacu-env.sh
+./services/security/target/release/practacu-security
+
+# terminal B: Go API (listens on 127.0.0.1:8080)
+source ~/.practacu-env.sh
+go run ./apps/api/cmd/server
+```
+
+Confirm the API is ready (both return 200; `readyz` waits for the security service):
+
+```bash
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8080/readyz
+```
+
+Run the frontend with the dev server, which proxies `/api`, `/healthz`, `/readyz` and `/plugins` to the
+local 8080 API:
+
+```bash
+cd apps/web
+npm run dev -- --port 5173
+```
+
+Open **http://127.0.0.1:5173/?mode=live** and complete the seven-step wizard; **the first account it
+creates is the platform administrator**. (Vite wants port 80 by default, which a non-root user on Linux
+cannot bind, so 5173 is passed explicitly.)
+
+> For single-domain self-hosting without the dev server: let Nginx (or similar) serve `apps/web/dist` and
+> reverse-proxy `/api`, `/healthz`, `/readyz`, `/plugins`, `/sitemap.xml` and `/robots.txt` to
+> `127.0.0.1:8080` (see `deploy/production/nginx.conf` and the
+> [production deployment profile](docs/deployment/production-profile.md)). `npm start` only serves static
+> files and does not proxy the API, and its default port (8080) collides with the API — do not run it in
+> that setup.
 
 ### Windows launcher
 
@@ -148,7 +335,7 @@ npm run build
 npm start
 ```
 
-`http://localhost:8080` (port 8080 by default). Admin → Site settings → Access & domains → Port changes the port; the server starts listening on the new port immediately and remembers the choice. For development use `npm run dev`, which stays on port 80 so it does not collide with the API on 8080, and proxies `/api`, `/healthz` and `/readyz` to `127.0.0.1:8080`.
+`http://localhost:8080` (port 8080 by default). Admin → Site settings → Access & domains → Port changes the port; the server starts listening on the new port immediately and remembers the choice. **`npm start` only serves static files and does not proxy the API**, and its default port is 8080 too, so to run it alongside the local API use dev mode instead: `npm run dev` (the dev server uses 80 and leaves 8080 to the API) proxies `/api`, `/healthz`, `/readyz` and `/plugins` to `127.0.0.1:8080`; on Linux a non-root user cannot bind port 80, so add `-- --port 5173`. Alternatively let Nginx serve the static build (see Linux from source above).
 
 The first visit opens the setup wizard; with no backend you can choose demo data to explore the complete frontend and admin console. Details in the [frontend guide](apps/web/README.md).
 
@@ -329,6 +516,7 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | --- | --- |
 | MySQL / PostgreSQL | No dialect dependency in the code, but **neither database is available on this machine, so it is unverified in practice** — needs a CI matrix |
 | Docker | Ships a `docker-compose.yml` and three image definitions (API / security service / static site); **no Docker on the development machine, so the images have never been built or run** |
+| Linux package | Ships `release/PractacuPress-Linux-x64.tar.gz` (prebuilt binaries + `install.sh` wizard + systemd/Nginx templates); **cross-compiled on a Windows build host, the installer has not been run on a real Linux machine** — its flow was exercised with stub commands |
 | Windows installer (MSI) | Not implemented; Windows ships as a launcher plus a zip |
 | Multi-replica WebSocket | Tickets and the hub live in process memory; multiple replicas need shared storage |
 | Rate limiting | In-process fixed window, counted per replica; real DDoS/CC protection needs a reverse proxy or edge WAF |

@@ -125,10 +125,60 @@ node scripts/e2e-i18n.mjs          # 中英切换、刷新保持、零残留中�
 
 ### Docker 部署（Linux / 服务器）
 
-仓库自带 `docker-compose.yml` 与三个镜像定义，一条命令起全栈：
+#### 先装 Docker（本机已有就跳过）
+
+需要 Docker Engine 与 Compose v2：启动命令是 `docker compose`（子命令），不是老版的
+`docker-compose`；下面装好之后 `docker compose version` 能打印版本就说明齐了。
+
+Ubuntu / Debian（Docker 官方 apt 仓库，`${ID}` 由系统自动取 `ubuntu` 或 `debian`）：
+
+```bash
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+. /etc/os-release
+curl -fsSL "https://download.docker.com/linux/${ID}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"   # 注销重登（或 newgrp docker）后不用再写 sudo
+docker compose version
+```
+
+> Linux Mint 等衍生版把 `${ID}` 手动改成 `ubuntu`，并核对 `${VERSION_CODENAME}` 是官方仓库里存在的代号。
+
+RHEL / CentOS / Rocky（dnf 系）：
+
+```bash
+sudo dnf -y install dnf-plugins-core
+# RHEL 9 / 10：
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+# Rocky / AlmaLinux / CentOS Stream 改用 centos 仓库：
+# sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+docker compose version
+```
+
+> RHEL 10 等 dnf5 环境若没有 `config-manager --add-repo`，改用
+> `sudo dnf config-manager addrepo --from-repofile=<上面的 .repo 地址>`。
+
+#### 构建并启动
+
+仓库自带 `docker-compose.yml` 与三个镜像定义（API / 安全服务 / 静态站），在仓库根目录执行：
 
 ```bash
 docker compose up -d --build
+```
+
+首次构建要拉基础镜像并编译三个镜像，视网络需要几分钟。起来后先确认健康：
+
+```bash
+docker compose ps                      # api / security / web 都应是 running；api、security 为 healthy
+curl -fsS http://127.0.0.1:8080/healthz
 ```
 
 打开 **http://localhost:8080** 走完七步安装引导；**引导里创建的第一个账户就是平台管理员**。
@@ -142,6 +192,124 @@ docker compose up -d --build
 - **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`，另外两个同理（`security.Dockerfile`、`web.Dockerfile`）。
 
 > 开发机上没有 Docker 环境，这套 compose 与镜像定义（含 `docker-compose.prod.yml` 生产 profile）**没有实跑验证过**：YAML、Dockerfile 引用与健康检查链路只做了静态校验。首次构建若遇问题，欢迎开 issue。
+
+### Linux 原生安装包（tar.gz）
+
+既不想用 Docker、也不想在服务器上装 Go / Node / Rust 时，用仓库打好的原生包：里面是
+Linux x86_64 的 API / seed / migrate 二进制、Rust 安全服务、前端静态文件，以及一个
+**交互式安装向导**（`install.sh`）。目标机只需要 systemd 与 Nginx，不需要任何开发工具链。
+
+```bash
+tar -xzf PractacuPress-Linux-x64.tar.gz
+cd PractacuPress-Linux-x64
+sudo ./install.sh
+```
+
+向导会询问程序目录、数据目录、端口与是否配置 Nginx，然后创建系统用户与目录、生成
+Ed25519 签名私钥、注册 systemd 服务、建库建站，并只把安装引导暴露在 `127.0.0.1:8080`——
+**首个管理员只能从回环地址注册**，所以远程服务器要用 SSH 隧道（`ssh -L 8080:127.0.0.1:8080 用户@服务器`）
+或本机浏览器打开。走完七步安装引导后，再切访问形态：
+
+```bash
+sudo /opt/practacu-press/install.sh --finalize --mode lan                    # 内网 / 单机 HTTP
+sudo /opt/practacu-press/install.sh --finalize --mode public --domain a.com  # 公网 HTTPS（自动申请证书）
+```
+
+`--status` 看状态；重跑 `sudo ./install.sh` 是升级（保留数据库、密钥与访问形态）；
+`uninstall.sh` 卸载（默认保留数据）。SSH 隧道、域名验证、备份/升级/卸载与排障的完整步骤见
+[deploy/linux/INSTALL.md](deploy/linux/INSTALL.md)。
+
+自己打包：`node scripts/package-linux.mjs`（Windows 与 Linux 构建机都可用：构建前端、
+交叉编译 Go 与 Rust、自检 ELF/脚本/模板，最后生成 tar.gz 与 sha256），产物在 `release/`。
+
+### Linux 源码运行（bash）
+
+不想用容器时可以直接跑源码（开发、调试或自托管）。前提：**Go 1.26+**、**Node.js 22+**、Git；
+Rust stable 可选——没有安全服务时 API 会降级启动，但发布文章与完成上传按设计返回 503。
+
+```bash
+# Ubuntu / Debian 的基础工具与 Node.js 22（Go / Rust 见下）
+sudo apt-get update && sudo apt-get install -y git build-essential
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Go 1.26+：从 https://go.dev/dl/ 下载 linux-amd64 压缩包，解到 /usr/local 后加进 PATH。
+# 以 go1.26.0 为例（补丁版本可换新，只要 ≥ go.mod 里的 1.26）：
+#   curl -fsSLO https://go.dev/dl/go1.26.0.linux-amd64.tar.gz
+#   sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
+#   export PATH=/usr/local/go/bin:$PATH
+
+# Rust（可选，编译安全服务才需要）
+#   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+> RHEL 系把第一条换成 `sudo dnf install -y git gcc-c++ make`，Node.js 22 用 NodeSource 的 RPM 源：
+> `curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -` 然后 `sudo dnf install -y nodejs`。
+> Go / Rust 同样以官方发布包为准（发行版仓库里的版本通常低于要求）。
+
+```bash
+cd practacu-press                      # 仓库根目录（git clone 或解压后进入）
+
+# 1) 前端：构建一次，产物是 apps/web/dist 里的纯静态文件
+cd apps/web && npm ci && npm run build && cd ../..
+
+# 2) Rust 安全服务（可选；跳过时下面别启动它）
+cd services/security && cargo build --release && cd ../..
+# 产物：services/security/target/release/practacu-security
+
+# 3) 环境变量：存成 ~/.practacu-env.sh，之后每个终端 source 一次（新终端不继承 export）
+cat > ~/.practacu-env.sh <<'EOF'
+export APP_ENV=development
+export HTTP_ADDR=127.0.0.1:8080
+export DATABASE_DRIVER=sqlite
+export DATABASE_DSN='file:./data/practacu.db'
+export STORAGE_DRIVER=local
+export STORAGE_DIR=./data/media
+export SECURITY_GRPC_ADDR=127.0.0.1:9001
+# 单站点自托管：首个注册账户成为平台管理员；多站点 / SaaS 部署不要打开
+export PP_DESKTOP=true
+EOF
+source ~/.practacu-env.sh
+mkdir -p data/media
+```
+
+建库并创建默认站点（只需一次）。新开的终端不会继承环境变量，所以下面每个终端都先 `source` 一次：
+
+```bash
+# 只做一次：建表 + 默认站点
+source ~/.practacu-env.sh
+go run ./apps/api/cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
+
+# 终端 A：Rust 安全服务（默认监听 127.0.0.1:9001）
+source ~/.practacu-env.sh
+./services/security/target/release/practacu-security
+
+# 终端 B：Go API（监听 127.0.0.1:8080）
+source ~/.practacu-env.sh
+go run ./apps/api/cmd/server
+```
+
+确认 API 就绪（两个都返回 200；`readyz` 会等安全服务连上）：
+
+```bash
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8080/readyz
+```
+
+前端用开发服务器：它会把 `/api`、`/healthz`、`/readyz`、`/plugins` 代理到本机 8080。
+
+```bash
+cd apps/web
+npm run dev -- --port 5173
+```
+
+打开 **http://127.0.0.1:5173/?mode=live** 走完七步安装引导；**引导里创建的第一个账户就是平台管理员**。
+（Vite 配置默认想监听 80，Linux 上非 root 绑不上会自动顺延，所以这里显式指定 5173。）
+
+> 单域名自托管、不用开发服务器时：用 Nginx 之类的反向代理托管 `apps/web/dist`，并把 `/api`、
+> `/healthz`、`/readyz`、`/plugins`、`/sitemap.xml`、`/robots.txt` 反代到 `127.0.0.1:8080`
+> （模板见 `deploy/production/nginx.conf` 与 [生产部署 profile](docs/deployment/production-profile.md)）。
+> `npm start` 只托管静态文件、自己不代理 API，默认端口也是 8080，会和 API 撞车——那种部署里不要跑它。
 
 ### Windows 启动器
 
@@ -216,8 +384,10 @@ npm start
 ```
 
 `http://localhost:8080`（默认 8080 端口）。后台「站点设置 → 访问与域名 → 访问端口」可以改端口，
-服务会立即在新端口监听并记住选择。开发模式用 `npm run dev`，开发服务器仍用 80 端口
-（8080 留给本机 API），并把 `/api`、`/healthz`、`/readyz` 转到 `127.0.0.1:8080`。
+服务会立即在新端口监听并记住选择。**`npm start` 只托管静态文件、不代理 API**，默认端口又是 8080，
+要和本机 API 同时用时改走开发模式：`npm run dev`（开发服务器用 80，8080 留给本机 API）把
+`/api`、`/healthz`、`/readyz`、`/plugins` 转到 `127.0.0.1:8080`；Linux 上非 root 绑不上 80 时加
+`-- --port 5173`。也可以把静态站交给 Nginx 反代（见上面的 Linux 源码运行）。
 
 首次打开会进入安装引导；没有后端时可选「演示数据」直接体验完整前台与后台。
 细节见[前端说明](apps/web/README.md)。
@@ -415,6 +585,7 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | --- | --- |
 | MySQL / PostgreSQL | 代码层无方言依赖，但**本机没有这两个数据库，未实跑验证**，需在 CI 上跑矩阵 |
 | Docker | 已提供 `docker-compose.yml` 与三个镜像定义（API / 安全服务 / 静态站）；**开发机无 Docker，镜像构建未实跑验证** |
+| Linux 安装包 | 提供 `release/PractacuPress-Linux-x64.tar.gz`（预编译二进制 + `install.sh` 向导 + systemd/Nginx 模板）；**在 Windows 构建机上交叉编译，未在真实 Linux 主机上实跑安装脚本**，安装流程用替身命令做过演练 |
 | Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | WebSocket 多副本 | 票据与 hub 在进程内存，多副本部署需要共享存储 |
 | 限流 | 进程内固定窗口，多副本下是每副本独立计数；真正的 DDoS/CC 防护需要反向代理或边缘 WAF |
