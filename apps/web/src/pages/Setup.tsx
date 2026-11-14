@@ -159,6 +159,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     const previous = root.dataset.surface;
     root.dataset.surface = 'setup';
     return () => {
+      // 只在向导仍持有这个属性时还原。完成安装后跳转后台时，后台外壳已经接管了
+      // data-surface；把 previous（可能是 site）写回去会让整个后台套上站点主题。
+      if (root.dataset.surface !== 'setup') return;
       if (previous) root.dataset.surface = previous;
       else delete root.dataset.surface;
     };

@@ -24,6 +24,7 @@ const fragment: Dictionary = {
     'Try another status or keyword. The list only shows content this account can see.',
   '创建第一篇草稿，或者等待成员提交审核。':
     'Create the first draft, or wait for a member to submit one for review.',
+  '创建第一篇草稿。': 'Create the first draft.',
   '新建草稿': 'New draft',
 
   // ---- 表格表头 ----

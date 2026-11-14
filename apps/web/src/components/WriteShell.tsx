@@ -47,9 +47,11 @@ export function WriteShell() {
 
   // 写作台与后台编辑器共用纸白令牌：编辑器的字号、表格与表单都是按它调的。
   useEffect(() => {
-    document.documentElement.dataset.surface = 'admin';
+    const root = document.documentElement;
+    root.dataset.surface = 'admin';
     return () => {
-      delete document.documentElement.dataset.surface;
+      // 只撤销自己写的那一份，别把后台外壳刚接管的属性删掉。
+      if (root.dataset.surface === 'admin') delete root.dataset.surface;
     };
   }, []);
 

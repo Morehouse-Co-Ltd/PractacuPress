@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import type { Content, ContentAction } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
@@ -20,10 +20,15 @@ import {
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
+import { usePermissions } from '../../lib/usePermissions';
 import { useToast } from '../../lib/toast';
 
 export function ReviewPage() {
   const t = useT();
+  const { personal } = usePermissions();
+  // 个人博客只有一个作者：没有“别人提交、站长审核”的流程，审核队列整块不存在。
+  // 侧栏已经不给入口，直接输地址也回到内容库，避免看到一个永远空着的队列。
+  if (personal) return <Navigate to="/admin/content" replace />;
   return (
     <RoleGate capability="moderate_content" need={t('审核员')}>
       <ReviewQueue />

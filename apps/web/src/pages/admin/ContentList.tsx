@@ -31,6 +31,7 @@ import { coverAlt, coverFor, coverImageStyle } from '../../lib/covers';
 import { Cover } from '../../components/Cover';
 import { Icon } from '../../components/Icon';
 import { useTaxonomy } from '../../lib/useTaxonomy';
+import { usePermissions } from '../../lib/usePermissions';
 import { useToast } from '../../lib/toast';
 
 type StatusFilter = 'all' | ContentStatus;
@@ -39,6 +40,7 @@ type KindFilter = 'all' | ContentKind;
 export function ContentListPage() {
   const t = useT();
   const { me } = useAuth();
+  const { personal } = usePermissions();
   const backend = useBackend();
   const toast = useToast();
   const { customization, update } = useCustomization();
@@ -237,7 +239,9 @@ export function ContentListPage() {
               body={
                 query || status !== 'all'
                   ? t('换一个状态或关键词。列表只包含当前账户可见的内容。')
-                  : t('创建第一篇草稿，或者等待成员提交审核。')
+                  : personal
+                    ? t('创建第一篇草稿。')
+                    : t('创建第一篇草稿，或者等待成员提交审核。')
               }
               action={
                 <Link to="/admin/content/new/article" className="btn btn-secondary btn-sm">
@@ -384,7 +388,7 @@ export function ContentListPage() {
                               {ACTION_LABEL[action]}
                             </Button>
                           ) : null}
-                          {item.actions.includes('reject') ? (
+                          {!personal && item.actions.includes('reject') ? (
                             <Link to="/admin/review" className="btn btn-ghost btn-sm">
                               {t('去审核')}
                             </Link>

@@ -543,6 +543,11 @@ export function themeCss(customization: SiteCustomization, mode?: ThemeMode): st
     .filter((line): line is string => line !== null);
   // 后台有自己的明暗模式：浅色沿用纸白令牌（与改造前完全一致），深色用夜航的
   // 冷石墨令牌。两者都写在 html[data-surface="admin"] 下，站点前台的 :root 不受影响。
+  //
+  // 同一组令牌还挂在后台根节点 `.admin-shell` 上：`data-surface` 是运行时属性，
+  // 站点外壳 / 安装向导卸载时会在被动 effect 里删掉或改回 site，后台就会掉回站点
+  // 主题的令牌。深色站点上那就是白面板配浅色字、搜索框与空状态整块变黑。令牌钉在
+  // 后台子树上以后，属性丢了也只是少一层隔离，配色不会串。
   const adminTokens = presetTokens('paper', 'light')!;
   const adminLines = Object.entries(adminTokens).map(
     ([key, value]) => `  ${CSS_TOKEN_NAME[key] ?? `--${key.replace(/_/g, '-')}`}: ${value};`,
@@ -565,7 +570,8 @@ ${lines.join('\n')}
   --shadow-hero: 0 24px 60px -30px rgb(0 0 0 / .65);
   --shell: min(100%, 1760px);${theme.heading_font === 'sans' ? '\n  --serif: var(--sans);' : ''}
 }
-html[data-surface="admin"] {
+html[data-surface="admin"],
+.admin-shell {
   color-scheme: light;
 ${adminLines.join('\n')}
   --admin-panel: #ffffff;
@@ -582,8 +588,12 @@ ${adminLines.join('\n')}
   --r-md: 6px;
   --r-lg: 10px;
 }
+/* 后台根节点自己也要带上前景色：属性丢失时 body 的 color 来自站点主题，
+   子元素会继承那份解析结果，而不是重新按后台令牌求值。 */
+.admin-shell { color: var(--ink); }
 /* 后台深色：与站点前台的主题完全解耦，只由后台自己的偏好（data-admin-theme）触发。 */
-html[data-surface="admin"][data-admin-theme="dark"] {
+html[data-surface="admin"][data-admin-theme="dark"],
+html[data-admin-theme="dark"] .admin-shell {
   color-scheme: dark;
 ${adminDarkLines.join('\n')}
   --admin-panel: #12151b;

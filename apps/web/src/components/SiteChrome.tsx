@@ -82,9 +82,12 @@ export function SiteChrome() {
   useClickOutside(userRef, () => setUserOpen(false), userOpen);
 
   useEffect(() => {
-    document.documentElement.dataset.surface = 'site';
+    const root = document.documentElement;
+    root.dataset.surface = 'site';
     return () => {
-      delete document.documentElement.dataset.surface;
+      // 只清自己写的那一份：路由切进后台时，后台外壳已经在 layout effect 里接管了
+      // 这个属性，无条件删除会把后台打回站点主题（深色站点上就是白底浅字）。
+      if (root.dataset.surface === 'site') delete root.dataset.surface;
     };
   }, []);
 

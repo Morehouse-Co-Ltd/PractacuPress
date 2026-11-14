@@ -2544,6 +2544,9 @@ img {
 }
 .admin-topbar h1 { font-size: 14px; font-weight: 600; }
 .admin-topbar .crumb { font-size: 11px; color: var(--muted); }
+/* 页面自己带 .admin-page-head 的标题时，顶栏不再重复同一句话；扩展页面没有自己的
+   标题，仍然由顶栏兜底。:has() 不被支持时只是回到「显示两遍」，不影响可用性。 */
+.admin-main:has(.admin-page-head h1) .admin-topbar h1 { display: none; }
 .admin-topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .admin-content { width: 100%; padding-top: 18px; max-width: 1680px; }
 
@@ -2623,9 +2626,12 @@ img {
 /* 四张统计卡各自独立成卡：中间留出间隔，而不是拼成一整条线框。 */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--stat-cols, 4), minmax(0, 1fr));
   gap: 12px;
 }
+/* 个人博客没有审核环节，仪表盘只留三张统计卡（已发布 / 草稿与退回 / 用户）。
+   用自定义属性而不是直接写 grid-template-columns，窄屏的两列布局不会被覆盖。 */
+.stat-grid.is-three { --stat-cols: 3; }
 .stat {
   background: #fff;
   border: 1px solid var(--line);
@@ -2652,6 +2658,8 @@ img {
   gap: 24px;
   margin-top: 24px;
 }
+/* 个人博客没有审核队列面板，仪表盘只剩「最近操作」一张卡，让它占满整行。 */
+.dash-grid.is-single { grid-template-columns: minmax(0, 1fr); }
 .dash-grid > * { min-width: 0; }
 
 .checklist { display: flex; flex-direction: column; }

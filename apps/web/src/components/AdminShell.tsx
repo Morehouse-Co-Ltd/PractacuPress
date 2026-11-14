@@ -122,6 +122,9 @@ export function AdminShell() {
 
   // 后台有自己的明暗模式：固定 data-surface=admin 隔离站点主题，data-admin-theme
   // 交给 themeCss 里的后台深色令牌。用 layout effect 在绘制前落属性，避免闪白。
+  // 依赖里带上路由：从站点前台走进后台时，被卸载的站点外壳会在同一轮提交的被动
+  // effect 清理里把属性删掉（React 先跑新树的 layout effect、后跑旧树的清理），
+  // 换一个后台页面就重新落一次，不必等整页刷新。
   useLayoutEffect(() => {
     const root = document.documentElement;
     const previousColorScheme = root.style.colorScheme;
@@ -129,11 +132,22 @@ export function AdminShell() {
     root.dataset.adminTheme = adminTheme;
     root.style.colorScheme = adminTheme;
     return () => {
-      delete root.dataset.surface;
-      delete root.dataset.adminTheme;
+      // 只撤销自己写的那一份：此刻属性可能已经属于别的界面了。
+      if (root.dataset.surface === 'admin') delete root.dataset.surface;
+      if (root.dataset.adminTheme === adminTheme) delete root.dataset.adminTheme;
       root.style.colorScheme = previousColorScheme;
     };
-  }, [adminTheme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTheme, location.pathname]);
+
+  // 兜底再确认一次：被卸载组件的被动清理（站点外壳 / 安装向导）一定晚于本组件的
+  // layout effect，属性若被它们删掉或改回 site，后台就会掉回站点主题令牌——深色
+  // 站点上表现为白底浅字、搜索框与空状态整块变黑。被动 effect 晚于那些清理。
+  useEffect(() => {
+    const root = document.documentElement;
+    if (root.dataset.surface !== 'admin') root.dataset.surface = 'admin';
+    if (root.dataset.adminTheme !== adminTheme) root.dataset.adminTheme = adminTheme;
+  }, [adminTheme, location.pathname]);
 
   // 站点前台有全局 Shift+D；后台不在 CommandLayer 里，所以单独挂一个同款快捷键。
   useEffect(() => {
@@ -149,7 +163,8 @@ export function AdminShell() {
   }, [toggleAdminTheme]);
 
   useEffect(() => {
-    if (!can('moderate_content')) return;
+    // 个人博客没有审核队列，徽标也不必再拉一遍列表。
+    if (!can('moderate_content') || personal) return;
     let alive = true;
     Promise.all([
       backend.listContent('article', { limit: 100 }),
@@ -259,11 +274,13 @@ export function AdminShell() {
     ...(can('write_content') || can('moderate_content')
       ? ([{ to: '/admin/taxonomy', label: t('分类与标签'), icon: 'tag' }] as NavItem[])
       : []),
+    // 审核队列只在社区站点出现：个人博客的唯一作者无法审核自己的稿件，
+    // 切换到个人博客后这条入口整块消失（直接访问 /admin/review 会被带回内容库）。
+    ...(can('moderate_content') && !personal
+      ? ([{ to: '/admin/review', label: t('审核队列'), icon: 'shield', badge: pending }] as NavItem[])
+      : []),
     ...(can('moderate_content')
-      ? ([
-          { to: '/admin/review', label: t('审核队列'), icon: 'shield', badge: pending },
-          { to: '/admin/reports', label: t('举报队列'), icon: 'alert', badge: pendingReports },
-        ] as NavItem[])
+      ? ([{ to: '/admin/reports', label: t('举报队列'), icon: 'alert', badge: pendingReports }] as NavItem[])
       : []),
     ...(can('moderate_comment')
       ? ([
@@ -489,6 +506,8 @@ export function AdminShell() {
 
       <div className="admin-main">
         <div className="admin-topbar">
+          {/* 顶栏标题只是兜底：页面自带 .admin-page-head 时由 CSS（.admin-main:has(...)）
+              隐藏它，否则同一句话会在首屏出现两遍。扩展页面没有自己的标题时仍然靠它。 */}
           <div>
             <p className="crumb">{t('管理后台')} / {section}</p>
             <h1>{section}</h1>

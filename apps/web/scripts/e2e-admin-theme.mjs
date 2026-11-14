@@ -290,6 +290,69 @@ try {
     `body=${darkSiteAfterAdmin.body} adminTheme=${darkSiteAfterAdmin.adminTheme}`,
   );
 
+  // 回归：从深色站点点进后台。站内导航会在同一轮提交里卸载站点外壳，外壳的被动
+  // effect 清理不能把后台刚写上的 data-surface 删掉——删掉就会掉回站点深色令牌，
+  // 表现为白底浅字、搜索框与空状态整块变黑（后台显示错乱的主因）。
+  // 先把后台偏好重置成亮色，避免沿用上一节点过的暗色。
+  await page.evaluate(() => localStorage.setItem('pp.admin.theme', 'light'));
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.site-header', { timeout: 30_000 });
+  await page.waitForTimeout(700);
+  const adminLink = await page.$('a[href^="/admin"]');
+  if (adminLink) {
+    await adminLink.click();
+    await page.waitForSelector('.admin-shell', { timeout: 30_000 });
+    await page.waitForTimeout(700);
+    const fromDarkSite = await page.evaluate(() => {
+      const heading =
+        document.querySelector('.admin-page-head h1') ?? document.querySelector('.admin-topbar h1');
+      return {
+        surface: document.documentElement.dataset.surface ?? '',
+        adminTheme: document.documentElement.dataset.adminTheme ?? '',
+        headingColor: heading ? getComputedStyle(heading).color : '',
+      };
+    });
+    check(
+      '从深色前台站内跳进后台：data-surface 仍是 admin',
+      fromDarkSite.surface === 'admin',
+      `surface=${fromDarkSite.surface}`,
+    );
+    check(
+      '从深色前台站内跳进后台：后台仍是亮色，标题是深色字',
+      fromDarkSite.adminTheme === 'light' && rgb(fromDarkSite.headingColor) === 'rgb(20, 20, 15)',
+      `theme=${fromDarkSite.adminTheme} heading=${fromDarkSite.headingColor}`,
+    );
+  } else {
+    check('从深色前台站内跳进后台：找到后台入口', false, '页面上没有 /admin 链接');
+  }
+
+  // 个人博客没有审核队列：侧栏不出现入口，直接访问地址回到内容库。
+  await page.evaluate(() => {
+    const config = JSON.parse(localStorage.getItem('pp.web.config.v1'));
+    config.site_kind = 'personal';
+    localStorage.setItem('pp.web.config.v1', JSON.stringify(config));
+    localStorage.setItem('pp.admin.theme', 'light');
+  });
+  await page.goto(`${BASE}/admin/content`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.admin-shell', { timeout: 30_000 });
+  await page.waitForTimeout(700);
+  const personalNav = await page.evaluate(() =>
+    [...document.querySelectorAll('.admin-nav-link')].map((node) => (node.textContent ?? '').trim()),
+  );
+  check(
+    '个人博客侧栏没有审核队列',
+    !personalNav.some((label) => label.startsWith('审核队列')),
+    personalNav.join('|'),
+  );
+  await page.goto(`${BASE}/admin/review`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.admin-shell', { timeout: 30_000 });
+  await page.waitForTimeout(700);
+  check(
+    '个人博客访问 /admin/review 回到内容库',
+    new URL(page.url()).pathname === '/admin/content',
+    page.url(),
+  );
+
   const failed = checks.filter((entry) => !entry.ok);
   console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`);
   console.log(`screenshots: ${OUT}`);

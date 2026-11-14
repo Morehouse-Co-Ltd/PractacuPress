@@ -10,6 +10,7 @@ import {
   activityTone,
 } from '../../lib/format';
 import { useLocale, useT } from '../../lib/i18n';
+import { usePermissions } from '../../lib/usePermissions';
 import { Badge, Button, Callout } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { DashboardAnalytics, DashboardPopular, DashboardRecent } from '../../components/DashboardInsights';
@@ -18,6 +19,7 @@ export function DashboardPage() {
   const t = useT();
   const locale = useLocale();
   const { me, site } = useAuth();
+  const { personal } = usePermissions();
   const backend = useBackend();
   const demo = isDemo(backend) ? backend : null;
   useTitle(t('仪表盘'));
@@ -78,17 +80,20 @@ export function DashboardPage() {
         </Callout>
       ) : null}
 
-      <div className="stat-grid">
+      <div className={`stat-grid${personal ? ' is-three' : ''}`}>
         <div className="stat is-accent">
           <span>{t('已发布')}</span>
           <b>{data.loading ? '—' : published.length}</b>
           <small>{t('读者可见的内容')}</small>
         </div>
-        <div className="stat is-warn">
-          <span>{t('待审核')}</span>
-          <b>{data.loading ? '—' : review.length}</b>
-          <small>{review.length ? t('需要编辑处理') : t('队列已清空')}</small>
-        </div>
+        {/* 个人博客没有“别人提交、我来审核”的流程，待审核卡片与审核队列面板整块不渲染。 */}
+        {personal ? null : (
+          <div className="stat is-warn">
+            <span>{t('待审核')}</span>
+            <b>{data.loading ? '—' : review.length}</b>
+            <small>{review.length ? t('需要编辑处理') : t('队列已清空')}</small>
+          </div>
+        )}
         <div className="stat">
           <span>{t('草稿与退回')}</span>
           <b>{data.loading ? '—' : drafts.length}</b>
@@ -109,43 +114,45 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="dash-grid">
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>{t('审核队列')}</h3>
-              <p>
-                {review.length
-                  ? t('{count} 篇等待处理', { count: review.length })
-                  : t('暂时没有待审内容')}
-              </p>
+      <div className={`dash-grid${personal ? ' is-single' : ''}`}>
+        {personal ? null : (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{t('审核队列')}</h3>
+                <p>
+                  {review.length
+                    ? t('{count} 篇等待处理', { count: review.length })
+                    : t('暂时没有待审内容')}
+                </p>
+              </div>
+              <Link to="/admin/review" className="btn btn-secondary btn-sm">
+                {t('打开队列')}
+              </Link>
             </div>
-            <Link to="/admin/review" className="btn btn-secondary btn-sm">
-              {t('打开队列')}
-            </Link>
-          </div>
-          <div className="panel-body">
-            {review.length === 0 ? (
-              <p className="small muted">
-                {t('队列是空的。新的提交会出现在这里，并触发一条通知。')}
-              </p>
-            ) : (
-              review.slice(0, 3).map((item) => (
-                <div className="mini-row" key={item.id}>
-                  <div style={{ minWidth: 0 }}>
-                    <Link to={`/admin/review`} className="cell-title">
-                      {item.title}
-                    </Link>
-                    <div className="tiny faint">
-                      {item.author_name ?? t('作者')} · {formatDateTime(item.updated_at)}
+            <div className="panel-body">
+              {review.length === 0 ? (
+                <p className="small muted">
+                  {t('队列是空的。新的提交会出现在这里，并触发一条通知。')}
+                </p>
+              ) : (
+                review.slice(0, 3).map((item) => (
+                  <div className="mini-row" key={item.id}>
+                    <div style={{ minWidth: 0 }}>
+                      <Link to={`/admin/review`} className="cell-title">
+                        {item.title}
+                      </Link>
+                      <div className="tiny faint">
+                        {item.author_name ?? t('作者')} · {formatDateTime(item.updated_at)}
+                      </div>
                     </div>
+                    <Badge tone="warn">{STATUS_LABEL[item.status]}</Badge>
                   </div>
-                  <Badge tone="warn">{STATUS_LABEL[item.status]}</Badge>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+                ))
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="panel">
           <div className="panel-head">
