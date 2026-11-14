@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type ReactNode } from 'react';
 import type { BlockInstance, LayoutVariant } from '../../types';
 import { availableBlocks, createBlock, type BlockDefinition } from '../../lib/blocks';
+import { pluginBlockRegistry } from '../../lib/plugins/registry';
 import {
   MAX_BLOCKS,
   appendChild,
@@ -49,7 +50,10 @@ interface AddTarget {
   column?: number;
 }
 
-function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' {
+function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' | 'theme' {
+  // 主题组件单独成组：它们的视觉与属性都由主题定义，和内置区块混排会让人分不清
+  // 「换主题会不会丢掉它」。
+  if (pluginBlockRegistry.has(type)) return 'theme';
   if (type === 'columns' || type === 'grid' || type === 'section' || type === 'text') return 'layout';
   if (type === 'image' || type === 'video' || type === 'website' || type === 'slideshow') return 'media';
   if (
@@ -64,7 +68,7 @@ function groupOf(type: string): 'layout' | 'media' | 'data' | 'content' {
   return 'content';
 }
 
-const GROUP_ORDER = ['layout', 'media', 'data', 'content'] as const;
+const GROUP_ORDER = ['layout', 'media', 'data', 'content', 'theme'] as const;
 
 function Palette({
   variant,
@@ -76,17 +80,30 @@ function Palette({
   onDragStart: (event: DragEvent<HTMLButtonElement>, def: BlockDefinition) => void;
 }) {
   const t = useT();
+  // 扩展的激活是异步的：订阅注册表，主题组件装好后不刷新页面也能出现在面板里。
+  const pluginRevision = useSyncExternalStore(
+    pluginBlockRegistry.subscribe,
+    pluginBlockRegistry.getVersion,
+    pluginBlockRegistry.getVersion,
+  );
   const grouped = useMemo(() => {
-    const map: Record<string, BlockDefinition[]> = { layout: [], media: [], data: [], content: [] };
+    const map: Record<string, BlockDefinition[]> = {
+      layout: [],
+      media: [],
+      data: [],
+      content: [],
+      theme: [],
+    };
     for (const def of availableBlocks(variant)) map[groupOf(def.type)].push(def);
     return map;
-  }, [variant]);
+  }, [variant, pluginRevision]);
   /** 分组名：中文原文作键，渲染时按当前语言取值。 */
   const groupLabel: Record<string, string> = {
     layout: t('布局'),
     media: t('媒体'),
     data: t('数据与代码'),
     content: t('内容'),
+    theme: t('主题组件'),
   };
 
   return (

@@ -9,6 +9,7 @@ const fragment: Dictionary = {
   媒体: 'Media',
   数据与代码: 'Data & code',
   内容: 'Content',
+  主题组件: 'Theme components',
 
   // ---- 结构树 ----
   页面结构: 'Page structure',

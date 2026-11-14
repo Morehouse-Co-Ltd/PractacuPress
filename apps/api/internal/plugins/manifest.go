@@ -99,9 +99,27 @@ type Frontend struct {
 }
 
 // BlockSpec declares one content block type contributed by a plugin.
+//
+// The browser renders the block, but the page builder also needs to know how to
+// present it: the name and description in the palette, which layout variants may
+// use it, its default column area, the props a fresh block starts with and the
+// property schema the inspector renders. Keeping that metadata in the signed-off
+// manifest means a bundle cannot relabel itself at activation time.
 type BlockSpec struct {
 	Type string `json:"type"`
 	Name string `json:"name,omitempty"`
+	// Description is one sentence shown in the palette tooltip.
+	Description string `json:"description,omitempty"`
+	// Group is a presentation hint: shared, classic, nightflight or content.
+	Group string `json:"group,omitempty"`
+	// Variants lists the layout variants the palette offers this block in.
+	Variants []string `json:"variants,omitempty"`
+	// Area is the default two-column placement: full, main or side.
+	Area string `json:"area,omitempty"`
+	// Defaults seeds props when the builder inserts a new block. Object only.
+	Defaults json.RawMessage `json:"defaults,omitempty"`
+	// Schema is the property inspector declaration (array of PropSchema).
+	Schema json.RawMessage `json:"schema,omitempty"`
 }
 
 // Manifest is one plugin's declarative contract with the host.
@@ -398,9 +416,12 @@ func validateFrontend(f Frontend, permissions map[Permission]struct{}, dir strin
 		}
 	}
 	seenBlocks := make(map[string]struct{}, len(f.Blocks))
+	if len(f.Blocks) > maxDeclaredBlocks {
+		return fmt.Errorf("%w: a frontend may declare at most %d blocks", ErrInvalidManifest, maxDeclaredBlocks)
+	}
 	for _, block := range f.Blocks {
-		if !idPattern.MatchString(block.Type) {
-			return fmt.Errorf("%w: block type %q must be lowercase kebab/dot", ErrInvalidManifest, block.Type)
+		if err := validateBlockSpec(block); err != nil {
+			return err
 		}
 		if _, exists := seenBlocks[block.Type]; exists {
 			return fmt.Errorf("%w: duplicate block type %q", ErrInvalidManifest, block.Type)
@@ -414,6 +435,107 @@ func validateFrontend(f Frontend, permissions map[Permission]struct{}, dir strin
 	}
 	if f.Integrity != "" && !strings.HasPrefix(f.Integrity, "sha384-") {
 		return fmt.Errorf("%w: frontend.integrity must be a sha384 SRI value", ErrInvalidManifest)
+	}
+	return nil
+}
+
+// Block metadata limits. They bound the untrusted manifest before it reaches the
+// page builder, which renders the schema as controls and the defaults as props.
+const (
+	maxDeclaredBlocks     = 32
+	blockNameMaxRunes     = 60
+	blockDescriptionRunes = 200
+	blockDefaultsMaxBytes = 4096
+	blockSchemaMaxBytes   = 16 * 1024
+	blockSchemaMaxFields  = 40
+	blockVariants         = 3
+)
+
+// validateBlockSpec checks one declared block. The browser still normalises the
+// values it receives; this only rejects what the host must never hand over: bad
+// identifiers, oversize JSON, non-scalar defaults and schemas without a field type.
+func validateBlockSpec(block BlockSpec) error {
+	if !idPattern.MatchString(block.Type) {
+		return fmt.Errorf("%w: block type %q must be lowercase kebab/dot", ErrInvalidManifest, block.Type)
+	}
+	if len([]rune(block.Name)) > blockNameMaxRunes {
+		return fmt.Errorf("%w: block %q name is too long", ErrInvalidManifest, block.Type)
+	}
+	if len([]rune(block.Description)) > blockDescriptionRunes {
+		return fmt.Errorf("%w: block %q description is too long", ErrInvalidManifest, block.Type)
+	}
+	switch block.Group {
+	case "", "shared", "classic", "nightflight", "content":
+	default:
+		return fmt.Errorf("%w: block %q has unknown group %q", ErrInvalidManifest, block.Type, block.Group)
+	}
+	if len(block.Variants) > blockVariants {
+		return fmt.Errorf("%w: block %q declares too many variants", ErrInvalidManifest, block.Type)
+	}
+	seenVariants := make(map[string]struct{}, len(block.Variants))
+	for _, variant := range block.Variants {
+		switch variant {
+		case "classic", "bento", "daylight":
+		default:
+			return fmt.Errorf("%w: block %q has unknown variant %q", ErrInvalidManifest, block.Type, variant)
+		}
+		if _, exists := seenVariants[variant]; exists {
+			return fmt.Errorf("%w: block %q repeats variant %q", ErrInvalidManifest, block.Type, variant)
+		}
+		seenVariants[variant] = struct{}{}
+	}
+	switch block.Area {
+	case "", "full", "main", "side":
+	default:
+		return fmt.Errorf("%w: block %q has unknown area %q", ErrInvalidManifest, block.Type, block.Area)
+	}
+	if len(block.Defaults) > 0 {
+		if len(block.Defaults) > blockDefaultsMaxBytes {
+			return fmt.Errorf("%w: block %q defaults exceed %d bytes", ErrInvalidManifest, block.Type, blockDefaultsMaxBytes)
+		}
+		var defaults map[string]json.RawMessage
+		if err := json.Unmarshal(block.Defaults, &defaults); err != nil {
+			return fmt.Errorf("%w: block %q defaults must be a JSON object", ErrInvalidManifest, block.Type)
+		}
+		for key, raw := range defaults {
+			if len(key) == 0 || len(key) > 60 {
+				return fmt.Errorf("%w: block %q has an invalid default key", ErrInvalidManifest, block.Type)
+			}
+			var scalar any
+			if err := json.Unmarshal(raw, &scalar); err != nil {
+				return fmt.Errorf("%w: block %q default %q is not JSON", ErrInvalidManifest, block.Type, key)
+			}
+			switch scalar.(type) {
+			case string, float64, bool:
+			default:
+				return fmt.Errorf("%w: block %q default %q must be a scalar", ErrInvalidManifest, block.Type, key)
+			}
+		}
+	}
+	if len(block.Schema) > 0 {
+		if len(block.Schema) > blockSchemaMaxBytes {
+			return fmt.Errorf("%w: block %q schema exceeds %d bytes", ErrInvalidManifest, block.Type, blockSchemaMaxBytes)
+		}
+		var fields []json.RawMessage
+		if err := json.Unmarshal(block.Schema, &fields); err != nil {
+			return fmt.Errorf("%w: block %q schema must be a JSON array", ErrInvalidManifest, block.Type)
+		}
+		if len(fields) > blockSchemaMaxFields {
+			return fmt.Errorf("%w: block %q schema has too many fields", ErrInvalidManifest, block.Type)
+		}
+		for _, raw := range fields {
+			var field struct {
+				Key   string `json:"key"`
+				Label string `json:"label"`
+				Type  string `json:"type"`
+			}
+			if err := json.Unmarshal(raw, &field); err != nil {
+				return fmt.Errorf("%w: block %q schema entry is not an object", ErrInvalidManifest, block.Type)
+			}
+			if field.Key == "" || field.Type == "" {
+				return fmt.Errorf("%w: block %q schema entries need key and type", ErrInvalidManifest, block.Type)
+			}
+		}
 	}
 	return nil
 }

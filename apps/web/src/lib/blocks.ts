@@ -11,6 +11,8 @@ import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
 import { IMAGE_RADIUS_OPTIONS } from './imageRadius';
 import { BREAKPOINT_LG, BREAKPOINT_MD, SPACING_SCALE, spacingPx } from './layout';
+import { pluginBlockRegistry } from './plugins/registry';
+import type { PluginBlockSpec } from './plugins/types';
 
 /**
  * 无代码区块注册表（数据侧）。
@@ -114,6 +116,10 @@ const AREA_BY_TYPE: Record<string, BlockArea> = {
 };
 
 export function defaultArea(type: string): BlockArea {
+  const meta = pluginBlockRegistry.meta(type);
+  if (meta?.area === 'full' || meta?.area === 'main' || meta?.area === 'side') {
+    return meta.area;
+  }
   return AREA_BY_TYPE[type] ?? 'main';
 }
 
@@ -1691,8 +1697,52 @@ export const BLOCK_DEFS = liveCatalog(RAW_BLOCK_DEFS, { skip: ['defaults'] });
 
 export const BLOCK_TYPES = new Set(BLOCK_DEFS.map((item) => item.type));
 
+/**
+ * 主题组件（前端扩展注册的区块）→ 编排器可用的区块定义。
+ *
+ * 元数据一律来自 `plugin.json`，不看 bundle 自己怎么说；缺省值只补最保守的一套，
+ * 保证一个没写 schema 的组件至少能在编排器里插入、能被布局渲染。
+ */
+function pluginBlockDefinition(spec: PluginBlockSpec): BlockDefinition {
+  const group: BlockDefinition['group'] =
+    spec.group === 'classic' || spec.group === 'nightflight' || spec.group === 'content'
+      ? spec.group
+      : 'shared';
+  return {
+    type: spec.type,
+    name: spec.name?.trim() || spec.type,
+    description: spec.description?.trim() || '',
+    group,
+    variants:
+      spec.variants && spec.variants.length ? [...spec.variants] : ['classic', 'bento'],
+    defaults: { ...(spec.defaults ?? {}) } as BlockProps,
+    schema: (spec.schema ?? []) as unknown as PropSchema[],
+  };
+}
+
+/** 当前所有已注册的主题组件。编排器刷新时重新调用即可拿到最新集合。 */
+export function pluginBlockDefs(): BlockDefinition[] {
+  return pluginBlockRegistry
+    .list()
+    .map((entry) => pluginBlockDefinition(entry.meta ?? { type: entry.type }));
+}
+
+/** 取区块定义：内置优先，其次主题组件。 */
 export function blockDef(type: string): BlockDefinition | undefined {
-  return BLOCK_DEFS.find((item) => item.type === type);
+  const builtin = BLOCK_DEFS.find((item) => item.type === type);
+  if (builtin) return builtin;
+  const meta = pluginBlockRegistry.meta(type);
+  return meta ? pluginBlockDefinition(meta) : undefined;
+}
+
+/**
+ * 是否为「当前认识的区块类型」。
+ *
+ * 内置集合是静态的，主题组件是运行期注册的，所以读取站点设计时不能只查
+ * `BLOCK_TYPES`：扩展晚一步激活不代表这份数据坏了。
+ */
+export function isKnownBlockType(type: string): boolean {
+  return BLOCK_TYPES.has(type) || pluginBlockRegistry.has(type);
 }
 
 /** 默认动画：新加入的区块用它，可在每个区块上单独改。 */
@@ -1894,16 +1944,18 @@ export function blockItems(block: BlockInstance, key: string): Record<string, st
   }
 }
 
-/** 当前变体下可添加的区块。白昼用专用组件 + 通用共享组件，不向作者暴露夜航首页块。 */
+/** 当前变体下可添加的区块：内置区块 + 已在运行时注册的主题组件。 */
 export function availableBlocks(variant: LayoutVariant): BlockDefinition[] {
-  if (variant === 'daylight') {
-    return BLOCK_DEFS.filter(
-      (item) =>
-        item.variants.includes('daylight') ||
-        (item.variants.includes('classic') && item.variants.includes('bento')),
-    );
-  }
-  return BLOCK_DEFS.filter((item) => item.variants.includes(variant));
+  const builtins =
+    variant === 'daylight'
+      ? BLOCK_DEFS.filter(
+          (item) =>
+            item.variants.includes('daylight') ||
+            (item.variants.includes('classic') && item.variants.includes('bento')),
+        )
+      : BLOCK_DEFS.filter((item) => item.variants.includes(variant));
+  const themed = pluginBlockDefs().filter((item) => item.variants.includes(variant));
+  return [...builtins, ...themed];
 }
 
 /* ---------------- 12 栏栅格（grid） ---------------- */

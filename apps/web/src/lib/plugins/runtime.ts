@@ -226,7 +226,7 @@ export class PluginRuntime {
     const manifest = plugin.manifest;
     const permissions = new Set(manifest.permissions ?? []);
     const declaredSlots = new Set(manifest.slots ?? []);
-    const declaredBlocks = new Set((manifest.blocks ?? []).map((block) => block.type));
+    const declaredBlocks = new Map((manifest.blocks ?? []).map((block) => [block.type, block]));
     const track = (dispose: Disposable): Disposable => {
       plugin.disposers.push(dispose);
       return dispose;
@@ -254,7 +254,9 @@ export class PluginRuntime {
           if (!declaredBlocks.has(type)) {
             throw new Error(`${manifest.id} did not declare block "${type}"`);
           }
-          return track(this.blocks.register(type, manifest.id, renderer));
+          return track(
+            this.blocks.register(type, manifest.id, renderer, declaredBlocks.get(type)),
+          );
         },
       },
       admin: {

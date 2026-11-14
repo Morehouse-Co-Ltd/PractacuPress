@@ -132,6 +132,88 @@ func TestValidateManifestRejectsFrontendWithoutPermission(t *testing.T) {
 	require.Contains(t, err.Error(), "ui.inject")
 }
 
+// TestValidateManifestAcceptsThemeBlockMetadata pins the contract the page
+// builder relies on: a theme component declares how it is presented (name,
+// variants, area) and how a fresh block starts (defaults, schema).
+func TestValidateManifestAcceptsThemeBlockMetadata(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "frontend"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "frontend", "client.js"), []byte("// bundle"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "frontend", "client.css"), []byte("/* base */"), 0o600))
+
+	manifest := Manifest{
+		ManifestVersion: 1,
+		ID:              "com.example.theme",
+		Name:            "Theme",
+		Version:         "1.0.0",
+		Engines:         Engines{PP: ">=0.1.0 <1.0.0"},
+		Runtime:         "none",
+		Frontend: &Frontend{
+			Entry:  "frontend/client.js",
+			Styles: []string{"frontend/client.css"},
+			Blocks: []BlockSpec{{
+				Type:        "aurora.hero",
+				Name:        "极光开屏",
+				Description: "大标题与两个按钮。",
+				Group:       "shared",
+				Variants:    []string{"classic", "bento"},
+				Area:        "full",
+				Defaults:    json.RawMessage(`{"heading":"Aurora","sub":"文字"}`),
+				Schema: json.RawMessage(`[
+					{"key":"heading","label":"主标题","type":"text"},
+					{"key":"sub","label":"副标题","type":"textarea"}
+				]`),
+			}},
+		},
+		Permissions: []string{"ui.inject", "ui.block", "ui.style"},
+	}
+	require.NoError(t, ValidateManifest(manifest, dir))
+}
+
+func TestValidateManifestRejectsBadThemeBlockMetadata(t *testing.T) {
+	base := func() Manifest {
+		return Manifest{
+			ManifestVersion: 1,
+			ID:              "com.example.theme",
+			Name:            "Theme",
+			Version:         "1.0.0",
+			Engines:         Engines{PP: ">=0.1.0 <1.0.0"},
+			Runtime:         "none",
+			Frontend: &Frontend{
+				Entry:  "frontend/client.js",
+				Blocks: []BlockSpec{{Type: "aurora.hero"}},
+			},
+			Permissions: []string{"ui.inject", "ui.block"},
+		}
+	}
+	cases := []struct {
+		name   string
+		mutate func(*BlockSpec)
+		want   string
+	}{
+		{"bad type", func(b *BlockSpec) { b.Type = "Aurora Hero" }, "lowercase kebab"},
+		{"unknown variant", func(b *BlockSpec) { b.Variants = []string{"magazine"} }, "variant"},
+		{"unknown area", func(b *BlockSpec) { b.Area = "header" }, "area"},
+		{"defaults not object", func(b *BlockSpec) { b.Defaults = json.RawMessage(`["x"]`) }, "JSON object"},
+		{"nested default", func(b *BlockSpec) {
+			b.Defaults = json.RawMessage(`{"heading":{"x":1}}`)
+		}, "scalar"},
+		{"schema not array", func(b *BlockSpec) { b.Schema = json.RawMessage(`{"key":"x"}`) }, "JSON array"},
+		{"schema missing type", func(b *BlockSpec) {
+			b.Schema = json.RawMessage(`[{"key":"heading","label":"标题"}]`)
+		}, "key and type"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			manifest := base()
+			test.mutate(&manifest.Frontend.Blocks[0])
+			err := ValidateManifest(manifest, "")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.want)
+		})
+	}
+}
+
 func TestSatisfiesSupportsTheDocumentedGrammar(t *testing.T) {
 	cases := []struct {
 		version string

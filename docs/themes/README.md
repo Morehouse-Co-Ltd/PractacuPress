@@ -1,25 +1,95 @@
-# 主题文档
+# 主题开发文档
 
-这套文档讲清楚三件事：**怎么在后台把主题设好**、**怎么自己写一套能被页面编排继续加工的主题**、**到底哪些外观能改、改在哪、边界在哪**。
+这套文档面向两类人：**装主题的站长**和**写主题的开发者**。写主题的模型只有一句话：
 
-三篇都按当前源码写成，凡与旧设计文档冲突的地方以代码为准，冲突点集中列在下面的[文档与代码的冲突](#conflicts)里。
+> **主题 = 组件 + 页面基地 + 用 JSON 把组件拼成页面的编排数据。**
+>
+> 组件用前端语言写（React / HTML / CSS / JS 都可以），页面基地负责页头、页脚与整页骨架，
+> 页面本体不是写死的 HTML，而是一份 **JSON 编排**；页面编排器读同一份 JSON，所以
+> 主题装进来以后仍然可以继续拖拽、改文案、调布局。需要自己的接口时，主题可以再带一个
+> 用 Go 写的 WASM 后端；后台左侧 tab 可以自己写页面，也可以交一份数据文件让服务端生成。
 
-## 三篇文档
+这与旧文档（主题只有 13 个配色令牌）已经是两代东西。旧版把主题限制成「配色 + 版式」，
+新版允许主题携带真正的前端组件与页面数据；凡与旧设计稿冲突的地方以本文档为准，
+冲突点集中列在[文档与代码的冲突](#conflicts)。
 
-| 文档 | 回答的问题 | 主要读者 |
+<a id="docs"></a>
+
+## 文档索引
+
+| 文档 | 回答的问题 | 读者 |
 | --- | --- | --- |
-| [01 设置主题](./01-setup.md) | 后台从哪进、点哪个键、两套内置主题差在哪、导入 / 导出 / 另存 / 删除 / 恢复默认各自会发生什么 | 站长、运营 |
-| [02 编写可编排的主题](./02-authoring.md) | 主题 JSON 的字段、令牌与 CSS 变量的对应、版式变体、默认编排与自定义编排如何共存、从零写一个可导入的示例、校验与限制 | 主题作者、前端开发者 |
-| [03 外观清单](./03-appearance.md) | 逐项列出能改的外观（品牌、页头、导航、页脚、文章卡、配色、组件外观、柔化、加载动画），每项标「后台可配 / 仅代码或导 JSON 可改 / 不可改」 | 站长、设计师、主题作者 |
+| [01 安装与设置](./01-setup.md) | 后台从哪进、怎么创建 / 导入 / 导出主题包、套用后动了什么 | 站长、运营 |
+| [02 编写主题](./02-authoring.md) | 组件怎么写、页面基地是什么、JSON 怎么拼页面、编排器怎样识别主题组件、后台 tab 与 Go 后端怎么接 | 主题作者、前端开发者 |
+| [03 外观与令牌](./03-appearance.md) | 13 个配色令牌、排版与版式变量、哪些外观能改、边界在哪 | 设计师、主题作者 |
+| [04 主题包格式](./04-package.md) | zip 里到底有哪些文件、`theme.json` 每个字段、导入导出流程、校验与安全边界 | 主题作者、运维 |
+| [05 后台侧栏与后端](./05-admin-and-backend.md) | 后台左侧 tab 的两种定制方式、数据文件协议、Go/WASM 后端怎么构建与调用 | 全栈开发者 |
+
+外部参考：
+
+- [扩展开发手册](../extensions/README.md)：前端扩展（T1）与后端扩展（T2）的完整 ABI、权限与安装
+- [扩展包安装与打包](../extensions/06-install-and-package.md)：`plugin.json` 字段、zip 打包、`/api/v1/plugins/{id}/...`
+- [前端说明](../../apps/web/README.md)：路由、组件与构建方式
+- [主题市场接入约定](../superpowers/specs/2026-10-25-theme-marketplace-integration.md)：市场接口的预留字段
+
+<a id="model"></a>
 
 ## 一分钟速查
 
-- **内置大主题只有两套**：`default`（原版 · 纸白浅色 · 单栏）与 `night`（夜航 · 冷石墨 · 双栏）。「白昼」已在 2026-11 下架，只留 `daylight` 版式给旧配置读取（见 [01](./01-setup.md#builtin)）。
-- **主题 = 配色 + 排版 + 版式变体 + 外观分区绑定**，不包含文章、页面、页面编排、导航、页脚与自定义 CSS。
-- **主题文件格式**：外层 `kind / version / exported_at / name / note / variant / theme / appearance`；导入时只认 `name`、`note`、`variant`、`theme`、`appearance`，其余字段忽略。
-- **令牌只有 13 个键**，全部落成 CSS 变量：`background → --bg`，其余下划线换连字符（`bg_subtle → --bg-subtle`）。
-- **上限**：自定义主题最多 20 套；名称 40 字、备注 160 字；令牌单个值 ≤120 字符；整份站点设计 ≤1 MiB（前端 512 KiB 软警告）。
-- **主题不写自定义 CSS**。要写样式只有两条路：改源码，或在「外观 → 自定义 CSS」里写（那是站点配置，不随主题导出）。
+- **主题包是一个 zip**，不是一份 JSON：`theme.json` + `components/` + `pages/` + 可选 `admin/`、`backend/`、`README.md`。
+- **组件是前端扩展**：一个经典脚本，调用 `ctx.blocks.register(type, renderer, meta)` 注册区块类型；样式用 `ctx.ui.addStyle(css)` 注入。
+- **页面是 JSON**：`pages/*.json` 里是一棵 `BlockInstance` 树，和页面编排器保存的 `home` / `article` / `pages` 完全同构。
+- **编排器能适配**：组件的 `meta` 里声明 `name / description / group / variants / area / defaults / schema`，编排器的「添加组件」、属性面板、默认落位都从这同一份声明来。
+- **后台侧栏**：`ctx.admin.registerPage` 注册一个自己写的后台页面；或提供 `admin/tabs.json`，由服务端按数据生成设置页（数据文件协议见 [05](./05-admin-and-backend.md)）。
+- **后端**：Go `GOOS=wasip1 GOARCH=wasm` 构建，`plugin.json` 声明 routes，页面通过 `ctx.api.fetch('/api/v1/plugins/{id}/...')` 调用；没有文件、网络与环境变量。
+- **套用主题包会写入**：`theme`（配色/排版）、`layout.variant`、`appearance`、`home` / `article` / 自定义页面编排、主题库条目；**不会**删除文章、成员、媒体或导航数据。
+- **主题包最多 20 套**自定义主题；单包 zip ≤ 32 MiB、解压 ≤ 64 MiB、文件 ≤ 300 个。
+- **安全边界**：组件与后端扩展只允许**平台管理员**安装；主题包本身由站点管理员导入。组件是同源代码，等同站点自己的脚本；后端在 wazero 沙箱里运行。
+
+<a id="layout"></a>
+
+## 主题包里有什么
+
+```text
+my-theme.zip
+├── theme.json                 # 主题清单：名称、令牌、版式、页面索引、组件与后端引用
+├── README.md                  # 主题说明；链接回本套开发文档
+├── components/
+│   ├── plugin.json            # 前端扩展清单（block 声明 + 权限）
+│   ├── client.js              # 组件代码（经典脚本，注册区块类型）
+│   └── client.css             # 可选：页面基地样式
+├── pages/
+│   ├── home.json              # 首页编排
+│   ├── article.json           # 文章页附加区块编排
+│   └── page-about.json        # 自定义页面「关于」的编排
+├── admin/                     # 可选
+│   ├── tabs.json              # 数据驱动的后台侧栏页
+│   └── pages/*.html           # 或自己写的后台页面
+└── backend/                   # 可选
+    ├── plugin.json            # 后端扩展清单（runtime: wasm）
+    ├── theme.wasm             # Go 构建产物
+    └── main.go                # 源码（随包分发，便于审计）
+```
+
+各字段的完整定义见 [04 主题包格式](./04-package.md#manifest)。
+
+<a id="conflicts"></a>
+
+## 文档与代码的冲突
+
+旧文档与旧设计稿里有一部分结论已经被这次的主题模型推翻。按代码和本套文档为准：
+
+| 旧说法 | 现在的事实 | 依据 |
+| --- | --- | --- |
+| 「主题只包含 13 个令牌，不能写 HTML / CSS / JS」 | 主题可以带 `components/` 前端扩展：注册区块、注入样式、注册后台页面；页面基地就是主题自己的 CSS | `lib/plugins/`、`internal/plugins/manifest.go`、本套 02 |
+| 「主题不能携带页面编排」 | 主题包可以带 `pages/*.json`，导入时写入站点设计；页面编排器继续编辑同一份数据 | `docs/themes/02-authoring.md#composition` |
+| 「导入主题不改 `home`」 | 旧 JSON 主题导入确实不改；**主题包导入**会按 `pages/home.json` 写入首页编排（确认弹窗会说明） | `01-setup.md#import` |
+| 「主题文件是 `practacu-theme-*.json`」 | 新导出是 `practacu-theme-*.zip`；旧 `.json` 仍然可以导入（只含令牌与版式） | `04-package.md#export` |
+| 「主题市场只接受配色、排版与版式」 | 市场接口尚未接入；接入后将按主题包 v2 校验（含组件与后端） | `04-package.md#market` |
+| 「页面编排只能添加内置区块」 | 主题组件注册后会出现在「添加组件 → 主题组件」分组；属性面板读组件声明的 `schema` | `02-authoring.md#builder` |
+| 「后台侧栏由程序固定」 | 主题可以注册后台页面（`/admin/ext/{path}`），或用 `admin/tabs.json` 让服务端生成设置页 | `05-admin-and-backend.md` |
+
+<a id="source"></a>
 
 ## 源码索引
 
@@ -27,44 +97,50 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `apps/web/src/lib/theme.ts` | 配色预设、13 个令牌、`safeCssValue` 校验、`resolveTokens`、`themeCss` 输出、`applyPreset` / `applyMode` |
-| `apps/web/src/lib/themes.ts` | 内置大主题、外观分区、`parseThemeFile` / `downloadThemeFile`、`normalizeCustomTheme` |
-| `apps/web/src/lib/themeSwitch.ts` | 套用主题的配置补丁与「首页是否还是默认编排」判定 |
-| `apps/web/src/lib/themePreference.ts` | 访客的 `pp_theme` Cookie 偏好 |
-| `apps/web/src/lib/themeTransition.ts` | 明暗切换的 420ms 过渡与路由 View Transition |
-| `apps/web/src/lib/blocks.ts` | `defaultHomeLayout(variant)`、区块注册表、`availableBlocks(variant)` |
-| `apps/web/src/lib/layout.ts` | 断点 480 / 768 / 1024、间距标尺、设备覆盖层 `at` 的读写 |
-| `apps/web/src/lib/navigation.ts` | 导航与页脚的上限（Tab 8、二级 8、快捷链接 8、页脚 4 栏 × 8 条） |
-| `apps/web/src/lib/customize.ts` | 站点设计文档结构、`readCustomization` 归一化、导入导出 |
-| `apps/web/src/lib/loading.ts` | 加载动画设置与预设（属于站点配置，不属于主题） |
-| `apps/web/src/components/CustomizationLayer.tsx` | 把主题写成 `#pp-theme` 样式表、写 `<html data-mode/data-variant>` |
-| `apps/web/src/components/SiteChrome.tsx` | 页头、导航、公告条、页脚的真实 DOM 与数据来源 |
-| `apps/web/src/components/blocks/{Classic,Nightflight,Daylight}.tsx` | 三套版式的首页区块实现 |
-| `apps/web/src/pages/admin/ChooseTheme.tsx` | 「选择主题」页：应用、创建、导入、导出、删除 |
-| `apps/web/src/pages/admin/Themes.tsx` | 「主题设置」页：微调、令牌、外观分区绑定、导航与页脚、加载动画入口 |
-| `apps/web/src/pages/admin/ThemeBuilder.tsx` | 「页面编排」工作台 |
-| `apps/web/src/pages/admin/Appearance.tsx` | 「外观」页：首屏、品牌副标题、公告条、自定义 CSS（按主题声明的分区裁剪） |
-| `apps/web/src/components/theme/ThemeTokensPanel.tsx` | 高级主题令牌的逐项覆盖面板 |
+| `apps/web/src/lib/plugins/types.ts` | 扩展清单、`PluginContext`、区块注册与后台页面注册的类型 |
+| `apps/web/src/lib/plugins/registry.ts` | 槽位注册表、区块注册表（含主题组件的元数据） |
+| `apps/web/src/lib/plugins/runtime.ts` | 扩展加载、权限检查、`activate(ctx)` |
+| `apps/web/src/lib/plugins/adminRegistry.ts` | 后台页面注册表（左侧 tab 的来源） |
+| `apps/web/src/lib/blocks.ts` | 内置区块定义、`availableBlocks(variant)`、`blockDef`、`createBlock` |
+| `apps/web/src/components/blocks/index.tsx` | `BlockView`：内置与主题组件的统一渲染入口 |
+| `apps/web/src/components/builder/BlockTreeEditor.tsx` | 「添加组件」面板与分组 |
+| `apps/web/src/pages/admin/ThemeBuilder.tsx` | 页面编排工作台 |
+| `apps/web/src/pages/admin/ChooseTheme.tsx` | 选择主题：创建、导入主题包、导出主题包、删除 |
+| `apps/web/src/pages/admin/Themes.tsx` | 主题设置：微调、令牌、外观分区、导航与页脚 |
+| `apps/web/src/lib/theme.ts` | 令牌、`resolveTokens`、`themeCss` |
+| `apps/web/src/lib/themes.ts` | 内置主题、主题库、`parseThemeFile` / `downloadThemeFile`（旧 JSON） |
+| `apps/web/src/lib/themePackage.ts` | 主题包 zip 的读取、校验、组装与导出 |
+| `apps/web/src/lib/customize.ts` | 站点设计文档结构、`readCustomization`、页面编排归一化 |
+| `apps/api/internal/plugins/manifest.go` | `plugin.json` 校验、区块声明（`BlockSpec`） |
+| `apps/api/internal/plugins/host.go` | 扩展宿主：公开清单、WASM 路由、内容钩子 |
+| `apps/api/internal/extensions/` | 扩展包安装、启用、删除 |
+| `apps/api/internal/themes/` | 主题包安装、导出、删除（站点级） |
+| `packages/contracts/openapi/` | 主题与扩展接口的契约 |
 
-<a id="conflicts"></a>
+<a id="links"></a>
 
-## 文档与代码的冲突
+## 主题包里的 README 该写什么
 
-以下说法出现在 README、`docs/introduction.md`、`apps/web/README.md` 或旧设计稿里，但**与当前代码不符**，本文档一律按代码写：
+导出的主题包会自带一份 `README.md`，它必须能让拿到 zip 的人找到本套文档。模板：
 
-| 旧说法 | 代码事实 | 依据 |
-| --- | --- | --- |
-| 「3 套大主题（原版 / 白昼 / 夜航）」 | 只有 2 套内置大主题：`default`、`night`。`daylight` 主题与配色预设已移除，只有 `variant: 'daylight'` 仍被读取 | `lib/themes.ts` 的 `RAW_BUILTIN_THEMES`；`lib/themes.test.ts` 断言 `BUILTIN_THEMES` 长度为 2、`builtinThemeBundle('daylight')` 为 `null` |
-| 「8 套配色预设」 | 实际是 7 套（纸白 / 暖砂 / 雾蓝 / 灰绿 / 陶土 / 夜航 / 夜航·浅色），而且**后台没有预设选择器**：预设只由内置主题和导入 JSON 的 `theme.preset` 决定。改三个基色会把 `preset` 置为 `custom` | `lib/theme.ts` 的 `RAW_THEME_PRESETS`；全仓库只有 `presetById` / `applyPreset` / `applyMode` 读它，没有任何页面渲染预设列表 |
-| README「主题微调」列出「背景柔光、组件混色、过渡时长、页头模糊」 | 这四项不是四个独立开关，而是 `theme.soften` 下的一个总开关 + 5 个参数；总开关关闭时全部变量归零 | `lib/theme.ts` 的 `themeCss`（`--soften-*` 在 `enabled=false` 时为 0）；`pages/admin/Themes.tsx` 的柔化面板 |
-| `docs/superpowers/specs/2026-10-25-theme-marketplace-integration.md`：导入时必须「拒绝包含文章、页面、自定义 CSS 或额外字段的文件」 | 代码实际是**忽略**：`parseThemeFile` 只取 `theme` / `variant` / `name` / `note` / `appearance`，其余字段既不报错也不导入 | `lib/themes.ts` 的 `parseThemeFile` |
-| 类型注释写「正文栏宽 640–860 px」 | 实际夹取范围是 **620–900 px**（后台滑杆、归一化、导入同一套） | `lib/theme.ts` 的 `normalizeThemeSettings`；`pages/admin/Themes.tsx` 滑杆 `min=620 max=900` |
-| 「白昼」的配色表仍被当作可用主题文档 | 白昼令牌只作为《2026-11-08-daylight-theme.md》的历史资料；当前浅色令牌属于夜航的冷白重配 | `lib/theme.ts` 的 `NIGHT_LIGHT` 注释 |
+```markdown
+# <主题名>
 
-## 相关文档
+<一句话说明>
 
-- [两套内置主题的结构差异](../design/theme-differences.md)
-- [2026-11 主题与阅读体验修订](../design/2026-11-09-theme-refresh.md)
-- [白昼（历史文档）](../design/2026-11-08-daylight-theme.md)
-- [主题市场接入约定](../superpowers/specs/2026-10-25-theme-marketplace-integration.md)
-- [前端说明](../../apps/web/README.md)
+## 安装
+1. 平台管理员：在「扩展」页导入 `components/` 与 `backend/`（如果有）。
+2. 站点管理员：在「选择主题 → 导入主题」选择本 zip。
+
+## 开发文档
+- 主题开发文档：<站点地址>/docs/themes/README.md（仓库内：docs/themes/README.md）
+- 主题包格式：<站点地址>/docs/themes/04-package.md
+- 扩展与后端 ABI：<站点地址>/docs/extensions/README.md
+
+## 版本
+- 主题包版本：2
+- 适用 Practacu Press：>=0.1.0
+```
+
+站点没有在线的 `/docs/themes/` 路由时，把链接写成仓库相对路径（`docs/themes/...`），
+并在主题市场页面提供同一组链接。

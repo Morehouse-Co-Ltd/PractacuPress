@@ -1,5 +1,45 @@
 import type { ReactNode } from 'react';
 import type { IconName } from '../../components/Icon';
+import type { BlockArea, LayoutVariant } from '../../types';
+
+/** Presentation group a theme component belongs to. Only affects the palette. */
+export type PluginBlockGroup = 'shared' | 'classic' | 'nightflight' | 'content';
+
+/** One property field of a theme component, mirroring `PropSchema`. */
+export interface PluginPropSchema {
+  key: string;
+  label: string;
+  type: string;
+  hint?: string;
+  options?: { value: string; label: string }[];
+  min?: number;
+  max?: number;
+  step?: number;
+  bindable?: boolean;
+  itemSchema?: PluginPropSchema[];
+  itemLabel?: string;
+  minItems?: number;
+  maxItems?: number;
+}
+
+/**
+ * Everything the page builder needs to present one theme component.
+ *
+ * The host, not the bundle, is authoritative for these values: the runtime reads
+ * them from `plugin.json` and hands them to the block registry, so a bundle
+ * cannot silently rename itself or claim a different schema at activation time.
+ */
+export interface PluginBlockSpec {
+  type: string;
+  name?: string;
+  description?: string;
+  group?: PluginBlockGroup;
+  variants?: LayoutVariant[];
+  area?: BlockArea;
+  /** Seed props for a freshly inserted block. Scalar values only. */
+  defaults?: Record<string, string | number | boolean>;
+  schema?: PluginPropSchema[];
+}
 
 /**
  * Public manifest shape served by GET /api/v1/plugins.
@@ -16,7 +56,7 @@ export interface PluginManifest {
   entry: string;
   styles?: string[];
   slots?: string[];
-  blocks?: { type: string; name?: string }[];
+  blocks?: PluginBlockSpec[];
   permissions?: string[];
   integrity?: string;
   settings?: boolean;

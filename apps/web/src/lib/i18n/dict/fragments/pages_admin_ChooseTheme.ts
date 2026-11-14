@@ -54,6 +54,19 @@ const fragment: Dictionary = {
   '编辑「{name}」的页面编排': 'Edit the page layout of “{name}”',
   '进入页面编排：用这套主题搭首页与文章页':
     'Open the page builder to compose the home and article pages with this theme',
+  '配色、版式与 {count} 个页面编排已写入。':
+    'The palette, layout variant and {count} page layouts were saved.',
+  '配色与版式已写入；组件与后端包需要在「扩展」页安装。':
+    'The palette and layout variant were saved; install the component and backend packages from Extensions.',
+  '已导出主题包': 'Theme package exported',
+  '包含配色、版式与 {count} 个页面编排。':
+    'It includes the palette, layout variant and {count} page layouts.',
+  '包含配色与版式；还没有可导出的页面编排。':
+    'It includes the palette and layout variant; there are no page layouts to export yet.',
+  '主题包会写入配色、版式与页面编排；组件与后端包需要在「扩展」页安装。':
+    'The package writes the palette, layout variant and page layouts; component and backend packages are installed from Extensions.',
+  '这个主题包包含 {count} 个页面编排。导入后可在页面编排器里继续调整。':
+    'This package contains {count} page layouts. You can keep editing them in the page builder.',
 };
 
 export default fragment;

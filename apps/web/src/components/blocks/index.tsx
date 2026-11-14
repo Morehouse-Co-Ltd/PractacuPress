@@ -170,11 +170,11 @@ function BlockView({ block, area }: { block: BlockInstance; area?: BlockArea }) 
     playBlockAnimation(ref.current, anim);
   }, [seen, anim]);
 
-  // 未知类型的区块（新版本导出的设计）仍保留在持久化数据里，避免被静默销毁，
-  // 但绝不能画出来——包括外层 <section> 的边距和间距，否则访客会看到一块空档。
-  // 守卫放在所有 hooks 之后：即使之后有人在原地改掉 unsupported，多次渲染的
-  // hooks 调用顺序也不会变化，不会触发「Rendered fewer hooks than expected」崩溃。
-  if (block.unsupported === true) return null;
+  // Unknown types (a design exported by a newer version) stay in the stored data
+  // instead of being destroyed, but must not draw anything. A theme component may
+  // register its renderer after the design was read, so the data-only guard only
+  // applies while no plugin renderer exists for this type.
+  if (block.unsupported === true && !pluginRenderer) return null;
 
   return (
     <section

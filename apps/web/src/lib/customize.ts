@@ -51,10 +51,10 @@ import {
   normalizeVariant,
 } from './themes';
 import {
-  BLOCK_TYPES,
   blockDef,
   createBlock,
   defaultHomeLayout,
+  isKnownBlockType,
   isLegacyDaylightHome,
   migrateWidthsToSpan,
   nextBlockId,
@@ -1011,7 +1011,7 @@ function normalizeBlock(
   const raw = value as Partial<BlockInstance>;
   if (typeof raw.type !== 'string' || !raw.type) return null;
   budget.count += 1;
-  const known = BLOCK_TYPES.has(raw.type);
+  const known = isKnownBlockType(raw.type);
 
   const props = normalizeBlockProps(raw.type, raw.props);
 

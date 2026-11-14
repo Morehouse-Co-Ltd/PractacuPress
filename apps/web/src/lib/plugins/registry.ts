@@ -1,6 +1,7 @@
 import type {
   Disposable,
   PluginBlockRenderer,
+  PluginBlockSpec,
   SlotRegistrationOptions,
   SlotRenderer,
 } from './types';
@@ -113,6 +114,11 @@ export interface BlockEntry {
   pluginID: string;
   type: string;
   renderer: PluginBlockRenderer;
+  /**
+   * Presentation metadata from the manifest. The page builder reads it to show
+   * the component in the palette, seed props and render the inspector.
+   */
+  meta?: PluginBlockSpec;
 }
 
 export class BlockRegistry {
@@ -133,13 +139,33 @@ export class BlockRegistry {
     return this.entries.get(type)?.renderer;
   }
 
-  register(type: string, pluginID: string, renderer: PluginBlockRenderer): Disposable {
+  /** Whether a renderer for this type is currently registered. */
+  has(type: string): boolean {
+    return this.entries.has(type);
+  }
+
+  /** Manifest metadata for one type, when the host declared it. */
+  meta(type: string): PluginBlockSpec | undefined {
+    return this.entries.get(type)?.meta;
+  }
+
+  /** Every registered block, in registration order. */
+  list(): BlockEntry[] {
+    return [...this.entries.values()];
+  }
+
+  register(
+    type: string,
+    pluginID: string,
+    renderer: PluginBlockRenderer,
+    meta?: PluginBlockSpec,
+  ): Disposable {
     if (!type || !pluginID) throw new Error('type and pluginID are required');
     if (typeof renderer !== 'function' && typeof renderer !== 'object') {
       throw new Error('block renderer must be a component');
     }
     if (this.entries.has(type)) throw new Error(`block type "${type}" is already registered`);
-    this.entries.set(type, { pluginID, type, renderer });
+    this.entries.set(type, { pluginID, type, renderer, ...(meta ? { meta } : {}) });
     this.bump();
     return () => {
       const current = this.entries.get(type);
