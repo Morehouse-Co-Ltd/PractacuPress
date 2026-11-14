@@ -51,7 +51,7 @@ const fragment: Dictionary = {
     'Confirm your current password first. Saving signs out your other devices.',
   当前密码: 'Current password',
   新密码: 'New password',
-  '至少 8 位，需要包含两类字符。': 'At least 8 characters and two character classes.',
+  '至少 12 位，需要包含两类字符，且不能是常见弱口令。': 'At least 12 characters and two character classes, and not a common password.',
   确认新密码: 'Confirm new password',
   更新密码: 'Update password',
   请输入当前密码: 'Enter your current password',

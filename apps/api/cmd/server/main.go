@@ -51,6 +51,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/fieldcrypto"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/logging"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
 	"github.com/practacu/practacu-press/apps/api/internal/platformadmin"
@@ -135,13 +136,21 @@ func run() error {
 	}
 	stepUpSigner := auth.NewStepUpSigner(issuer, site.StepUpTokenTTL)
 
+	// Personal fields (login addresses, private message bodies) are sealed at rest
+	// with a dedicated key. Production requires FIELD_ENCRYPTION_KEY; development
+	// keeps a key file next to the data, so a local database survives a restart.
+	fieldCipher, err := buildFieldCipher(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("field encryption: %w", err)
+	}
+
 	// Site resolution is always on: without it every request would fall back to a
 	// default site, which breaks tenant isolation the moment a second site exists.
 	// In production a single site without a domain only answers on a public IP
 	// literal; development, tests and the desktop launcher keep the permissive
 	// fallback so localhost still works.
 	siteService, err := site.NewService(
-		sitestore.New(handle.Client),
+		sitestore.New(handle.Client, sitestore.WithFieldCipher(fieldCipher)),
 		site.RequirePublicAddress(cfg.AppEnv == config.EnvProduction && !cfg.DesktopMode),
 		// The dedicated security password is hashed with the same policy as account
 		// passwords; the step-up guard verifies the grants minted by the auth module.
@@ -278,6 +287,7 @@ func run() error {
 		captchaGuard,
 		issuer,
 		stepUpSigner,
+		fieldCipher,
 	)
 	if err != nil {
 		return err
@@ -286,13 +296,13 @@ func run() error {
 	// Third party login is independent of the password flow and entirely optional:
 	// without provider credentials the handler is nil, the router mounts nothing and
 	// every other route behaves exactly as before.
-	oauthHandler := buildOAuth(cfg, logger, handle, authService)
+	oauthHandler := buildOAuth(cfg, logger, handle, authService, fieldCipher)
 
 	// The platform console owns deployment level site lifecycle. It borrows auth for
 	// password hashing and session minting, and the site store for the site rows, so
 	// creating a site and entering it use exactly the same rules as everything else.
 	platformService, err := platformadmin.NewService(platformadmin.ServiceConfig{
-		Repository: sitestore.New(handle.Client),
+		Repository: sitestore.New(handle.Client, sitestore.WithFieldCipher(fieldCipher)),
 		Accounts:   authService,
 		Sessions:   authService,
 		Tokens:     issuer,
@@ -303,8 +313,8 @@ func run() error {
 		// The cross-site views read across tenants, so they borrow the shared audit
 		// store (both its cross-site reader and its recorder) and one adapter that
 		// counts sites, members, content, comments, reports and accounts in one pass.
-		Metrics:   platformstore.New(handle.Client),
-		Directory: platformstore.New(handle.Client),
+		Metrics:   platformstore.New(handle.Client, platformstore.WithFieldCipher(fieldCipher)),
+		Directory: platformstore.New(handle.Client, platformstore.WithFieldCipher(fieldCipher)),
 		Trail:     auditStore,
 		Recorder:  auditStore,
 	})
@@ -316,7 +326,7 @@ func run() error {
 	tickets := ws.NewTicketStore(nil)
 
 	notificationService, err := notifications.NewService(
-		notificationstore.New(handle.Client),
+		notificationstore.New(handle.Client, notificationstore.WithFieldCipher(fieldCipher)),
 		// The inbox row is committed first; the live push wakes the bell without a
 		// poll. Delivery is best effort because GET /notifications is authoritative.
 		notifications.WithPublisher(liveNotificationPublisher{hub: hub}),
@@ -366,7 +376,7 @@ func run() error {
 	go runOutbox(ctx, logger, worker)
 
 	messageService, err := messaging.NewService(
-		messagingstore.New(handle.Client),
+		messagingstore.New(handle.Client, messagingstore.WithFieldCipher(fieldCipher)),
 		// Only active members of the site may be put into a conversation (V-14).
 		messaging.WithMembershipChecker(siteMembershipChecker{sites: siteService}),
 	)
@@ -379,7 +389,7 @@ func run() error {
 	// The 60 second floor is in-process, so a multi-instance deployment relies on the
 	// engine's rate limiter for the fleet-wide bound (see internal/site/contact.go).
 	contactService, err := site.NewContactService(site.ContactConfig{
-		Repository: sitestore.New(handle.Client),
+		Repository: sitestore.New(handle.Client, sitestore.WithFieldCipher(fieldCipher)),
 		Notifier:   notificationService,
 	})
 	if err != nil {
@@ -450,9 +460,14 @@ func run() error {
 	// Backups are deployment data, so the package is built even when the active
 	// driver cannot snapshot in-process: the HTTP endpoint and CLI answer with the
 	// native dump tool limitation instead of pretending a package exists.
+	backupKey, err := buildBackupKey(cfg)
+	if err != nil {
+		return fmt.Errorf("backup encryption: %w", err)
+	}
 	backupService, err := backup.NewService(backup.Config{
 		Driver:        cfg.DatabaseDriver,
 		DSN:           cfg.DatabaseDSN,
+		EncryptionKey: backupKey,
 		Snapshotter:   handle,
 		MediaRoots:    backupMediaRoots(cfg),
 		Designs:       backup.NewDBDesignSource(handle),
@@ -467,6 +482,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("build backup service: %w", err)
 	}
+
+	// Seal rows written before field encryption existed. This runs after the schema
+	// is usable and before the API serves its first request, so a read never has to
+	// guess whether a value is an envelope or legacy plaintext.
+	runFieldBackfills(startupCtx, handle, fieldCipher, logger)
 
 	// The resource panel is an optional deployment level module: it samples host and
 	// process metrics in the background and serves them to platform administrators.
@@ -839,9 +859,9 @@ func requestSiteID(cfg config.Config) auth.SiteIDFunc {
 // The token issuer and the step-up signer originate in run() because the site
 // service needs the step-up signer too: the guard that protects high threat routes
 // verifies the same grants this module mints.
-func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client, sites *site.Service, avatars auth.AvatarValidator, auditRecorder audit.Recorder, mailSender mailer.Sender, captchaGuard auth.CaptchaGuard, issuer *auth.TokenIssuer, stepUpSigner *auth.StepUpSigner) (*auth.Handler, *auth.Service, error) {
+func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client, sites *site.Service, avatars auth.AvatarValidator, auditRecorder audit.Recorder, mailSender mailer.Sender, captchaGuard auth.CaptchaGuard, issuer *auth.TokenIssuer, stepUpSigner *auth.StepUpSigner, fieldCipher *fieldcrypto.Cipher) (*auth.Handler, *auth.Service, error) {
 	service, err := auth.NewService(auth.ServiceConfig{
-		Repository: authstore.New(handle.Client),
+		Repository: authstore.New(handle.Client, authstore.WithFieldCipher(fieldCipher)),
 		Hasher:     choosePasswordHasher(cfg, logger, security),
 		Tokens:     issuer,
 		// A desktop install has no operator console to promote its first account,

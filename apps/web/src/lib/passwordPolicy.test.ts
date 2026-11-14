@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { COMMON_PASSWORDS } from './commonPasswords';
 import { passwordClasses, passwordProblem, passwordProblemText } from './passwordPolicy';
 
 /**
@@ -8,48 +9,70 @@ import { passwordClasses, passwordProblem, passwordProblemText } from './passwor
  * 提交后收到一句笼统的「请求参数不符合要求」，而真正的原因藏在 details 里。
  */
 describe('passwordProblem', () => {
-  it('长度不足 8 位', () => {
-    expect(passwordProblem('pass123')).toBe('short');
+  it('长度不足 12 位', () => {
+    expect(passwordProblem('GoodPass12!')).toBe('short'); // 11 个码点
+  });
+
+  it('刚好 12 位的强密码通过', () => {
+    expect(passwordProblem('GoodPass123!')).toBeNull();
   });
 
   it('超过 128 位', () => {
     expect(passwordProblem('a1'.repeat(65))).toBe('long');
   });
 
-  it('只有空格', () => {
-    expect(passwordProblem('        ')).toBe('blank');
+  it('只有空格（长度够 12，所以命中空白规则而不是长度规则）', () => {
+    expect(passwordProblem('            ')).toBe('blank');
+  });
+
+  it('常见弱口令被拒绝，且忽略大小写', () => {
+    expect(passwordProblem('Password1234')).toBe('common');
+    expect(passwordProblem('PASSWORD1234')).toBe('common');
+    expect(passwordProblem('qwerty123456')).toBe('common');
+    expect(passwordProblem('1q2w3e4r5t6y')).toBe('common');
+  });
+
+  it('常见弱口令黑名单与后端同量级，并含经典条目', () => {
+    expect(COMMON_PASSWORDS.size).toBeGreaterThanOrEqual(300);
+    for (const classic of ['password', '123456', 'qwerty', 'letmein', 'iloveyou', 'admin', 'welcome', 'passw0rd', '1q2w3e4r']) {
+      expect(COMMON_PASSWORDS.has(classic), classic).toBe(true);
+    }
+  });
+
+  it('只是包含常见词的更长口令不被误判为常见弱口令', () => {
+    expect(passwordProblem('my Password1234 passphrase')).toBeNull();
   });
 
   it('单一字符类被拒绝：纯小写', () => {
-    expect(passwordProblem('password')).toBe('classes');
+    expect(passwordProblem('passwordpassword')).toBe('classes');
   });
 
   it('单一字符类被拒绝：纯大写', () => {
-    expect(passwordProblem('PASSWORD')).toBe('classes');
+    expect(passwordProblem('PASSWORDPASSWORD')).toBe('classes');
   });
 
   it('单一字符类被拒绝：纯数字', () => {
-    expect(passwordProblem('12345678')).toBe('classes');
+    expect(passwordProblem('908172635410')).toBe('classes');
   });
 
   it('纯中文算一类（服务端把无大小写字母记作字母类），同样被拒绝', () => {
-    expect(passwordProblem('密码密码密码密码')).toBe('classes');
+    expect(passwordProblem('密码密码密码密码密码密码')).toBe('classes');
   });
 
   it('字母 + 数字两类，通过', () => {
-    expect(passwordProblem('pass1234')).toBeNull();
+    expect(passwordProblem('pass1234pass')).toBeNull();
   });
 
   it('符号算一类：纯小写 + 符号也通过', () => {
-    expect(passwordProblem('password!')).toBeNull();
+    expect(passwordProblem('pass!!!!pass')).toBeNull();
   });
 
   it('中文 + 数字两类，通过', () => {
-    expect(passwordProblem('密码密码1234')).toBeNull();
+    expect(passwordProblem('密码密码密码密码密码密码1')).toBeNull();
   });
 
   it('大写 + 数字两类，通过', () => {
-    expect(passwordProblem('PASSWORD1')).toBeNull();
+    expect(passwordProblem('ABCDEF123456')).toBeNull();
   });
 
   it('长度按码点数算，不按字节算：64 个中文字符加 4 位数字仍在 128 以内', () => {
@@ -73,9 +96,10 @@ describe('passwordClasses', () => {
 describe('passwordProblemText', () => {
   it('每个错误码都有可显示文案', () => {
     const identity = (key: string) => key;
-    expect(passwordProblemText('short', identity)).toContain('8');
+    expect(passwordProblemText('short', identity)).toContain('12');
     expect(passwordProblemText('long', identity)).toContain('128');
     expect(passwordProblemText('blank', identity)).toContain('空格');
+    expect(passwordProblemText('common', identity)).toContain('常见弱口令');
     expect(passwordProblemText('classes', identity)).toContain('两类');
   });
 });

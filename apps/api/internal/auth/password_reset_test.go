@@ -182,11 +182,30 @@ func TestPasswordResetRejectsShortPassword(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
 
 	token := resetToken(t, resetMail(t, sender))
-	w := confirmReset(t, h, token, "short")
+	w := confirmReset(t, h, token, "Aa1!Aa1!Aa1") // 11 runes
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Equal(t, "validation_failed", decode(t, w)["code"])
 
 	// A rejected password must not burn the link.
+	require.Equal(t, http.StatusNoContent, confirmReset(t, h, token, "long enough password").Code)
+}
+
+func TestPasswordResetRejectsCommonPassword(t *testing.T) {
+	sender := &recordingMailer{}
+	h := newAPIHarnessWithMail(t, sender)
+	require.Equal(t, http.StatusCreated, register(t, h, "alice@example.com").Code)
+	require.Equal(t, http.StatusAccepted, requestReset(t, h, "alice@example.com").Code)
+
+	token := resetToken(t, resetMail(t, sender))
+	w := confirmReset(t, h, token, "Password1234")
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	payload := decode(t, w)
+	require.Equal(t, "validation_failed", payload["code"])
+	details := payload["details"].(map[string]any)
+	require.Equal(t, "password", details["field"])
+	require.Equal(t, "too_common", details["rule"])
+
+	// The weak password must not have consumed the link.
 	require.Equal(t, http.StatusNoContent, confirmReset(t, h, token, "long enough password").Code)
 }
 

@@ -495,7 +495,15 @@ paths:
               required: [email, password, display_name]
               properties:
                 email: { type: string, format: email, maxLength: 320 }
-                password: { type: string, minLength: 8, maxLength: 128 }
+                password:
+                  type: string
+                  minLength: 12
+                  maxLength: 128
+                  description: |
+                    12–128 characters combining at least two of lowercase, uppercase,
+                    digits and symbols; classic weak passwords are refused with
+                    `details.rule: too_common`. The rule only gates passwords being
+                    created or changed, so older stored passwords keep logging in.
                 display_name: { type: string, maxLength: 120 }
                 captcha_token:
                   type: string
@@ -817,7 +825,14 @@ paths:
               required: [token, password]
               properties:
                 token: { type: string, description: The `token` query parameter of the reset link. }
-                password: { type: string, minLength: 8, maxLength: 128 }
+                password:
+                  type: string
+                  minLength: 12
+                  maxLength: 128
+                  description: |
+                    12–128 characters combining at least two of lowercase, uppercase,
+                    digits and symbols; classic weak passwords are refused with
+                    `details.rule: too_common`.
       responses:
         '204':
           description: Password replaced and sessions revoked
@@ -901,7 +916,14 @@ paths:
               required: [current_password, new_password]
               properties:
                 current_password: { type: string, maxLength: 128 }
-                new_password: { type: string, minLength: 8, maxLength: 128 }
+                new_password:
+                  type: string
+                  minLength: 12
+                  maxLength: 128
+                  description: |
+                    12–128 characters combining at least two of lowercase, uppercase,
+                    digits and symbols; classic weak passwords are refused with
+                    `details.rule: too_common`.
       responses:
         '204':
           description: Password replaced and other sessions revoked
@@ -5124,7 +5146,7 @@ components:
               type: string
               description: |
                 The rule the input broke. Omitted when it cannot be identified.
-              enum: [required, malformed, too_short, too_long, too_weak, blank, out_of_range, unknown, too_large, unsupported]
+              enum: [required, malformed, too_short, too_long, too_weak, too_common, blank, out_of_range, unknown, too_large, unsupported]
             reason:
               type: string
               description: Free english detail for operators. Never shown to an end user.
@@ -5583,7 +5605,12 @@ components:
         display_name: { type: string, minLength: 1, maxLength: 120 }
         password:
           type: string
-          description: Validated against the deployment password policy before creation.
+          minLength: 12
+          maxLength: 128
+          description: |
+            12–128 characters combining at least two character classes. Validated
+            against the deployment password policy before creation; classic weak
+            passwords are refused with `details.rule: too_common`.
 
     CreateSiteInput:
       type: object
@@ -6180,7 +6207,14 @@ components:
       properties:
         email: { type: string, format: email }
         display_name: { type: string, maxLength: 120 }
-        password: { type: string, minLength: 8, maxLength: 128 }
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: |
+            12–128 characters combining at least two of lowercase, uppercase, digits
+            and symbols; classic weak passwords are refused with
+            `details.rule: too_common`.
         role:
           $ref: '#/components/schemas/Role'
 

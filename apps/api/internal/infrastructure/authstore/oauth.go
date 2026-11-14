@@ -37,7 +37,6 @@ import (
 	entsite "github.com/practacu/practacu-press/apps/api/ent/site"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	entuser "github.com/practacu/practacu-press/apps/api/ent/user"
-	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 )
 
 var _ auth.OAuthAccountStore = (*Store)(nil)
@@ -65,17 +64,12 @@ func (s *Store) FindIdentity(ctx context.Context, provider, subject string) (str
 		return "", false, nil
 	}
 
-	row, err := s.client.UserIdentity.Query().
-		Where(
-			useridentity.ProviderEQ(provider),
-			useridentity.ProviderSubjectEQ(subject),
-		).
-		Only(ctx)
+	row, found, err := s.findIdentityBySubject(ctx, provider, subject)
 	if err != nil {
-		if entgen.IsNotFound(err) {
-			return "", false, nil
-		}
 		return "", false, err
+	}
+	if !found {
+		return "", false, nil
 	}
 	return row.UserID, true, nil
 }
@@ -108,18 +102,12 @@ func (s *Store) FindUserByEmail(ctx context.Context, email string) (string, bool
 		return "", false, nil
 	}
 
-	row, err := s.client.UserIdentity.Query().
-		Where(
-			useridentity.ProviderEQ(ProviderEmail),
-			useridentity.ProviderSubjectEqualFold(address),
-		).
-		Order(entgen.Asc(useridentity.FieldCreatedAt)).
-		First(ctx)
+	row, found, err := s.findIdentityBySubject(ctx, ProviderEmail, address)
 	if err != nil {
-		if entgen.IsNotFound(err) {
-			return "", false, nil
-		}
 		return "", false, err
+	}
+	if !found {
+		return "", false, nil
 	}
 	return row.UserID, true, nil
 }
@@ -301,15 +289,23 @@ func (s *Store) LinkIdentity(ctx context.Context, userID, provider, subject, ema
 		return fmt.Errorf("%w: oauth link target %q", auth.ErrAccountNotFound, userID)
 	}
 
+	sealedSubject, err := s.identity.SealSubject(provider, subject)
+	if err != nil {
+		return err
+	}
 	builder := s.client.UserIdentity.Create().
 		SetUserID(userID).
 		SetProvider(provider).
-		SetProviderSubject(subject)
+		SetProviderSubject(sealedSubject)
 	// The address stays NULL when the provider did not supply one, so an absent
 	// address is never stored as an empty string that a lookup would have to
 	// know to ignore.
 	if address := strings.TrimSpace(email); address != "" {
-		builder.SetEmail(address)
+		sealedEmail, err := s.identity.SealEmail(address)
+		if err != nil {
+			return err
+		}
+		builder.SetEmail(sealedEmail)
 	}
 
 	if _, err := builder.Save(ctx); err != nil {

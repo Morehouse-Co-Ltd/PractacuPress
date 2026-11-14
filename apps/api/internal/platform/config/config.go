@@ -163,6 +163,18 @@ type Config struct {
 	AuthJWTKeyID string
 	// AuthJWTIssuer is the expected "iss" claim.
 	AuthJWTIssuer string
+	// FieldEncryptionKey is the base64 32-byte AES-256 key that seals personal
+	// fields at rest (login addresses, private message bodies). It is required in
+	// production: without it those columns would either stay plaintext or need a
+	// key stored next to the data.
+	FieldEncryptionKey string
+	// BackupEncryption turns whole-instance backup packages into sealed .ppbak
+	// files. It defaults to on when BackupEncryptionKey is set.
+	BackupEncryption bool
+	// BackupEncryptionKey is the base64 32-byte key for backup packages. It is
+	// deliberately separate from FieldEncryptionKey: a backup key can be held off
+	// the server, while the field key has to be online for the API to serve.
+	BackupEncryptionKey string
 
 	// CookieSecure marks the refresh and CSRF cookies Secure. It defaults to true
 	// in production, where the API is served over TLS.
@@ -569,6 +581,44 @@ func Load() (Config, error) {
 	cfg.AuthJWTIssuer = env("AUTH_JWT_ISSUER")
 	if cfg.AuthJWTIssuer == "" {
 		cfg.AuthJWTIssuer = DefaultJWTIssuer
+	}
+
+	cfg.FieldEncryptionKey = env("FIELD_ENCRYPTION_KEY")
+	cfg.BackupEncryptionKey = env("BACKUP_ENCRYPTION_KEY")
+	switch strings.ToLower(strings.TrimSpace(env("BACKUP_ENCRYPTION"))) {
+	case "":
+		// Encrypt by default the moment a key exists, so an operator cannot enable
+		// encrypted backups and then forget the switch that uses it.
+		cfg.BackupEncryption = cfg.BackupEncryptionKey != ""
+	case "1", "true", "on", "yes":
+		cfg.BackupEncryption = true
+	case "0", "false", "off", "no":
+		cfg.BackupEncryption = false
+	default:
+		return Config{}, &Error{
+			Code:   "invalid_backup_encryption",
+			Detail: "BACKUP_ENCRYPTION must be on or off",
+		}
+	}
+	if cfg.BackupEncryption && cfg.BackupEncryptionKey == "" {
+		return Config{}, &Error{
+			Code:   "missing_backup_encryption_key",
+			Detail: "BACKUP_ENCRYPTION_KEY is required when BACKUP_ENCRYPTION is on",
+		}
+	}
+	if cfg.AppEnv == EnvProduction && cfg.FieldEncryptionKey == "" {
+		return Config{}, &Error{
+			Code: "missing_field_encryption_key",
+			Detail: "FIELD_ENCRYPTION_KEY is required in production so personal " +
+				"fields (login addresses, private messages) are sealed at rest",
+		}
+	}
+	if cfg.AppEnv == EnvProduction && !cfg.BackupEncryption {
+		return Config{}, &Error{
+			Code: "backup_encryption_required",
+			Detail: "BACKUP_ENCRYPTION must be on in production: a backup copy of " +
+				"the database and media must not leave the server in plaintext",
+		}
 	}
 
 	cfg.StorageDir = env("STORAGE_DIR")

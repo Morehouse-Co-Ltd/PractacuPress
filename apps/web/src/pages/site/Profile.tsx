@@ -521,7 +521,7 @@ export function ProfilePage() {
             onChange={(event) => setCurrentPassword(event.target.value)}
           />
         </Field>
-        <Field label={t('新密码')} hint={t('至少 8 位，需要包含两类字符。')}>
+        <Field label={t('新密码')} hint={t('至少 12 位，需要包含两类字符，且不能是常见弱口令。')}>
           <Input
             type="password"
             autoComplete="new-password"

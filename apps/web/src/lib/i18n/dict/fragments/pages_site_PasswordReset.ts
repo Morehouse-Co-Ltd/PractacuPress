@@ -48,7 +48,7 @@ const fragment: Dictionary = {
   // ---- 设置新密码：标题与校验 ----
   '设置新密码': 'Set a new password',
   '设置新密码。': 'Set a new password.',
-  '密码至少 8 位。': 'Passwords must be at least 8 characters.',
+  '密码至少 12 位。': 'Passwords must be at least 12 characters.',
   '两次输入的密码不一致。': 'The two passwords do not match.',
   '这个链接已经用过，或者过期了。请重新申请一封邮件。':
     'This link has already been used or has expired. Please request another email.',
@@ -75,8 +75,8 @@ const fragment: Dictionary = {
   '选一个新密码。设置成功后，这个账户在所有设备上的登录都会失效。':
     'Choose a new password. Once it is set, this account is signed out everywhere.',
   新密码: 'New password',
-  '8–128 位。建议使用长口令或密码管理器。':
-    '8–128 characters. A long passphrase or a password manager is recommended.',
+  '12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令或密码管理器。':
+    '12–128 characters with at least two character classes; common passwords are refused. A long passphrase or a password manager is recommended.',
   隐藏: 'Hide',
   显示: 'Show',
   确认新密码: 'Confirm new password',

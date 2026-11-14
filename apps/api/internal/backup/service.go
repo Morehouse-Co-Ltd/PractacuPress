@@ -107,6 +107,10 @@ type Config struct {
 	BackupDir   string
 	// SchemaVersion is the migration level this binary expects.
 	SchemaVersion string
+	// EncryptionKey enables at-rest encryption of whole-instance packages. It
+	// must be a 32-byte AES-256 key; nil or empty keeps packages plaintext. The
+	// key is never written into a package or its metadata.
+	EncryptionKey []byte
 
 	AppVersion string
 	Now        func() time.Time
@@ -128,6 +132,7 @@ type Service struct {
 	schemaVersion string
 	appVersion    string
 	now           func() time.Time
+	encryptionKey []byte
 
 	sites    SiteReader
 	content  ContentStore
@@ -152,6 +157,10 @@ func NewService(cfg Config) (*Service, error) {
 	if cfg.Now == nil {
 		cfg.Now = func() time.Time { return time.Now().UTC() }
 	}
+	key, err := normalizeEncryptionKey(cfg.EncryptionKey)
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		driver:        cfg.Driver,
 		dsn:           cfg.DSN,
@@ -162,11 +171,27 @@ func NewService(cfg Config) (*Service, error) {
 		schemaVersion: cfg.SchemaVersion,
 		appVersion:    cfg.AppVersion,
 		now:           cfg.Now,
+		encryptionKey: key,
 		sites:         cfg.Sites,
 		content:       cfg.Content,
 		taxonomy:      cfg.Taxonomy,
 		media:         cfg.Media,
 	}, nil
+}
+
+// normalizeEncryptionKey validates the configured key and copies it so a caller
+// cannot mutate the service's key afterwards. An empty key disables encryption.
+func normalizeEncryptionKey(key []byte) ([]byte, error) {
+	if len(key) == 0 {
+		return nil, nil
+	}
+	if len(key) != EncryptionKeySize {
+		return nil, fmt.Errorf(
+			"%w: AES-256-GCM requires a %d-byte key, got %d bytes",
+			ErrEncryptionKeyInvalid, EncryptionKeySize, len(key),
+		)
+	}
+	return append([]byte(nil), key...), nil
 }
 
 // BackupDir returns the directory packages are written to.
@@ -261,9 +286,57 @@ func (s *databaseDesignSource) SnapshotDesigns(ctx context.Context) ([]DesignSna
 	return out, nil
 }
 
-// artifactPath maps an artifact id to its package path.
+// Package extensions. Whole-instance backups switch to .ppbak when encrypted so
+// an operator can tell an encrypted artifact from a plaintext zip at a glance;
+// the decrypting readers rely on the magic, not the suffix.
+const (
+	plainPackageExtension     = ".zip"
+	encryptedPackageExtension = ".ppbak"
+)
+
+// artifactPath maps an artifact id to its plaintext package path. It is kept for
+// sidecars written before the file_name field was authoritative.
 func (s *Service) artifactPath(id string) string {
-	return filepath.Join(s.backupDir, id+".zip")
+	return filepath.Join(s.backupDir, id+plainPackageExtension)
+}
+
+// packagePath maps an artifact id to its package path for one encryption mode.
+func (s *Service) packagePath(id string, encrypted bool) string {
+	if encrypted {
+		return filepath.Join(s.backupDir, id+encryptedPackageExtension)
+	}
+	return s.artifactPath(id)
+}
+
+// packageExists reports whether either package form for id is already on disk, so
+// two backups in the same second never overwrite each other.
+func (s *Service) packageExists(id string) bool {
+	for _, encrypted := range []bool{false, true} {
+		if _, err := os.Stat(s.packagePath(id, encrypted)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// storedPackagePath resolves the package path named by an artifact sidecar.
+func (s *Service) storedPackagePath(id, fileName string) (string, error) {
+	name := strings.TrimSpace(fileName)
+	if name == "" {
+		// Sidecars written before encryption have no file_name; fall back to the
+		// two canonical names.
+		for _, encrypted := range []bool{false, true} {
+			path := s.packagePath(id, encrypted)
+			if _, err := os.Stat(path); err == nil {
+				return path, nil
+			}
+		}
+		return s.artifactPath(id), nil
+	}
+	if name != filepath.Base(name) || name == "." || name == ".." {
+		return "", ErrNotFound
+	}
+	return filepath.Join(s.backupDir, name), nil
 }
 
 // metaPath maps an artifact id to its metadata sidecar path.
@@ -287,14 +360,18 @@ func (s *Service) readArtifact(id string) (Artifact, error) {
 	if err := decodeJSON(raw, &artifact); err != nil {
 		return Artifact{}, fmt.Errorf("backup: read artifact metadata: %w", err)
 	}
-	info, err := os.Stat(s.artifactPath(id))
+	path, err := s.storedPackagePath(id, artifact.FileName)
+	if err != nil {
+		return Artifact{}, err
+	}
+	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Artifact{}, ErrNotFound
 		}
 		return Artifact{}, err
 	}
-	artifact.Path = s.artifactPath(id)
+	artifact.Path = path
 	artifact.Size = info.Size()
 	return artifact, nil
 }

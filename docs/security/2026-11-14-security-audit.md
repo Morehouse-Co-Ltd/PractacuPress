@@ -52,7 +52,7 @@
 | SEC-17 | Info | 匿名可读面：`/api/v1/docs`、`/api/v1/openapi.json`、`setup/status`、`site-config`（含 admin_path） | 📋 按设计接受，生产可收敛 |
 | SEC-18 | Info | 安全头加固：无 COOP/COEP/CORP、无 `object-src 'none'`、HTTP 无 HSTS | 📋 建议 |
 | SEC-19 | Info | Cookie 加固：开发无 Secure、未用 `__Host-` 前缀、支持 Domain | 📋 建议 |
-| SEC-20 | Info | 密码策略仅 8 位 + 2 类，无弱口令库校验 | 📋 建议 |
+| SEC-20 | Info | 密码策略最小 12 位 + 2 类 + 内嵌弱口令黑名单（`too_common`） | ✅ 已修复（2026-11-14） |
 | SEC-21 | Info | 扩展同 id 静默替换、替换后保持启用 | 📋 建议记录哈希 + 显式确认 |
 | SEC-22 | Info | WASM 沙箱能力面（无 FS/网络/env import，超时/内存受限） | ✅ 已验证安全 |
 | SEC-23 | Info | 管理后台 `window.open` 未显式 noopener；PreviewBridge 选择器拼接 | 📋 记录（风险极低） |
@@ -109,7 +109,7 @@
 - **SEC-16**：请求体超限被拒但返回 400，`IsBodyTooLarge` 未接线；建议统一 413。
 - **SEC-17**：`setup/status` 暴露 site_id/site_name/registration_open，公开 `site-config` 暴露 `admin_path`（匿名可用）；属前后台水合所需，但会降低后台入口隐藏效果，建议生产环境限制 `/api/v1/docs` 与 openapi 为管理员/内网可读。
 - **SEC-18/19**：CSP 可补 `object-src 'none'`；COOP/COEP/CORP 可按兼容性评估；HTTPS 部署加 HSTS；生产 Cookie 建议 `__Host-` 前缀并限制 `CookieDomain`。
-- **SEC-20**：密码策略 8 位 + 2 类，建议接入弱口令/泄露库校验或提高最小长度。
+- **SEC-20（已修复）**：密码策略最小长度由 8 提高到 12（仍为最长 128、至少两类字符），并内置数百条经典弱口令黑名单（忽略大小写的**整串精确匹配**，拒绝时 `details.rule: too_common`）；注册 / 重置 / 建号共用，旧密码仍可登录。前端校验与 OpenAPI 契约同步为 12 位。
 - **SEC-21**：扩展同 id 导入会静默替换并保持启用；建议记录包哈希、替换时要求 step-up + 显式确认。
 - **SEC-23**：`window.open('/', '_blank')` 与 PreviewBridge 选择器拼接风险极低；可顺手加 `noopener` 与 `CSS.escape`。
 
@@ -140,6 +140,7 @@
 | Go 工具链 1.27.4（修复 `GO-2026-6859`） | `go.mod`、`apps/launcher/go.mod` |
 | `golang.org/x/image` → v0.45.0（WebP 解码崩溃修复） | `go.mod`、`go.sum` |
 | `katex` → 0.19.1（GHSA-238p-pmpm-9mq7） | `apps/web/package.json`、`package-lock.json` |
+| 密码策略 12 位起 + 内嵌弱口令黑名单（`too_common`） | `apps/api/internal/auth/{validation,common_passwords}.go`、`packages/contracts/openapi/openapi.yaml`、`apps/web/src/lib/{passwordPolicy,commonPasswords}.ts` 及 i18n |
 
 验证命令与结果：
 
@@ -159,7 +160,7 @@ apps/web: npm audit --omit=dev                            0 vulnerabilities
 
 1. **高优先级**：生产启用 SMTP 时务必设置 `PUBLIC_BASE_URL`（现在会强制校验）；不要把开发端口 5173 / API 端口暴露到非回环网络；平台管理员会话视为可执行代码/可拖库的高价值凭据，建议后续把扩展导入、站点配置、备份加入 step-up。
 2. **中优先级**：按 SEC-02/SEC-07/SEC-09 调整锁定与枚举策略；多副本部署引入共享限流存储；为 step-up/handoff 令牌加一次性语义；备份下载改为短时效签名 URL。
-3. **持续改进**：CSP `object-src 'none'` 与 COOP/CORP、HSTS；弱口令库；creator extension sandbox 回归测试；`window.open` noopener；请求体 413；生产收敛 docs/openapi。
+3. **持续改进**：CSP `object-src 'none'` 与 COOP/CORP、HSTS；creator extension sandbox 回归测试；`window.open` noopener；请求体 413；生产收敛 docs/openapi。
 
 ## 7. 审计资源与清理
 

@@ -342,7 +342,7 @@ func TestCreateSiteRejectsInvalidInput(t *testing.T) {
 		"slug invalid":     func(in *CreateSiteInput) { in.Slug = "Not A Slug" },
 		"domain required":  func(in *CreateSiteInput) { in.Domain = "" },
 		"domain malformed": func(in *CreateSiteInput) { in.Domain = "https://example.com" },
-		"weak password":    func(in *CreateSiteInput) { in.Owner.Password = "short" },
+		"weak password":    func(in *CreateSiteInput) { in.Owner.Password = "Aa1!Aa1!Aa1" }, // 11 runes
 		"email malformed":  func(in *CreateSiteInput) { in.Owner.Email = "not-an-email" },
 	}
 	for name, mutate := range cases {

@@ -230,21 +230,29 @@ func TestRegisterRejectsOverlongEmailAsValidationError(t *testing.T) {
 	require.Equal(t, "validation_failed", decode(t, w)["code"])
 }
 
-// TestRegisterRejectsBlankAndSingleClassPasswords is the V-30 endpoint regression.
-func TestRegisterRejectsBlankAndSingleClassPasswords(t *testing.T) {
+// TestRegisterRejectsBlankWeakAndCommonPasswords pins the V-30 endpoint regression at
+// the new 12 character minimum: each fixture is long enough for the length rule, so a
+// regression in the rule it exercises surfaces as the wrong details.rule.
+func TestRegisterRejectsBlankWeakAndCommonPasswords(t *testing.T) {
 	h := newAPIHarness(t)
 
-	for name, password := range map[string]string{
-		"eight spaces": "        ",
-		"one class":    "password",
-		"only symbols": "!@#$%^&*",
-	} {
+	cases := map[string]struct{ password, rule string }{
+		"twelve spaces":   {strings.Repeat(" ", 12), "blank"},
+		"one class":       {"passwordpassword", "too_weak"},
+		"only symbols":    {"!@#$%^&*!@#$", "too_weak"},
+		"common password": {"Password1234", "too_common"},
+	}
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			w := postJSONWithHeaders(t, h, "/api/v1/auth/register/email", map[string]string{
-				"email": "weak@example.com", "password": password, "display_name": "X",
+				"email": "weak@example.com", "password": tc.password, "display_name": "X",
 			}, "", "", "")
 			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
-			require.Equal(t, "validation_failed", decode(t, w)["code"])
+			payload := decode(t, w)
+			require.Equal(t, "validation_failed", payload["code"])
+			details := payload["details"].(map[string]any)
+			require.Equal(t, "password", details["field"])
+			require.Equal(t, tc.rule, details["rule"])
 		})
 	}
 }
@@ -256,19 +264,19 @@ func TestAccountCreationPathsSharePasswordPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := h.service.RegisterEmail(ctx, h.siteID, auth.RegisterEmailInput{
-		Email: "weak@example.com", Password: "        ", DisplayName: "Weak",
+		Email: "weak@example.com", Password: strings.Repeat(" ", 12), DisplayName: "Weak",
 	})
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 
 	// A password reset validates the password before the token, so a weak password can
 	// never consume or probe a reset token.
-	err = h.service.ResetPassword(ctx, "some-token", "password")
+	err = h.service.ResetPassword(ctx, "some-token", "passwordpassword")
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 
 	_, err = h.service.CreateMember(ctx, auth.Principal{
 		UserID: "admin", SiteID: h.siteID, Role: site.RolePlatformAdmin,
 	}, h.siteID, auth.CreateMemberInput{
-		Email: "member@example.com", DisplayName: "Member", Password: "p",
+		Email: "member@example.com", DisplayName: "Member", Password: "Aa1!Aa1!Aa1", // 11 runes
 	})
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 }

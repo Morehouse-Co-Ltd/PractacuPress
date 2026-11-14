@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/fieldcrypto"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/identitycrypto"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
 	"github.com/practacu/practacu-press/apps/api/ent/notification"
@@ -17,10 +19,28 @@ import (
 // Store is the Ent backed notification repository.
 type Store struct {
 	client *entgen.Client
+	// identity opens the sealed recipient address.
+	identity *identitycrypto.Codec
+}
+
+// Option customises a Store.
+type Option func(*Store)
+
+// WithFieldCipher opens sealed identity address columns.
+func WithFieldCipher(cipher *fieldcrypto.Cipher) Option {
+	return func(s *Store) { s.identity = identitycrypto.New(cipher) }
 }
 
 // New returns a Store over the given Ent client.
-func New(client *entgen.Client) *Store { return &Store{client: client} }
+func New(client *entgen.Client, opts ...Option) *Store {
+	store := &Store{client: client}
+	for _, option := range opts {
+		if option != nil {
+			option(store)
+		}
+	}
+	return store
+}
 
 var (
 	_ notifications.Repository           = (*Store)(nil)
@@ -233,7 +253,7 @@ func (s *Store) Email(ctx context.Context, userID string) (string, error) {
 	if row.Email == nil {
 		return "", nil
 	}
-	return *row.Email, nil
+	return s.identity.OpenEmail(*row.Email)
 }
 
 func toNotification(row *entgen.Notification) notifications.Notification {

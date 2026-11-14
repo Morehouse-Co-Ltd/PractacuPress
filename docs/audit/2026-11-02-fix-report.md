@@ -81,7 +81,7 @@ suspend / remove：旧 token /me → 401；POST /articles → 401
 | `V-26` | 登录 CSRF（text/plain） | 有 body 端点强制 `application/json`；Origin 存在则 host 必须等于请求 Host；无 Origin 的 CLI 放行 | `write_guard_handler_test.go` |
 | `V-28` | 超长邮箱 500 | API 上限 254 对齐持久层 255，超长 400 | `validation_test.go` |
 | `V-29` | logout CSRF / 注册枚举 | logout guard 同 V-26；重复注册保留 409 但先付一次 Argon2（文档记录残留） | 同上 |
-| `V-30` | 密码策略 | 8–128、非全空白、至少两类字符；注册/重置/建号共用；登录不校验旧密码 | `validation_test.go` |
+| `V-30` | 密码策略 | 12–128（后续 hardening 从 8 提高）、非全空白、至少两类字符、内嵌经典弱口令黑名单（忽略大小写整串匹配，拒绝为 `too_common`）；注册/重置/建号共用；登录不校验旧密码 | `validation_test.go` |
 | `V-07` | WS Origin | 删除 `InsecureSkipVerify`：默认同源，显式 `CORS_ALLOWED_ORIGINS` 时白名单；无 Origin 的 CLI 保留 | `ws/handler_test.go`（真实握手） |
 | `V-16` | 首管理员抢注 | `HandlerConfig.FirstAdminAllowed`（nil=fail-closed）+ `AllowFirstAdminFromLoopback`：仅 Host 为 localhost/127.0.0.1/[::1] 的首注册可成 platform_admin，否则 403 `install_requires_local_access` | `authstore/store_test.go` 等 |
 
@@ -139,7 +139,7 @@ suspend / remove：旧 token /me → 401；POST /articles → 401
 | `V-13` 枚举 | 未知 vs 已知邮箱 153ms vs 156ms（≈1.02×，修复前 85×） |
 | `V-24` 锁定 | 5 次失败后 429 + Retry-After（单测覆盖指数升级/清零） |
 | `V-26` 登录 CSRF | `text/plain` 403、跨站 Origin 403、正常 JSON 200 |
-| `V-28/V-30` | 255 字符邮箱 400、8 空格密码 400 |
+| `V-28/V-30` | 255 字符邮箱 400、8 空格 / 11 位 / 常见弱口令密码 400 |
 | `V-10/V-11` | members_only 匿名 analytics/taxonomy 均 401 |
 | `V-14/V-15` | 幽灵成员会话 400；不存在 target 评论/反应 404 |
 | `V-04` | evil Host/XFF 的 `/__pp/runtime|port` 403；本机正常；runtime 字段已最小化 |
@@ -167,7 +167,7 @@ suspend / remove：旧 token /me → 401；POST /articles → 401
 ## 5. 行为/运维变更（发布说明应带上）
 
 1. **refresh 族 90 天绝对寿命**：超过 90 天的老会话会在下次刷新时被整族撤销（一次性登出所有设备），属预期安全收紧。
-2. **密码策略**：新建/重置密码需 8–128、非全空白、至少两类字符（空格算符号类）；**旧密码仍可登录**。
+2. **密码策略**：新建/重置密码需 12–128、非全空白、至少两类字符（空格算符号类）、且不在内嵌常见弱口令黑名单内（忽略大小写整串匹配，拒绝为 `too_common`）；**旧密码仍可登录**。
 3. **首管理员仅限本机**：未安装实例必须通过回环 Host 完成首注册；远程暴露的未安装实例不能再被"首到先得"接管（多站点/SaaS 的首管理员初始化需 seed/运维流程，见生产 profile 文档）。
 4. **撤权即时生效**：成员被降权/挂起/移除后，旧 access token 立即失效（不再等 15 分钟）；服务端每请求增加一次成员查询。
 5. **草稿配额**：每账号 200 篇活跃草稿 / 20MiB source；超限 429 `quota_exceeded`（客户端应提示清理草稿）。

@@ -27,6 +27,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/fieldcrypto"
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
 )
 
@@ -52,6 +53,7 @@ func buildOAuth(
 	logger *slog.Logger,
 	handle *db.DB,
 	authService *auth.Service,
+	fieldCipher *fieldcrypto.Cipher,
 ) *auth.OAuthHandler {
 	providers := make(map[string]auth.OAuthProvider, len(oauthProviderIDs))
 	for _, id := range oauthProviderIDs {
@@ -80,7 +82,7 @@ func buildOAuth(
 	sort.Strings(names)
 	logger.Info("third party login configured", "providers", strings.Join(names, ","))
 
-	base := oauthSiteBase(cfg, sitestore.New(handle.Client))
+	base := oauthSiteBase(cfg, sitestore.New(handle.Client, sitestore.WithFieldCipher(fieldCipher)))
 
 	return auth.NewOAuthHandler(auth.OAuthHandlerDeps{
 		Service: auth.NewOAuthService(
@@ -88,7 +90,7 @@ func buildOAuth(
 			providers,
 			oauthRedirectURI(cfg, base),
 		),
-		Accounts: authstore.New(handle.Client),
+		Accounts: authstore.New(handle.Client, authstore.WithFieldCipher(fieldCipher)),
 		Sessions: oauthSessionIssuer{sessions: authService},
 		// A completed login returns the visitor to the site they started on.
 		Redirects: base,

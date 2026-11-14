@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
@@ -24,6 +25,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/user"
 	"github.com/practacu/practacu-press/apps/api/ent/useridentity"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/fieldcrypto"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/identitycrypto"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
 	"github.com/practacu/practacu-press/apps/api/internal/platformadmin"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
@@ -66,10 +69,28 @@ const maxSearchCandidates = 500
 // Store is the Ent backed implementation of the console's cross-site ports.
 type Store struct {
 	client *entgen.Client
+	// identity opens the sealed login addresses shown in the account directory.
+	identity *identitycrypto.Codec
+}
+
+// Option customises a Store.
+type Option func(*Store)
+
+// WithFieldCipher opens sealed identity address columns.
+func WithFieldCipher(cipher *fieldcrypto.Cipher) Option {
+	return func(s *Store) { s.identity = identitycrypto.New(cipher) }
 }
 
 // New returns a Store over the given Ent client.
-func New(client *entgen.Client) *Store { return &Store{client: client} }
+func New(client *entgen.Client, opts ...Option) *Store {
+	store := &Store{client: client}
+	for _, option := range opts {
+		if option != nil {
+			option(store)
+		}
+	}
+	return store
+}
 
 var _ platformadmin.MetricsRepository = (*Store)(nil)
 var _ platformadmin.DirectoryRepository = (*Store)(nil)
@@ -358,18 +379,73 @@ func (s *Store) searchAccountIDs(ctx context.Context, term string) ([]string, er
 	for _, account := range accounts {
 		ids = append(ids, account.ID)
 	}
-	identities, err := s.client.UserIdentity.Query().
-		Select(useridentity.FieldUserID).
-		Where(useridentity.EmailContainsFold(term)).
+	matches, err := s.searchIdentityUserIDs(ctx, term)
+	if err != nil {
+		return nil, err
+	}
+	ids = append(ids, matches...)
+	return unique(ids), nil
+}
+
+// searchIdentityUserIDs resolves the accounts whose login address matches term.
+//
+// The address is sealed, so the case-insensitive SQL contains() the old code used
+// can no longer run on the column. An exact address takes the sealed equality path
+// (deterministic envelopes keep that working); anything else decrypts a bounded page
+// and filters in memory. maxSearchCandidates keeps that page small enough that the
+// scan stays a directory convenience rather than a table dump.
+func (s *Store) searchIdentityUserIDs(ctx context.Context, term string) ([]string, error) {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return nil, nil
+	}
+	lower := strings.ToLower(term)
+
+	if strings.Contains(lower, "@") {
+		sealed, err := s.identity.SealEmail(lower)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := s.client.UserIdentity.Query().
+			Select(useridentity.FieldUserID).
+			Where(useridentity.EmailEQ(sealed)).
+			Limit(maxSearchCandidates).
+			All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			ids := make([]string, 0, len(rows))
+			for _, row := range rows {
+				ids = append(ids, row.UserID)
+			}
+			return ids, nil
+		}
+	}
+
+	rows, err := s.client.UserIdentity.Query().
+		Select(useridentity.FieldUserID, useridentity.FieldEmail).
+		Where(useridentity.EmailNotNil()).
+		Order(entgen.Desc(useridentity.FieldCreatedAt)).
 		Limit(maxSearchCandidates).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, identity := range identities {
-		ids = append(ids, identity.UserID)
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.Email == nil {
+			continue
+		}
+		address, err := s.identity.OpenEmail(*row.Email)
+		if err != nil {
+			return nil, err
+		}
+		if strings.Contains(strings.ToLower(address), lower) {
+			ids = append(ids, row.UserID)
+		}
 	}
-	return unique(ids), nil
+	return ids, nil
 }
 
 // accountDetails attaches the display, verification, two factor and membership facts
@@ -416,7 +492,11 @@ func (s *Store) accountDetails(
 		if !ok || summary.Email != "" {
 			continue
 		}
-		summary.Email = *identity.Email
+		address, err := s.identity.OpenEmail(*identity.Email)
+		if err != nil {
+			return nil, err
+		}
+		summary.Email = address
 		summaries[identity.UserID] = summary
 	}
 

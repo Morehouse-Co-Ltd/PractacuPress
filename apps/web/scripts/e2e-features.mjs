@@ -53,7 +53,7 @@ const PROFILE = fileURLToPath(new URL(`../.tmp/chrome-profile-features-${process
 const ADMIN = {
   name: 'QA 验证员',
   email: 'admin@practacu.local',
-  password: 'practacu',
+  password: 'practacu-2026',
 };
 
 const STAMP = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

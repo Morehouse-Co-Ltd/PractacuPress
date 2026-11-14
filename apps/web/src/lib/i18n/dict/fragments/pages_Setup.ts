@@ -46,7 +46,7 @@ const fragment: Dictionary = {
   '请填写有效的邮箱地址。': 'Enter a valid email address.',
   '请填写显示名称。': 'Enter a display name.',
   '显示名称不能超过 120 个字符。': 'The display name cannot exceed 120 characters.',
-  '密码至少 8 位。': 'The password must be at least 8 characters.',
+  '密码至少 12 位。': 'The password must be at least 12 characters.',
   '密码不能超过 128 位。': 'The password cannot be longer than 128 characters.',
   '两次输入的密码不一致。': 'The two passwords do not match.',
   '站点名称不能为空。': 'The site name cannot be empty.',
@@ -239,7 +239,7 @@ const fragment: Dictionary = {
   '例如：林知远': 'e.g. Lin Zhiyuan',
   '邮箱': 'Email',
   '登录凭据，也用于身份绑定。': 'Sign-in credential, also used for identity linking.',
-  '8–128 位。建议使用长口令。': '8–128 characters. A long passphrase is recommended.',
+  '12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令。': '12–128 characters with at least two character classes; common passwords are refused. A long passphrase is recommended.',
   '确认密码': 'Confirm password',
   '演示模式：账户只保存在此浏览器，密码不会上传。':
     'Demo mode: the account is kept in this browser only; the password is never uploaded.',
@@ -332,8 +332,8 @@ const fragment: Dictionary = {
   '创建管理员': 'Create administrator',
   '继续': 'Continue',
   '、': ', ',
-  '8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。':
-    '8–128 characters, combining at least two of: lowercase, uppercase, digits, symbols. A long passphrase is best.',
+  '12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。建议使用长口令。':
+    '12–128 characters combining at least two of lowercase, uppercase, digits and symbols; common passwords are refused. A long passphrase is best.',
   // ---- 真实环境：连接阶段 ----
   '连接后端': 'Backend connection',
   '等待本机 API': 'Waiting for the local API',

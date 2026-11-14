@@ -29,6 +29,12 @@ services:
       # 生产必须持久化 Ed25519 私钥：否则每次重启都会生成临时密钥，全员被登出。
       # 未在 .env.prod 设置时 compose 直接报错，避免静默降级。
       AUTH_JWT_ED25519_PRIVATE_KEY: ${AUTH_JWT_ED25519_PRIVATE_KEY:?set AUTH_JWT_ED25519_PRIVATE_KEY in .env.prod}
+      # 字段级加密密钥（base64 32 字节）：登录邮箱、手机号、私信正文在库里是密文。
+      # 生产启动强制要求，缺失直接失败；丢失则已加密字段无法还原。
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?set FIELD_ENCRYPTION_KEY in .env.prod}
+      # 整库备份包加密：生产强制开启，备份是 .ppbak；恢复必须用同一把密钥。
+      BACKUP_ENCRYPTION: "on"
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?set BACKUP_ENCRYPTION_KEY in .env.prod}
       # TLS 由宿主机反代终止，回源是明文 HTTP，Cookie 仍必须带 Secure。
       COOKIE_SECURE: "true"
       # 填写对外地址后，找回密码等邮件里的链接才会用 https 域名；留空则取请求 Host。

@@ -70,8 +70,8 @@ const fragment: Dictionary = {
   '管理员邮箱': 'Administrator email',
   '管理员显示名': 'Administrator display name',
   '初始密码': 'Initial password',
-  '至少 8 位，并包含至少两类字符。请通过安全渠道交给该管理员。':
-    'At least 8 characters with two character classes. Deliver it to the administrator over a secure channel.',
+  '至少 12 位，并包含至少两类字符，且不能是常见弱口令。请通过安全渠道交给该管理员。':
+    'At least 12 characters with two character classes, and not a common password. Deliver it to the administrator over a secure channel.',
   '正在创建…': 'Creating…',
   '创建站点': 'Create site',
   '站点已创建，默认设计已初始化。': 'Site created and its default design initialised.',

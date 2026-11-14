@@ -604,7 +604,8 @@ export class DemoBackend {
     if (this.state.users.some((u) => u.email.toLowerCase() === email)) {
       this.fail(409, 'conflict', '该邮箱已经注册。');
     }
-    if (input.password.length < 8) this.fail(400, 'validation_failed', '密码至少 8 位。');
+    const problem = passwordProblem(input.password);
+    if (problem) this.fail(400, 'validation_failed', passwordProblemText(problem, (key) => key));
     const user: DemoUser = {
       id: `usr_${uuid().slice(0, 8)}`,
       display_name: input.display_name.trim() || email.split('@')[0],
@@ -892,7 +893,8 @@ export class DemoBackend {
 
   async resetPassword(input: { token: string; password: string }): Promise<void> {
     await wait(220);
-    if (input.password.length < 8) this.fail(400, 'validation_failed', '密码至少 8 位。');
+    const problem = passwordProblem(input.password);
+    if (problem) this.fail(400, 'validation_failed', passwordProblemText(problem, (key) => key));
     const ticket = this.tickets[input.token];
     if (!ticket || ticket.expires_at < Date.now()) {
       this.fail(400, 'validation_failed', '重置链接无效或已过期，请重新获取。');

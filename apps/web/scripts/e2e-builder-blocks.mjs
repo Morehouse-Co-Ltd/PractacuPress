@@ -86,7 +86,7 @@ const SHOTS_DIR = !SHOTS_ENABLED
 // pid 后缀让每次运行都从干净 profile 开始；不做递归删除，避免沙箱拦截。
 const PROFILE = fileURLToPath(new URL(`../.tmp/chrome-profile-builder-${process.pid}/`, import.meta.url));
 
-const ADMIN = { name: 'QA 验证员', email: 'admin@practacu.local', password: 'practacu' };
+const ADMIN = { name: 'QA 验证员', email: 'admin@practacu.local', password: 'practacu-2026' };
 const CONFIG_KEY = 'pp.web.config.v1';
 
 /** 本次验收写入的外观值（面板 id → 值）。 */

@@ -9,7 +9,7 @@ import type { ProblemBody } from '../types';
  *
  * 约定（与 `apperr.FieldError` 一致，客户端只认这两个键，绝不解析 `message` 文本）：
  * - `field`: email | password | display_name | name | message | title | slug | role | domain | document
- * - `rule`:  required | malformed | too_short | too_long | too_weak | blank | out_of_range | unknown | too_large | unsupported
+ * - `rule`:  required | malformed | too_short | too_long | too_weak | too_common | blank | out_of_range | unknown | too_large | unsupported
  *
  * 两个键缺任何一个、或组合不认识时返回 `null`，调用方保持原有的通用文案。
  */
@@ -43,11 +43,13 @@ export function problemDetail(problem: ProblemBody | null | undefined): ProblemD
 function messageFor(detail: ProblemDetail, t: (key: string) => string): string | undefined {
   switch (`${detail.field}:${detail.rule}`) {
     case 'password:too_short':
-      return t('密码至少 8 位。');
+      return t('密码至少 12 位。');
     case 'password:too_long':
       return t('密码最多 128 位。');
     case 'password:too_weak':
       return t('密码需要至少包含两类字符：小写字母、大写字母、数字、符号。');
+    case 'password:too_common':
+      return t('密码不能是常见弱口令，请换一个更独特的口令。');
     case 'password:blank':
       return t('密码不能只有空格。');
 
@@ -155,6 +157,7 @@ export const KNOWN_DETAILS: ProblemDetail[] = [
   { field: 'password', rule: 'too_short' },
   { field: 'password', rule: 'too_long' },
   { field: 'password', rule: 'too_weak' },
+  { field: 'password', rule: 'too_common' },
   { field: 'password', rule: 'blank' },
   { field: 'email', rule: 'required' },
   { field: 'email', rule: 'malformed' },

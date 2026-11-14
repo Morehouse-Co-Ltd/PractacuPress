@@ -66,7 +66,7 @@ const fragment: Dictionary = {
   '创建用户失败': 'Could not create the user',
   '请填写显示名称。': 'Enter a display name.',
   '请填写有效的邮箱地址。': 'Enter a valid email address.',
-  '密码至少 8 位。': 'The password must be at least 8 characters.',
+  '密码至少 12 位。': 'The password must be at least 12 characters.',
   '创建用户': 'Create user',
   '新用户': 'New user',
   '个人博客下新用户直接拥有最高权限，可以登录后台。':
@@ -77,8 +77,8 @@ const fragment: Dictionary = {
   '例如：周宛': 'For example: Wan Zhou',
   '登录账号，必须全站唯一。': 'The sign-in account; must be unique across the site.',
   '初始密码': 'Initial password',
-  '至少 8 位。创建后请通过安全渠道交给对方。':
-    'At least 8 characters. Share it through a secure channel after creating the user.',
+  '至少 12 位。创建后请通过安全渠道交给对方。':
+    'At least 12 characters. Share it through a secure channel after creating the user.',
   '例如：一句好记的长口令': 'For example: a long passphrase you can remember',
   '个人博客固定最高权限': 'Personal blogs always use full permissions',
   '不需要选择用户组；切回社区站点后，这个用户会以「管理员」身份继续使用。':
@@ -160,8 +160,8 @@ const fragment: Dictionary = {
     'New visitors become regular members by signing up; admins can also pick the group directly in Add user, which saves a later change.',
   '当前身份：{identity}。': 'Signed in as: {identity}.',
   '站点形态：{kind}。': 'Site type: {kind}.',
-  '8–128 位，且至少包含两类字符（小写、大写、数字、符号）。创建后请通过安全渠道交给对方。':
-    '8–128 characters, combining at least two of: lowercase, uppercase, digits, symbols. Hand the initial password over through a safe channel.',
+  '12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。创建后请通过安全渠道交给对方。':
+    '12–128 characters combining at least two of lowercase, uppercase, digits and symbols; common passwords are refused. Hand the initial password over through a safe channel.',
   '新增用户不能直接设为最高管理员；如需平台管理员，请创建后在用户组里单独调整。':
     'New users cannot be created as platform administrators; create the account first and grant the role separately if needed.',
 };

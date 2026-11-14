@@ -236,13 +236,17 @@ func TestRegisterRejectsShortPassword(t *testing.T) {
 	h := newAPIHarness(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register/email", jsonBody(t, map[string]string{
-		"email": "bob@example.com", "password": "short", "display_name": "Bob",
+		"email": "bob@example.com", "password": "Aa1!Aa1!Aa1", "display_name": "Bob", // 11 runes
 	}))
 	req.Header.Set("Content-Type", "application/json")
 	w := h.do(t, req)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Equal(t, "validation_failed", decode(t, w)["code"])
+	payload := decode(t, w)
+	require.Equal(t, "validation_failed", payload["code"])
+	details := payload["details"].(map[string]any)
+	require.Equal(t, "password", details["field"])
+	require.Equal(t, "too_short", details["rule"])
 }
 
 // TestRegisterWeakPasswordNamesFieldAndRule is the client's side of the contract: a form
@@ -252,7 +256,9 @@ func TestRegisterWeakPasswordNamesFieldAndRule(t *testing.T) {
 	h := newAPIHarness(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register/email", jsonBody(t, map[string]string{
-		"email": "weak@example.com", "password": "password", "display_name": "Weak",
+		// 16 lowercase letters: long enough for the length rule, one class for the
+		// strength rule, so the response is specifically about the character classes.
+		"email": "weak@example.com", "password": "correcthorsebattery", "display_name": "Weak",
 	}))
 	req.Header.Set("Content-Type", "application/json")
 	w := h.do(t, req)
@@ -267,6 +273,27 @@ func TestRegisterWeakPasswordNamesFieldAndRule(t *testing.T) {
 	require.True(t, ok, "details must be an object")
 	require.Equal(t, "password", details["field"])
 	require.Equal(t, "too_weak", details["rule"])
+	require.NotEmpty(t, details["reason"])
+}
+
+// TestRegisterRejectsCommonPassword is the endpoint half of the too_common rule: a
+// vulnerable form can tell the user to pick a different password instead of a longer
+// one, because the server names the rule rather than only returning "validation_failed".
+func TestRegisterRejectsCommonPassword(t *testing.T) {
+	h := newAPIHarness(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register/email", jsonBody(t, map[string]string{
+		"email": "common@example.com", "password": "Password1234", "display_name": "Common",
+	}))
+	req.Header.Set("Content-Type", "application/json")
+	w := h.do(t, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	payload := decode(t, w)
+	require.Equal(t, "validation_failed", payload["code"])
+	details := payload["details"].(map[string]any)
+	require.Equal(t, "password", details["field"])
+	require.Equal(t, "too_common", details["rule"])
 	require.NotEmpty(t, details["reason"])
 }
 

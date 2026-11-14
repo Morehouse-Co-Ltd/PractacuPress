@@ -64,6 +64,12 @@ var (
 	ErrNotFound = errors.New("backup: not found")
 	// ErrInvalidInput means a field failed validation.
 	ErrInvalidInput = errors.New("backup: invalid input")
+	// ErrEncryptionKeyRequired means an encrypted package was read without a key.
+	ErrEncryptionKeyRequired = errors.New("backup: encryption key required")
+	// ErrEncryptionKeyInvalid means the supplied key is not a 32-byte AES-256 key.
+	ErrEncryptionKeyInvalid = errors.New("backup: encryption key is invalid")
+	// ErrDecryptionFailed means authentication failed: wrong key or tampered package.
+	ErrDecryptionFailed = errors.New("backup: package decryption failed")
 )
 
 // Actor is the caller performing a backup or transfer operation.
@@ -123,6 +129,7 @@ type BackupManifest struct {
 	AppVersion      string       `json:"app_version"`
 	SchemaVersion   string       `json:"schema_version"`
 	CreatedAt       time.Time    `json:"created_at"`
+	Encrypted       bool         `json:"encrypted,omitempty"`
 	Database        DatabaseInfo `json:"database"`
 	Media           MediaInfo    `json:"media"`
 	Designs         []DesignInfo `json:"designs"`
@@ -386,6 +393,9 @@ func cleanError(err error) string {
 		ErrChecksumMismatch.Error() + ": ",
 		ErrUnsupportedDriver.Error() + ": ",
 		ErrConfirmationRequired.Error() + ": ",
+		ErrEncryptionKeyRequired.Error() + ": ",
+		ErrEncryptionKeyInvalid.Error() + ": ",
+		ErrDecryptionFailed.Error() + ": ",
 	} {
 		text = strings.TrimPrefix(text, prefix)
 	}

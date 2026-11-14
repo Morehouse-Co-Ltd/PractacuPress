@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/practacu/practacu-press/apps/api/internal/platform/fieldcrypto"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/identitycrypto"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
@@ -23,10 +25,28 @@ const providerEmail = "email"
 // Store is the Ent backed implementation of site.Repository.
 type Store struct {
 	client *entgen.Client
+	// identity seals the login address columns. See authstore.WithFieldCipher.
+	identity *identitycrypto.Codec
+}
+
+// Option customises a Store.
+type Option func(*Store)
+
+// WithFieldCipher seals identity address columns written by this store.
+func WithFieldCipher(cipher *fieldcrypto.Cipher) Option {
+	return func(s *Store) { s.identity = identitycrypto.New(cipher) }
 }
 
 // New returns a Store over the given Ent client.
-func New(client *entgen.Client) *Store { return &Store{client: client} }
+func New(client *entgen.Client, opts ...Option) *Store {
+	store := &Store{client: client}
+	for _, option := range opts {
+		if option != nil {
+			option(store)
+		}
+	}
+	return store
+}
 
 var _ site.Repository = (*Store)(nil)
 
@@ -371,25 +391,49 @@ func (s *Store) UpdateMemberProfile(
 			return err
 		}
 
+		sealedSubject, err := s.identity.SealSubject(providerEmail, *in.Email)
+		if err != nil {
+			return err
+		}
+		sealedEmail, err := s.identity.SealEmail(*in.Email)
+		if err != nil {
+			return err
+		}
+
 		// Email is unique across the install: check before writing so the caller gets
 		// a 409 instead of a database constraint error.
 		taken, err := tx.UserIdentity.Query().
 			Where(
 				useridentity.ProviderEQ(providerEmail),
-				useridentity.ProviderSubjectEQ(*in.Email),
+				useridentity.ProviderSubjectEQ(sealedSubject),
 				useridentity.UserIDNEQ(userID),
 			).
 			Exist(ctx)
 		if err != nil {
 			return err
 		}
+		if !taken && sealedSubject != *in.Email {
+			// A row written before the column was sealed still carries the plaintext.
+			// The startup backfill migrates it, but the check must not depend on that
+			// having run before this request.
+			taken, err = tx.UserIdentity.Query().
+				Where(
+					useridentity.ProviderEQ(providerEmail),
+					useridentity.ProviderSubjectEqualFold(identitycrypto.NormalizeAddress(*in.Email)),
+					useridentity.UserIDNEQ(userID),
+				).
+				Exist(ctx)
+			if err != nil {
+				return err
+			}
+		}
 		if taken {
 			return site.ErrEmailTaken
 		}
 
 		if _, err := tx.UserIdentity.UpdateOneID(identity.ID).
-			SetProviderSubject(*in.Email).
-			SetEmail(*in.Email).
+			SetProviderSubject(sealedSubject).
+			SetEmail(sealedEmail).
 			Save(ctx); err != nil {
 			return err
 		}

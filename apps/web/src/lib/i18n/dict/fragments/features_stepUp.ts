@@ -42,10 +42,10 @@ const fragment: Dictionary = {
   '默认开启。关闭后，高危操作会直接执行，不再要求二次验证。':
     'On by default. When off, high-risk actions run directly with no second check.',
   '专用安全密码（可选）': 'Dedicated security password (optional)',
-  '留空则使用你的账户登录密码。设置后验证只接受这个专用密码；至少 8 位。':
-    'Leave blank to use your account password. Once set, only this dedicated password is accepted; at least 8 characters.',
+  '留空则使用你的账户登录密码。设置后验证只接受这个专用密码；至少 12 位。':
+    'Leave blank to use your account password. Once set, only this dedicated password is accepted; at least 12 characters.',
   '确认专用安全密码': 'Confirm dedicated security password',
-  '专用安全密码至少 8 位。': 'The dedicated security password must be at least 8 characters.',
+  '专用安全密码至少 12 位。': 'The dedicated security password must be at least 12 characters.',
   '两次输入的安全密码不一致。': 'The two security passwords do not match.',
   '这个设置之后可以修改': 'You can change this later',
   '安装完成后，可以在「站点设置 → 高威胁操作保护」里开关保护、设置或清除专用密码。':
@@ -76,8 +76,8 @@ const fragment: Dictionary = {
     'When on, deleting accounts, editing other members and overwriting imports require your password again; when off they run directly.',
   '演示模式没有服务端安全校验：开关会保存在本地，高危操作会直接执行；专用密码不可用。连接真实后端后才会真正校验。':
     'Demo mode has no server-side security checks: the switch is saved locally, high-risk actions run directly, and the dedicated password is unavailable. Real verification only happens against a real backend.',
-  '留空表示不修改。设置后验证只接受这个专用密码；清除后恢复使用账户登录密码。至少 8 位。':
-    'Leave blank to keep the current value. Once set, only this dedicated password is accepted; clearing it restores the account password. At least 8 characters.',
+  '留空表示不修改。设置后验证只接受这个专用密码；清除后恢复使用账户登录密码。至少 12 位。':
+    'Leave blank to keep the current value. Once set, only this dedicated password is accepted; clearing it restores the account password. At least 12 characters.',
   '更换专用密码': 'Change dedicated password',
   '设置专用密码': 'Set dedicated password',
   '清除专用密码': 'Clear dedicated password',

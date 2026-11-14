@@ -88,7 +88,15 @@ func SQLitePathFromDSN(dsn string) (string, error) {
 
 // Restore replaces a SQLite database and local media roots from a backup.
 func (s *Service) Restore(ctx context.Context, opts RestoreOptions) (RestoreResult, error) {
-	manifest, err := s.VerifyBackup(opts.ArchivePath)
+	// Resolve the package once. An encrypted package is authenticated and
+	// decrypted to a temporary zip here, so a missing or wrong key fails before
+	// anything on disk is touched and every later step reads the plaintext copy.
+	archivePath, cleanup, err := s.prepareArchive(opts.ArchivePath)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer cleanup()
+	manifest, err := s.verifyPlainArchive(archivePath)
 	if err != nil {
 		return RestoreResult{}, err
 	}
@@ -154,7 +162,7 @@ func (s *Service) Restore(ctx context.Context, opts RestoreOptions) (RestoreResu
 		SchemaVersion:  currentSchema,
 	}
 	if !opts.SkipMedia {
-		files, warnings, mediaErr := extractMedia(ctx, opts.ArchivePath, opts.MediaRoots)
+		files, warnings, mediaErr := extractMedia(ctx, archivePath, opts.MediaRoots)
 		if mediaErr != nil {
 			return RestoreResult{}, mediaErr
 		}
@@ -162,7 +170,7 @@ func (s *Service) Restore(ctx context.Context, opts RestoreOptions) (RestoreResu
 		result.Warnings = append(result.Warnings, warnings...)
 	}
 
-	reader, err := zip.OpenReader(opts.ArchivePath)
+	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return RestoreResult{}, fmt.Errorf("%w: reopen package: %v", ErrInvalidArchive, err)
 	}

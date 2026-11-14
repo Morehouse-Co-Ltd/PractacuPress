@@ -13,6 +13,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 
 	"github.com/practacu/practacu-press/apps/api/internal/auth"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/identitycrypto"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 
 	entgen "github.com/practacu/practacu-press/apps/api/ent"
@@ -32,10 +33,21 @@ const ProviderEmail = "email"
 // Store is the Ent backed implementation of auth.Repository.
 type Store struct {
 	client *entgen.Client
+	// identity seals the address columns. A nil codec keeps plaintext storage for
+	// tests and development installs without a configured key.
+	identity *identitycrypto.Codec
 }
 
 // New returns a Store over the given Ent client.
-func New(client *entgen.Client) *Store { return &Store{client: client} }
+func New(client *entgen.Client, opts ...Option) *Store {
+	store := &Store{client: client}
+	for _, option := range opts {
+		if option != nil {
+			option(store)
+		}
+	}
+	return store
+}
 
 var _ auth.Repository = (*Store)(nil)
 
@@ -61,12 +73,10 @@ func (s *Store) CreateAccountWithEmail(ctx context.Context, in auth.CreateAccoun
 		return auth.UserAccount{}, auth.ErrSiteMissing
 	}
 
-	if _, err := tx.UserIdentity.Query().
-		Where(useridentity.ProviderEQ(ProviderEmail), useridentity.ProviderSubjectEQ(in.Email)).
-		Only(ctx); err == nil {
-		return auth.UserAccount{}, auth.ErrIdentityExists
-	} else if !entgen.IsNotFound(err) {
+	if _, found, err := s.findIdentityWith(ctx, tx.UserIdentity, ProviderEmail, in.Email); err != nil {
 		return auth.UserAccount{}, err
+	} else if found {
+		return auth.UserAccount{}, auth.ErrIdentityExists
 	}
 
 	created, err := tx.User.Create().
@@ -84,11 +94,19 @@ func (s *Store) CreateAccountWithEmail(ctx context.Context, in auth.CreateAccoun
 		}
 	}
 
+	sealedSubject, err := s.identity.SealSubject(ProviderEmail, in.Email)
+	if err != nil {
+		return auth.UserAccount{}, err
+	}
+	sealedEmail, err := s.identity.SealEmail(in.Email)
+	if err != nil {
+		return auth.UserAccount{}, err
+	}
 	identity := tx.UserIdentity.Create().
 		SetUserID(created.ID).
 		SetProvider(ProviderEmail).
-		SetProviderSubject(in.Email).
-		SetEmail(in.Email).
+		SetProviderSubject(sealedSubject).
+		SetEmail(sealedEmail).
 		SetPasswordHash(in.PasswordHash)
 	if in.Verified {
 		identity.SetVerifiedAt(time.Now().UTC())
@@ -119,16 +137,14 @@ func (s *Store) CreateAccountWithEmail(ctx context.Context, in auth.CreateAccoun
 
 // FindEmailIdentity resolves a normalised email to its identity.
 func (s *Store) FindEmailIdentity(ctx context.Context, email string) (auth.Identity, error) {
-	row, err := s.client.UserIdentity.Query().
-		Where(useridentity.ProviderEQ(ProviderEmail), useridentity.ProviderSubjectEQ(email)).
-		Only(ctx)
+	row, found, err := s.findIdentityBySubject(ctx, ProviderEmail, email)
 	if err != nil {
-		if entgen.IsNotFound(err) {
-			return auth.Identity{}, auth.ErrAccountNotFound
-		}
 		return auth.Identity{}, err
 	}
-	return toIdentity(row), nil
+	if !found {
+		return auth.Identity{}, auth.ErrAccountNotFound
+	}
+	return s.openIdentity(row)
 }
 
 // FindEmailIdentitiesByDisplayName resolves every email identity whose account
@@ -177,7 +193,11 @@ func (s *Store) FindEmailIdentitiesByDisplayName(
 	}
 	identities := make([]auth.Identity, 0, len(rows))
 	for _, row := range rows {
-		identities = append(identities, toIdentity(row))
+		identity, openErr := s.openIdentity(row)
+		if openErr != nil {
+			return nil, openErr
+		}
+		identities = append(identities, identity)
 	}
 	return identities, nil
 }
@@ -193,7 +213,7 @@ func (s *Store) FindEmailIdentityByUser(ctx context.Context, userID string) (aut
 		}
 		return auth.Identity{}, err
 	}
-	return toIdentity(row), nil
+	return s.openIdentity(row)
 }
 
 // UpdatePasswordHash replaces the stored hash and optionally proves the address.
@@ -873,23 +893,6 @@ func (s *Store) CountUnusedRecoveryCodes(ctx context.Context, userID string) (in
 	return s.client.RecoveryCode.Query().
 		Where(recoverycode.UserIDEQ(userID), recoverycode.UsedAtIsNil()).
 		Count(ctx)
-}
-
-func toIdentity(row *entgen.UserIdentity) auth.Identity {
-	identity := auth.Identity{
-		ID:         row.ID,
-		UserID:     row.UserID,
-		Provider:   row.Provider,
-		Subject:    row.ProviderSubject,
-		VerifiedAt: row.VerifiedAt,
-	}
-	if row.Email != nil {
-		identity.Email = *row.Email
-	}
-	if row.PasswordHash != nil {
-		identity.PasswordHash = *row.PasswordHash
-	}
-	return identity
 }
 
 func toVerificationToken(row *entgen.VerificationToken) auth.VerificationToken {

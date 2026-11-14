@@ -7,8 +7,9 @@
  * 「参数不合法」，完全不知道密码少了什么。前端按同一套规则先拦下来，才能给出具体原因。
  *
  * 规则（与后端一致）：
- * - 8–128 个字符（按码点数，不按字节）；
+ * - 12–128 个字符（按码点数，不按字节）；
  * - 不能全是空白；
+ * - 不能是内嵌常见弱口令黑名单里的整串（忽略大小写、精确匹配）；
  * - 至少包含两类字符：小写字母、大写字母、数字、符号。
  *   无大小写的字母（中文、日文……）记作「小写字母」这一类。
  *
@@ -16,11 +17,13 @@
  * 因为 i18n 覆盖率闸门只认字面量，返回成品字符串会让新文案悄悄掉出闸门。
  */
 
-const MIN_LENGTH = 8;
+import { COMMON_PASSWORDS } from './commonPasswords';
+
+const MIN_LENGTH = 12;
 const MAX_LENGTH = 128;
 const MIN_CLASSES = 2;
 
-export type PasswordProblem = 'short' | 'long' | 'blank' | 'classes';
+export type PasswordProblem = 'short' | 'long' | 'blank' | 'common' | 'classes';
 
 /** 密码用到了哪几类字符；判定顺序与后端一致。 */
 export function passwordClasses(raw: string): number {
@@ -46,6 +49,9 @@ export function passwordProblem(raw: string): PasswordProblem | null {
   if (length < MIN_LENGTH) return 'short';
   if (length > MAX_LENGTH) return 'long';
   if (raw.trim() === '') return 'blank';
+  // 与后端同一顺序：先报「常见弱口令」，再报字符类不足，用户才知道该换一个密码而不是
+  // 在原密码后面补一位数字。
+  if (COMMON_PASSWORDS.has(raw.toLowerCase())) return 'common';
   if (passwordClasses(raw) < MIN_CLASSES) return 'classes';
   return null;
 }
@@ -57,11 +63,13 @@ export function passwordProblemText(
 ): string {
   switch (problem) {
     case 'short':
-      return t('密码至少 8 位。');
+      return t('密码至少 12 位。');
     case 'long':
       return t('密码最多 128 位。');
     case 'blank':
       return t('密码不能只有空格。');
+    case 'common':
+      return t('密码不能是常见弱口令，请换一个更独特的口令。');
     default:
       return t('密码需要至少包含两类字符：小写字母、大写字母、数字、符号。');
   }

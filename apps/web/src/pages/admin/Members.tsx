@@ -168,7 +168,7 @@ export function MembersPage() {
       setFormError(t('请填写有效的邮箱地址。'));
       return;
     }
-    // 与后端同一套密码策略（8–128 位、至少两类字符），否则提交后只会拿到一句
+    // 与后端同一套密码策略（12–128 位、至少两类字符、拒绝常见弱口令），否则提交后只会拿到一句
     // 笼统的「请求参数不符合要求」，管理员根本不知道密码缺什么。
     const passwordIssue = passwordProblem(draft.password);
     if (passwordIssue) {
@@ -855,7 +855,7 @@ export function MembersPage() {
             <Field
               label={t('初始密码')}
               htmlFor="member-password"
-              hint={t('8–128 位，且至少包含两类字符（小写、大写、数字、符号）。创建后请通过安全渠道交给对方。')}
+              hint={t('12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。创建后请通过安全渠道交给对方。')}
             >
               <Input
                 id="member-password"

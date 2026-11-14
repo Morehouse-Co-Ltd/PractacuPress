@@ -240,8 +240,8 @@ export function ResetPasswordPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
-    if (password.length < 8) {
-      setError(t('密码至少 8 位。'));
+    if (password.length < 12) {
+      setError(t('密码至少 12 位。'));
       return;
     }
     if (password !== confirm) {
@@ -317,7 +317,7 @@ export function ResetPasswordPage() {
             <Field
               label={t('新密码')}
               htmlFor="reset-password"
-              hint={t('8–128 位。建议使用长口令或密码管理器。')}
+              hint={t('12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令或密码管理器。')}
               aside={
                 <button type="button" className="link-btn" onClick={() => setShowPassword((v) => !v)}>
                   {showPassword ? t('隐藏') : t('显示')}

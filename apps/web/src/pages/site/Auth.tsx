@@ -488,7 +488,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <Field
               label={t('密码')}
               htmlFor="auth-password"
-              hint={mode === 'register' ? t('8–128 位。建议使用长口令或密码管理器。') : undefined}
+              hint={mode === 'register' ? t('12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令或密码管理器。') : undefined}
               aside={
                 <span className="row gap-10" style={{ alignItems: 'center' }}>
                   {mode === 'login' && canReset ? (

@@ -988,7 +988,7 @@ export function SettingsPage() {
                       <Field
                         label={t('专用安全密码（可选）')}
                         htmlFor="stepup-password-new"
-                        hint={t('留空表示不修改。设置后验证只接受这个专用密码；清除后恢复使用账户登录密码。至少 8 位。')}
+                        hint={t('留空表示不修改。设置后验证只接受这个专用密码；清除后恢复使用账户登录密码。至少 12 位。')}
                       >
                         <Input
                           id="stepup-password-new"

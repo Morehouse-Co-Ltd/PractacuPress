@@ -652,7 +652,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       if (!isEmail(draft.admin.email)) return t('请填写有效的邮箱地址。');
       if (!draft.admin.display_name.trim()) return t('请填写显示名称。');
       if (draft.admin.display_name.length > 120) return t('显示名称不能超过 120 个字符。');
-      // 与后端同一套策略（8–128 位、至少两类字符）；只查长度会让用户拿到一句
+      // 与后端同一套策略（12–128 位、至少两类字符、拒绝常见弱口令）；只查长度会让用户拿到一句
       // 笼统的「请求参数不符合要求」。
       const passwordIssue = passwordProblem(draft.admin.password);
       if (passwordIssue) return t(passwordProblemText(passwordIssue, t));
@@ -662,7 +662,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     if (index === 4) {
       // 专用安全密码是可选的：留空表示验证时使用账户登录密码。
       if (!draft.safety.enabled || !draft.safety.password) return '';
-      if (draft.safety.password.length < 8) return t('专用安全密码至少 8 位。');
+      if (draft.safety.password.length < 12) return t('专用安全密码至少 12 位。');
       if (draft.safety.password !== draft.safety.confirm) {
         return t('两次输入的安全密码不一致。');
       }
@@ -1592,7 +1592,7 @@ go run ./apps/api/cmd/server`}</pre>
                           <Field
                             label={t('密码')}
                             htmlFor="admin-pass"
-                            hint={t('8–128 位，且至少包含两类字符（小写、大写、数字、符号）。建议使用长口令。')}
+                            hint={t('12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。建议使用长口令。')}
                             aside={
                               <button
                                 type="button"
@@ -1666,7 +1666,7 @@ go run ./apps/api/cmd/server`}</pre>
                       <Field
                         label={t('专用安全密码（可选）')}
                         htmlFor="safety-password"
-                        hint={t('留空则使用你的账户登录密码。设置后验证只接受这个专用密码；至少 8 位。')}
+                        hint={t('留空则使用你的账户登录密码。设置后验证只接受这个专用密码；至少 12 位。')}
                       >
                         <Input
                           id="safety-password"

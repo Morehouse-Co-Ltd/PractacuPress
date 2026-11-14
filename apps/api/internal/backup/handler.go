@@ -227,6 +227,9 @@ func (h *Handler) mapError(err error) *apperr.Problem {
 		return apperr.Validation(cleanError(err)).WithDetail("reason", "confirmation_required")
 	case errors.Is(err, ErrChecksumMismatch), errors.Is(err, ErrInvalidArchive):
 		return apperr.Validation(cleanError(err)).WithDetail("reason", "invalid_backup_package")
+	case errors.Is(err, ErrEncryptionKeyRequired), errors.Is(err, ErrEncryptionKeyInvalid),
+		errors.Is(err, ErrDecryptionFailed):
+		return apperr.Validation(cleanError(err)).WithDetail("reason", "backup_encryption_error")
 	case errors.Is(err, ErrInvalidInput):
 		return apperr.Validation(cleanError(err))
 	default:

@@ -24,7 +24,7 @@ const fragment: Dictionary = {
   // ---- 校验与请求错误 ----
   '请填写有效的邮箱地址。': 'Enter a valid email address.',
   '请填写显示名称。': 'Enter a display name.',
-  '密码至少 8 位。': 'Passwords must be at least 8 characters.',
+  '密码至少 12 位。': 'Passwords must be at least 12 characters.',
   '两次输入的密码不一致。': 'The two passwords do not match.',
   '邮箱或密码不正确。': 'Incorrect email or password.',
   '邮箱/用户名或密码不正确。': 'Incorrect email, username or password.',
@@ -63,8 +63,8 @@ const fragment: Dictionary = {
   '站长创建的账户都可以登录；用户名或邮箱均可。':
     'Any account created by the site owner can sign in; email or username both work.',
   密码: 'Password',
-  '8–128 位。建议使用长口令或密码管理器。':
-    '8–128 characters. A long passphrase or a password manager is recommended.',
+  '12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令或密码管理器。':
+    '12–128 characters with at least two character classes; common passwords are refused. A long passphrase or a password manager is recommended.',
   '忘记密码？': 'Forgot your password?',
   隐藏: 'Hide',
   显示: 'Show',

@@ -175,6 +175,30 @@ Windows 启动器形态使用（`.env.prod` 与启动器不共用文件系统，
 > 密钥轮换 = 全员强制重新登录。生成后请纳入密码管理器/受控备份；
 > 泄露即等于可以伪造任意角色 token。
 
+## 4.1 静态数据加密密钥（生产必填）
+
+生产 profile 强制要求两把独立的 32 字节 AES-256 密钥，各自解决一类泄露：
+
+| 变量 | 保护对象 | 密钥放哪 | 丢失/轮换后果 |
+| --- | --- | --- | --- |
+| `FIELD_ENCRYPTION_KEY` | 登录邮箱、手机号、私信正文（数据库字段级） | 必须在服务器环境里，API 要在线使用 | 丢失 = 这些字段无法解密；轮换 = 先解密再重新加密全部数据 |
+| `BACKUP_ENCRYPTION_KEY` | 整库备份包 `.ppbak` | 可以离线保管，只需在创建/恢复备份时提供 | 丢失 = 已有备份作废，无法恢复 |
+
+生成（两把分别生成，不要相同）：
+
+```bash
+openssl rand -base64 32   # FIELD_ENCRYPTION_KEY
+openssl rand -base64 32   # BACKUP_ENCRYPTION_KEY
+```
+
+填进 `.env.prod`。`APP_ENV=production` 时缺失任一变量会在启动期直接失败，
+不会静默写明文。`docker-compose.prod.yml` 已用 `:?` 语法要求两者存在。
+
+升级已有部署时注意**顺序**：先在旧版本上创建一份明文备份 → 填入两把密钥并升级
+→ 新版本启动时会把历史明文行（邮箱、私信）自动加密并记录日志
+（`sealed legacy identity addresses` / `sealed legacy private messages`）。
+历史备份仍可用旧方式恢复，但建议升级后重新创建一份加密备份。
+
 ## 5. 部署文件清单
 
 | 文件 | 作用 |
@@ -197,6 +221,11 @@ export COMPOSE_ENV_FILES=.env.prod   # Compose v2.24+；或继续显式 --env-fi
 
 备份对象：命名卷 `practacu-data`（`practacu.db` + `media/`）与 `.env.prod`。
 卷的实际名字是 `<项目名>_practacu-data`，默认项目名 `practacu-press`。
+
+> 生产 profile 下，后台创建/下载的整库备份是 **`.ppbak` 加密包**（AES-256-GCM
+> 分块流式加密），不是可直接解压的 zip。下面这种卷级 `tar` 备份**不加密**，
+> 只是在加密包之外用来搬整份卷；更推荐用后台/`backup` CLI 创建 `.ppbak`，
+> 把加密包和 `BACKUP_ENCRYPTION_KEY` 分开保管。
 
 ```bash
 # 备份（先停 api 写入，SQLite 更干净；web 可继续提供只读页）

@@ -30,16 +30,18 @@ func invalidField(field, rule, reason string) error {
 // They are enforced before any expensive work (hashing, database access) so an
 // oversized payload cannot be used to burn CPU.
 const (
-	// MinPasswordLength is the shortest accepted password.
-	MinPasswordLength = 8
+	// MinPasswordLength is the shortest accepted password. It is deliberately above
+	// the historic 8: a short password is the cheapest offline guess even after the
+	// Argon2id stretch.
+	MinPasswordLength = 12
 	// MaxPasswordLength bounds the input to Argon2.
 	MaxPasswordLength = 128
 	// MaxDisplayNameLength bounds a display name.
 	MaxDisplayNameLength = 120
 	// MaxEmailLength is the RFC 5321 maximum for a bare address (254 octets). It is
-	// deliberately below the persistence bound on the identity subject (255): an
-	// address this layer accepts must never be rejected by the schema, which would
-	// turn a validation failure into a 500.
+	// deliberately below the persistence bound on the identity subject (512, large
+	// enough for the sealed envelope): an address this layer accepts must never be
+	// rejected by the schema, which would turn a validation failure into a 500.
 	MaxEmailLength = 254
 	// minPasswordClasses is how many distinct character classes a new password must
 	// combine: lowercase, uppercase, digits and symbols (spaces count as symbols, but
@@ -73,10 +75,11 @@ func NormalizeEmail(raw string) (string, error) {
 
 // ValidatePassword enforces the password policy before hashing.
 //
-// The policy is: 8 to 128 characters, not entirely whitespace, and at least two of
-// the four character classes. It only gates the creation of a password (registration,
-// reset and administrator created accounts); login accepts whatever was stored, so an
-// account created before this policy existed keeps working.
+// The policy is: 12 to 128 characters, not entirely whitespace, at least two of the
+// four character classes, and not one of the classic weak passwords in the embedded
+// blocklist (case insensitive exact match). It only gates the creation of a password
+// (registration, reset and administrator created accounts); login accepts whatever
+// was stored, so an account created before this policy existed keeps working.
 func ValidatePassword(raw string) error {
 	length := utf8.RuneCountInString(raw)
 	switch {
@@ -89,6 +92,12 @@ func ValidatePassword(raw string) error {
 	}
 	if strings.TrimSpace(raw) == "" {
 		return invalidField("password", "blank", "password must not be only whitespace")
+	}
+	// Checked before the class rule so a 12+ character classic password is reported
+	// as too common rather than as merely weak: the client can then tell the user to
+	// pick a different password instead of adding a digit to the same one.
+	if isCommonPassword(raw) {
+		return invalidField("password", "too_common", "password is a commonly used password")
 	}
 	if classes := passwordClasses(raw); classes < minPasswordClasses {
 		return invalidField("password", "too_weak", fmt.Sprintf(

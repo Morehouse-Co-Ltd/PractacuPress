@@ -176,7 +176,7 @@ func TestRegisterValidatesInput(t *testing.T) {
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 
 	_, err = h.service.RegisterEmail(h.ctx, h.siteID, auth.RegisterEmailInput{
-		Email: "ok@example.com", Password: "short", DisplayName: "X",
+		Email: "ok@example.com", Password: "Aa1!Aa1!Aa1", DisplayName: "X", // 11 runes
 	})
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 }

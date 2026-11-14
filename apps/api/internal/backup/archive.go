@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -19,16 +20,21 @@ import (
 
 // Artifact is one stored backup package.
 type Artifact struct {
-	ID            string    `json:"id"`
-	FileName      string    `json:"file_name"`
-	Size          int64     `json:"size"`
+	ID       string `json:"id"`
+	FileName string `json:"file_name"`
+	Size     int64  `json:"size"`
+	// SHA256 is the hash of the stored bytes: the ciphertext for an encrypted
+	// package, so `sha256sum` over the file matches this value.
 	SHA256        string    `json:"sha256"`
 	CreatedAt     time.Time `json:"created_at"`
 	Driver        string    `json:"driver"`
 	Dialect       string    `json:"dialect"`
 	IncludesMedia bool      `json:"includes_media"`
-	Warnings      []string  `json:"warnings,omitempty"`
-	Path          string    `json:"-"`
+	// Encrypted says the stored package is a PPBAK1 envelope and FileName ends
+	// in .ppbak. Reading it back requires the deployment's encryption key.
+	Encrypted bool     `json:"encrypted,omitempty"`
+	Warnings  []string `json:"warnings,omitempty"`
+	Path      string   `json:"-"`
 }
 
 // zipBuilder streams entries into a zip while hashing their uncompressed bytes.
@@ -136,16 +142,18 @@ func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
 	}
 
 	createdAt := s.now().UTC()
+	encrypted := len(s.encryptionKey) > 0
+	extension := plainPackageExtension
+	if encrypted {
+		extension = encryptedPackageExtension
+	}
 	id := "backup-" + createdAt.Format("20060102-150405")
 	// Two backups in the same second must not overwrite each other.
-	for suffix := 2; ; suffix++ {
-		if _, err := os.Stat(s.artifactPath(id)); isNotExist(err) {
-			break
-		}
+	for suffix := 2; s.packageExists(id); suffix++ {
 		id = fmt.Sprintf("backup-%s-%d", createdAt.Format("20060102-150405"), suffix)
 	}
-	finalPath := s.artifactPath(id)
-	tempPath := filepath.Join(s.backupDir, "."+id+".zip.tmp")
+	finalPath := s.packagePath(id, encrypted)
+	tempPath := filepath.Join(s.backupDir, "."+id+extension+".tmp")
 	out, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("backup: create package: %w", err)
@@ -159,7 +167,19 @@ func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
 	}()
 
 	packageHash := sha256.New()
-	builder := newZipBuilder(io.MultiWriter(out, packageHash), createdAt)
+	// The hash covers the stored bytes: EncryptWriter writes through the hashing
+	// sink, so an encrypted artifact's SHA256 is sha256sum of the .ppbak file and
+	// a plaintext artifact's is sha256sum of the .zip file.
+	var payload io.Writer = io.MultiWriter(out, packageHash)
+	var encryptor io.WriteCloser
+	if encrypted {
+		encryptor, err = EncryptWriter(payload, s.encryptionKey)
+		if err != nil {
+			return Artifact{}, fmt.Errorf("backup: start encrypted package: %w", err)
+		}
+		payload = encryptor
+	}
+	builder := newZipBuilder(payload, createdAt)
 
 	tempDir, err := os.MkdirTemp(s.backupDir, ".snapshot-*")
 	if err != nil {
@@ -194,6 +214,7 @@ func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
 		AppVersion:    s.appVersion,
 		SchemaVersion: s.schemaVersion,
 		CreatedAt:     createdAt,
+		Encrypted:     encrypted,
 		Database: DatabaseInfo{
 			Driver:        s.driver,
 			Dialect:       s.driver,
@@ -214,6 +235,13 @@ func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
 	if err := builder.close(); err != nil {
 		return Artifact{}, fmt.Errorf("backup: finish package: %w", err)
 	}
+	// The encryptor must flush its last chunk and the authenticated end marker
+	// before the file is synced, otherwise the published package is truncated.
+	if encryptor != nil {
+		if err := encryptor.Close(); err != nil {
+			return Artifact{}, fmt.Errorf("backup: finish encrypted package: %w", err)
+		}
+	}
 	if err := out.Sync(); err != nil {
 		return Artifact{}, err
 	}
@@ -231,13 +259,14 @@ func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
 	}
 	artifact := Artifact{
 		ID:            id,
-		FileName:      id + ".zip",
+		FileName:      id + extension,
 		Size:          info.Size(),
 		SHA256:        hex.EncodeToString(packageHash.Sum(nil)),
 		CreatedAt:     createdAt,
 		Driver:        s.driver,
 		Dialect:       s.driver,
 		IncludesMedia: mediaInfo.Included,
+		Encrypted:     encrypted,
 		Warnings:      warnings,
 		Path:          finalPath,
 	}
@@ -405,6 +434,11 @@ func (s *Service) ListBackups(ctx context.Context, actor Actor) ([]Artifact, err
 }
 
 // OpenBackup returns one artifact and opens its file for streaming.
+//
+// The download endpoint serves the package exactly as stored: for an encrypted
+// artifact that is the .ppbak ciphertext, which the operator restores with the
+// deployment's key. The magic is checked against the sidecar so a file swapped
+// behind the metadata cannot be handed out as a valid backup.
 func (s *Service) OpenBackup(ctx context.Context, actor Actor, id string) (Artifact, *os.File, error) {
 	if err := requirePlatformAdmin(actor); err != nil {
 		return Artifact{}, nil, err
@@ -423,11 +457,96 @@ func (s *Service) OpenBackup(ctx context.Context, actor Actor, id string) (Artif
 		}
 		return Artifact{}, nil, err
 	}
+	encrypted, err := IsEncryptedPackage(artifact.Path)
+	if err != nil {
+		_ = file.Close()
+		return Artifact{}, nil, err
+	}
+	if encrypted != artifact.Encrypted {
+		_ = file.Close()
+		return Artifact{}, nil, fmt.Errorf(
+			"%w: package %s does not match its metadata (encrypted=%v)",
+			ErrInvalidArchive, artifact.ID, artifact.Encrypted,
+		)
+	}
 	return artifact, file, nil
 }
 
-// VerifyBackup checks a package without changing anything.
+// prepareArchive resolves a package for the archive/zip readers.
+//
+// A plaintext package is returned unchanged. An encrypted package is streamed
+// through the PPBAK1 decoder into a temporary zip, because archive/zip needs a
+// seekable file. The returned cleanup removes that temporary file. A missing key
+// on an encrypted package is an error, never a silent plaintext fallback.
+func (s *Service) prepareArchive(path string) (string, func(), error) {
+	encrypted, err := IsEncryptedPackage(path)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return "", nil, fmt.Errorf("%w: open package: %v", ErrInvalidArchive, err)
+		}
+		return "", nil, fmt.Errorf("backup: inspect package: %w", err)
+	}
+	if !encrypted {
+		return path, func() {}, nil
+	}
+	if len(s.encryptionKey) == 0 {
+		return "", nil, fmt.Errorf(
+			"%w: this package is encrypted; supply the backup encryption key "+
+				"(--key or BACKUP_ENCRYPTION_KEY) to read it",
+			ErrEncryptionKeyRequired,
+		)
+	}
+
+	source, err := os.Open(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("%w: open package: %v", ErrInvalidArchive, err)
+	}
+	decrypted, err := NewDecryptingReader(source, s.encryptionKey)
+	if err != nil {
+		_ = source.Close()
+		return "", nil, err
+	}
+	temp, err := os.CreateTemp("", "practacu-backup-*.zip")
+	if err != nil {
+		_ = source.Close()
+		return "", nil, fmt.Errorf("backup: create decryption temp file: %w", err)
+	}
+	tempPath := temp.Name()
+	cleanup := func() { _ = os.Remove(tempPath) }
+	if _, err := io.Copy(temp, decrypted); err != nil {
+		_ = temp.Close()
+		_ = source.Close()
+		cleanup()
+		if errors.Is(err, ErrDecryptionFailed) || errors.Is(err, ErrInvalidArchive) {
+			return "", nil, err
+		}
+		return "", nil, fmt.Errorf("backup: decrypt package: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		_ = source.Close()
+		cleanup()
+		return "", nil, fmt.Errorf("backup: close decryption temp file: %w", err)
+	}
+	if err := source.Close(); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return tempPath, cleanup, nil
+}
+
+// VerifyBackup checks a package without changing anything. An encrypted package
+// is authenticated and decrypted to a temporary file first.
 func (s *Service) VerifyBackup(path string) (BackupManifest, error) {
+	resolved, cleanup, err := s.prepareArchive(path)
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	defer cleanup()
+	return s.verifyPlainArchive(resolved)
+}
+
+// verifyPlainArchive checks an already decrypted (or plaintext) package.
+func (s *Service) verifyPlainArchive(path string) (BackupManifest, error) {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
 		return BackupManifest{}, fmt.Errorf("%w: open package: %v", ErrInvalidArchive, err)

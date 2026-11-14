@@ -502,7 +502,7 @@ export function PlatformSiteNewPage() {
         </div>
         <Field
           label={t('初始密码')}
-          hint={t('至少 8 位，并包含至少两类字符。请通过安全渠道交给该管理员。')}
+          hint={t('至少 12 位，并包含至少两类字符，且不能是常见弱口令。请通过安全渠道交给该管理员。')}
           htmlFor="platform-owner-password"
         >
           <Input

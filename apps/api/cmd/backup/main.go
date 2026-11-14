@@ -57,6 +57,16 @@ func run(args []string) error {
 	skipMedia := flags.Bool("skip-media", false, "restore: replace the database only")
 	scopeDirs := &multiFlag{}
 	flags.Var(scopeDirs, "scope-dir", "alias=path; repeat for per-purpose local media roots")
+	keyValue := flags.String(
+		"key",
+		env("BACKUP_ENCRYPTION_KEY", ""),
+		"encryption key: 64 hex characters, base64, or 32 raw bytes (env BACKUP_ENCRYPTION_KEY)",
+	)
+	encrypt := flags.Bool(
+		"encrypt",
+		false,
+		"create: encrypt the package as .ppbak; requires --key or BACKUP_ENCRYPTION_KEY",
+	)
 
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
@@ -67,11 +77,11 @@ func run(args []string) error {
 
 	switch command {
 	case "create":
-		return create(ctx, *driver, *dsn, *mediaDir, *backupDir, *out, scopeDirs.values)
+		return create(ctx, *driver, *dsn, *mediaDir, *backupDir, *out, scopeDirs.values, *keyValue, *encrypt)
 	case "verify":
-		return verify(*in)
+		return verify(*in, *keyValue)
 	case "restore":
-		return restore(ctx, *driver, *dsn, *mediaDir, *backupDir, *in, *targetDB, *confirm, *skipMedia, scopeDirs.values)
+		return restore(ctx, *driver, *dsn, *mediaDir, *backupDir, *in, *targetDB, *confirm, *skipMedia, scopeDirs.values, *keyValue)
 	default:
 		usage()
 		return fmt.Errorf("unknown command %q", command)
@@ -82,17 +92,25 @@ func usage() {
 	fmt.Fprint(os.Stderr, `Practacu Press backup
 
 Usage:
-  go run ./apps/api/cmd/backup create  [--dsn DSN] [--media-dir DIR] [--backup-dir DIR] [--out FILE]
-  go run ./apps/api/cmd/backup verify  --in FILE
-  go run ./apps/api/cmd/backup restore --in FILE [--confirm] [--skip-media] [--db FILE]
+  go run ./apps/api/cmd/backup create  [--dsn DSN] [--media-dir DIR] [--backup-dir DIR] [--out FILE] [--encrypt] [--key KEY]
+  go run ./apps/api/cmd/backup verify  --in FILE [--key KEY]
+  go run ./apps/api/cmd/backup restore --in FILE [--confirm] [--skip-media] [--db FILE] [--key KEY]
 
-Environment defaults: DATABASE_DRIVER, DATABASE_DSN, STORAGE_DIR, BACKUP_DIR.
+Environment defaults: DATABASE_DRIVER, DATABASE_DSN, STORAGE_DIR, BACKUP_DIR,
+BACKUP_ENCRYPTION_KEY.
 
 create writes database/practacu.db (SQLite VACUUM INTO), local media, every
 site design document and a per-entry SHA-256 manifest. MySQL and PostgreSQL are
 not dumped by this process: use mysqldump or pg_dump for the database and copy
 the media directory separately, because no single binary can guarantee
 consistency for both without their native tools.
+
+Encryption: a 32-byte AES-256 key (64 hex characters, base64, or 32 raw bytes)
+turns whole-instance packages into .ppbak files. create encrypts whenever a key
+is configured; --encrypt makes that intent explicit and fails when no key is
+set. verify and restore detect an encrypted package by its magic header and
+require the same key: a missing or wrong key is a hard error, never a silent
+plaintext fallback.
 
 restore refuses to replace a non-empty database unless --confirm is set, and
 always creates a safety backup of the current database and media first. If the
@@ -135,6 +153,7 @@ func newService(
 	snapshotter backup.Snapshotter,
 	designs backup.DesignSource,
 	mediaRootList []backup.MediaRoot,
+	encryptionKey []byte,
 ) (*backup.Service, error) {
 	return backup.NewService(backup.Config{
 		Driver:        driver,
@@ -145,6 +164,7 @@ func newService(
 		BackupDir:     backupDir,
 		SchemaVersion: db.SchemaVersion,
 		AppVersion:    backup.BuildVersion(),
+		EncryptionKey: encryptionKey,
 	})
 }
 
@@ -152,9 +172,26 @@ func create(
 	ctx context.Context,
 	driver, dsn, mediaDir, backupDir, out string,
 	scopeValues []string,
+	keyValue string,
+	encrypt bool,
 ) error {
 	if strings.TrimSpace(dsn) == "" {
 		return errors.New("--dsn or DATABASE_DSN is required")
+	}
+	key, err := backup.ParseEncryptionKey(keyValue)
+	if err != nil {
+		return err
+	}
+	// Fail closed: a configured key always encrypts, and --encrypt without a key
+	// is an error instead of silently producing a plaintext package.
+	if key != nil {
+		encrypt = true
+	}
+	if encrypt && key == nil {
+		return errors.New("--encrypt requires a key: pass --key or set BACKUP_ENCRYPTION_KEY")
+	}
+	if !encrypt {
+		key = nil
 	}
 	handle, err := db.Open(ctx, driver, dsn)
 	if err != nil {
@@ -166,6 +203,7 @@ func create(
 		driver, dsn, backupDir, handle,
 		backup.NewDBDesignSource(handle),
 		mediaRoots(mediaDir, scopeValues),
+		key,
 	)
 	if err != nil {
 		return err
@@ -182,23 +220,29 @@ func create(
 		output = out
 	}
 	fmt.Printf("backup created: %s\n", output)
-	fmt.Printf("  id:      %s\n", artifact.ID)
-	fmt.Printf("  size:    %d bytes\n", artifact.Size)
-	fmt.Printf("  sha256:  %s\n", artifact.SHA256)
-	fmt.Printf("  media:   %v\n", artifact.IncludesMedia)
+	fmt.Printf("  id:        %s\n", artifact.ID)
+	fmt.Printf("  size:      %d bytes\n", artifact.Size)
+	fmt.Printf("  sha256:    %s\n", artifact.SHA256)
+	fmt.Printf("  encrypted: %v\n", artifact.Encrypted)
+	fmt.Printf("  media:     %v\n", artifact.IncludesMedia)
 	for _, warning := range artifact.Warnings {
 		fmt.Printf("  warning: %s\n", warning)
 	}
 	return nil
 }
 
-func verify(path string) error {
+func verify(path, keyValue string) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("--in is required")
+	}
+	key, err := backup.ParseEncryptionKey(keyValue)
+	if err != nil {
+		return err
 	}
 	service, err := backup.NewService(backup.Config{
 		BackupDir:     filepath.Dir(path),
 		SchemaVersion: db.SchemaVersion,
+		EncryptionKey: key,
 	})
 	if err != nil {
 		return err
@@ -211,6 +255,7 @@ func verify(path string) error {
 	fmt.Printf("  format:         %s v%d\n", manifest.Format, manifest.FormatVersion)
 	fmt.Printf("  created:        %s\n", manifest.CreatedAt.Format(time.RFC3339))
 	fmt.Printf("  schema:         %s\n", manifest.SchemaVersion)
+	fmt.Printf("  encrypted:      %v\n", manifest.Encrypted)
 	fmt.Printf("  database:       %s (%d bytes)\n", manifest.Database.Dump, manifest.Database.Size)
 	fmt.Printf("  entries:        %d\n", len(manifest.Entries))
 	fmt.Printf("  designs:        %d\n", len(manifest.Designs))
@@ -226,6 +271,7 @@ func restore(
 	driver, dsn, mediaDir, backupDir, in, targetDB string,
 	confirm, skipMedia bool,
 	scopeValues []string,
+	keyValue string,
 ) error {
 	if strings.TrimSpace(in) == "" {
 		return errors.New("--in is required")
@@ -234,6 +280,19 @@ func restore(
 		return fmt.Errorf(
 			"restore only supports SQLite; restore a %s dump with mysql/pg_restore and copy media manually",
 			driver,
+		)
+	}
+	key, err := backup.ParseEncryptionKey(keyValue)
+	if err != nil {
+		return err
+	}
+	// A restore of an encrypted package must fail before the safety backup, with
+	// an actionable message, not part-way through replacing the database.
+	if encrypted, err := backup.IsEncryptedPackage(in); err != nil {
+		return err
+	} else if encrypted && key == nil {
+		return errors.New(
+			"the package is encrypted; pass --key or set BACKUP_ENCRYPTION_KEY to restore it",
 		)
 	}
 	if strings.TrimSpace(targetDB) == "" {
@@ -279,9 +338,11 @@ func restore(
 		)
 	}
 	if nonEmpty {
+		// The safety backup uses the same key, so an encrypted deployment never
+		// leaves a plaintext copy of the database behind during a restore.
 		service, err := newService(
 			"sqlite", dsn, backupDir, handle,
-			backup.NewDBDesignSource(handle), roots,
+			backup.NewDBDesignSource(handle), roots, key,
 		)
 		if err != nil {
 			return err
@@ -291,7 +352,7 @@ func restore(
 			return fmt.Errorf("create automatic safety backup: %w", err)
 		}
 		safetyID = artifact.ID
-		fmt.Printf("safety backup: %s\n", artifact.Path)
+		fmt.Printf("safety backup: %s (encrypted=%v)\n", artifact.Path, artifact.Encrypted)
 	}
 	if handle != nil {
 		if err := handle.Close(); err != nil {
@@ -300,7 +361,7 @@ func restore(
 		handle = nil
 	}
 
-	service, err := newService("sqlite", dsn, backupDir, nil, nil, roots)
+	service, err := newService("sqlite", dsn, backupDir, nil, nil, roots, key)
 	if err != nil {
 		return err
 	}
