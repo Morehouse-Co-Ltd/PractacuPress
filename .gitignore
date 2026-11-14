@@ -46,3 +46,7 @@ plugins/examples/**/backend/*.wasm
 
 # 本地打好的发行压缩包（约 1 GB，超过 GitHub 单文件上限，只在本地留存）
 /Practacu Press.zip
+
+# 设计与审计文档只留在本地（约 36 MB，含大量截图），不进仓库也不再推送。
+# 需要分享时单独脱敏后发送，或临时 `git add -f docs/...`。
+/docs/
