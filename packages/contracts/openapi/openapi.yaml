@@ -543,11 +543,15 @@ paths:
       tags: [auth]
       summary: Re-authenticate for a high threat operation
       description: |
-        Exchanges a password for a short lived step-up grant (300 seconds) that the
-        high threat operations accept in the `X-PP-Step-Up` header. The grant is bound
-        to the calling account and to the site of its access token, is stateless and
-        HMAC-SHA256 signed, and is not an access token: it cannot be used in
-        `Authorization`.
+        Exchanges a password for a step-up grant that the high threat operations accept
+        in the `X-PP-Step-Up` header. The product rule is one verification per browser
+        session: the SPA keeps the grant in `sessionStorage`, so repeated high threat
+        actions in the same session do not ask again while closing the browser does. The
+        grant is bound to the calling account and to the site of its access token, is
+        stateless and HMAC-SHA256 signed, and is not an access token: it cannot be used
+        in `Authorization`. `expires_in` is the server-side hard cap (7 days) for a grant
+        that outlives the browser session; rotating the signing key invalidates all
+        outstanding grants.
 
         Check order: when `GET /sites/{siteID}/step-up` reports `password_set`, the
         site's dedicated security password is checked first; otherwise (or when it does
@@ -2210,8 +2214,8 @@ paths:
       description: |
         Requires site administrator authority. Returns the masked settings:
         `password_set` says whether a dedicated security password exists, never the
-        hash or the password itself. `window_seconds` is the lifetime of a minted
-        `X-PP-Step-Up` grant (300).
+        hash or the password itself. `window_seconds` is the server-side hard cap for a
+        minted `X-PP-Step-Up` grant; the effective scope is one browser session.
       parameters:
         - $ref: '#/components/parameters/SiteID'
       responses:
@@ -4786,10 +4790,12 @@ components:
       in: header
       required: false
       description: |
-        A short lived grant returned by `POST /auth/step-up`, bound to the caller's
-        account and to the site of the access token. Required only while the site has
-        high threat operation protection enabled; a missing, expired or foreign grant
-        then answers `403` with `details.reason: step_up_required`.
+        A grant returned by `POST /auth/step-up`, bound to the caller's account and to
+        the site of the access token. The SPA stores it for the rest of the browser
+        session and attaches it to high threat requests; verifying once is enough for
+        repeated actions in that session. Required only while the site has high threat
+        operation protection enabled; a missing, expired or foreign grant then answers
+        `403` with `details.reason: step_up_required`.
       schema: { type: string }
     FeedSlug:
       name: slug
@@ -5254,7 +5260,10 @@ components:
           description: Whether a dedicated security password exists (the hash is never returned).
         window_seconds:
           type: integer
-          description: Lifetime of a minted X-PP-Step-Up grant, in seconds (300).
+          description: |
+            Server-side hard cap for a minted X-PP-Step-Up grant, in seconds. The
+            effective scope is one browser session (sessionStorage), which is normally
+            much shorter; this value is the backstop for a grant that outlives the tab.
 
     StepUpSettingsUpdate:
       type: object
@@ -5276,13 +5285,19 @@ components:
     StepUpGrant:
       type: object
       description: |
-        A short lived, stateless grant for the high threat operations. It is bound to
-        the calling account and site, is not an access token, and should be kept out of
-        persistent browser storage.
+        A stateless grant for the high threat operations. It is bound to the calling
+        account and site and is not an access token. The SPA keeps it in sessionStorage
+        for the rest of the browser session (never localStorage), so repeated actions in
+        one session verify once and closing the browser clears it.
       required: [token, expires_in]
       properties:
         token: { type: string, description: Value for the X-PP-Step-Up header. }
-        expires_in: { type: integer, description: Lifetime in seconds (300). }
+        expires_in:
+          type: integer
+          description: |
+            Server-side hard cap in seconds (7 days). The SPA treats the browser session
+            as the effective lifetime and also discards the grant when the account or
+            site changes.
 
     Site:
       type: object

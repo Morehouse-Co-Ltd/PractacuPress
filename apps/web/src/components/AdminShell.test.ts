@@ -17,9 +17,20 @@ const state = vi.hoisted(() => ({
   permission: true,
 }));
 
+/** 稳定的后端桩：每个组件渲染都返回同一个对象，避免 useMediaSrc 的 effect 依赖抖动。 */
+const backendStub = vi.hoisted(() => ({
+  origin: 'http://api.test',
+  listContent: async () => ({ items: [] }),
+  allComments: async () => ({ items: [], counts: {} }),
+  reports: async () => [],
+}));
+
 vi.mock('../lib/session', () => ({
   useAuth: () => ({
-    me: { role: state.role, user: { id: 'u1', display_name: 'Admin' } },
+    me: {
+      role: state.role,
+      user: { id: 'u1', display_name: 'Admin', email: 'admin@example.com' },
+    },
     site: { name: 'Practacu', domain: 'press.local' },
     logout: async () => undefined,
     config: { mode: 'demo' },
@@ -28,12 +39,7 @@ vi.mock('../lib/session', () => ({
 
 vi.mock('../lib/backend', () => ({
   isDemo: () => true,
-  useBackend: () => ({
-    origin: 'http://api.test',
-    listContent: async () => ({ items: [] }),
-    allComments: async () => ({ items: [], counts: {} }),
-    reports: async () => [],
-  }),
+  useBackend: () => backendStub,
 }));
 
 vi.mock('../lib/usePermissions', () => ({
@@ -108,6 +114,28 @@ function navLabels(): string[] {
 }
 
 describe('AdminShell 的扩展导航', () => {
+  it('左上角显示管理员身份卡，而不是站点域名', async () => {
+    await renderAt('/admin');
+
+    const card = container.querySelector('.admin-identity');
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute('href')).toBe('/me');
+    expect(card?.querySelector('.admin-identity-name')?.textContent).toBe('Admin');
+    expect(card?.querySelector('.admin-identity-email')?.textContent).toBe('admin@example.com');
+    expect(card?.querySelector('.admin-identity-online')).not.toBeNull();
+    expect(container.textContent).not.toContain('press.local');
+  });
+
+  it('「站点更新」排在「登录设置」之后', async () => {
+    await renderAt('/admin');
+
+    const hrefs = navHrefs();
+    const loginIndex = hrefs.indexOf('/admin/login-settings');
+    const updateIndex = hrefs.indexOf('/admin/update');
+    expect(loginIndex).toBeGreaterThanOrEqual(0);
+    expect(updateIndex).toBeGreaterThan(loginIndex);
+  });
+
   it('性能面板（内置扩展注册）出现在仪表盘之后，旧写死入口已移除', async () => {
     await renderAt('/admin');
 

@@ -49,6 +49,8 @@ const fragment: Dictionary = {
   退出登录: 'Sign out',
   写新稿: 'Write a post',
   查看站点: 'View site',
+  查看账户资料: 'View account profile',
+  '当前管理员：{name}': 'Current administrator: {name}',
   最高管理员: 'Super admin',
 
   // 后台明暗模式

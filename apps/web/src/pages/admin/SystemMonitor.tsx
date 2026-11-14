@@ -6,29 +6,39 @@ import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
 import { formatBytes } from '../../lib/format';
 import {
+  SYSTEM_HISTORY_WINDOW_MS,
   SYSTEM_RING_CIRCUMFERENCE,
   SYSTEM_RING_RADIUS,
   SYSTEM_SAMPLE_INTERVAL_MS,
+  appendSample,
   clampPercent,
+  isSampleStale,
   percentOf,
+  resourceSplit,
   ringDashOffset,
+  sampleAgeMs,
+  sparklinePath,
   uptimeParts,
 } from '../../lib/systemMonitor';
+import type { SystemSamplePoint } from '../../lib/systemMonitor';
 import { Badge, Button, Callout, PageLoading } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 
 /**
  * 性能面板（可选模块）。
  *
- * 后端 `GET /api/v1/system/metrics` 每 2 秒采样一次主机与进程；这里每 4 秒拉一份缓存
- * 快照，用三个圆环仪表盘展示 CPU / 内存 / 磁盘占用。页面只读，不做任何配置写入。
+ * 后端 `GET /api/v1/system/metrics` 每 2 秒采样一次主机与进程；这里以同样的节奏
+ * （`SYSTEM_SAMPLE_INTERVAL_MS`）轮询缓存快照，并保留最近约 2 分钟的历史画成曲线。
+ * CPU / 内存 / 磁盘的占比条统一按「整机容量 = 本软件 + 其他软件 + 空闲（100%）」拆分，
+ * 上方同时显示最近采样时间与数据年龄；超过 8 秒没有新样本时明确标记「数据已过期」，
+ * 不再把陈旧数字伪装成实时数据。页面不可见时暂停轮询。
  *
  * 本页不是写死在路由里的核心页面，而是内置扩展 `pp.performance` 通过
  * `adminPageRegistry` 注册的扩展页（见 lib/extensions/builtin.tsx），地址为
  * `/admin/ext/system`；旧地址 `/admin/system` 会重定向过来。
  *
  * 模块可关：部署设置 `PP_SYSTEM_METRICS=off` 后后端不再提供指标，页面会显示
- * 「模块未启用」。
+ * 「模块未启用」。演示模式没有服务端可采样，页面明确提示而不是编造数据。
  */
 export function SystemMonitorPage() {
   const t = useT();
@@ -39,30 +49,44 @@ export function SystemMonitorPage() {
   const isPlatformAdmin = me?.role === 'platform_admin';
 
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [history, setHistory] = useState<SystemSamplePoint[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  );
+  // 数据年龄与过期徽标需要每秒重算，否则两次轮询之间看不到「变旧」。
+  const [now, setNow] = useState(() => Date.now());
   const aliveRef = useRef(true);
+  const inFlightRef = useRef(false);
+  const wasVisibleRef = useRef(visible);
 
   const load = useCallback(async () => {
     if (!isPlatformAdmin || demo) {
       setLoading(false);
       return;
     }
+    // 2 秒轮询偶尔会在上一次请求还没返回时触发：跳过本轮，避免请求堆叠。
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setRefreshing(true);
     try {
       const next = await backend.systemMetrics();
       if (!aliveRef.current) return;
       setMetrics(next);
+      setHistory((previous) => appendSample(previous, next));
+      setNow(Date.now());
       setError('');
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err instanceof Error ? err.message : t('无法读取服务器指标。'));
     } finally {
-      if (!aliveRef.current) return;
-      setLoading(false);
-      setRefreshing(false);
+      inFlightRef.current = false;
+      if (aliveRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [backend, demo, isPlatformAdmin, t]);
 
@@ -82,13 +106,29 @@ export function SystemMonitorPage() {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
+  // 从后台标签页切回来时立刻补一次采样，不用等下一个轮询周期。
   useEffect(() => {
-    if (!visible || !isPlatformAdmin || demo || error) return;
-    const timer = window.setInterval(() => {
-      void load();
-    }, SYSTEM_SAMPLE_INTERVAL_MS);
+    if (visible && !wasVisibleRef.current) void load();
+    wasVisibleRef.current = visible;
+  }, [load, visible]);
+
+  useEffect(() => {
+    if (!visible || !isPlatformAdmin || demo) return;
+    const timer = window.setInterval(() => void load(), SYSTEM_SAMPLE_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [demo, error, isPlatformAdmin, load, visible]);
+  }, [demo, isPlatformAdmin, load, visible]);
+
+  // 每秒刷新一次「现在」，让数据年龄与过期徽标持续可信。
+  useEffect(() => {
+    if (!visible) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [visible]);
+
+  const ageMs = metrics ? sampleAgeMs(metrics.sampled_at, now) : null;
+  const ageSeconds = ageMs === null ? null : Math.floor(ageMs / 1000);
+  const stale = metrics ? isSampleStale(metrics.sampled_at, now) : false;
 
   const roleLabel = (role: string): string => {
     switch (role) {
@@ -122,7 +162,7 @@ export function SystemMonitorPage() {
         <h1>{t('性能面板')}</h1>
         <p>
           {t(
-            '本软件与其他软件在这台服务器上的 CPU、内存与磁盘占用。数据由服务端每 2 秒采样，页面每 4 秒刷新。',
+            '本软件与其他软件在这台服务器上的 CPU、内存与磁盘占用。服务端每 2 秒采样，页面跟随采样节奏刷新；页面不可见时暂停。',
           )}
         </p>
       </div>
@@ -133,6 +173,12 @@ export function SystemMonitorPage() {
             {t('采样于 {time}', { time: clockText(metrics.sampled_at) })}
           </Badge>
         ) : null}
+        {metrics && ageSeconds !== null ? (
+          <Badge tone={stale ? 'warn' : 'ok'} dot>
+            {t('数据年龄 {age} 秒', { age: ageSeconds })}
+          </Badge>
+        ) : null}
+        {stale ? <Badge tone="danger">{t('数据已过期')}</Badge> : null}
         <Badge tone={visible ? 'ok' : 'muted'} dot={visible}>
           {visible ? t('自动刷新中') : t('已暂停（页面不可见）')}
         </Badge>
@@ -203,16 +249,45 @@ export function SystemMonitorPage() {
 
   if (!metrics) return <>{head}</>;
 
+  const cpuUsed = clampPercent(metrics.cpu.usage_percent);
+  const cpuApp = Math.min(clampPercent(metrics.app.cpu_percent), cpuUsed);
+  const cpuOther = Math.max(0, cpuUsed - cpuApp);
+  const cpuSplit = resourceSplit(cpuApp, cpuOther, 100);
+
+  const memTotal = safeBytes(metrics.memory.total_bytes);
+  const memUsed = Math.min(safeBytes(metrics.memory.used_bytes), memTotal);
+  const memApp = Math.min(safeBytes(metrics.app.memory_bytes), memUsed);
+  const memOther = Math.max(0, memUsed - memApp);
+  const memSplit = resourceSplit(memApp, memOther, memTotal);
+
   const storage = metrics.app.storage;
-  const appCpuShare = percentOf(metrics.app.cpu_percent, 100);
-  const otherCpuShare = percentOf(metrics.others.cpu_percent, 100);
-  const appMemoryShare = percentOf(metrics.app.memory_bytes, metrics.memory.used_bytes || metrics.app.memory_bytes);
-  const otherMemoryShare = 100 - appMemoryShare;
-  const appDiskShare = percentOf(storage.total_bytes, metrics.disk.used_bytes || storage.total_bytes);
+  const diskTotal = safeBytes(metrics.disk.total_bytes);
+  const diskUsed = Math.min(safeBytes(metrics.disk.used_bytes), diskTotal);
+  const diskApp = Math.min(safeBytes(storage.total_bytes), diskUsed);
+  const diskOther = Math.max(0, diskUsed - diskApp);
+  const diskSplit = resourceSplit(diskApp, diskOther, diskTotal);
+
+  const cpuHistory = history.map((point) => point.cpu);
+  const memoryHistory = history.map((point) => point.memory);
+  const historyWindowSeconds = Math.round(SYSTEM_HISTORY_WINDOW_MS / 1000);
 
   return (
     <>
       {head}
+
+      {stale ? (
+        <div className="mb-16">
+          <Callout tone="warn" icon="alert" title={t('数据已过期')}>
+            {t(
+              '上次采样在 {time}，已经过去 {age} 秒。页面不会把旧数据当成实时数据展示；恢复连接后会自动继续刷新。',
+              {
+                time: clockText(metrics.sampled_at),
+                age: ageSeconds ?? 0,
+              },
+            )}
+          </Callout>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-16">
@@ -229,6 +304,17 @@ export function SystemMonitorPage() {
           percent={metrics.cpu.usage_percent}
           sub={t('{cores} 个逻辑核心', { cores: metrics.cpu.cores })}
           extra={metrics.cpu.model ? <span className="sysmon-model">{metrics.cpu.model}</span> : null}
+          chart={
+            <Sparkline
+              values={cpuHistory}
+              tone="cpu"
+              label={t('CPU 使用率曲线')}
+              caption={t('最近 {seconds} 秒 · {count} 个采样点', {
+                seconds: historyWindowSeconds,
+                count: cpuHistory.length,
+              })}
+            />
+          }
         />
 
         <RingMetricCard
@@ -239,6 +325,17 @@ export function SystemMonitorPage() {
             used: formatBytes(metrics.memory.used_bytes),
             total: formatBytes(metrics.memory.total_bytes),
           })}
+          chart={
+            <Sparkline
+              values={memoryHistory}
+              tone="memory"
+              label={t('内存使用率曲线')}
+              caption={t('最近 {seconds} 秒 · {count} 个采样点', {
+                seconds: historyWindowSeconds,
+                count: memoryHistory.length,
+              })}
+            />
+          }
         />
 
         <RingMetricCard
@@ -256,29 +353,24 @@ export function SystemMonitorPage() {
           tone="uptime"
           label={t('运行时长')}
           value={uptimeText || '—'}
-          sub={t('{count} 个进程 · {os}/{arch}', {
+          sub={t('{count} 个其他进程 · {os}/{arch}', {
             count: metrics.others.process_count,
             os: metrics.platform.os,
             arch: metrics.platform.arch,
           })}
           extra={<span className="sysmon-path mono">{metrics.platform.hostname}</span>}
-        >
-          <div className="sysmon-legend">
-            <span>
-              <i className="sysmon-dot is-app" /> {t('本软件')}
-            </span>
-            <span>
-              <i className="sysmon-dot is-other" /> {t('其他软件')}
-            </span>
-          </div>
-        </MetricCard>
+        />
       </div>
 
       <section className="panel mt-20">
         <div className="panel-head">
           <div>
             <h3>{t('本软件 vs 其他软件')}</h3>
-            <p>{t('“本软件”按进程名与安装目录识别；其余占用归入“其他软件”。')}</p>
+            <p>
+              {t(
+                '三段都按整机容量计算，合计 100%：本软件 + 其他软件 + 空闲。空闲段让「已用多少」一眼可见，不会出现两条宽度相加不足 100 的错觉。',
+              )}
+            </p>
           </div>
           <Badge tone="accent">
             {t('{app} 个本软件进程 · Top {top}', {
@@ -291,27 +383,60 @@ export function SystemMonitorPage() {
           <div className="sysmon-split">
             <SplitBar
               label={t('CPU 占用')}
-              appLabel={t('本软件 {percent}%', { percent: metrics.app.cpu_percent.toFixed(1) })}
-              otherLabel={t('其他软件 {percent}%', { percent: metrics.others.cpu_percent.toFixed(1) })}
-              app={appCpuShare}
-              other={otherCpuShare}
+              appLabel={t('本软件 {percent}%', { percent: cpuSplit.app.toFixed(1) })}
+              otherLabel={t('其他软件 {percent}%', { percent: cpuSplit.other.toFixed(1) })}
+              idleLabel={t('空闲 {percent}%', { percent: cpuSplit.idle.toFixed(1) })}
+              app={cpuSplit.app}
+              other={cpuSplit.other}
+              idle={cpuSplit.idle}
             />
             <SplitBar
               label={t('内存占用')}
-              appLabel={t('本软件 {size}', { size: formatBytes(metrics.app.memory_bytes) })}
-              otherLabel={t('其他软件 {size}', { size: formatBytes(metrics.others.memory_bytes) })}
-              app={appMemoryShare}
-              other={otherMemoryShare}
+              appLabel={t('本软件 {size} · {percent}%', {
+                size: formatBytes(memApp),
+                percent: memSplit.app.toFixed(1),
+              })}
+              otherLabel={t('其他软件 {size} · {percent}%', {
+                size: formatBytes(memOther),
+                percent: memSplit.other.toFixed(1),
+              })}
+              idleLabel={t('空闲 {size} · {percent}%', {
+                size: formatBytes(Math.max(0, memTotal - memUsed)),
+                percent: memSplit.idle.toFixed(1),
+              })}
+              app={memSplit.app}
+              other={memSplit.other}
+              idle={memSplit.idle}
             />
             <SplitBar
               label={t('磁盘数据')}
-              appLabel={t('本软件数据 {size}', { size: formatBytes(storage.total_bytes) })}
-              otherLabel={t('同卷其他数据 {size}', {
-                size: formatBytes(Math.max(0, metrics.disk.used_bytes - storage.total_bytes)),
+              appLabel={t('本软件数据 {size} · {percent}%', {
+                size: formatBytes(diskApp),
+                percent: diskSplit.app.toFixed(1),
               })}
-              app={appDiskShare}
-              other={100 - appDiskShare}
+              otherLabel={t('同卷其他数据 {size} · {percent}%', {
+                size: formatBytes(diskOther),
+                percent: diskSplit.other.toFixed(1),
+              })}
+              idleLabel={t('空闲 {size} · {percent}%', {
+                size: formatBytes(Math.max(0, diskTotal - diskUsed)),
+                percent: diskSplit.idle.toFixed(1),
+              })}
+              app={diskSplit.app}
+              other={diskSplit.other}
+              idle={diskSplit.idle}
             />
+          </div>
+          <div className="sysmon-legend mt-12">
+            <span>
+              <i className="sysmon-dot is-app" /> {t('本软件')}
+            </span>
+            <span>
+              <i className="sysmon-dot is-other" /> {t('其他软件')}
+            </span>
+            <span>
+              <i className="sysmon-dot is-idle" /> {t('空闲')}
+            </span>
           </div>
 
           <div className="sysmon-columns mt-20">
@@ -319,9 +444,7 @@ export function SystemMonitorPage() {
               <div className="panel-head compact">
                 <div>
                   <h3>{t('本软件进程')}</h3>
-                  <p>
-                    {t('CPU 占整机算力比例；内存为进程常驻内存（RSS）。')}
-                  </p>
+                  <p>{t('CPU 占整机算力比例；内存为进程常驻内存（RSS）。')}</p>
                 </div>
               </div>
               {metrics.app.processes.length ? (
@@ -409,7 +532,7 @@ export function SystemMonitorPage() {
               )}
               <p className="sysmon-note">
                 {t(
-                  '口径：进程 CPU 为占整机算力的比例（多核合计 100%）；内存为 RSS；磁盘为本软件数据目录所在卷的整体用量。',
+                  '口径：进程 CPU 为占整机算力的比例（多核合计 100%）；内存为 RSS，聚合值按主机已用内存夹紧；磁盘为本软件数据目录所在卷的整体用量。',
                 )}
               </p>
             </div>
@@ -420,7 +543,7 @@ export function SystemMonitorPage() {
   );
 }
 
-/** 采样时间显示到秒：面板每几秒刷新一次，分钟精度看不出「还活着」。 */
+/** 采样时间显示到秒：面板每 2 秒刷新一次，分钟精度看不出「还活着」。 */
 function clockText(iso: string): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return '—';
@@ -429,6 +552,16 @@ function clockText(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+/** 非负有限数，避免 Math.min / formatBytes 收到 NaN 或负数。 */
+function safeBytes(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/** 占比条的一段宽度；百分比夹紧到 0–100，非法值按 0。 */
+function widthPercent(value: number): string {
+  return `${Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))}%`;
 }
 
 /**
@@ -445,12 +578,14 @@ function RingMetricCard({
   percent,
   sub,
   extra,
+  chart,
 }: {
   tone: 'cpu' | 'memory' | 'disk';
   label: string;
   percent: number;
   sub: string;
   extra?: React.ReactNode;
+  chart?: React.ReactNode;
 }) {
   const value = clampPercent(percent);
   const text = `${value.toFixed(1)}%`;
@@ -482,6 +617,7 @@ function RingMetricCard({
       </span>
       <span className="sysmon-card-sub">{sub}</span>
       {extra ? <span className="sysmon-card-extra">{extra}</span> : null}
+      {chart ? <div className="sysmon-card-chart">{chart}</div> : null}
     </section>
   );
 }
@@ -492,14 +628,12 @@ function MetricCard({
   value,
   sub,
   extra,
-  children,
 }: {
   tone: 'cpu' | 'memory' | 'disk' | 'uptime';
   label: string;
   value: string;
   sub: string;
   extra?: React.ReactNode;
-  children?: React.ReactNode;
 }) {
   return (
     <section className={`sysmon-card is-${tone}`}>
@@ -510,57 +644,129 @@ function MetricCard({
       <strong className="sysmon-card-value">{value}</strong>
       <span className="sysmon-card-sub">{sub}</span>
       {extra ? <span className="sysmon-card-extra">{extra}</span> : null}
-      {children}
     </section>
   );
 }
 
+/**
+ * 最近约 2 分钟的真实采样曲线（纯 SVG，无第三方依赖）。
+ *
+ * 只有 0–1 个点时 `sparklinePath` 返回空串，这里画一条底部平线占位并显示
+ * 「正在采集曲线…」；有足够点后画折线。数值本身来自服务端快照，不做平滑或插值。
+ */
+function Sparkline({
+  values,
+  tone,
+  label,
+  caption,
+}: {
+  values: number[];
+  tone: 'cpu' | 'memory';
+  label: string;
+  caption: string;
+}) {
+  const t = useT();
+  const width = 260;
+  const height = 54;
+  const padding = 3;
+  const path = sparklinePath(values, width, height, padding);
+  const latest = values.length ? clampPercent(values[values.length - 1]) : 0;
+  return (
+    <div className={`sysmon-spark is-${tone}`}>
+      <svg
+        className="sysmon-spark-svg"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${label} ${latest.toFixed(1)}%`}
+        preserveAspectRatio="none"
+      >
+        <line
+          className="sysmon-spark-mid"
+          x1={padding}
+          y1={height / 2}
+          x2={width - padding}
+          y2={height / 2}
+        />
+        {path ? (
+          <path className="sysmon-spark-line" d={path} vectorEffect="non-scaling-stroke" />
+        ) : (
+          <line
+            className="sysmon-spark-placeholder"
+            x1={padding}
+            y1={height - padding}
+            x2={width - padding}
+            y2={height - padding}
+          />
+        )}
+      </svg>
+      <span className="sysmon-spark-caption">
+        {values.length >= 2 ? caption : t('正在采集曲线…')}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 三段占比条：本软件 / 其他软件 / 空闲。
+ *
+ * 页面先用主机总量夹紧再传入，因此三段宽度合计恰好 100%；这里仍对每段做
+ * 0–100 的防御性夹紧，保证旧后端或异常数据也不会画出「宽度相加不足」的条。
+ */
 function SplitBar({
   label,
   appLabel,
   otherLabel,
+  idleLabel,
   app,
   other,
+  idle,
 }: {
   label: string;
   appLabel: string;
   otherLabel: string;
+  idleLabel: string;
   app: number;
   other: number;
+  idle: number;
 }) {
   return (
     <div className="sysmon-split-row">
       <div className="sysmon-split-labels">
         <span>{label}</span>
-        <span>
+        <span className="sysmon-split-values">
           <b>{appLabel}</b>
           <i className="sysmon-sep">·</i>
           {otherLabel}
+          <i className="sysmon-sep">·</i>
+          <em className="sysmon-idle-label">{idleLabel}</em>
         </span>
       </div>
       <div className="sysmon-split-bar" role="presentation">
-        <span className="sysmon-split-app" style={{ width: `${Math.max(0, Math.min(100, app))}%` }} />
-        <span className="sysmon-split-other" style={{ width: `${Math.max(0, Math.min(100, other))}%` }} />
+        <span className="sysmon-split-app" style={{ width: widthPercent(app) }} />
+        <span className="sysmon-split-other" style={{ width: widthPercent(other) }} />
+        <span className="sysmon-split-idle" style={{ width: widthPercent(idle) }} />
       </div>
     </div>
   );
 }
 
 function StorageBar({ storage }: { storage: SystemMetrics['app']['storage'] }) {
-  const total = storage.total_bytes || 1;
   const segments: { key: string; value: number; className: string }[] = [
-    { key: 'database', value: storage.database_bytes, className: 'is-database' },
-    { key: 'media', value: storage.media_bytes, className: 'is-media' },
-    { key: 'backup', value: storage.backup_bytes, className: 'is-backup' },
-    { key: 'other', value: storage.other_bytes, className: 'is-other' },
+    { key: 'database', value: safeBytes(storage.database_bytes), className: 'is-database' },
+    { key: 'media', value: safeBytes(storage.media_bytes), className: 'is-media' },
+    { key: 'backup', value: safeBytes(storage.backup_bytes), className: 'is-backup' },
+    { key: 'other', value: safeBytes(storage.other_bytes), className: 'is-other' },
   ];
+  // 后端保证四段之和等于 total；仍以四段之和为分母，条宽永远自洽。
+  const sum = segments.reduce((total, segment) => total + segment.value, 0);
+  const base = sum > 0 ? sum : safeBytes(storage.total_bytes) || 1;
   return (
     <div className="sysmon-storage-bar" role="presentation">
       {segments.map((segment) => (
         <span
           key={segment.key}
           className={`sysmon-storage-seg ${segment.className}`}
-          style={{ width: `${Math.max(0, (segment.value / total) * 100)}%` }}
+          style={{ width: widthPercent((segment.value / base) * 100) }}
         />
       ))}
     </div>

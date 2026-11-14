@@ -14,6 +14,7 @@ import {
   type AdminPageEntry,
 } from '../lib/plugins/adminRegistry';
 import { Avatar } from './ui';
+import { useMediaSrc } from '../lib/assetUrl';
 import { Icon, type IconName } from './Icon';
 
 interface NavItem {
@@ -22,6 +23,34 @@ interface NavItem {
   icon: IconName;
   end?: boolean;
   badge?: number;
+}
+
+/**
+ * 侧栏身份卡上的头像：管理员设置过头像时读媒体库，否则退回姓名首字。
+ *
+ * 站内媒体要带鉴权的 blob URL，统一走 `useMediaSrc`；失败时仍然显示首字，
+ * 不让侧栏出现一个空白框。
+ */
+function AdminAvatar({
+  name,
+  assetId,
+  size,
+}: {
+  name?: string;
+  assetId?: string | null;
+  size: number;
+}) {
+  const { src } = useMediaSrc(assetId ? `/api/v1/media/${assetId}` : '');
+  if (!src) return <Avatar name={name} size={size} />;
+  return (
+    <img
+      className="admin-identity-img"
+      src={src}
+      alt={name ?? ''}
+      width={size}
+      height={size}
+    />
+  );
 }
 
 /** 快捷键只在不输入文字时生效：在搜索框里按 Shift+D 应该输入大写 D。 */
@@ -188,10 +217,11 @@ export function AdminShell() {
       ? ([{ to: '/admin/settings', label: t('站点设置'), icon: 'settings' }] as NavItem[])
       : []),
     ...(can('manage_site')
-      ? ([{ to: '/admin/update', label: t('站点更新'), icon: 'refresh' }] as NavItem[])
-      : []),
-    ...(can('manage_site')
       ? ([{ to: '/admin/login-settings', label: t('登录设置'), icon: 'lock' }] as NavItem[])
+      : []),
+    // 「站点更新」排在「登录设置」之后：安装 / 登录相关入口在前，更新属于维护动作。
+    ...(can('manage_site')
+      ? ([{ to: '/admin/update', label: t('站点更新'), icon: 'refresh' }] as NavItem[])
       : []),
     ...(can('view_log') ? ([{ to: '/admin/activity', label: t('网站日志'), icon: 'clock' }] as NavItem[]) : []),
   ];
@@ -375,10 +405,30 @@ export function AdminShell() {
           </span>
         </Link>
 
-        <div className="admin-site">
-          <strong>{site?.name ?? t('站点')}</strong>
-          <span>{site?.domain || 'press.local'}</span>
-        </div>
+        <Link
+          to="/me"
+          className="admin-identity"
+          title={t('查看账户资料')}
+          aria-label={t('当前管理员：{name}', { name: me?.user.display_name ?? t('管理员') })}
+        >
+          <span className="admin-identity-avatar">
+            <AdminAvatar
+              name={me?.user.display_name}
+              assetId={me?.user.avatar_media_id}
+              size={42}
+            />
+            {/* 已登录才会渲染后台外壳：这个绿点表示当前会话在线。 */}
+            <span className="admin-identity-online" aria-hidden="true" />
+          </span>
+          <span className="admin-identity-body">
+            <strong className="admin-identity-name">{me?.user.display_name ?? t('管理员')}</strong>
+            {me?.user.email ? (
+              <span className="admin-identity-email">{me.user.email}</span>
+            ) : (
+              <span className="admin-identity-email">{site?.name ?? t('站点')}</span>
+            )}
+          </span>
+        </Link>
 
         <nav className="admin-nav" aria-label={t('后台导航')}>
           {groups.map((group) => (

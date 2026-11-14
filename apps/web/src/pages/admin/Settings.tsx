@@ -711,7 +711,7 @@ export function SettingsPage() {
             <div className="panel-head">
               <div>
                 <h3>{t('高威胁操作保护')}</h3>
-                <p>{t('删除用户、修改别人的账户、覆盖导入等重要操作前，需要再输入一次密码。')}</p>
+                <p>{t('删除用户、修改别人的账户、覆盖导入等重要操作前，需要再输入一次密码；同一次浏览器会话内只验证一次。')}</p>
               </div>
             </div>
             <div className="panel-body">
@@ -741,7 +741,7 @@ export function SettingsPage() {
                       {stepUpSettings.enabled ? t('已开启') : t('已关闭')}
                     </Badge>
                     <span className="stepup-status-note">
-                      {t('验证窗口 {seconds} 秒', { seconds: stepUpSettings.window_seconds })}
+                      {t('本次浏览器会话内有效；关闭浏览器后重新验证')}
                     </span>
                     <span className="stepup-status-note">
                       {stepUpSettings.password_set

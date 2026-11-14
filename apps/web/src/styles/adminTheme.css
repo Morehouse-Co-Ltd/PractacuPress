@@ -55,8 +55,7 @@
   .admin-theme-switch button { width: 28px; padding: 0; }
 }
 
-/* ---------- 深色：语义色 ---------- */
-/* 状态色在浅色下是深绿 / 赭黄 / 砖红；直接放到石墨底上会读不清。
+/* ---------- 深色：语义色 ---------- *//* 状态色在浅色下是深绿 / 赭黄 / 砖红；直接放到石墨底上会读不清。
    深色后台换成更亮的同色系，并用低比例混色得到可跟随面板的浅底。 */
 html[data-surface='admin'][data-admin-theme='dark'] {
   --ok: #74c69d;
@@ -65,6 +64,14 @@ html[data-surface='admin'][data-admin-theme='dark'] {
   --ok-soft: color-mix(in srgb, var(--ok) 16%, var(--bg));
   --warn-soft: color-mix(in srgb, var(--warn) 16%, var(--bg));
   --danger-soft: color-mix(in srgb, var(--danger) 16%, var(--bg));
+}
+/* 左上角身份区：品牌旁的 Admin 胶囊在石墨底上换成更亮的紫色，保持可读。 */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-brand-text small {
+  color: #c3b4f5;
+  background: color-mix(in srgb, #9b86e8 22%, var(--admin-panel, #12151b));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-identity-online {
+  border-color: var(--admin-panel, #12151b);
 }
 html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .badge-ok {
   border-color: color-mix(in srgb, var(--ok) 42%, var(--admin-border));

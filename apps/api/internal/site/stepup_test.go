@@ -75,7 +75,8 @@ func TestStepUpStatusDefaultsToOff(t *testing.T) {
 	require.False(t, status.Enabled)
 	require.False(t, status.PasswordSet)
 	require.Equal(t, int(StepUpTokenTTL/time.Second), status.WindowSeconds)
-	require.Equal(t, 300, status.WindowSeconds)
+	// 一次验证的有效范围是浏览器会话，服务端 TTL 只是硬上限：远大于旧的 5 分钟。
+	require.Greater(t, status.WindowSeconds, 24*60*60)
 }
 
 func TestStepUpFirstSaveNeedsNoGrant(t *testing.T) {

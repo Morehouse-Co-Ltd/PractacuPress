@@ -2375,26 +2375,92 @@ img {
 .admin-brand .brand-mark { width: 20px; height: 20px; font-size: 13px; transform: none; }
 .admin-brand-text { font-family: var(--serif); font-size: 15px; line-height: 1.2; }
 .admin-brand-text small {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
   font-family: var(--sans);
   font-size: 9.5px;
-  letter-spacing: 0.14em;
-  color: var(--muted);
-  text-transform: uppercase;
-  margin-top: 3px;
-}
-.admin-site {
-  padding: 0 8px 16px;
-}
-.admin-site strong {
-  display: block;
-  font-size: 12.5px;
   font-weight: 500;
+  letter-spacing: 0.08em;
+  color: #6f55c9;
+  text-transform: none;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #7c5cd6 13%, var(--admin-panel, #fff));
+}
+/* 左上角的管理员身份卡：头像 + 显示名 + 邮箱 + 在线点，替代原先的「站点名 / 域名」。 */
+.admin-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 4px 16px;
+  padding: 9px 10px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 14px;
+  background: var(--admin-panel-alt, var(--bg-subtle));
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.admin-identity:hover {
+  border-color: var(--admin-border-soft, var(--line-strong));
+  background: var(--admin-panel, #fff);
+}
+.admin-identity:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.admin-identity-avatar {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+.admin-identity-avatar .avatar {
+  width: 42px;
+  height: 42px;
+  font-size: 17px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--admin-panel, #fff));
+  color: var(--accent);
+}
+.admin-identity-img {
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--admin-panel-alt, var(--bg-subtle));
+}
+.admin-identity-online {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--ok);
+  border: 2px solid var(--admin-panel, #fff);
+}
+.admin-identity-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.admin-identity-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.admin-site span { font-size: 10.5px; color: var(--muted); }
+.admin-identity-email {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .admin-nav { display: flex; flex-direction: column; gap: 1px; }
 .admin-nav-label {
   margin: 16px 8px 6px;
@@ -3198,6 +3264,14 @@ img {
   flex-direction: column;
   background: #fff;
 }
+/* 安装向导固定浅色纸面：次级文字统一压深一档。原来的 #83837a 在纯白上只有
+   3.82:1、#a8a89f 只有 2.4:1，11px 左右的说明文字几乎读不出来；这两个值分别是
+   5.08:1 与 4.59:1，保持「muted 比 faint 深」的层级不变。 */
+.wiz,
+.wiz-busy-layer {
+  --muted: #6f6f65;
+  --faint: #76766c;
+}
 .wiz-top {
   height: 66px;
   border-bottom: 1px solid var(--line);
@@ -3206,8 +3280,16 @@ img {
   flex: none;
 }
 .wiz-top .shell { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.wiz-progress-text { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.wiz-progress-text b { color: var(--ink); font-weight: 500; }
+.wiz-progress-text {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 进度文案统一由「第 X 步，共 Y 步 / Step X of Y」+「 · 」+ 阶段名组成，
+   中英文间距完全一致；阶段名加粗，做当前位置的视觉锚点。 */
+.wiz-progress-text b { color: var(--ink); font-weight: 600; }
+.wiz-progress-sep { color: var(--faint); }
 /* 安装语言切换：与进度文字同一行，靠右对齐；两个胶囊按钮，当前语言实心。 */
 .wiz-top-right { display: flex; align-items: center; gap: 16px; flex: none; }
 .wiz-lang { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: #fff; }
@@ -3383,6 +3465,12 @@ img {
   width: fit-content;
   margin: 0 auto;
 }
+/* 大屏上 rail 不再垂直居中：网格对齐到顶部，再用 52px 卡片外留白 + 32px 卡片内边距
+   把「安装进度」标签对齐到卡片内容区顶部，右侧卡片上方不再出现一大片空白。 */
+.wiz-body.is-stage .wiz-rail {
+  align-self: start;
+  padding-top: 84px;
+}
 .wiz-body.is-stage .wiz-main {
   max-width: none;
   height: 100%;
@@ -3428,24 +3516,32 @@ img {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 32px 38px 28px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
+  padding: 32px 38px 40px;
+  /* 滚动条要能看见：细 6px 的半透明拇指在浅色纸面上几乎不可见。这里不用标准的
+     scrollbar-width/color——Chrome 一旦设置它们就会忽略下面的 ::-webkit-scrollbar
+     样式并退回 Windows 的浮层滚动条；只用 webkit 伪元素才能画出常驻的 10px 滑道。 */
+  /* 预留滚动条槽位，避免步骤之间「能滚 / 不能滚」时内容宽度跳动。 */
+  scrollbar-gutter: stable;
 }
-.wiz-pane-scroll::-webkit-scrollbar { width: 6px; }
+.wiz-pane-scroll::-webkit-scrollbar { width: 10px; }
+.wiz-pane-scroll::-webkit-scrollbar-track { background: transparent; }
 .wiz-pane-scroll::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
+  background: #c6c6bb;
+  border: 2px solid #fff;
   border-radius: 999px;
 }
-/* 底部留一点白色渐隐：内容超过卡片时，能看出下面还有东西可滚动。 */
-.wiz-pane-scroll::after {
+.wiz-pane-scroll::-webkit-scrollbar-thumb:hover { background: #a9a99d; }
+/* 底部留一点白色渐隐只表示「下面还有内容」：由 Setup.tsx 检测真实滚动状态，
+   只在可滚动且没有滚到底时挂 .is-more-below，滚到底自动消失——否则最后一两行
+   文字会被这个渐变永久盖住（第 4 步的提交说明、第 7 步的检查清单都中招过）。 */
+.wiz-pane-scroll.is-more-below::after {
   content: "";
   position: sticky;
   bottom: 0;
   display: block;
-  height: 22px;
-  margin-top: -22px;
-  background: linear-gradient(to top, #fff 20%, rgba(255, 255, 255, 0));
+  height: 28px;
+  margin-top: -28px;
+  background: linear-gradient(to top, #fff 30%, rgba(255, 255, 255, 0));
   pointer-events: none;
 }
 .wiz-body.is-stage .wiz-foot {
@@ -3499,6 +3595,18 @@ img {
 .wiz .input,
 .wiz .textarea,
 .wiz .select { border-radius: 10px; }
+/* 只读 / 禁用输入框（站点 slug、字符集）：浅底 + 虚线边框 + 禁用光标，
+   一眼能看出「这不是可编辑字段」，而不是和普通输入框长得一样。 */
+.wiz .input:disabled,
+.wiz .input[readonly] {
+  background: var(--bg-subtle);
+  border-color: var(--line);
+  border-style: dashed;
+  color: var(--ink-soft);
+  -webkit-text-fill-color: var(--ink-soft);
+  cursor: not-allowed;
+  opacity: 1;
+}
 .wiz .btn { border-radius: 10px; }
 .wiz .btn-sm { border-radius: 8px; }
 .wiz .btn-lg { border-radius: 12px; }
@@ -3528,6 +3636,13 @@ img {
 }
 .wiz .code-block { padding: 15px 18px; }
 .wiz .callout { border-radius: 14px; }
+/* 阶段卡片里的键盘焦点：选项按钮、语言胶囊、链接按钮都复用全局 2px accent 描边；
+   输入框原本只有边框变色，这里补一条统一焦点环，键盘操作时位置始终可辨。 */
+.wiz :focus-visible,
+.wiz-busy-layer :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* 连接阶段：后端没起来时停在这里等待，而不是给一个走不下去的下一步。 */
 .wiz-connect { display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -3924,7 +4039,8 @@ img {
     padding: 12px 18px;
   }
   .admin-brand { padding-bottom: 10px; margin-bottom: 10px; }
-  .admin-site { display: none; }
+  /* 窄屏侧栏变成一条横向 tab 栏：管理员身份卡让位给导航，点顶栏头像仍可查看资料。 */
+  .admin-identity { display: none; }
   .admin-nav { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 4px; min-width: 0; max-width: 100%; }
   .admin-nav-label { display: none; }
   .admin-nav-link { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; border-radius: 4px; }
@@ -3955,11 +4071,29 @@ img {
     align-items: stretch;
   }
   .wiz-body.is-stage .wiz-main { height: auto; }
+  /* 窄屏 rail 在卡片上方，改成和卡片内容左对齐的一行圆点。 */
+  .wiz-body.is-stage .wiz-rail { align-self: stretch; padding-top: 0; }
+  .wiz-body.is-stage .wiz-rail-inner {
+    width: 100%;
+    margin: 0;
+    padding: 0 22px;
+    box-sizing: border-box;
+  }
   .wiz-stage { height: auto; padding: 0; }
-  .wiz-pane { height: auto; }
-  .wiz-pane-scroll { overflow: visible; padding: 26px 22px 22px; }
-  .wiz-pane-scroll::after { display: none; }
-  .wiz-body.is-stage .wiz-foot { padding: 14px 22px; }
+  /* 卡片随内容长高；同时取消卡片自身的 overflow 裁剪，让底部操作栏可以 sticky 到视口。 */
+  .wiz-pane { height: auto; overflow: visible; }
+  .wiz-pane-scroll { overflow: visible; padding: 26px 22px 28px; }
+  .wiz-pane-scroll::after,
+  .wiz-pane-scroll.is-more-below::after { display: none; }
+  /* 长步骤（站点形态、检查清单）不用滚到卡片尽头才能点「继续」：操作栏贴住视口底部。 */
+  .wiz-body.is-stage .wiz-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    padding: 14px 22px;
+    background: #fff;
+    box-shadow: 0 -16px 28px -26px rgba(20, 20, 15, 0.6);
+  }
   .wiz-peek { display: none; }
   .messages { grid-template-columns: 260px minmax(0, 1fr); }
 }
@@ -4069,10 +4203,24 @@ img {
   .admin-page-head h1 { font-size: 26px; }
   .stat { padding: 14px 15px; }
   .stat b { font-size: 25px; }
-  .wiz-top { height: 58px; }
+  .wiz-top { height: auto; min-height: 58px; }
+  /* 窄屏顶部一行放不下「品牌名 + 进度 + 语言胶囊」：品牌只留 P 标，进度与胶囊
+     保持单行；再窄时（<360px）允许自动换行，任何宽度都不产生横向滚动。 */
+  .wiz-top .shell {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .wiz-top .brand-text { display: none; }
+  .wiz-top-right { margin-left: auto; gap: 10px; }
+  .wiz-progress-text { font-size: 11px; }
+  .wiz-lang-btn { padding: 4px 8px; }
   .wiz-title { font-size: 28px; }
-  .wiz-foot { flex-direction: column; align-items: stretch; }
-  .wiz-actions { justify-content: flex-end; }
+  .wiz-foot { flex-direction: column; align-items: stretch; gap: 12px; }
+  .wiz-actions { justify-content: flex-end; width: 100%; }
+  /* 底部按钮在窄屏均分整行，避免「上一步」被挤到换行后孤零零靠右。 */
+  .wiz-actions .btn { flex: 1 1 0; justify-content: center; }
   .wiz-steps { gap: 10px; }
   .wiz-step-text { display: none; }
   .toaster { right: 12px; bottom: 12px; }

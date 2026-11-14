@@ -7,9 +7,13 @@ import type { Dictionary } from '../../plural';
 const fragment: Dictionary = {
   // ---- 页面与导航 ----
   '性能面板': 'Performance panel',
-  '本软件与其他软件在这台服务器上的 CPU、内存与磁盘占用。数据由服务端每 2 秒采样，页面每 4 秒刷新。':
-    'CPU, memory and disk usage of this software and of other software on this server. The API samples every 2 seconds; this page refreshes every 4 seconds.',
+  '本软件与其他软件在这台服务器上的 CPU、内存与磁盘占用。服务端每 2 秒采样，页面跟随采样节奏刷新；页面不可见时暂停。':
+    'CPU, memory and disk usage of this software and of other software on this server. The API samples every 2 seconds and the page refreshes at the same pace; polling pauses while the page is hidden.',
   '采样于 {time}': 'Sampled at {time}',
+  '数据年龄 {age} 秒': 'Data age {age}s',
+  '数据已过期': 'Data is stale',
+  '上次采样在 {time}，已经过去 {age} 秒。页面不会把旧数据当成实时数据展示；恢复连接后会自动继续刷新。':
+    'The last sample was at {time}, {age}s ago. The panel will not present old data as live; refreshing resumes automatically when the connection recovers.',
   '自动刷新中': 'Auto-refreshing',
   '已暂停（页面不可见）': 'Paused (page hidden)',
   '刷新': 'Refresh',
@@ -36,27 +40,32 @@ const fragment: Dictionary = {
   '{used} / {total}': '{used} / {total}',
   '磁盘使用': 'Disk usage',
   '运行时长': 'Uptime',
-  '{count} 个进程 · {os}/{arch}': '{count} processes · {os}/{arch}',
+  '{count} 个其他进程 · {os}/{arch}': '{count} other processes · {os}/{arch}',
   '本软件': 'This software',
   '其他软件': 'Other software',
+  '空闲': 'Idle',
   '{days} 天 {hours} 小时': '{days}d {hours}h',
   '{hours} 小时 {minutes} 分钟': '{hours}h {minutes}m',
   '{minutes} 分钟': '{minutes}m',
+  '最近 {seconds} 秒 · {count} 个采样点': 'Last {seconds}s · {count} samples',
+  '正在采集曲线…': 'Collecting the trend…',
 
   // ---- 对比 ----
   '本软件 vs 其他软件': 'This software vs other software',
   '{app} 个本软件进程 · Top {top}': '{app} app processes · Top {top}',
-  '“本软件”按进程名与安装目录识别；其余占用归入“其他软件”。':
-    '"This software" is identified by process name and install directory; everything else counts as "other software".',
+  '三段都按整机容量计算，合计 100%：本软件 + 其他软件 + 空闲。空闲段让「已用多少」一眼可见，不会出现两条宽度相加不足 100 的错觉。':
+    'All three segments are shares of total machine capacity and add up to 100%: this software + other software + idle. The idle segment makes "how much is actually used" obvious instead of leaving a misleading gap.',
   'CPU 占用': 'CPU usage',
   '本软件 {percent}%': 'This software {percent}%',
   '其他软件 {percent}%': 'Other software {percent}%',
+  '空闲 {percent}%': 'Idle {percent}%',
   '内存占用': 'Memory usage',
-  '本软件 {size}': 'This software {size}',
-  '其他软件 {size}': 'Other software {size}',
+  '本软件 {size} · {percent}%': 'This software {size} · {percent}%',
+  '其他软件 {size} · {percent}%': 'Other software {size} · {percent}%',
+  '空闲 {size} · {percent}%': 'Idle {size} · {percent}%',
   '磁盘数据': 'Disk data',
-  '本软件数据 {size}': 'This software {size}',
-  '同卷其他数据 {size}': 'Other data on this volume {size}',
+  '本软件数据 {size} · {percent}%': 'This software data {size} · {percent}%',
+  '同卷其他数据 {size} · {percent}%': 'Other data on this volume {size} · {percent}%',
 
   // ---- 进程表 ----
   '本软件进程': 'Processes of this software',
@@ -78,8 +87,8 @@ const fragment: Dictionary = {
     'Only the top consumers are listed; the rest is included in the totals above.',
   '数量': 'Count',
   '没有其他进程数据。': 'No other process data.',
-  '口径：进程 CPU 为占整机算力的比例（多核合计 100%）；内存为 RSS；磁盘为本软件数据目录所在卷的整体用量。':
-    'Method: process CPU is a share of total machine capacity (all cores sum to 100%); memory is RSS; disk is the usage of the volume that holds this software data directory.',
+  '口径：进程 CPU 为占整机算力的比例（多核合计 100%）；内存为 RSS，聚合值按主机已用内存夹紧；磁盘为本软件数据目录所在卷的整体用量。':
+    'Method: process CPU is a share of total machine capacity (all cores sum to 100%); memory is RSS with aggregates clamped to host used memory; disk is the usage of the volume that holds this software data directory.',
 
   // ---- 角色 ----
   '服务器 API': 'Server API',

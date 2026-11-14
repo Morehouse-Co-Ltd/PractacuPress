@@ -14,7 +14,14 @@ import (
 // Deleting another account, rewriting one, resetting its second factor or wiping
 // policy data is powerful enough that the session alone must not authorize it: the
 // caller proves a password again, immediately before the operation. The proof is a
-// short lived stateless token carried in StepUpHeaderName.
+// stateless token carried in StepUpHeaderName.
+//
+// Lifetime model: the product rule is "once per browser session". The browser keeps
+// the grant in sessionStorage, so closing the browser forgets it and the next
+// high-threat action asks for the password again, while repeated actions in the same
+// session do not. The server cannot see a browser session, so it enforces a hard
+// upper bound (StepUpTokenTTL) instead: long enough that an open browser never gets
+// asked twice, short enough that a leaked grant is not a second long-lived session.
 //
 // The setting lives in the existing `site_configs` JSON document under its own
 // `step_up` top level key. No table and no schema migration is introduced: the
@@ -24,9 +31,10 @@ const (
 	// StepUpHeaderName is the request header carrying a step-up grant.
 	StepUpHeaderName = "X-PP-Step-Up"
 	// StepUpTokenTTL bounds how long one successful re-authentication is honored.
-	// It is intentionally short: the grant exists for the one action that asked for
-	// it, not as a second session.
-	StepUpTokenTTL = 300 * time.Second
+	// The browser session is the real scope (sessionStorage); this is the backstop
+	// for a grant that outlives the tab, so it is measured in days rather than
+	// minutes. Rotating the signing key still invalidates every outstanding grant.
+	StepUpTokenTTL = 7 * 24 * time.Hour
 	// stepUpDocumentKey is the top level key of the stored site configuration.
 	stepUpDocumentKey = "step_up"
 	// maxStepUpPasswordBytes bounds the input to the password hasher. The policy

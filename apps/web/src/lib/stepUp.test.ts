@@ -9,6 +9,7 @@ import {
   normalizeStepUpSettings,
   readDemoStepUpSettings,
   saveDemoStepUpSettings,
+  STEP_UP_SESSION_KEY,
   storeStepUpToken,
   type StepUpStorage,
 } from './stepUp';
@@ -30,16 +31,18 @@ function memoryStorage(seed?: Record<string, string>): StepUpStorage {
 beforeEach(() => {
   clearStepUpToken();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
   clearStepUpToken();
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe('step-up 令牌仓库', () => {
   it('在 expires_in 之前复用，到点后自动失效', () => {
-    storeStepUpToken('token-abc', 60, 1_000);
+    storeStepUpToken('token-abc', 60, { now: 1_000 });
     expect(getStepUpToken(1_000)).toBe('token-abc');
     expect(getStepUpToken(60_999)).toBe('token-abc');
     // 到点即失效：不能把过期令牌发给服务端。
@@ -47,23 +50,53 @@ describe('step-up 令牌仓库', () => {
     expect(isStepUpTokenValid(61_000)).toBe(false);
   });
 
+  it('存进 sessionStorage：同一次浏览器会话刷新后仍然可用', () => {
+    storeStepUpToken('token-session', 60, { now: 1_000 });
+    const raw = sessionStorage.getItem(STEP_UP_SESSION_KEY);
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw ?? '{}') as Record<string, unknown>;
+    expect(parsed.token).toBe('token-session');
+    expect(parsed.expires_at).toBe(61_000);
+    // 不落到 localStorage：关闭浏览器后必须重新验证。
+    expect(localStorage.getItem(STEP_UP_SESSION_KEY)).toBeNull();
+  });
+
   it('expires_in 非正数或非法时不缓存令牌', () => {
     for (const expiresIn of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      storeStepUpToken('token', expiresIn, 1_000);
+      storeStepUpToken('token', expiresIn, { now: 1_000 });
       expect(getStepUpToken(1_000)).toBeNull();
     }
   });
 
+  it('换账户或换站点后旧令牌立即作废', () => {
+    storeStepUpToken('token-abc', 600, { now: 1_000, userId: 'u1', siteId: 's1' });
+    expect(getStepUpToken(2_000, { userId: 'u1', siteId: 's1' })).toBe('token-abc');
+    expect(getStepUpToken(2_000, { userId: 'u2', siteId: 's1' })).toBeNull();
+    // 作废之后就真的没了，换回原账户也不能复活。
+    expect(getStepUpToken(2_000, { userId: 'u1', siteId: 's1' })).toBeNull();
+
+    storeStepUpToken('token-abc', 600, { now: 1_000, userId: 'u1', siteId: 's1' });
+    expect(getStepUpToken(2_000, { userId: 'u1', siteId: 's2' })).toBeNull();
+  });
+
+  it('sessionStorage 里是坏数据时按无令牌处理', () => {
+    sessionStorage.setItem(STEP_UP_SESSION_KEY, '{broken');
+    expect(getStepUpToken(1_000)).toBeNull();
+    sessionStorage.setItem(STEP_UP_SESSION_KEY, JSON.stringify({ token: 'x', expires_at: 'soon' }));
+    expect(getStepUpToken(1_000)).toBeNull();
+  });
+
   it('可以主动清除令牌', () => {
-    storeStepUpToken('token', 300, 1_000);
+    storeStepUpToken('token', 300, { now: 1_000 });
     expect(isStepUpTokenValid(2_000)).toBe(true);
     clearStepUpToken();
     expect(getStepUpToken(2_000)).toBeNull();
     expect(isStepUpTokenValid(2_000)).toBe(false);
+    expect(sessionStorage.getItem(STEP_UP_SESSION_KEY)).toBeNull();
   });
 
   it('空令牌一律视为无效', () => {
-    storeStepUpToken('', 300, 1_000);
+    storeStepUpToken('', 300, { now: 1_000 });
     expect(getStepUpToken(1_000)).toBeNull();
   });
 });
@@ -101,7 +134,7 @@ describe('演示模式的保护设置', () => {
     const raw = storage.getItem(DEMO_STEP_UP_KEY) ?? '';
     expect(raw).not.toBe('');
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    expect(parsed).toEqual({ enabled: false, password_set: false, window_seconds: 300 });
+    expect(parsed).toEqual({ enabled: false, password_set: false, window_seconds: 604800 });
     expect(parsed).not.toHaveProperty('password');
     expect(parsed).not.toHaveProperty('password_hash');
   });
@@ -129,7 +162,7 @@ describe('normalizeStepUpSettings', () => {
     expect(normalizeStepUpSettings({ enabled: 'yes', password_set: 1, window_seconds: -3 })).toEqual({
       enabled: true,
       password_set: false,
-      window_seconds: 300,
+      window_seconds: 604800,
     });
     expect(normalizeStepUpSettings({ enabled: false, password_set: true, window_seconds: 90.9 })).toEqual({
       enabled: false,

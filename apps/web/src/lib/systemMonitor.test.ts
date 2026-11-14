@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   SYSTEM_HISTORY_LIMIT,
+  SYSTEM_HISTORY_WINDOW_MS,
   SYSTEM_RING_CIRCUMFERENCE,
   SYSTEM_RING_RADIUS,
+  SYSTEM_SAMPLE_INTERVAL_MS,
+  SYSTEM_STALE_AFTER_MS,
   appendSample,
   clampPercent,
+  isSampleStale,
   percentOf,
+  resourceSplit,
   ringDashOffset,
+  sampleAgeMs,
   sparklinePath,
   uptimeParts,
 } from './systemMonitor';
@@ -54,9 +60,31 @@ describe('appendSample', () => {
   it('超出上限时丢最旧的点', () => {
     let history: ReturnType<typeof appendSample> = [];
     for (let index = 0; index < SYSTEM_HISTORY_LIMIT + 5; index += 1) {
-      history = appendSample(history, sample());
+      history = appendSample(
+        history,
+        sample({ sampled_at: new Date(Date.UTC(2026, 10, 12, 12, 0, index)).toISOString() }),
+      );
     }
     expect(history).toHaveLength(SYSTEM_HISTORY_LIMIT);
+    expect(history[history.length - 1].at).toBe(Date.UTC(2026, 10, 12, 12, 1, 4));
+    expect(history[0].at).toBe(Date.UTC(2026, 10, 12, 12, 0, 5));
+  });
+
+  it('相同 sampled_at 只保留一个点，并更新它的数值', () => {
+    const at = '2026-11-12T12:00:00Z';
+    let history = appendSample([], sample({ sampled_at: at, cpu: { usage_percent: 10, cores: 8, model: '' } }));
+    history = appendSample(
+      history,
+      sample({ sampled_at: at, cpu: { usage_percent: 80, cores: 8, model: '' } }),
+    );
+    expect(history).toHaveLength(1);
+    expect(history[0].cpu).toBe(80);
+  });
+
+  it('乱序的旧样本直接丢弃，不插到曲线末尾', () => {
+    const history = appendSample([], sample({ sampled_at: '2026-11-12T12:00:02Z' }));
+    const next = appendSample(history, sample({ sampled_at: '2026-11-12T12:00:00Z' }));
+    expect(next).toBe(history);
   });
 });
 
@@ -90,6 +118,73 @@ describe('percentOf / uptimeParts', () => {
     expect(uptimeParts(90061)).toEqual({ days: 1, hours: 1, minutes: 1 });
     expect(uptimeParts(0)).toEqual({ days: 0, hours: 0, minutes: 0 });
     expect(uptimeParts(Number.NaN)).toEqual({ days: 0, hours: 0, minutes: 0 });
+  });
+});
+
+describe('resourceSplit 三段占比', () => {
+  it('本软件 + 其他软件 + 空闲 = 100', () => {
+    const split = resourceSplit(2, 3, 10);
+    expect(split.app).toBeCloseTo(20, 10);
+    expect(split.other).toBeCloseTo(30, 10);
+    expect(split.idle).toBeCloseTo(50, 10);
+    expect(split.app + split.other + split.idle).toBeCloseTo(100, 10);
+  });
+
+  it('CPU 按整机 100% 拆分时标签宽度与总量一致', () => {
+    const split = resourceSplit(12.5, 20, 100);
+    expect(split.app + split.other).toBeCloseTo(32.5, 10);
+    expect(split.app + split.other + split.idle).toBeCloseTo(100, 10);
+  });
+
+  it('负数 / NaN / 非法总量都按 0 处理，不产生负宽度', () => {
+    expect(resourceSplit(-5, 20, 100).app).toBe(0);
+    expect(resourceSplit(5, Number.NaN, 100).other).toBe(0);
+    expect(resourceSplit(5, 20, 0)).toEqual({ app: 0, other: 0, idle: 0 });
+    const split = resourceSplit(Number.NaN, -1, Number.POSITIVE_INFINITY);
+    expect(split).toEqual({ app: 0, other: 0, idle: 0 });
+  });
+
+  it('app + other 超过总量时截断其他软件，空闲段不为负', () => {
+    const split = resourceSplit(8, 8, 10);
+    expect(split.app).toBeCloseTo(80, 10);
+    expect(split.other).toBeCloseTo(20, 10);
+    expect(split.idle).toBe(0);
+    expect(split.app + split.other).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('数据年龄与过期判定', () => {
+  const at = '2026-11-12T12:00:00Z';
+  const atMs = Date.parse(at);
+
+  it('sampleAgeMs 用 now 计算年龄；本机时钟更慢时按 0', () => {
+    expect(sampleAgeMs(at, atMs + 2500)).toBe(2500);
+    expect(sampleAgeMs(at, atMs)).toBe(0);
+    expect(sampleAgeMs(at, atMs - 1000)).toBe(0);
+  });
+
+  it('非法时间戳返回 null，不会产生 NaN 年龄', () => {
+    expect(sampleAgeMs('not-a-date', atMs)).toBeNull();
+    expect(sampleAgeMs(at, Number.NaN)).toBeNull();
+  });
+
+  it('超过 8 秒阈值才算过期', () => {
+    expect(isSampleStale(at, atMs + 2000)).toBe(false);
+    expect(isSampleStale(at, atMs + SYSTEM_STALE_AFTER_MS)).toBe(false);
+    expect(isSampleStale(at, atMs + SYSTEM_STALE_AFTER_MS + 1)).toBe(true);
+    expect(isSampleStale(at, atMs + 60_000)).toBe(true);
+  });
+
+  it('非法时间戳视为过期；阈值可以覆盖', () => {
+    expect(isSampleStale('not-a-date', atMs)).toBe(true);
+    expect(isSampleStale(at, atMs + 5000, 4000)).toBe(true);
+    expect(isSampleStale(at, atMs + 5000, Number.NaN)).toBe(false);
+  });
+
+  it('曲线窗口与服务端采样节奏一致：约 2 分钟', () => {
+    expect(SYSTEM_SAMPLE_INTERVAL_MS).toBe(2000);
+    expect(SYSTEM_HISTORY_WINDOW_MS).toBeGreaterThanOrEqual(110_000);
+    expect(SYSTEM_HISTORY_WINDOW_MS).toBeLessThanOrEqual(130_000);
   });
 });
 

@@ -132,7 +132,7 @@ export interface StepUpSettings {
   enabled: boolean;
   /** 是否设置了“专用安全密码”；false 时验证使用账户登录密码。 */
   password_set: boolean;
-  /** 一次验证后令牌的有效期（秒）。 */
+  /** 服务端允许的最长有效期（秒）；真正的范围是一次浏览器会话（sessionStorage）。 */
   window_seconds: number;
 }
 
@@ -145,7 +145,7 @@ export interface StepUpSettingsUpdate {
   clear_password?: boolean;
 }
 
-/** `POST /auth/step-up` 的响应：短时令牌，请求受保护路由时放进 `X-PP-Step-Up`。 */
+/** `POST /auth/step-up` 的响应：会话级令牌，请求受保护路由时放进 `X-PP-Step-Up`。 */
 export interface StepUpVerifyResult {
   token: string;
   expires_in: number;

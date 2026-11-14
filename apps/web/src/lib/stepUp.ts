@@ -2,25 +2,37 @@
  * 高威胁操作二次验证（step-up）的纯逻辑层。
  *
  * 这里只放不依赖 React 渲染的东西：
- * - 内存里的短时令牌仓库（验证成功后缓存，`expires_in` 之前复用）；
+ * - 浏览器会话级令牌仓库（验证成功后缓存，关闭浏览器后失效，`expires_in` 之前复用）；
  * - 受保护动作清单，供调用方与单测共用；
  * - 演示模式的高威胁操作保护设置（存在浏览器本地，不伪造任何密码校验）。
  *
  * Provider 与弹窗在 `components/StepUpModal.tsx`；HTTP 实现在 `lib/api.ts`。
- * 令牌只存在内存里：刷新页面等于放弃当前窗口，需要重新输入一次密码，这与服务端
- * 的无状态令牌语义一致，也不会把二次验证凭据落到 localStorage。
+ *
+ * 验证的有效范围是「一次浏览器会话」：令牌放在 `sessionStorage` 里，刷新页面、
+ * 页内跳转都不会再询问；关闭浏览器（标签页会话结束）后 storage 自动清空，下一次
+ * 打开浏览器做高危操作时必须重新输入一次密码。服务端 `expires_in` 仍是一个硬上限
+ * （见 `site.StepUpTokenTTL`），客户端不会把过期的令牌发出去。
+ * 令牌带上账户与站点 id，换账户 / 换站点后立即作废；不写 localStorage。
  */
 import { createContext, useContext } from 'react';
 import type { StepUpSettings, StepUpSettingsUpdate } from '../types';
 
-/** 受保护请求携带的请求头；值是一次验证后拿到的短时令牌。 */
+/** 受保护请求携带的请求头；值是一次验证后拿到的会话级令牌。 */
 export const STEP_UP_HEADER = 'X-PP-Step-Up';
+
+/** 浏览器会话级令牌的存储键；sessionStorage 关闭浏览器即清空。 */
+export const STEP_UP_SESSION_KEY = 'pp.web.stepup.grant.v1';
 
 /** 演示模式把保护开关存在这个键下；专用密码不会出现在这里。 */
 export const DEMO_STEP_UP_KEY = 'pp.web.stepup.demo.v1';
 
-/** 后端契约的默认窗口（秒）；旧后端不返回时按它展示。 */
-export const DEFAULT_STEP_UP_WINDOW_SECONDS = 300;
+/**
+ * 后端契约的默认窗口（秒）；旧后端不返回时按它展示。
+ *
+ * 与 `apps/api/internal/site/stepup.go` 的 `StepUpTokenTTL` 对齐：一次验证的
+ * 服务端硬上限是 7 天，真正的「一次浏览器会话」由 sessionStorage 负责收窄。
+ */
+export const DEFAULT_STEP_UP_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * 需要二次验证的动作。
@@ -60,10 +72,85 @@ export function isProtectedAction(action: string): action is StepUpAction {
   return (STEP_UP_ACTIONS as readonly string[]).includes(action);
 }
 
-/* ---------- 短时令牌仓库（内存） ---------- */
+/* ---------- 浏览器会话级令牌仓库（sessionStorage） ---------- */
 
-let currentToken: string | null = null;
-let currentExpiresAt = 0;
+/** 令牌绑定的账户与站点；缺省项表示旧令牌没有记录（只能靠服务端拒绝兜底）。 */
+export interface StepUpGrantIdentity {
+  userId?: string | null;
+  siteId?: string | null;
+}
+
+export interface StepUpStoreOptions extends StepUpGrantIdentity {
+  now?: number;
+}
+
+interface StoredGrant {
+  token: string;
+  expires_at: number;
+  user_id?: string;
+  site_id?: string;
+}
+
+/** sessionStorage 不可用时的页面内兜底：仍然不会落到 localStorage。 */
+let memoryGrant: StoredGrant | null = null;
+
+function sessionStorageOrNull(): StepUpStorage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function parseGrant(raw: string | null): StoredGrant | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredGrant>;
+    if (typeof parsed?.token !== 'string' || !parsed.token) return null;
+    if (typeof parsed.expires_at !== 'number' || !Number.isFinite(parsed.expires_at)) return null;
+    const grant: StoredGrant = { token: parsed.token, expires_at: parsed.expires_at };
+    if (typeof parsed.user_id === 'string' && parsed.user_id) grant.user_id = parsed.user_id;
+    if (typeof parsed.site_id === 'string' && parsed.site_id) grant.site_id = parsed.site_id;
+    return grant;
+  } catch {
+    return null;
+  }
+}
+
+function readGrant(): StoredGrant | null {
+  const storage = sessionStorageOrNull();
+  if (storage) {
+    try {
+      const parsed = parseGrant(storage.getItem(STEP_UP_SESSION_KEY));
+      if (parsed) {
+        memoryGrant = parsed;
+        return parsed;
+      }
+    } catch {
+      /* 存储读不出来：继续用内存副本 */
+    }
+  }
+  return memoryGrant;
+}
+
+function writeGrant(grant: StoredGrant): void {
+  memoryGrant = grant;
+  const storage = sessionStorageOrNull();
+  if (!storage) return;
+  try {
+    storage.setItem(STEP_UP_SESSION_KEY, JSON.stringify(grant));
+  } catch {
+    /* 无痕模式或配额满：本次页面内仍复用内存副本，不因为缓存失败而报错。 */
+  }
+}
+
+/** 令牌是否属于这次请求的账户 / 站点；没记录的字段不做限制。 */
+function grantMatches(grant: StoredGrant, identity?: StepUpGrantIdentity): boolean {
+  if (!identity) return true;
+  if (grant.user_id && identity.userId && grant.user_id !== identity.userId) return false;
+  if (grant.site_id && identity.siteId && grant.site_id !== identity.siteId) return false;
+  return true;
+}
 
 /**
  * 保存一次验证成功的令牌。
@@ -71,38 +158,58 @@ let currentExpiresAt = 0;
  * `expiresIn` 非正数表示服务端没有给出可用窗口：令牌立即作废（等价于验证失败，
  * 下次操作要重新验证），而不是「永不过期」。
  */
-export function storeStepUpToken(token: string, expiresIn: number, now = Date.now()): void {
+export function storeStepUpToken(
+  token: string,
+  expiresIn: number,
+  options: StepUpStoreOptions = {},
+): void {
   const seconds = Number.isFinite(expiresIn) && expiresIn > 0 ? Math.floor(expiresIn) : 0;
   if (!token || seconds <= 0) {
     clearStepUpToken();
     return;
   }
-  currentToken = token;
-  currentExpiresAt = now + seconds * 1000;
+  const now = typeof options.now === 'number' ? options.now : Date.now();
+  const grant: StoredGrant = {
+    token,
+    expires_at: now + seconds * 1000,
+  };
+  if (options.userId) grant.user_id = options.userId;
+  if (options.siteId) grant.site_id = options.siteId;
+  writeGrant(grant);
 }
 
-/** 取仍然有效的令牌；过期后顺手清掉，避免把废令牌发给服务端。 */
-export function getStepUpToken(now = Date.now()): string | null {
-  if (!currentToken) return null;
-  if (now >= currentExpiresAt) {
+/**
+ * 取仍然有效、且属于当前账户 / 站点的令牌；过期或换身份后顺手清掉，
+ * 避免把废令牌发给服务端。
+ */
+export function getStepUpToken(now = Date.now(), identity?: StepUpGrantIdentity): string | null {
+  const grant = readGrant();
+  if (!grant) return null;
+  if (!grantMatches(grant, identity) || now >= grant.expires_at) {
     clearStepUpToken();
     return null;
   }
-  return currentToken;
+  return grant.token;
 }
 
-export function isStepUpTokenValid(now = Date.now()): boolean {
-  return getStepUpToken(now) !== null;
+export function isStepUpTokenValid(now = Date.now(), identity?: StepUpGrantIdentity): boolean {
+  return getStepUpToken(now, identity) !== null;
 }
 
 /** 令牌过期时刻（毫秒时间戳）；0 表示当前没有令牌。 */
 export function stepUpTokenExpiresAt(): number {
-  return currentExpiresAt;
+  return readGrant()?.expires_at ?? 0;
 }
 
 export function clearStepUpToken(): void {
-  currentToken = null;
-  currentExpiresAt = 0;
+  memoryGrant = null;
+  const storage = sessionStorageOrNull();
+  if (!storage) return;
+  try {
+    storage.removeItem(STEP_UP_SESSION_KEY);
+  } catch {
+    /* 存储不可用时内存副本已经清掉 */
+  }
 }
 
 /* ---------- 演示模式：保护设置只保存在本地 ---------- */

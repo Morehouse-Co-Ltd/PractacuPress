@@ -19,14 +19,17 @@ import (
 // Step-up tokens.
 //
 // A high threat operation asks the caller to prove a password again. On success the
-// server mints a short lived, stateless grant that the client echoes in the
-// `X-PP-Step-Up` header of the operation it wanted to perform. The token is bound
-// to one account and one site and signed with HMAC-SHA256, so:
+// server mints a stateless grant that the client echoes in the `X-PP-Step-Up` header
+// of the operation it wanted to perform. The browser keeps it for the rest of the
+// browser session (sessionStorage), so closing the browser asks again on the next
+// high threat action while repeated actions in one session do not. The grant is
+// bound to one account and one site and signed with HMAC-SHA256, so:
 //
 //   - it cannot be used as an access token (different key derivation, different
 //     shape, purpose free payload),
 //   - a grant minted for an administrator on site A is worthless on site B,
-//   - it dies within minutes even if it leaks.
+//   - it expires after StepUpTokenTTL (idempotent hard cap) even if it leaks, and
+//     rotating the signing key invalidates every outstanding grant immediately.
 //
 // The HMAC key is derived from the issuer's Ed25519 seed, which means a deployment
 // with a configured AUTH_JWT_ED25519_PRIVATE_KEY gets a stable key, and a
@@ -109,7 +112,8 @@ func (s *StepUpSigner) TTL() time.Duration {
 // Issue mints a grant bound to one account and one site.
 //
 // The second return value is the lifetime in seconds, which the API returns to the
-// client as `expires_in`.
+// client as `expires_in`. The browser stores the grant for the rest of its session;
+// `expires_in` is only the server-side hard cap.
 func (s *StepUpSigner) Issue(userID, siteID string) (string, int, error) {
 	if s == nil || len(s.key) == 0 {
 		return "", 0, ErrStepUpUnavailable

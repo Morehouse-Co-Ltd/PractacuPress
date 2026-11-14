@@ -58,6 +58,9 @@
 }
 
 .sysmon-card-extra {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   font-size: 11px;
   color: var(--faint);
@@ -148,6 +151,69 @@
   text-align: center;
 }
 
+/* ---------- 真实采样曲线（CPU / 内存，纯 SVG） ---------- */
+
+.sysmon-card-chart {
+  align-self: stretch;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.sysmon-spark {
+  --spark-color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.sysmon-spark.is-cpu { --spark-color: var(--accent); }
+.sysmon-spark.is-memory { --spark-color: #b07a2a; }
+
+.sysmon-spark-svg {
+  display: block;
+  width: 100%;
+  height: 46px;
+  overflow: visible;
+}
+
+.sysmon-spark-mid {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  opacity: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.sysmon-spark-line {
+  fill: none;
+  stroke: var(--spark-color);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.sysmon-spark-placeholder {
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.sysmon-spark-caption {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--faint);
+  text-align: center;
+}
+
+html[data-surface='admin'][data-admin-theme='dark'] .sysmon-spark.is-memory {
+  --spark-color: #e0bd6b;
+}
+
 /* 深色后台：赭黄 / 蓝在石墨底上亮度不够，按同一色系提亮。 */
 html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-card.is-memory {
   --ring-color: #e0bd6b;
@@ -193,6 +259,7 @@ html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-track {
 
 .sysmon-dot.is-app { background: var(--accent); }
 .sysmon-dot.is-other { background: #c9a468; }
+.sysmon-dot.is-idle { background: var(--line-strong, var(--line)); }
 .sysmon-dot.is-database { background: var(--accent); }
 .sysmon-dot.is-media { background: #2f6f9a; }
 .sysmon-dot.is-backup { background: #8a6d3b; }
@@ -215,6 +282,16 @@ html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-track {
 
 .sysmon-split-labels b { color: var(--ink); font-weight: 500; }
 
+.sysmon-split-values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  column-gap: 2px;
+}
+
+.sysmon-idle-label { font-style: normal; color: var(--faint); }
+
 .sysmon-sep { margin: 0 6px; font-style: normal; color: var(--faint); }
 
 .sysmon-split-bar {
@@ -228,6 +305,7 @@ html[data-surface='admin'][data-admin-theme='dark'] .sysmon-ring-track {
 
 .sysmon-split-app { background: var(--accent); }
 .sysmon-split-other { background: #c9a468; }
+.sysmon-split-idle { background: var(--line-strong, var(--line)); }
 
 .sysmon-columns {
   display: grid;

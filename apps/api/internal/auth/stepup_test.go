@@ -5,8 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
 // fakeStepUpConfig is a site-side reader that answers a fixed dedicated password
@@ -58,7 +61,10 @@ func TestStepUpVerifyAcceptsAccountPassword(t *testing.T) {
 	payload := decode(t, w)
 	grant, _ := payload["token"].(string)
 	require.NotEmpty(t, grant)
-	require.Equal(t, float64(300), payload["expires_in"])
+	// 浏览器会话级验证：expires_in 是服务端硬上限，必须远大于旧的 5 分钟。
+	expiresIn, _ := payload["expires_in"].(float64)
+	require.Greater(t, expiresIn, float64(24*60*60))
+	require.Equal(t, float64(int(site.StepUpTokenTTL/time.Second)), expiresIn)
 
 	// The grant is what the protected routes will accept: bound to this account and
 	// this site, useless anywhere else.

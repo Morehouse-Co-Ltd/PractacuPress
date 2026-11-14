@@ -56,13 +56,32 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
     setSettings(next);
   }, []);
 
-  // 换账户（登录 / 退出 / 切换站点）之后旧设置与旧令牌都不再可信。
+  /** 最近一次确认过的登录身份（账户 + 站点）；换身份后旧令牌与旧设置都不可信。 */
+  const identityRef = useRef('');
+  const identityKey = me?.user.id && site?.id ? `${me.user.id}|${site.id}` : '';
+
+  // 验证令牌按「一次浏览器会话」保存：刷新页面不重新询问，关闭浏览器后自然失效。
+  // 这里不把「会话还没恢复」当成换账户，否则每次刷新都会清掉刚验证过的令牌。
   useEffect(() => {
+    if (!identityKey) {
+      // 退出登录 / 会话失联：当前浏览器窗口里不再保留任何验证。
+      if (identityRef.current) {
+        identityRef.current = '';
+        applySettings(null);
+        attemptedRef.current = false;
+        clearStepUpToken();
+      }
+      return;
+    }
+    const previous = identityRef.current;
+    if (previous === identityKey) return;
+    identityRef.current = identityKey;
+    if (!previous) return;
     applySettings(null);
     attemptedRef.current = false;
     demoNotifiedRef.current = false;
     clearStepUpToken();
-  }, [me?.user.id, site?.id, applySettings]);
+  }, [identityKey, applySettings]);
 
   const loadSettings = useCallback(async (): Promise<StepUpSettings | null> => {
     if (!site?.id) return null;
@@ -97,7 +116,8 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
       // 设置读不到时按「保护开启」处理（fail-closed）：宁可多问一次密码，也不能在
       // 保护其实开着的时候把高危操作直接放过去。
       if (known && !known.enabled && !known.password_set) return true;
-      if (getStepUpToken()) return true;
+      // 本次浏览器会话内验证过、且仍属于当前账户与站点：直接放行，不重复弹窗。
+      if (getStepUpToken(Date.now(), { userId: me?.user.id, siteId: site?.id })) return true;
       return new Promise<boolean>((resolve) => {
         const previous = pendingRef.current;
         if (previous) {
@@ -109,14 +129,18 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
         setPending({ action });
       });
     },
-    [demo, loadSettings, me, t, toast],
+    [demo, loadSettings, me, site?.id, t, toast],
   );
 
   const verify = useCallback(
     async (password: string): Promise<void> => {
       try {
         const result = await backend.verifyStepUp(password);
-        storeStepUpToken(result.token, result.expires_in);
+        // 令牌存入 sessionStorage：本次浏览器会话内一直复用，关闭浏览器后失效。
+        storeStepUpToken(result.token, result.expires_in, {
+          userId: me?.user.id,
+          siteId: site?.id,
+        });
       } catch (err) {
         // 后端还没实现端点时说清楚是版本问题，而不是含糊的「资源不存在」。
         if (
@@ -132,7 +156,7 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [backend, t],
+    [backend, me?.user.id, site?.id, t],
   );
 
   const finish = useCallback((ok: boolean) => {
@@ -267,7 +291,7 @@ export function StepUpModal({
           </Callout>
         ) : null}
         <p className="stepup-hint">
-          {t('验证通过后，短时间内的高危操作不再重复询问；刷新页面会清除这次验证。')}
+          {t('验证一次后，本次浏览器会话内的高危操作不再重复询问；关闭浏览器后需要重新验证。')}
         </p>
       </form>
     </Modal>

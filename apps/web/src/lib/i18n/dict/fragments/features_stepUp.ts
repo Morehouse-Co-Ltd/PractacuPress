@@ -16,8 +16,8 @@ const fragment: Dictionary = {
     'Use your account password, or the dedicated security password if the site has one.',
   '请输入密码。': 'Enter your password.',
   '验证没有通过': 'Verification failed',
-  '验证通过后，短时间内的高危操作不再重复询问；刷新页面会清除这次验证。':
-    'After verification, high-risk actions in a short window will not ask again. Refreshing the page clears it.',
+  '验证一次后，本次浏览器会话内的高危操作不再重复询问；关闭浏览器后需要重新验证。':
+    'Verify once and high-risk actions in this browser session will not ask again. Closing the browser requires a new verification.',
   '演示模式不校验二次密码': 'Demo mode does not check a second password',
   '演示数据没有服务端安全校验，高危操作会直接执行；连接真实后端后才会真正要求验证。':
     'Demo data has no server-side security checks, so high-risk actions run directly. Verification is only enforced against a real backend.',
@@ -62,8 +62,10 @@ const fragment: Dictionary = {
   '已开启（稍后写入）': 'On (will be saved later)',
 
   // ---- 后台设置面板 ----
-  '删除用户、修改别人的账户、覆盖导入等重要操作前，需要再输入一次密码。':
-    'Deleting users, editing other accounts and overwriting imports require your password again.',
+  '删除用户、修改别人的账户、覆盖导入等重要操作前，需要再输入一次密码；同一次浏览器会话内只验证一次。':
+    'Deleting users, editing other accounts and overwriting imports require your password again; once per browser session.',
+  '本次浏览器会话内有效；关闭浏览器后重新验证':
+    'Valid for this browser session; verify again after closing the browser',
   '正在读取保护设置…': 'Reading protection settings…',
   '无法读取或保存保护设置': 'Could not read or save protection settings',
   重新读取: 'Reload',

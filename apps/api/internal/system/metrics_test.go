@@ -2,6 +2,7 @@ package system
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,9 +11,210 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shirou/gopsutil/v4/process"
 
 	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
+
+func TestDefaultAppNamesCoversBuildSpellings(t *testing.T) {
+	names := normalizeAppNames(DefaultAppNames())
+	want := map[string]string{
+		"practacu-api":      "api", // scripts/dev.ps1
+		"practacupressapi":  "api", // packaged PractacuPressAPI.exe
+		"practacu-security": "security",
+		"practacupress":     "launcher",
+	}
+	for exe, role := range want {
+		if got := names[exe]; got != role {
+			t.Fatalf("DefaultAppNames()[%q] = %q, want %q", exe, got, role)
+		}
+	}
+}
+
+func TestCurrentProcessIsAPI(t *testing.T) {
+	sampler := NewSampler(SamplerConfig{
+		AppNames: map[string]string{"practacu-api": "api"},
+		// Even when the test binary happens to live under an install directory, the
+		// pid check must win: the running API is always the "api" role.
+		AppDirs: []string{repoRootForTest()},
+	})
+	self, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		t.Fatalf("open current process: %v", err)
+	}
+	// "server.exe" is what a plain `go build` produces; it is not a known app name.
+	if got := sampler.roleOf(self, "server.exe"); got != "api" {
+		t.Fatalf("role of current process = %q, want api", got)
+	}
+	if got := sampler.roleOf(self, "practacu-api.exe"); got != "api" {
+		t.Fatalf("role of current process with known name = %q, want api", got)
+	}
+}
+
+func TestSampleOnceAttributesCurrentProcess(t *testing.T) {
+	if testing.Short() {
+		t.Skip("samples the real process table")
+	}
+	sampler := NewSampler(SamplerConfig{})
+	// Two samples: the first one primes the per-process CPU baseline.
+	sampler.sampleOnce()
+	sampler.sampleOnce()
+	snapshot := sampler.Latest()
+	self := int32(os.Getpid())
+	found := false
+	for _, sample := range snapshot.App.Processes {
+		if sample.PID != self {
+			continue
+		}
+		found = true
+		if sample.Role != "api" {
+			t.Fatalf("current process role = %q, want api", sample.Role)
+		}
+	}
+	if !found {
+		t.Fatalf("current process %d missing from app processes %+v", self, snapshot.App.Processes)
+	}
+	if snapshot.Others.ProcessCount == 0 {
+		t.Fatal("expected other processes to be counted")
+	}
+	if snapshot.App.CPUPercent > snapshot.CPU.UsagePercent {
+		t.Fatalf("app cpu %v exceeds host cpu %v", snapshot.App.CPUPercent, snapshot.CPU.UsagePercent)
+	}
+	if snapshot.App.MemoryBytes > snapshot.Memory.UsedBytes && snapshot.Memory.UsedBytes > 0 {
+		t.Fatalf("app memory %d exceeds used memory %d", snapshot.App.MemoryBytes, snapshot.Memory.UsedBytes)
+	}
+}
+
+func TestAggregateProcessesAttribution(t *testing.T) {
+	procs := []sampledProcess{
+		// Windows idle pseudo process: must be ignored everywhere.
+		{pid: 0, name: "System Idle Process", cpuPercent: 80, memoryBytes: 1 << 30},
+		{pid: 100, name: "PractacuPressAPI.exe", role: "api", cpuPercent: 1.5, memoryBytes: 100},
+		{pid: 101, name: "node.exe", role: "web", cpuPercent: 2.0, memoryBytes: 200},
+		{pid: 200, name: "chrome.exe", cpuPercent: 3.0, memoryBytes: 300},
+		{pid: 201, name: "chrome.exe", cpuPercent: 4.0, memoryBytes: 400},
+		{pid: 300, name: "code.exe", cpuPercent: 5.0, memoryBytes: 500},
+	}
+	app, others := aggregateProcesses(procs, 12.5, 2000)
+
+	if len(app.processes) != 2 {
+		t.Fatalf("app processes = %+v", app.processes)
+	}
+	// Sorted by memory: the bigger process comes first, roles stay distinguishable.
+	if app.processes[0].Role != "web" || app.processes[1].Role != "api" {
+		t.Fatalf("roles = %+v", app.processes)
+	}
+	if app.cpuPercent != 3.5 {
+		t.Fatalf("app cpu = %v, want 3.5", app.cpuPercent)
+	}
+	if app.memoryBytes != 300 {
+		t.Fatalf("app memory = %d, want 300", app.memoryBytes)
+	}
+	// Unknown processes are folded by executable name.
+	if others.ProcessCount != 3 {
+		t.Fatalf("other process count = %d, want 3", others.ProcessCount)
+	}
+	if others.CPUPercent != 9 {
+		t.Fatalf("other cpu = %v, want 9", others.CPUPercent)
+	}
+	if others.MemoryBytes != 1700 {
+		t.Fatalf("other memory = %d, want 1700", others.MemoryBytes)
+	}
+	if len(others.TopProcesses) != 2 {
+		t.Fatalf("top others = %+v", others.TopProcesses)
+	}
+	chrome := others.TopProcesses[0]
+	if chrome.Name != "chrome.exe" || chrome.Processes != 2 || chrome.CPUPercent != 7 || chrome.MemoryBytes != 700 {
+		t.Fatalf("chrome aggregate = %+v", chrome)
+	}
+	// app + others == host totals, never overlapping.
+	if app.cpuPercent+others.CPUPercent != 12.5 {
+		t.Fatalf("shares do not add up: %v + %v", app.cpuPercent, others.CPUPercent)
+	}
+	if app.memoryBytes+others.MemoryBytes != 2000 {
+		t.Fatalf("memory shares do not add up: %d + %d", app.memoryBytes, others.MemoryBytes)
+	}
+}
+
+func TestAggregateProcessesClampsToHostTotals(t *testing.T) {
+	procs := []sampledProcess{
+		{pid: 10, name: "server", role: "api", cpuPercent: 90, memoryBytes: 5000},
+		{pid: 20, name: "chrome.exe", cpuPercent: -5, memoryBytes: 100},
+	}
+	app, others := aggregateProcesses(procs, 10, 1000)
+	if app.cpuPercent != 10 {
+		t.Fatalf("app cpu = %v, want clamped to host 10", app.cpuPercent)
+	}
+	if others.CPUPercent != 0 {
+		t.Fatalf("other cpu = %v, want 0 (never negative)", others.CPUPercent)
+	}
+	if app.memoryBytes != 1000 {
+		t.Fatalf("app memory = %d, want clamped to used 1000", app.memoryBytes)
+	}
+	if others.MemoryBytes != 0 {
+		t.Fatalf("other memory = %d, want 0", others.MemoryBytes)
+	}
+	// A negative process reading is clamped instead of reducing the host total.
+	if len(others.TopProcesses) != 1 || others.TopProcesses[0].CPUPercent != 0 {
+		t.Fatalf("top others = %+v", others.TopProcesses)
+	}
+}
+
+func TestProcessCPUPercent(t *testing.T) {
+	cases := []struct {
+		delta  float64
+		window float64
+		cores  int
+		want   float64
+	}{
+		{1, 2, 4, 12.5},
+		{2, 2, 4, 25},
+		{100, 1, 1, 100},
+		{0, 2, 4, 0},
+		{-3, 2, 4, 0},
+		{math.NaN(), 2, 4, 0},
+		{1, 0, 4, 0},
+		{1, math.Inf(1), 4, 0},
+		{1, 1, 0, 100}, // a bad core count falls back to one core
+	}
+	for _, tc := range cases {
+		if got := processCPUPercent(tc.delta, tc.window, tc.cores); got != tc.want {
+			t.Fatalf("processCPUPercent(%v, %v, %d) = %v, want %v", tc.delta, tc.window, tc.cores, got, tc.want)
+		}
+	}
+}
+
+func TestSampleWindowUsesRealElapsedOnlyWhenPositive(t *testing.T) {
+	base := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	if got := sampleWindow(base.Add(60*time.Second), base, 2*time.Second); got != 60 {
+		t.Fatalf("delayed window = %v, want the real 60s", got)
+	}
+	if got := sampleWindow(base, base, 2*time.Second); got != 2 {
+		t.Fatalf("zero window = %v, want fallback 2", got)
+	}
+	if got := sampleWindow(base.Add(-time.Second), base, 2*time.Second); got != 2 {
+		t.Fatalf("backwards window = %v, want fallback 2", got)
+	}
+	if got := sampleWindow(base, base, 0); got != DefaultInterval.Seconds() {
+		t.Fatalf("missing fallback = %v, want default interval", got)
+	}
+}
+
+func TestNewMemoryUsage(t *testing.T) {
+	usage := newMemoryUsage(100, 40)
+	if usage.UsedBytes != 60 || usage.FreeBytes != 40 || usage.UsagePercent != 60 {
+		t.Fatalf("usage = %+v", usage)
+	}
+	// A driver reporting more available than total must not yield a negative used.
+	over := newMemoryUsage(100, 140)
+	if over.UsedBytes != 0 || over.FreeBytes != 100 || over.UsagePercent != 0 {
+		t.Fatalf("over-reported available = %+v", over)
+	}
+	empty := newMemoryUsage(0, 0)
+	if empty.UsedBytes != 0 || empty.UsagePercent != 0 {
+		t.Fatalf("empty = %+v", empty)
+	}
+}
 
 func TestNormalizeProcessName(t *testing.T) {
 	cases := map[string]string{
@@ -120,6 +322,50 @@ func TestMeasureStorage(t *testing.T) {
 	}
 }
 
+func TestMeasureStorageDisjointRoots(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	mediaDir := filepath.Join(root, "media-outside")
+	backupDir := filepath.Join(root, "backups-outside")
+	for _, dir := range []string{dataDir, mediaDir, backupDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(path string, size int) {
+		if err := os.WriteFile(path, make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(dataDir, "practacu.db"), 100)
+	write(filepath.Join(dataDir, "practacu.db-wal"), 20)
+	write(filepath.Join(dataDir, "api.log"), 30)
+	write(filepath.Join(mediaDir, "a.png"), 200)
+	write(filepath.Join(backupDir, "b.zip"), 300)
+
+	footprint := measureStorage(dataDir, mediaDir, backupDir)
+	if footprint.DatabaseBytes != 120 {
+		t.Fatalf("database = %d, want 120 (db + wal)", footprint.DatabaseBytes)
+	}
+	if footprint.MediaBytes != 200 {
+		t.Fatalf("media = %d, want 200", footprint.MediaBytes)
+	}
+	if footprint.BackupBytes != 300 {
+		t.Fatalf("backup = %d, want 300", footprint.BackupBytes)
+	}
+	if footprint.OtherBytes != 30 {
+		t.Fatalf("other = %d, want 30", footprint.OtherBytes)
+	}
+	if footprint.TotalBytes != 650 {
+		t.Fatalf("total = %d, want 650", footprint.TotalBytes)
+	}
+	// The four buckets are disjoint by construction; the panel bar depends on it.
+	sum := footprint.DatabaseBytes + footprint.MediaBytes + footprint.BackupBytes + footprint.OtherBytes
+	if sum != footprint.TotalBytes {
+		t.Fatalf("buckets sum to %d, total is %d", sum, footprint.TotalBytes)
+	}
+}
+
 func TestWithinDir(t *testing.T) {
 	root := t.TempDir()
 	if !withinDir(filepath.Join(root, "a"), root) {
@@ -140,6 +386,36 @@ func TestClampPercent(t *testing.T) {
 	if got := clampPercent(12.345); got != 12.35 {
 		t.Fatalf("rounding = %v", got)
 	}
+	// NaN and infinities come from drivers or damaged counters; they must never leak
+	// a NaN or a huge negative value into the JSON payload.
+	if got := clampPercent(math.NaN()); got != 0 {
+		t.Fatalf("NaN = %v", got)
+	}
+	if got := clampPercent(math.Inf(1)); got != 100 {
+		t.Fatalf("+Inf = %v", got)
+	}
+	if got := clampPercent(math.Inf(-1)); got != 0 {
+		t.Fatalf("-Inf = %v", got)
+	}
+}
+
+// repoRootForTest walks up from the package directory to the module root.
+func repoRootForTest() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for depth := 0; depth < 8; depth += 1 {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
 }
 
 func newTestRouter(latest func() Snapshot, principal PrincipalFunc) *gin.Engine {

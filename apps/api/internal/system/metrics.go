@@ -12,6 +12,7 @@ package system
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -105,7 +106,7 @@ type AppUsage struct {
 type OtherUsage struct {
 	CPUPercent   float64            `json:"cpu_percent"`
 	MemoryBytes  uint64             `json:"memory_bytes"`
-	ProcessCount int                `json:"process_count"`
+	ProcessCount int                `json:"process_count"` // processes not attributed to this software
 	TopProcesses []AggregateProcess `json:"top_processes"`
 }
 
@@ -139,9 +140,16 @@ type SamplerConfig struct {
 }
 
 // DefaultAppNames returns the executable names this installation ships.
+//
+// The API binary is built under different names depending on how the installation
+// runs: the development launcher builds practacu-api.exe, the packaged release ships
+// PractacuPressAPI.exe, and a plain `go build` may leave server.exe. The current
+// process is additionally recognised by pid (see roleOf) so every spelling is
+// attributed to "api" instead of falling through to "app".
 func DefaultAppNames() map[string]string {
 	return map[string]string{
 		"practacu-api":      "api",
+		"practacupressapi":  "api",
 		"practacu-security": "security",
 		"practacupress":     "launcher",
 	}
@@ -169,6 +177,7 @@ type processCPU struct {
 	name        string
 	role        string
 	seconds     float64
+	hasSeconds  bool
 	memoryBytes uint64
 }
 
@@ -239,12 +248,7 @@ func (s *Sampler) sampleOnce() {
 
 	memory := MemoryUsage{}
 	if vm, err := mem.VirtualMemory(); err == nil && vm != nil {
-		memory = MemoryUsage{
-			TotalBytes:   vm.Total,
-			UsedBytes:    vm.Total - vm.Available,
-			FreeBytes:    vm.Available,
-			UsagePercent: clampPercent(float64(vm.Total-vm.Available) / float64(maxUint64(vm.Total, 1)) * 100),
-		}
+		memory = newMemoryUsage(vm.Total, vm.Available)
 	}
 
 	diskUsage := DiskUsage{}
@@ -262,63 +266,7 @@ func (s *Sampler) sampleOnce() {
 		}
 	}
 
-	procs := s.sampleProcesses(now, static.cores)
-	appProcesses := make([]ProcessSample, 0, 4)
-	var appCPU float64
-	var appMemory uint64
-	otherByName := map[string]*AggregateProcess{}
-	processCount := 0
-	if procs != nil {
-		processCount = len(procs)
-	}
-	for _, proc := range procs {
-		// Windows reports the idle pseudo process (pid 0); it is not software using the
-		// machine, and its CPU counter would drown every real row.
-		if proc.pid == 0 || strings.EqualFold(proc.name, "System Idle Process") {
-			continue
-		}
-		if proc.role == "" {
-			key := normalizeProcessName(proc.name)
-			if key == "" {
-				key = "unknown"
-			}
-			entry, ok := otherByName[key]
-			if !ok {
-				entry = &AggregateProcess{Name: displayName(proc.name)}
-				otherByName[key] = entry
-			}
-			entry.Processes++
-			entry.CPUPercent += proc.cpuPercent
-			entry.MemoryBytes += proc.memoryBytes
-			continue
-		}
-		appProcesses = append(appProcesses, ProcessSample{
-			PID:         proc.pid,
-			Name:        displayName(proc.name),
-			Role:        proc.role,
-			CPUPercent:  proc.cpuPercent,
-			MemoryBytes: proc.memoryBytes,
-		})
-		appCPU += proc.cpuPercent
-		appMemory += proc.memoryBytes
-	}
-	sort.Slice(appProcesses, func(i, j int) bool {
-		if appProcesses[i].MemoryBytes != appProcesses[j].MemoryBytes {
-			return appProcesses[i].MemoryBytes > appProcesses[j].MemoryBytes
-		}
-		return appProcesses[i].PID < appProcesses[j].PID
-	})
-	topOthers := topOtherProcesses(otherByName, 8)
-
-	appCPU = clampPercent(appCPU)
-	otherCPU := hostCPU - appCPU
-	if otherCPU < 0 {
-		otherCPU = 0
-	}
-	otherMemory := uint64(0)
-	if memory.UsedBytes > appMemory {
-		otherMemory = memory.UsedBytes - appMemory
-	}
+	app, others := aggregateProcesses(s.sampleProcesses(now, static.cores), hostCPU, memory.UsedBytes)
 
 	snapshot := Snapshot{
 		SampledAt: now.UTC(),
@@ -336,22 +284,131 @@ func (s *Sampler) sampleOnce() {
 		Memory: memory,
 		Disk:   diskUsage,
 		App: AppUsage{
-			Processes:   appProcesses,
-			CPUPercent:  appCPU,
-			MemoryBytes: appMemory,
+			Processes:   app.processes,
+			CPUPercent:  app.cpuPercent,
+			MemoryBytes: app.memoryBytes,
 			Storage:     s.storageFootprint(now),
 		},
-		Others: OtherUsage{
-			CPUPercent:   clampPercent(otherCPU),
-			MemoryBytes:  otherMemory,
-			ProcessCount: processCount,
-			TopProcesses: topOthers,
-		},
+		Others: others,
 	}
 
 	s.mu.Lock()
 	s.snapshot = snapshot
 	s.mu.Unlock()
+}
+
+// aggregatedUsage is the "this software" side of one sample.
+type aggregatedUsage struct {
+	processes   []ProcessSample
+	cpuPercent  float64
+	memoryBytes uint64
+}
+
+// aggregateProcesses folds the per-process samples into the two tables the panel
+// shows. It is pure (no OS access) so the accounting rules can be tested without
+// sampling the real machine:
+//
+//   - the host idle pseudo process is ignored;
+//   - processes attributed to this installation are listed individually;
+//   - every other process is aggregated by executable name and counted as "others";
+//   - app + others are clamped to the host figures, so neither can go negative and
+//     the two shares always add up to the host total instead of overlapping.
+func aggregateProcesses(procs []sampledProcess, hostCPU float64, hostUsedMemory uint64) (aggregatedUsage, OtherUsage) {
+	appProcesses := make([]ProcessSample, 0, 4)
+	var appCPU float64
+	var appMemory uint64
+	otherByName := map[string]*AggregateProcess{}
+	otherCount := 0
+	for _, proc := range procs {
+		// Windows reports the idle pseudo process (pid 0); it is not software using the
+		// machine, and its CPU counter would drown every real row.
+		if proc.pid == 0 || strings.EqualFold(proc.name, "System Idle Process") {
+			continue
+		}
+		cpuPercent := clampPercent(proc.cpuPercent)
+		if proc.role == "" {
+			key := normalizeProcessName(proc.name)
+			if key == "" {
+				key = "unknown"
+			}
+			entry, ok := otherByName[key]
+			if !ok {
+				entry = &AggregateProcess{Name: displayName(proc.name)}
+				otherByName[key] = entry
+			}
+			entry.Processes++
+			entry.CPUPercent += cpuPercent
+			entry.MemoryBytes += proc.memoryBytes
+			otherCount++
+			continue
+		}
+		appProcesses = append(appProcesses, ProcessSample{
+			PID:         proc.pid,
+			Name:        displayName(proc.name),
+			Role:        proc.role,
+			CPUPercent:  cpuPercent,
+			MemoryBytes: proc.memoryBytes,
+		})
+		appCPU += cpuPercent
+		appMemory += proc.memoryBytes
+	}
+	sort.Slice(appProcesses, func(i, j int) bool {
+		if appProcesses[i].MemoryBytes != appProcesses[j].MemoryBytes {
+			return appProcesses[i].MemoryBytes > appProcesses[j].MemoryBytes
+		}
+		return appProcesses[i].PID < appProcesses[j].PID
+	})
+
+	hostCPU = clampPercent(hostCPU)
+	appCPU = clampPercent(appCPU)
+	// The host counter and the process counters are read in separate windows, so a
+	// process may briefly report more than the machine total. Clamp the aggregate to
+	// the host figure: "others" must never become negative.
+	if appCPU > hostCPU {
+		appCPU = hostCPU
+	}
+	// Summed RSS counts shared pages once per process and may therefore exceed the
+	// physical usage reported by the host. Clamp the aggregate for the same reason:
+	// the two software shares must never overlap or exceed the machine.
+	if hostUsedMemory > 0 && appMemory > hostUsedMemory {
+		appMemory = hostUsedMemory
+	}
+	otherMemory := uint64(0)
+	if hostUsedMemory > appMemory {
+		otherMemory = hostUsedMemory - appMemory
+	}
+
+	return aggregatedUsage{
+		processes:   appProcesses,
+		cpuPercent:  appCPU,
+		memoryBytes: appMemory,
+	}, OtherUsage{
+		CPUPercent:   clampPercent(hostCPU - appCPU),
+		MemoryBytes:  otherMemory,
+		ProcessCount: otherCount,
+		TopProcesses: topOtherProcesses(otherByName, 8),
+	}
+}
+
+// newMemoryUsage derives a consistent memory reading from the host totals: used and
+// free always add up to total, and a nonsensical driver reading (available greater
+// than total) is clamped instead of producing a negative "used" value.
+func newMemoryUsage(total, available uint64) MemoryUsage {
+	free := available
+	if free > total {
+		free = total
+	}
+	used := total - free
+	usagePercent := 0.0
+	if total > 0 {
+		usagePercent = clampPercent(float64(used) / float64(total) * 100)
+	}
+	return MemoryUsage{
+		TotalBytes:   total,
+		UsedBytes:    used,
+		FreeBytes:    free,
+		UsagePercent: usagePercent,
+	}
 }
 
 func (s *Sampler) loadStatic() staticInfo {
@@ -389,13 +446,7 @@ func (s *Sampler) sampleProcesses(now time.Time, cores int) []sampledProcess {
 	if err != nil {
 		return nil
 	}
-	if cores <= 0 {
-		cores = 1
-	}
-	elapsed := now.Sub(s.prevAt).Seconds()
-	if elapsed <= 0 || elapsed > 30 {
-		elapsed = s.cfg.Interval.Seconds()
-	}
+	window := sampleWindow(now, s.prevAt, s.cfg.Interval)
 	next := make(map[int32]processCPU, len(procs))
 	out := make([]sampledProcess, 0, len(procs))
 	for _, proc := range procs {
@@ -407,8 +458,11 @@ func (s *Sampler) sampleProcesses(now time.Time, cores int) []sampledProcess {
 		if nameErr != nil || name == "" {
 			continue
 		}
+		previous, hadPrevious := s.prev[pid]
 		cur := processCPU{name: name}
-		if previous, ok := s.prev[pid]; ok {
+		if hadPrevious {
+			// Reuse the cached role: the executable of a running process does not
+			// change, and this avoids an Exe()/Cmdline() syscall on every sample.
 			cur.role = previous.role
 			cur.memoryBytes = previous.memoryBytes
 		}
@@ -417,24 +471,27 @@ func (s *Sampler) sampleProcesses(now time.Time, cores int) []sampledProcess {
 		}
 		if times, err := proc.Times(); err == nil && times != nil {
 			cur.seconds = times.User + times.System
+			cur.hasSeconds = true
+		} else if hadPrevious {
+			// Keep the last known counter: a transient read failure must not look like
+			// a process that used zero CPU, otherwise the next delta is inflated.
+			cur.seconds = previous.seconds
+			cur.hasSeconds = previous.hasSeconds
 		}
 		if info, err := proc.MemoryInfo(); err == nil && info != nil {
 			cur.memoryBytes = info.RSS
 		}
 		next[pid] = cur
 
-		pct := 0.0
-		if previous, ok := s.prev[pid]; ok && elapsed > 0 {
-			delta := cur.seconds - previous.seconds
-			if delta > 0 {
-				pct = clampPercent(delta / elapsed / float64(cores) * 100)
-			}
+		cpuPercent := 0.0
+		if hadPrevious && cur.hasSeconds && previous.hasSeconds {
+			cpuPercent = processCPUPercent(cur.seconds-previous.seconds, window, cores)
 		}
 		out = append(out, sampledProcess{
 			pid:         pid,
 			name:        name,
 			role:        cur.role,
-			cpuPercent:  round2(pct),
+			cpuPercent:  cpuPercent,
 			memoryBytes: cur.memoryBytes,
 		})
 	}
@@ -443,10 +500,42 @@ func (s *Sampler) sampleProcesses(now time.Time, cores int) []sampledProcess {
 	return out
 }
 
+// sampleWindow is the wall-clock time between two process samples. A zero or
+// negative distance (first sample, clock adjustments) falls back to the configured
+// interval; otherwise the real distance is used so a sample delayed by a suspended
+// host is averaged over the time it actually covers instead of being inflated.
+func sampleWindow(now, previous time.Time, fallback time.Duration) float64 {
+	if elapsed := now.Sub(previous).Seconds(); elapsed > 0 {
+		return elapsed
+	}
+	if fallback > 0 {
+		return fallback.Seconds()
+	}
+	return DefaultInterval.Seconds()
+}
+
+// processCPUPercent converts a CPU-time delta into a percentage of the whole machine
+// (all logical cores sum to 100). Non-positive and NaN inputs yield 0, and the result
+// is clamped to 100 so a bogus counter can never overflow the panel.
+func processCPUPercent(deltaSeconds, windowSeconds float64, cores int) float64 {
+	if cores <= 0 {
+		cores = 1
+	}
+	if !(deltaSeconds > 0) || !(windowSeconds > 0) {
+		return 0
+	}
+	return clampPercent(deltaSeconds / windowSeconds / float64(cores) * 100)
+}
+
 // roleOf decides whether a process belongs to this installation and which role it
-// plays. Known executable names win; then command line / executable path under one
-// of the installation directories (this is how the Vite dev server is attributed).
+// plays. The sampler's own process is always the API (whatever the executable is
+// called: practacu-api.exe, PractacuPressAPI.exe or server.exe). Known executable
+// names win next; then command line / executable path under one of the installation
+// directories (this is how the Vite dev server is attributed).
 func (s *Sampler) roleOf(proc *process.Process, name string) string {
+	if proc != nil && proc.Pid == int32(os.Getpid()) {
+		return "api"
+	}
 	normalized := normalizeProcessName(name)
 	if role, ok := s.cfg.AppNames[normalized]; ok {
 		return role
@@ -521,78 +610,146 @@ func (s *Sampler) storageFootprint(now time.Time) StorageFootprint {
 	return footprint
 }
 
-// measureStorage walks the configured directories. Missing paths contribute zero;
-// the walk is best effort because a metric panel must never fail the request.
+// storageRoot is one directory covered by the footprint: the data directory plus the
+// media/backup directories, which may live inside or outside it.
+type storageRoot struct {
+	path string
+	kind string // "data", "media" or "backup"
+}
+
+// measureStorage walks the configured directories and splits the bytes into
+// non-overlapping buckets. Every file is counted exactly once: only the outermost
+// roots are walked, and each file is attributed to the deepest configured root that
+// contains it. Consequently
+//
+//	database + media + backup + other == total
+//
+// holds even when media or backups are configured outside the data directory, and the
+// panel's storage bar can never overflow because of double counting.
 func measureStorage(dataDir, mediaDir, backupDir string) StorageFootprint {
 	footprint := StorageFootprint{DataDir: dataDir}
-	if dataDir == "" {
-		return footprint
+	roots := make([]storageRoot, 0, 3)
+	if dataDir != "" {
+		roots = append(roots, storageRoot{path: dataDir, kind: "data"})
 	}
-	footprint.TotalBytes = dirSize(dataDir)
-	footprint.DatabaseBytes = databaseSize(dataDir)
-	if mediaDir != "" && withinDir(mediaDir, dataDir) {
-		footprint.MediaBytes = dirSize(mediaDir)
-	} else if mediaDir != "" {
-		footprint.MediaBytes = dirSize(mediaDir)
+	if mediaDir != "" {
+		roots = append(roots, storageRoot{path: mediaDir, kind: "media"})
 	}
 	if backupDir != "" {
-		footprint.BackupBytes = dirSize(backupDir)
+		roots = append(roots, storageRoot{path: backupDir, kind: "backup"})
 	}
-	covered := footprint.DatabaseBytes + footprint.MediaBytes + footprint.BackupBytes
-	if footprint.TotalBytes > covered {
-		footprint.OtherBytes = footprint.TotalBytes - covered
+	if len(roots) == 0 {
+		return footprint
+	}
+
+	files := map[string]uint64{}
+	for index := range roots {
+		if storageRootCovered(roots, index) {
+			continue
+		}
+		walkRegularFiles(roots[index].path, func(path string, size uint64) {
+			files[path] = size
+		})
+	}
+	for path, size := range files {
+		footprint.TotalBytes += size
+		switch storageKindOf(path, roots) {
+		case "media":
+			footprint.MediaBytes += size
+		case "backup":
+			footprint.BackupBytes += size
+		default:
+			if isDatabaseFile(path, dataDir) {
+				footprint.DatabaseBytes += size
+			} else {
+				footprint.OtherBytes += size
+			}
+		}
 	}
 	return footprint
 }
 
-func databaseSize(dataDir string) uint64 {
-	entries, err := os.ReadDir(dataDir)
-	if err != nil {
-		return 0
-	}
-	var total uint64
-	for _, entry := range entries {
-		if entry.IsDir() {
+// storageRootCovered reports whether root i is already visited as part of another
+// root: a media/backup directory under the data directory must not be walked (and
+// counted) twice.
+func storageRootCovered(roots []storageRoot, index int) bool {
+	for otherIndex := range roots {
+		if otherIndex == index {
 			continue
 		}
-		name := strings.ToLower(entry.Name())
-		if !strings.HasSuffix(name, ".db") &&
-			!strings.HasSuffix(name, ".db-wal") &&
-			!strings.HasSuffix(name, ".db-shm") {
-			continue
+		if strings.EqualFold(filepath.Clean(roots[index].path), filepath.Clean(roots[otherIndex].path)) {
+			// The same path configured twice: the first root wins.
+			return index > otherIndex
 		}
-		if info, err := entry.Info(); err == nil && info != nil {
-			total += uint64(info.Size())
+		if withinDir(roots[index].path, roots[otherIndex].path) {
+			return true
 		}
 	}
-	return total
+	return false
 }
 
-func dirSize(path string) uint64 {
-	if path == "" {
-		return 0
+// storageKindOf attributes a file to the deepest configured root that contains it, so
+// a media directory inside the data directory wins over the data directory itself and
+// a nested data directory wins over its parent media directory.
+func storageKindOf(path string, roots []storageRoot) string {
+	kind := "data"
+	deepest := -1
+	for _, root := range roots {
+		if !withinDir(path, root.path) {
+			continue
+		}
+		if length := len(root.path); length > deepest {
+			deepest = length
+			kind = root.kind
+		}
 	}
-	info, err := os.Stat(path)
+	return kind
+}
+
+// isDatabaseFile reports whether path is one of the database files at the top of the
+// data directory. Explicit sqlite sidecars are included so the database bucket is
+// complete instead of leaking the WAL into "other files".
+func isDatabaseFile(path, dataDir string) bool {
+	if dataDir == "" {
+		return false
+	}
+	if !strings.EqualFold(filepath.Dir(filepath.Clean(path)), filepath.Clean(dataDir)) {
+		return false
+	}
+	name := strings.ToLower(filepath.Base(path))
+	return strings.HasSuffix(name, ".db") ||
+		strings.HasSuffix(name, ".db-wal") ||
+		strings.HasSuffix(name, ".db-shm")
+}
+
+// walkRegularFiles visits every regular file under root (or root itself when it is a
+// file). Errors are ignored: a metric panel must never fail a request.
+func walkRegularFiles(root string, visit func(path string, size uint64)) {
+	if root == "" {
+		return
+	}
+	info, err := os.Stat(root)
 	if err != nil {
-		return 0
+		return
 	}
 	if info.Mode().IsRegular() {
-		return uint64(info.Size())
+		visit(root, uint64(info.Size()))
+		return
 	}
-	var total uint64
-	_ = filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || entry == nil || entry.IsDir() {
 			return nil
 		}
-		if info, statErr := entry.Info(); statErr == nil && info != nil && info.Mode().IsRegular() {
-			total += uint64(info.Size())
+		fileInfo, statErr := entry.Info()
+		if statErr != nil || fileInfo == nil || !fileInfo.Mode().IsRegular() {
+			return nil
 		}
+		visit(path, uint64(fileInfo.Size()))
 		return nil
 	})
-	return total
 }
 
-// withinDir reports whether path is dataDir itself or lives under it, so a media
+// withinDir reports whether path is parent itself or lives under it, so a media
 // directory is not counted twice.
 func withinDir(path, parent string) bool {
 	cleanPath := filepath.Clean(path)
@@ -698,11 +855,13 @@ func hostUptime() uint64 {
 	return seconds
 }
 
+// clampPercent clamps a possibly hostile provider reading to 0–100 and rounds it to
+// two decimals. NaN is treated as 0 (a missing reading), infinities as the boundary.
 func clampPercent(value float64) float64 {
-	if value < 0 {
+	if math.IsNaN(value) || value <= 0 {
 		return 0
 	}
-	if value > 100 {
+	if value >= 100 {
 		return 100
 	}
 	return round2(value)
@@ -717,11 +876,4 @@ func round2(value float64) float64 {
 		scaled -= 0.5
 	}
 	return float64(int64(scaled)) / 100
-}
-
-func maxUint64(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
 }
