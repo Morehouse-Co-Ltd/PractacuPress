@@ -11,6 +11,8 @@ const fragment: Dictionary = {
     'Allowed types: {types}; per-file limit {limit}{demo}.',
   '允许 {types}，站点媒体额度 {quota}，单个文件上限 {limit}{demo}。':
     'Allowed types: {types}; site media quota {quota}; per-file limit {limit}{demo}.',
+  '允许 {types}，站点媒体额度 {quota}{demo}。':
+    'Allowed types: {types}; site media quota {quota}{demo}.',
   站点媒体额度: 'Site media quota',
   跟随部署默认: 'Deployment default',
   无限额度: 'Unlimited',

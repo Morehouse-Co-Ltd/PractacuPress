@@ -202,10 +202,9 @@ export function MediaPage() {
       >
         <h3>{t('把文件拖到这里')}</h3>
         <p>
-          {t('允许 {types}，站点媒体额度 {quota}，单个文件上限 {limit}{demo}。', {
+          {t('允许 {types}，站点媒体额度 {quota}{demo}。', {
             types: ALLOWED.map(mimeLabel).join(' · '),
             quota: quotaLabel,
-            limit: formatBytes(fileLimit),
             demo: demo ? t('（演示模式）') : '',
           })}
         </p>
