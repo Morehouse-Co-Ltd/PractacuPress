@@ -44,7 +44,7 @@ const MEMBER: Member = {
   role: 'member',
   status: 'active',
   email: 'writer@example.test',
-  media_quota_bytes: 8192,
+  media_quota_bytes: 1572864,
 };
 
 function configOf(): WebConfig {
@@ -60,15 +60,15 @@ function configOf(): WebConfig {
   };
 }
 
-function fakeBackend() {
-  const setMemberQuota = vi.fn(async () => ({ ...MEMBER, media_quota_bytes: null }));
+function fakeBackend(member: Member = MEMBER) {
+  const setMemberQuota = vi.fn(async () => ({ ...member, media_quota_bytes: null }));
   const backend = {
     mode: 'live' as const,
     origin: 'http://api.test',
     refresh: async () => SESSION,
     me: async () => ME,
     site: async () => SITE,
-    members: vi.fn(async () => [MEMBER]),
+    members: vi.fn(async () => [member]),
     setMemberQuota,
   } as unknown as Backend;
   return { backend, setMemberQuota };
@@ -117,7 +117,7 @@ async function renderMembers(backend: Backend): Promise<void> {
 async function waitForInput(): Promise<HTMLInputElement> {
   const start = Date.now();
   while (Date.now() - start < 3000) {
-    const input = container.querySelector<HTMLInputElement>('input[aria-label="作者 的媒体额度（字节）"]');
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="作者 的媒体额度（MB）"]');
     if (input) return input;
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   }
@@ -130,22 +130,47 @@ function setInputValue(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+/** 点该行的保存按钮，并等异步保存走完。 */
+async function saveRow(): Promise<void> {
+  const save = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="保存作者的媒体额度"]',
+  );
+  expect(save).toBeTruthy();
+  await act(async () => save!.click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+}
+
 describe('成员列表的媒体额度', () => {
   it('clears a member override by saving null to that member', async () => {
     const { backend, setMemberQuota } = fakeBackend();
     await renderMembers(backend);
 
     const input = await waitForInput();
-    expect(input.value).toBe('8192');
+    // 字节存储的 1572864 在界面里显示成 1.5 MB。
+    expect(input.value).toBe('1.5');
     await act(async () => setInputValue(input, ''));
+    await saveRow();
 
-    const save = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="保存作者的媒体额度"]',
-    );
-    expect(save).toBeTruthy();
-    await act(async () => save!.click());
-
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(setMemberQuota).toHaveBeenCalledWith('site_1', 'usr_writer', null);
+  });
+
+  it('converts a decimal MB input into whole bytes', async () => {
+    const { backend, setMemberQuota } = fakeBackend({ ...MEMBER, media_quota_bytes: null });
+    await renderMembers(backend);
+
+    await act(async () => setInputValue(await waitForInput(), '1.5'));
+    await saveRow();
+
+    expect(setMemberQuota).toHaveBeenCalledWith('site_1', 'usr_writer', 1572864);
+  });
+
+  it('sends zero bytes when the member quota is set to 0 MB (unlimited)', async () => {
+    const { backend, setMemberQuota } = fakeBackend({ ...MEMBER, media_quota_bytes: null });
+    await renderMembers(backend);
+
+    await act(async () => setInputValue(await waitForInput(), '0'));
+    await saveRow();
+
+    expect(setMemberQuota).toHaveBeenCalledWith('site_1', 'usr_writer', 0);
   });
 });

@@ -11,7 +11,7 @@ import { groupConfigLabel, groupIdForRole } from '../../lib/permissions';
 import { SITE_KIND_LABEL, siteKindOf } from '../../lib/site';
 import { usePermissions } from '../../lib/usePermissions';
 import { errorText, useT } from '../../lib/i18n';
-import { parseMediaQuotaInput } from '../../lib/mediaQuota';
+import { bytesToMbString, parseMediaQuotaMbInput } from '../../lib/mediaQuota';
 import {
   Avatar,
   Badge,
@@ -259,11 +259,11 @@ export function MembersPage() {
 
   const saveMemberQuota = async (member: Member, value: string) => {
     if (!me) return;
-    const parsed = parseMediaQuotaInput(value);
+    const parsed = parseMediaQuotaMbInput(value);
     if (!parsed.valid) {
       setQuotaErrors((current) => ({
         ...current,
-        [member.user_id]: t('媒体额度必须是非负整数，且不能超过可存储上限。'),
+        [member.user_id]: t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。'),
       }));
       return;
     }
@@ -279,7 +279,11 @@ export function MembersPage() {
         me.user.display_name,
         '修改成员媒体额度',
         updated.display_name,
-        parsed.value === null ? '继承部署默认' : parsed.value === 0 ? '无限' : `${parsed.value} 字节`,
+        parsed.value === null
+          ? '继承部署默认'
+          : parsed.value === 0
+            ? '无限'
+            : `${bytesToMbString(parsed.value)} MB`,
       );
       toast.push('ok', t('成员媒体额度已更新'), updated.display_name);
       setQuotaDrafts((current) => {
@@ -463,7 +467,7 @@ export function MembersPage() {
 
       <div className="panel mt-20">
         <p className="small muted" style={{ padding: '12px 16px 0' }}>
-          {t('媒体额度单位为字节；留空继承部署默认，0 表示无限。')}
+          {t('媒体额度单位为 MB（1 MB = 1024 × 1024 字节）；留空继承部署默认，0 表示无限。')}
         </p>
         {data.loading ? (
           <div className="panel-body">
@@ -489,7 +493,7 @@ export function MembersPage() {
                   <th>{t('用户')}</th>
                   <th>{t('邮箱')}</th>
                   <th>{t('状态')}</th>
-                  <th>{t('媒体额度（字节）')}</th>
+                  <th>{t('媒体额度（MB）')}</th>
                   <th>{t('用户组')}</th>
                   <th>{t('用户 ID')}</th>
                   {canManageLower ? <th>{t('账户操作')}</th> : null}
@@ -499,9 +503,8 @@ export function MembersPage() {
                 {filteredMembers.map((member) => {
                   const isSelf = member.user_id === me?.user.id;
                   const platformLocked = member.role === 'platform_admin' && me?.role !== 'platform_admin';
-                  const quotaValue = quotaDrafts[member.user_id] ??
-                    (member.media_quota_bytes == null ? '' : String(member.media_quota_bytes));
-                  const savedQuotaValue = member.media_quota_bytes == null ? '' : String(member.media_quota_bytes);
+                  const savedQuotaValue = bytesToMbString(member.media_quota_bytes);
+                  const quotaValue = quotaDrafts[member.user_id] ?? savedQuotaValue;
                   return (
                     <tr key={member.user_id}>
                       <td>
@@ -532,10 +535,10 @@ export function MembersPage() {
                         <div className="row gap-8">
                           <Input
                             type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
+                            inputMode="decimal"
+                            pattern="[0-9.]*"
                             value={quotaValue}
-                            aria-label={t('{name} 的媒体额度（字节）', { name: member.display_name })}
+                            aria-label={t('{name} 的媒体额度（MB）', { name: member.display_name })}
                             aria-invalid={!!quotaErrors[member.user_id]}
                             onChange={(event) => {
                               const value = event.target.value;

@@ -7,6 +7,7 @@ import type { Backend } from '../../lib/backend';
 import { BackendProvider } from '../../lib/backend';
 import { AuthProvider } from '../../lib/session';
 import { ToastProvider } from '../../lib/toast';
+import { bytesToMbString, parseMediaQuotaMbInput } from '../../lib/mediaQuota';
 import { SettingsPage } from './Settings';
 
 /**
@@ -185,14 +186,16 @@ describe('站点设置页的注册开关', () => {
 });
 
 describe('站点设置页的媒体额度', () => {
-  it('shows byte semantics and sends zero for unlimited quota', async () => {
+  it('shows MB semantics and sends zero for unlimited quota', async () => {
     const { backend, updateSite } = fakeBackend(siteOf(true, null));
 
     await renderSettings(backend);
 
-    const input = await waitForInput('本站媒体额度（字节）');
+    const input = await waitForInput('本站媒体额度（MB）');
     expect(input.value).toBe('');
-    expect(container.textContent).toContain('留空表示继承部署默认，0 表示无限；正整数按字节计算。');
+    expect(container.textContent).toContain(
+      '媒体额度单位为 MB（1 MB = 1024 × 1024 字节）；留空继承部署默认，0 表示无限。',
+    );
     await act(async () => {
       setInputValue(input, '0');
     });
@@ -211,12 +214,13 @@ describe('站点设置页的媒体额度', () => {
   });
 
   it('sends null when clearing an explicit quota to inherit the deployment default', async () => {
-    const { backend, updateSite } = fakeBackend(siteOf(true, 4096));
+    const { backend, updateSite } = fakeBackend(siteOf(true, 1572864));
 
     await renderSettings(backend);
 
-    const input = await waitForInput('本站媒体额度（字节）');
-    expect(input.value).toBe('4096');
+    // 字节存储的 1572864 在界面里显示成 1.5 MB。
+    const input = await waitForInput('本站媒体额度（MB）');
+    expect(input.value).toBe('1.5');
     await act(async () => {
       setInputValue(input, '');
     });
@@ -231,6 +235,49 @@ describe('站点设置页的媒体额度', () => {
       expect.objectContaining({ media_quota_bytes: null }),
     );
   });
+
+  it('converts a decimal MB input into whole bytes', async () => {
+    const { backend, updateSite } = fakeBackend(siteOf(true, null));
+
+    await renderSettings(backend);
+
+    const input = await waitForInput('本站媒体额度（MB）');
+    await act(async () => {
+      setInputValue(input, '1.5');
+    });
+
+    await act(async () => {
+      buttonsWithText('保存修改')[0].click();
+    });
+
+    await waitFor(() => updateSite.mock.calls.length > 0);
+    expect(updateSite).toHaveBeenCalledWith(
+      'site_1',
+      expect.objectContaining({ media_quota_bytes: 1572864 }),
+    );
+  });
+
+  it('rejects a negative MB value without sending a request', async () => {
+    const { backend, updateSite } = fakeBackend(siteOf(true, null));
+
+    await renderSettings(backend);
+
+    const input = await waitForInput('本站媒体额度（MB）');
+    await act(async () => {
+      setInputValue(input, '-1');
+    });
+
+    await act(async () => {
+      buttonsWithText('保存修改')[0].click();
+    });
+
+    await waitFor(() =>
+      (container.textContent ?? '').includes(
+        '媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。',
+      ),
+    );
+    expect(updateSite).not.toHaveBeenCalled();
+  });
 });
 
 async function waitForInput(label: string): Promise<HTMLInputElement> {
@@ -244,3 +291,37 @@ async function waitForInput(label: string): Promise<HTMLInputElement> {
   }
   throw new Error(`等待输入框 ${label} 超时`);
 }
+
+/** 界面单位是 MB，存储与接口始终是字节：这里钉住两边的换算规则。 */
+describe('媒体额度的 MB 换算', () => {
+  it('把字节值显示成去掉末尾零的 MB 字符串', () => {
+    expect(bytesToMbString(null)).toBe('');
+    expect(bytesToMbString(undefined)).toBe('');
+    expect(bytesToMbString(0)).toBe('0');
+    expect(bytesToMbString(1572864)).toBe('1.5');
+    expect(bytesToMbString(1073741824)).toBe('1024');
+    // 旧后端可能把 int64 当十进制字符串返回：换算同样精确，不丢位。
+    expect(bytesToMbString('1073741824')).toBe('1024');
+    expect(bytesToMbString('9223372036854775807')).toBe('8796093022207.999999');
+  });
+
+  it('把 MB 输入换算成四舍五入后的整数字节', () => {
+    expect(parseMediaQuotaMbInput('')).toEqual({ valid: true, value: null });
+    expect(parseMediaQuotaMbInput('0')).toEqual({ valid: true, value: 0 });
+    expect(parseMediaQuotaMbInput('1.5')).toEqual({ valid: true, value: 1572864 });
+    expect(parseMediaQuotaMbInput('0.5')).toEqual({ valid: true, value: 524288 });
+  });
+
+  it('拒绝负数、非数字与超出安全整数范围的字节数', () => {
+    for (const raw of ['-1', '-0.5', 'abc', 'NaN', '1e3', '1,5', '1 024']) {
+      expect(parseMediaQuotaMbInput(raw), raw).toEqual({ valid: false });
+    }
+    // 2^53 字节是安全整数的天花板（约 8589934591 MB）。
+    expect(parseMediaQuotaMbInput('8589934591')).toEqual({
+      valid: true,
+      value: 9007199253692416,
+    });
+    expect(parseMediaQuotaMbInput('8589934592')).toEqual({ valid: false });
+    expect(parseMediaQuotaMbInput('999999999999999999999')).toEqual({ valid: false });
+  });
+});

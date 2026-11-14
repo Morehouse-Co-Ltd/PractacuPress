@@ -16,7 +16,7 @@ import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { noteActivity } from '../../lib/activity';
 import { useCustomization } from '../../lib/customize';
 import { errorText, useT } from '../../lib/i18n';
-import { parseMediaQuotaInput } from '../../lib/mediaQuota';
+import { bytesToMbString, parseMediaQuotaMbInput } from '../../lib/mediaQuota';
 import {
   PUBLISH_LABEL,
   VISIBILITY_LABEL,
@@ -50,9 +50,8 @@ export function SettingsPage() {
   const [publishMode, setPublishMode] = useState<PublishMode>(site?.publish_mode ?? 'review');
   /** O-3：站点是否开放自助注册；旧后端没有该字段时按开放处理。 */
   const [registrationOpen, setRegistrationOpen] = useState(site?.registration_open !== false);
-  const [mediaQuotaDraft, setMediaQuotaDraft] = useState(
-    site?.media_quota_bytes == null ? '' : String(site.media_quota_bytes),
-  );
+  /** 媒体额度按 MB 编辑；空串表示继承部署默认。 */
+  const [mediaQuotaDraft, setMediaQuotaDraft] = useState(bytesToMbString(site?.media_quota_bytes));
   const [kind, setKind] = useState<SiteKind>(siteKindOf(config));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -79,7 +78,7 @@ export function SettingsPage() {
     setVisibility(site.visibility_mode);
     setPublishMode(site.publish_mode);
     setRegistrationOpen(site.registration_open !== false);
-    setMediaQuotaDraft(site.media_quota_bytes == null ? '' : String(site.media_quota_bytes));
+    setMediaQuotaDraft(bytesToMbString(site.media_quota_bytes));
     setDescriptionTouched(false);
   }, [site]);
 
@@ -177,7 +176,8 @@ export function SettingsPage() {
   };
 
   const kindChanged = kind !== siteKindOf(config);
-  const mediaQuota = parseMediaQuotaInput(mediaQuotaDraft);
+  const mediaQuota = parseMediaQuotaMbInput(mediaQuotaDraft);
+  const savedMediaQuotaDraft = bytesToMbString(site?.media_quota_bytes);
   const dirty =
     !!site &&
     (name !== site.name ||
@@ -186,7 +186,7 @@ export function SettingsPage() {
       visibility !== site.visibility_mode ||
       publishMode !== site.publish_mode ||
       registrationOpen !== (site.registration_open !== false) ||
-      mediaQuotaDraft !== (site.media_quota_bytes == null ? '' : String(site.media_quota_bytes)) ||
+      mediaQuotaDraft !== savedMediaQuotaDraft ||
       kindChanged ||
       adminPath !== (config.admin_path ?? '/admin'));
 
@@ -197,7 +197,7 @@ export function SettingsPage() {
       return;
     }
     if (!mediaQuota.valid) {
-      setError(t('媒体额度必须是非负整数，且不能超过可存储上限。'));
+      setError(t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。'));
       return;
     }
     const normalizedAdminPath = (adminPath.trim() || '/admin').replace(/\/+$/, '');
@@ -251,7 +251,7 @@ export function SettingsPage() {
   const commit = async () => {
     if (!me || !site) return;
     if (!mediaQuota.valid) {
-      setError(t('媒体额度必须是非负整数，且不能超过可存储上限。'));
+      setError(t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。'));
       return;
     }
     const normalizedAdminPath = (adminPath.trim() || '/admin').replace(/\/+$/, '');
@@ -277,7 +277,7 @@ export function SettingsPage() {
         publish_mode: nextPublish,
         // O-3：个人博客固定关闭注册，不把开关的旧值写回去。
         registration_open: kind === 'personal' ? false : registrationOpen,
-        ...(mediaQuotaDraft !== (site.media_quota_bytes == null ? '' : String(site.media_quota_bytes))
+        ...(mediaQuotaDraft !== savedMediaQuotaDraft
           ? { media_quota_bytes: mediaQuota.value }
           : {}),
       });
@@ -292,7 +292,7 @@ export function SettingsPage() {
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
         registration_open: kind === 'personal' ? false : registrationOpen,
-        ...(mediaQuotaDraft !== (site.media_quota_bytes == null ? '' : String(site.media_quota_bytes))
+        ...(mediaQuotaDraft !== savedMediaQuotaDraft
           ? { media_quota_bytes: mediaQuota.value }
           : {}),
       });
@@ -538,16 +538,16 @@ export function SettingsPage() {
             </div>
             <div className="panel-body">
               <Field
-                label={t('本站媒体额度（字节）')}
+                label={t('本站媒体额度（MB）')}
                 htmlFor="setting-media-quota"
-                hint={t('留空表示继承部署默认，0 表示无限；正整数按字节计算。')}
+                hint={t('媒体额度单位为 MB（1 MB = 1024 × 1024 字节）；留空继承部署默认，0 表示无限。')}
               >
                 <Input
                   id="setting-media-quota"
-                  aria-label={t('本站媒体额度（字节）')}
+                  aria-label={t('本站媒体额度（MB）')}
                   type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
                   value={mediaQuotaDraft}
                   onChange={(event) => setMediaQuotaDraft(event.target.value)}
                 />

@@ -2,16 +2,16 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`apps/web/src/pages/admin/Members.tsx` */
 const fragment: Dictionary = {
-  '媒体额度（字节）': 'Media quota (bytes)',
-  '媒体额度单位为字节；留空继承部署默认，0 表示无限。':
-    'Media quotas use bytes; leave blank to inherit the deployment default, or enter 0 for unlimited.',
-  '{name} 的媒体额度（字节）': 'Media quota (bytes) for {name}',
+  '媒体额度（MB）': 'Media quota (MB)',
+  '媒体额度单位为 MB（1 MB = 1024 × 1024 字节）；留空继承部署默认，0 表示无限。':
+    'Media quota is set in MB (1 MB = 1024 × 1024 bytes); leave it blank to inherit the deployment default, or enter 0 for unlimited.',
+  '{name} 的媒体额度（MB）': 'Media quota (MB) for {name}',
   '保存{name}的媒体额度': 'Save media quota for {name}',
   成员媒体额度已更新: 'Member media quota updated',
   无法更新成员媒体额度: 'Could not update member media quota',
   '修改成员媒体额度': 'Change member media quota',
-  '媒体额度必须是非负整数，且不能超过可存储上限。':
-    'Enter a non-negative whole number within the supported byte range.',
+  '媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。':
+    'Enter a non-negative whole number or decimal in MB, within the supported storage limit.',
   // ---- 页面标题与用户组说明 ----
   '用户管理': 'Users',
   '评论、投稿与互动': 'Comment, submit, and interact',
