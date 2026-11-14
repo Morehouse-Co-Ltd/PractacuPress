@@ -11,8 +11,8 @@ const fragment: Dictionary = {
   不同设备分割: 'Split by device',
   新窗口: 'New window',
   真实前台预览: 'Live public site preview',
-  '预览就是真实前台：单击可以直接点链接、按按钮；只有双击组件才会聚焦它，并把右侧属性面板打开。':
-    'The preview is the real public site: a single click follows links and presses buttons as usual; only a double-click focuses a component and opens its properties on the right.',
+  '预览只显示正在编排的这一页：点链接、按按钮都不会离开；双击组件才会聚焦它，并把右侧属性面板打开。':
+    'The preview stays on the page you are arranging: clicking links or pressing buttons never leaves it; only a double-click focuses a component and opens its properties on the right.',
 };
 
 export default fragment;

@@ -91,6 +91,7 @@ import { CustomPage } from './pages/site/CustomPage';
 import { PageLoading } from './components/ui';
 import { ExtensionBoot } from './components/ExtensionBoot';
 import { AdminExtensionPage } from './components/AdminExtensionPage';
+import { PreviewRouteLock } from './components/PreviewRouteLock';
 // 内置扩展（当前是性能面板）：导入即向 adminPageRegistry 注册后台页面，始终启用。
 import './lib/extensions/builtin';
 
@@ -544,6 +545,8 @@ export default function App() {
           <SiteSettingsLayer>
           <CustomizationLayer>
           <HistoryRouter history={asRouterHistory(history)}>
+            {/* 页面编排预览 iframe 的路由锁：预览只允许停在正在编排的那一页。 */}
+            <PreviewRouteLock />
             <DomainGuard>
             <ProtectionLayer>
             <LoadingLayer>

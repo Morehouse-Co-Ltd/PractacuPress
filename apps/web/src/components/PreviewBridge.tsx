@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { playBlockAnimation } from '../lib/blockAnimations';
+import { previewNavVerdict } from '../lib/previewNav';
 import { useT } from '../lib/i18n';
 
 const MIME_BLOCK = 'application/x-pp-block';
@@ -8,7 +9,8 @@ const MIME_NEW = 'application/x-pp-new';
 /**
  * 页面编排器 iframe 的预览桥。
  *
- * - 双击真实前台里的区块，回传区块 id（单击只负责页面自己的交互，不选中组件）；
+ * - 双击真实前台里的区块，回传区块 id（单击不选中组件）；
+ * - 单击需要离开当前页面的链接一律拦下：预览只显示正在编排的那一页；
  * - 接收选中高亮、动画重播；
  * - 接管从父窗口拖进来的组件：在真实区块上方/下方画插入线，松开后回传目标位置。
  *
@@ -23,12 +25,20 @@ export function PreviewBridge() {
     let lastTarget: HTMLElement | null = null;
     let lastPosition: 'before' | 'after' = 'after';
     let resizeHandle: HTMLElement | null = null;
-    // 单击链接时的延时跳转：双击组件要先有机会取消它。
-    let navTimer: number | null = null;
-    const cancelNav = () => {
-      if (navTimer != null) {
-        window.clearTimeout(navTimer);
-        navTimer = null;
+    // 拦下跳转后的提示要等一小会儿再发：双击组件时两次单击都是「被拦下的链接」，
+    // 双击会把它取消，免得每聚焦一张卡片就弹一句「不能跳转」。
+    let blockedTimer: number | null = null;
+    const announceBlocked = () => {
+      if (blockedTimer != null) window.clearTimeout(blockedTimer);
+      blockedTimer = window.setTimeout(() => {
+        blockedTimer = null;
+        window.parent.postMessage({ type: 'pp:preview-nav-blocked' }, window.location.origin);
+      }, 240);
+    };
+    const cancelBlocked = () => {
+      if (blockedTimer != null) {
+        window.clearTimeout(blockedTimer);
+        blockedTimer = null;
       }
     };
 
@@ -77,33 +87,35 @@ export function PreviewBridge() {
       (target as HTMLElement | null)?.closest<HTMLElement>('[data-pp-block]') ?? null;
 
     /**
-     * 单击不再等于「选中」。
+     * 预览只允许停留在正在编排的这一页。
      *
-     * 预览就是真实前台：按钮、表单、折叠面板都要能照常用，所以单击一律放行。
-     * 唯一的例外是站内链接——双击组件时两次单击会先把链接点开，所以这里把
-     * 跳转推迟一小会儿，双击（`onDblClick`）会把它取消。
+     * 预览 iframe 跑的是真实前台，站内导航 Tab、页脚、文章卡片、按钮区块都能把
+     * 它带到别的页面去——文章列表、搜索、登录，甚至后台。一旦离开，左侧结构树和
+     * 右侧属性面板还在编辑原来那一页，屏幕上却已经不是它了（见 lib/previewNav.ts）。
+     *
+     * 单击一律不再放行站内跳转；页内锚点、下载、新窗口与 mailto: 之类不替换预览
+     * 文档的链接照常可用。拦下后由父窗口提示怎么切换页面。
      */
     const onClick = (event: MouseEvent) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = blockAt(event.target);
-      if (!target) return;
-      const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[href]');
-      if (!link) return;
-      const href = link.getAttribute('href') ?? '';
-      if (!href || href.startsWith('#') || link.target === '_blank' || link.hasAttribute('download')) {
+      // 中键与带修饰键的点击是「新标签页 / 新窗口」的浏览器语义，不替换预览文档。
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
-      cancelNav();
+      const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[href]');
+      if (!link) return;
+      const verdict = previewNavVerdict(link.getAttribute('href') ?? '', {
+        baseUrl: window.location.href,
+        target: link.getAttribute('target'),
+        download: link.hasAttribute('download'),
+      });
+      if (verdict === 'allow') return;
       event.preventDefault();
-      navTimer = window.setTimeout(() => {
-        navTimer = null;
-        window.location.href = link.href;
-      }, 260);
+      announceBlocked();
     };
 
     const onDblClick = (event: MouseEvent) => {
-      // 双击才是「聚焦这个组件」。
-      cancelNav();
+      // 双击才是「聚焦这个组件」；单击拦下的提示不必再弹。
+      cancelBlocked();
       const target = blockAt(event.target);
       if (!target?.dataset.ppBlock) return;
       event.preventDefault();
@@ -248,7 +260,7 @@ export function PreviewBridge() {
       document.removeEventListener('drop', onDrop, true);
       document.removeEventListener('dragleave', onDragLeave, true);
       window.removeEventListener('message', onMessage);
-      cancelNav();
+      cancelBlocked();
       clearDrop();
       clearResize();
     };

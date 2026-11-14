@@ -736,7 +736,10 @@ img {
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 120;
+  /* 必须高于全屏页面编排工作台（`.builder-fullscreen` 是 120）：编排器是
+     portal 到 body 的，DOM 顺序在 #root 之后，同层 z-index 会把它盖在提示上，
+     于是「恢复默认」「预览不能跳转」这类提示一条也看不见。 */
+  z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 8px;

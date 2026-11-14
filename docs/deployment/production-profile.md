@@ -237,6 +237,8 @@ curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/readyz
 curl -sSI https://press.example.com/ | grep -Ei 'strict-transport|content-security|x-frame|referrer|permissions|x-content-type'
 # 期望：HSTS、CSP、X-Frame-Options: SAMEORIGIN、Referrer-Policy、
 #       Permissions-Policy、X-Content-Type-Options: nosniff
+# CSP 里的 frame-src 必须含 'self'：管理后台的「页面编排」用同源 iframe 预览真实前台，
+# 缺了它编辑器只会显示浏览器的「此内容已被屏蔽」。
 
 # 控制面必须不可达
 curl -sS -o /dev/null -w '%{http_code}\n' https://press.example.com/__pp/runtime   # 期望 404

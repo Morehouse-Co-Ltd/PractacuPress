@@ -407,6 +407,66 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 	}
 }
 
+// cspSources splits a policy into directive name → source list, the way a browser
+// reads it: directives are separated by `;`, sources by whitespace.
+func cspSources(policy string) map[string][]string {
+	out := map[string][]string{}
+	for _, directive := range strings.Split(policy, ";") {
+		fields := strings.Fields(directive)
+		if len(fields) == 0 {
+			continue
+		}
+		out[fields[0]] = fields[1:]
+	}
+	return out
+}
+
+// TestContentSecurityPolicyKeepsTheEditorPreviewFrameable is a regression test for the
+// page builder showing the browser's own "this content is blocked" page in place of the
+// preview. The policy used to set `frame-src` to the three captcha providers only, so
+// the same-origin preview iframe — and every authored iframe in a "website" block —
+// was refused by the browser before the request was ever made.
+func TestContentSecurityPolicyKeepsTheEditorPreviewFrameable(t *testing.T) {
+	directives := cspSources(contentSecurityPolicy)
+
+	frameSrc, ok := directives["frame-src"]
+	if !ok {
+		t.Fatal("the policy has no frame-src directive; the editor preview would then depend on default-src")
+	}
+	allowed := map[string]bool{}
+	for _, source := range frameSrc {
+		allowed[source] = true
+	}
+
+	// apps/web/src/components/builder/PreviewFrame.tsx loads the real front end from this
+	// origin. Without 'self' the browser refuses the frame and the editor looks broken.
+	if !allowed["'self'"] {
+		t.Fatalf("frame-src = %v, want 'self' so the page builder can preview the site", frameSrc)
+	}
+	// The "website" block embeds a URL the author typed: https in production, plain http
+	// on a loopback install whose own origin is http.
+	for _, scheme := range []string{"https:", "http:"} {
+		if !allowed[scheme] {
+			t.Fatalf("frame-src = %v, want %s for the website block's iframe mode", frameSrc, scheme)
+		}
+	}
+
+	// The point of the header is anti-framing, so keep that half pinned.
+	if got := directives["frame-ancestors"]; !reflect.DeepEqual(got, []string{"'self'"}) {
+		t.Fatalf("frame-ancestors = %v, want [\"'self'\"]", got)
+	}
+
+	// The bundler inlines the small KaTeX faces as data URIs; without this the maths
+	// fonts in an article are refused and fall back to the system font.
+	fonts := map[string]bool{}
+	for _, source := range directives["font-src"] {
+		fonts[source] = true
+	}
+	if !fonts["'self'"] || !fonts["data:"] {
+		t.Fatalf("font-src = %v, want 'self' and data: for the bundled maths fonts", directives["font-src"])
+	}
+}
+
 func TestSealAndOpenSecretRoundTrip(t *testing.T) {
 	secret := []byte("a signing key that must not be readable on disk")
 	sealed, err := sealSecret(secret)

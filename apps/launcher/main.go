@@ -384,20 +384,43 @@ func shortErr(err error) string {
 //
 // The site is served from this origin: scripts, styles and images are same origin
 // module assets. Inline styles stay allowed because the theme layer injects
-// <style> elements at runtime; inline scripts are not needed and therefore stay
-// blocked. A third-party reverse proxy terminates TLS, but the policy belongs to
-// the page and is always sent from here first.
+// <style> elements at runtime. Inline scripts stay blocked; the single inline script in
+// the shell today is the dark-mode bootstrap in apps/web/index.html, and the browser
+// refuses it (a reader who picked dark mode gets one light frame on a cold load).
+// Moving that snippet to an external file — or hashing it into `script-src` — is the fix;
+// do not relax the whole directive to 'unsafe-inline'. A third-party reverse proxy
+// terminates TLS, but the policy belongs to the page and is always sent from here first.
 //
-// The three captcha providers are the one deliberate exception: the settings page
-// can switch a site's human verification on, and the widget only works if this
-// origin may load the provider's script and embed its challenge frame. Only the
-// documented hosts are allowed, and only the directives a widget needs; everything
-// else stays same origin.
+// The captcha providers are one deliberate exception on the script and connect
+// directives: the settings page can switch a site's human verification on, and the
+// widget only works if this origin may load the provider's script. Only the
+// documented hosts are allowed, and only the directives a widget needs.
+//
+// `frame-src` is not an allow-list of third parties; it has to cover every frame this
+// page itself builds:
+//
+//   - `'self'`: the page builder renders the real front end in a same-origin <iframe>
+//     (`components/builder/PreviewFrame.tsx`), and the admin panel embeds other
+//     same-origin admin pages the same way. Leaving `'self'` out makes the browser
+//     replace the preview with its own "this content is blocked" page, which is the
+//     page editor looking broken for every author, on every install.
+//   - `https:` / `http:`: the "website" block has an iframe mode where the author types
+//     any address (https in practice; plain http on a loopback install), and the
+//     captcha providers' challenge frames live on https too.
+//
+// `frame-ancestors 'self'` is what actually stops other sites from framing this one;
+// `frame-src` only says what this page may embed, so it must stay permissive enough
+// for the editor that authors use every day.
+//
+// `font-src` repeats the `data:` allowance for the same reason: the bundler inlines the
+// small KaTeX faces as data URIs, and without it the maths faces in an article silently
+// fall back to the system font.
 const contentSecurityPolicy = "default-src 'self'; " +
 	"img-src 'self' data: https:; " +
+	"font-src 'self' data:; " +
 	"style-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.gstatic.com; " +
 	"script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com https://www.google.com https://www.gstatic.com; " +
-	"frame-src https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com https://recaptcha.google.com; " +
+	"frame-src 'self' https: http:; " +
 	"connect-src 'self' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com; " +
 	"frame-ancestors 'self'; " +
 	"base-uri 'self'; " +

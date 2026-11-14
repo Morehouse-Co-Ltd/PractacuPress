@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { BlockInstance, BuilderDevice, ScreenLayout } from '../../types';
@@ -373,6 +373,25 @@ export function ThemeBuilderPage() {
     setAnimationPreview({ blockId: block.id, animation: block.animation, nonce: Date.now() });
   };
 
+  /**
+   * 预览里的跳转被拦下了。
+   *
+   * 预览只显示正在编排的这一页（见 `PreviewBridge` / `PreviewRouteLock`），所以
+   * 点站内链接、按命令面板里的跳转都不会离开。这里负责告诉站长「没反应不是坏了」，
+   * 以及想换页面该走哪里。连续点击只提示一次，别把提示刷屏。
+   */
+  const blockedNoticeRef = useRef(0);
+  const notifyBlockedNavigation = useCallback(() => {
+    const now = Date.now();
+    if (now - blockedNoticeRef.current < 1800) return;
+    blockedNoticeRef.current = now;
+    toast.push(
+      'info',
+      t('预览里不能跳转到其他页面'),
+      t('想编辑别的页面，请用顶部「编辑页面」切换；想查看真实前台，点「新窗口」。'),
+    );
+  }, [t, toast]);
+
   const updateRichText = (markdown: string) => {
     if (!richBlock) return;
     changeBlocks(updateBlock(history.value, richBlock.id, { props: { ...richBlock.props, body: markdown } }));
@@ -464,6 +483,7 @@ export function ThemeBuilderPage() {
           animationPreview={animationPreview}
           device={device}
           onDeviceChange={changeDevice}
+          onBlockedNavigation={notifyBlockedNavigation}
         />
 
         <div className="builder-floating-top">
