@@ -56,11 +56,9 @@ import { NotFoundPage } from './pages/NotFound';
 import { DashboardPage } from './pages/admin/Dashboard';
 import { ContentListPage } from './pages/admin/ContentList';
 import { EditorPage } from './pages/admin/Editor';
-import { ReviewPage } from './pages/admin/Review';
+import { SecurityPage } from './pages/admin/Security';
 import { MembersPage } from './pages/admin/Members';
 import { PermissionsPage } from './pages/admin/Permissions';
-import { CommentsPage } from './pages/admin/Comments';
-import { ReportsPage } from './pages/admin/Reports';
 import { SettingsPage } from './pages/admin/Settings';
 import { SiteUpdatePage } from './pages/admin/SiteUpdate';
 import { LoginSettingsPage } from './pages/admin/LoginSettings';
@@ -649,9 +647,11 @@ export default function App() {
                 <Route path="content/new/:kind" element={<EditorPage />} />
                 <Route path="content/:kind/:id" element={<EditorPage />} />
                 <Route path="taxonomy" element={<TaxonomyPage />} />
-                <Route path="review" element={<ReviewPage />} />
-                <Route path="comments" element={<CommentsPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+                {/* 审核 / 举报 / 评论审核合并为信息安全中心；旧地址保留重定向。 */}
+                <Route path="security" element={<SecurityPage />} />
+                <Route path="review" element={<Navigate to="/admin/security?tab=review" replace />} />
+                <Route path="comments" element={<Navigate to="/admin/security?tab=comments" replace />} />
+                <Route path="reports" element={<Navigate to="/admin/security?tab=reports" replace />} />
                 <Route path="media" element={<MediaPage />} />
                 <Route path="pages" element={<PagesPage />} />
                 <Route path="pages/new" element={<PageEditorPage />} />

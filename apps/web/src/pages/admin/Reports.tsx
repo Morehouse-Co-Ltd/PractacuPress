@@ -34,7 +34,7 @@ const ACTION_LABEL: Record<ReportAction, string> = {
   ban: '封禁账户',
 };
 
-export function ReportsPage() {
+export function ReportsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
   const { me } = useAuth();
   const backend = useBackend();
@@ -47,7 +47,7 @@ export function ReportsPage() {
   const [busy, setBusy] = useState('');
   const [pending, setPending] = useState<{ report: Report; action: ReportAction } | null>(null);
   const [note, setNote] = useState('');
-  useTitle(t('举报队列'));
+  useTitle(embedded ? t('信息安全') : t('举报队列'));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,17 +119,25 @@ export function ReportsPage() {
 
   return (
     <RoleGate capability="moderate_content" need={t('审核员')}>
-      <div className="admin-page-head">
-        <div>
-          <h1>{t('举报队列')}</h1>
-          <p>{t('读者举报的内容与账户会进入这里。处理动作会写入审计日志并通知相关作者。')}</p>
-        </div>
-        <div className="admin-page-actions">
+      {embedded ? (
+        <div className="row gap-8 mb-16" style={{ justifyContent: 'flex-end' }}>
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => void load()}>
             {t('刷新')}
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="admin-page-head">
+          <div>
+            <h1>{t('举报队列')}</h1>
+            <p>{t('读者举报的内容与账户会进入这里。处理动作会写入审计日志并通知相关作者。')}</p>
+          </div>
+          <div className="admin-page-actions">
+            <Button variant="ghost" size="sm" icon="refresh" onClick={() => void load()}>
+              {t('刷新')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <div className="mt-16">

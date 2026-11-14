@@ -108,6 +108,29 @@ export function AdminShell() {
     });
   };
 
+  // 导航分组可以折叠成下拉栏：分组越多、侧栏越长，站长可以把自己不常看的组收起来。
+  // 状态按分组标题记在本地；收起成图标栏时强制展开（图标栏没有空间放折叠开关）。
+  const [foldedGroups, setFoldedGroups] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('pp.admin.nav.folded');
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const toggleGroup = (label: string) => {
+    setFoldedGroups((prev) => {
+      const next = prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label];
+      try {
+        localStorage.setItem('pp.admin.nav.folded', JSON.stringify(next));
+      } catch {
+        /* 本地存储不可用不影响折叠 */
+      }
+      return next;
+    });
+  };
+
   // 收起后侧栏变成一条窄图标栏：焦点仍留在同一个开关上，键盘用户不会丢失位置。
   // 窄屏收起时侧栏整条隐藏，焦点改落到固定「展开」按钮。
   const expandRef = useRef<HTMLButtonElement>(null);
@@ -282,6 +305,8 @@ export function AdminShell() {
       ] as NavItem[])
     : [];
 
+  // 审核、举报与评论审核合并成一个「信息安全」入口；徽标是三类待处理数量之和。
+  const securityBadge = pending + pendingReports + pendingComments;
   const contentItems: NavItem[] = [
     ...(can('write_content') || can('moderate_content')
       ? ([{ to: '/admin/content', label: t('内容库'), icon: 'file' }] as NavItem[])
@@ -290,21 +315,14 @@ export function AdminShell() {
     ...(can('write_content') || can('moderate_content')
       ? ([{ to: '/admin/taxonomy', label: t('分类与标签'), icon: 'tag' }] as NavItem[])
       : []),
-    // 审核队列只在社区站点出现：个人博客的唯一作者无法审核自己的稿件，
-    // 切换到个人博客后这条入口整块消失（直接访问 /admin/review 会被带回内容库）。
-    ...(can('moderate_content') && !personal
-      ? ([{ to: '/admin/review', label: t('审核队列'), icon: 'shield', badge: pending }] as NavItem[])
-      : []),
-    ...(can('moderate_content')
-      ? ([{ to: '/admin/reports', label: t('举报队列'), icon: 'alert', badge: pendingReports }] as NavItem[])
-      : []),
-    ...(can('moderate_comment')
+    // 个人博客没有别人投稿的审核流程；只要还能管理评论，入口仍然保留。
+    ...(can('moderate_content') || can('moderate_comment')
       ? ([
           {
-            to: '/admin/comments',
-            label: t('评论与审核'),
-            icon: 'message',
-            badge: pendingComments,
+            to: '/admin/security',
+            label: t('信息安全'),
+            icon: 'shield',
+            badge: securityBadge,
           },
         ] as NavItem[])
       : []),
@@ -366,9 +384,10 @@ export function AdminShell() {
     { match: /^\/admin\/content\/[^/]+/, title: t('编辑内容') },
     { match: /^\/admin\/content$/, title: t('内容库') },
     { match: /^\/admin\/taxonomy/, title: t('分类与标签') },
-    { match: /^\/admin\/review/, title: t('审核队列') },
-    { match: /^\/admin\/comments/, title: t('评论与审核') },
-    { match: /^\/admin\/reports/, title: t('举报队列') },
+    { match: /^\/admin\/security/, title: t('信息安全') },
+    { match: /^\/admin\/review/, title: t('信息安全') },
+    { match: /^\/admin\/comments/, title: t('信息安全') },
+    { match: /^\/admin\/reports/, title: t('信息安全') },
     { match: /^\/admin\/pages\/new/, title: t('新建页面') },
     { match: /^\/admin\/pages\/[^/]+/, title: t('编辑页面') },
     { match: /^\/admin\/pages/, title: t('页面') },
@@ -469,29 +488,47 @@ export function AdminShell() {
         </Link>
 
         <nav className="admin-nav" aria-label={t('后台导航')}>
-          {groups.map((group) => (
-            <div key={group.label} className="admin-nav-group">
-              <p className="admin-nav-label">{group.label}</p>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  title={collapsed ? item.label : undefined}
-                  aria-label={collapsed ? item.label : undefined}
-                  className={({ isActive }) =>
-                    `admin-nav-link${
-                      isActive || (item.to === '/admin/settings' && inSiteSettings) ? ' is-active' : ''
-                    }`
-                  }
+          {groups.map((group) => {
+            const folded = !collapsed && foldedGroups.includes(group.label);
+            return (
+              <div key={group.label} className="admin-nav-group">
+                <button
+                  type="button"
+                  className={`admin-nav-label${folded ? ' is-folded' : ''}`}
+                  onClick={() => toggleGroup(group.label)}
+                  disabled={collapsed}
+                  aria-expanded={folded ? false : true}
+                  aria-controls={`admin-nav-group-${group.label}`}
+                  title={collapsed ? undefined : folded ? t('展开「{group}」', { group: group.label }) : t('收起「{group}」', { group: group.label })}
                 >
-                  <Icon name={item.icon} size={collapsed ? 18 : 15} />
-                  <span>{item.label}</span>
-                  {item.badge ? <span className="admin-nav-badge">{item.badge}</span> : null}
-                </NavLink>
-              ))}
-            </div>
-          ))}
+                  <span>{group.label}</span>
+                  <Icon name="chevron-down" size={11} />
+                </button>
+                <div id={`admin-nav-group-${group.label}`} className="admin-nav-items">
+                  {folded
+                    ? null
+                    : group.items.map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.end}
+                          title={collapsed ? item.label : undefined}
+                          aria-label={collapsed ? item.label : undefined}
+                          className={({ isActive }) =>
+                            `admin-nav-link${
+                              isActive || (item.to === '/admin/settings' && inSiteSettings) ? ' is-active' : ''
+                            }`
+                          }
+                        >
+                          <Icon name={item.icon} size={collapsed ? 18 : 15} />
+                          <span>{item.label}</span>
+                          {item.badge ? <span className="admin-nav-badge">{item.badge}</span> : null}
+                        </NavLink>
+                      ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="admin-side-foot">

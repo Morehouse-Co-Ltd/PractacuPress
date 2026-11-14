@@ -1093,6 +1093,55 @@ export function RichTextEditor({
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
+
+    // 写作快捷键：与常见编辑器一致；Ctrl/Cmd+S 与 Ctrl/Cmd+Enter 交给外层页面处理。
+    if (!event.nativeEvent.isComposing && (event.metaKey || event.ctrlKey) && !event.altKey) {
+      const key = event.key.toLowerCase();
+      if (!event.shiftKey) {
+        if (key === 'b') {
+          event.preventDefault();
+          commands.bold();
+          return;
+        }
+        if (key === 'i') {
+          event.preventDefault();
+          commands.italic();
+          return;
+        }
+        if (key === 'k') {
+          event.preventDefault();
+          toolbarOpen.current?.('link');
+          return;
+        }
+      }
+      if (event.shiftKey) {
+        if (key === '7') {
+          event.preventDefault();
+          commands.list('ol');
+          return;
+        }
+        if (key === '8') {
+          event.preventDefault();
+          commands.list('ul');
+          return;
+        }
+        if (key === '9') {
+          event.preventDefault();
+          commands.quote();
+          return;
+        }
+      }
+    }
+    if (!event.nativeEvent.isComposing && (event.metaKey || event.ctrlKey) && event.altKey) {
+      // Ctrl/Cmd+Alt+1/2/3 切换标题级别，与常见 Markdown 编辑器一致（正文标题从 h2 起）。
+      if (event.key === '1' || event.key === '2' || event.key === '3') {
+        event.preventDefault();
+        const level = (Number(event.key) + 1) as 2 | 3 | 4;
+        commands.heading(level);
+        return;
+      }
+    }
+
     const card = target.closest?.('a.pp-video, a.pp-embed, a.pp-linkcard');
     if (event.key === 'Enter' && !event.shiftKey && card) {
       // 在卡片里回车不应该把卡片劈成两半：跳出去另起一段。

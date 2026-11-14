@@ -340,16 +340,17 @@ try {
     [...document.querySelectorAll('.admin-nav-link')].map((node) => (node.textContent ?? '').trim()),
   );
   check(
-    '个人博客侧栏没有审核队列',
-    !personalNav.some((label) => label.startsWith('审核队列')),
+    '个人博客侧栏没有审核队列（合并进信息安全）',
+    !personalNav.some((label) => label.startsWith('审核队列')) &&
+      !personalNav.some((label) => label.startsWith('举报队列')),
     personalNav.join('|'),
   );
   await page.goto(`${BASE}/admin/review`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.admin-shell', { timeout: 30_000 });
   await page.waitForTimeout(700);
   check(
-    '个人博客访问 /admin/review 回到内容库',
-    new URL(page.url()).pathname === '/admin/content',
+    '个人博客访问 /admin/review 落到信息安全（审核 tab 不出现）',
+    new URL(page.url()).pathname === '/admin/security',
     page.url(),
   );
 

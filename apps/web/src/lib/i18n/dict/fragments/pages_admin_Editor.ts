@@ -209,6 +209,31 @@ const fragment: Dictionary = {
   '密码访问需要设置一个访问密码。': 'Password access needs an access password.',
   '访问密码至少需要 4 个字符。': 'The access password must be at least 4 characters.',
   '预约发布时间必须晚于现在。': 'The scheduled publication must be in the future.',
+
+  // ---- 富文本 / HTML / Markdown 与写作快捷键 ----
+  正文编辑格式: 'Body editing format',
+  富文本: 'Rich text',
+  快捷键: 'Shortcuts',
+  查看写作快捷键: 'View writing shortcuts',
+  写作快捷键: 'Writing shortcuts',
+  '在正文里直接使用；Mac 上把 Ctrl 换成 ⌘。输入法组合期间不会触发。':
+    'Use these directly in the body; on a Mac use ⌘ instead of Ctrl. They never fire while an IME is composing.',
+  知道了: 'Got it',
+  发布或提交审核: 'Publish or submit for review',
+  插入链接: 'Insert link',
+  '标题二 / 三 / 四级（富文本）': 'Heading 2 / 3 / 4 (rich text)',
+  '有序列表（富文本）': 'Numbered list (rich text)',
+  '无序列表（富文本）': 'Bulleted list (rich text)',
+  '引用（富文本）': 'Quote (rich text)',
+  '源码缩进两格（HTML / Markdown）': 'Indent two spaces in source (HTML / Markdown)',
+  '打开插入指令（富文本）': 'Open the insert menu (rich text)',
+  左侧编辑源码: 'Edit the source on the left',
+  实时预览: 'Live preview',
+  '与服务端同一套清洗规则': 'Same sanitizer as the server',
+  '在这里写 HTML；右侧会实时预览。': 'Write HTML here; the right side previews it live.',
+  '在这里写 Markdown；右侧会实时预览。': 'Write Markdown here; the right side previews it live.',
+  'HTML 与 Markdown 会互相转换：在这里改完切到另一种格式，内容会同步过去；保存时统一写成 Markdown。':
+    'HTML and Markdown convert both ways: edit here, switch formats, and the content follows. Saving always writes Markdown.',
 };
 
 export default fragment;

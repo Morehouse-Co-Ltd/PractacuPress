@@ -434,10 +434,9 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | `/admin/ext/system` | 性能面板（内置扩展 `pp.performance` 注册的页面）：本软件与其他软件的 CPU / 内存 / 磁盘占用**圆环**、进程与数据目录拆分；4 秒轮询，服务端 `PP_SYSTEM_METRICS=off` 可整体关闭。旧路径 `/admin/system` 会重定向 | 平台管理员 |
 | `/admin/ext/<path>` | 扩展注册的后台页面（导入扩展或内置扩展通过 `ctx.admin.registerPage` 注册；导航按 `overview` / `extensions` 分组） | 由扩展决定 |
 | `/admin/content` | 内容库、状态筛选、搜索、流程动作 | 写稿 / 审核 |
-| `/admin/content/new/:kind` | 新建文章 / 帖子，Markdown / HTML / 纯文本 | 写稿 |
+| `/admin/content/new/:kind` | 新建文章 / 帖子：富文本 / HTML / Markdown 三种录入方式（HTML / Markdown 带右侧实时预览与互转），支持写作快捷键 | 写稿 |
 | `/admin/content/:kind/:id` | 编辑、预览、提交 / 发布 / 退回 / 归档 / 恢复 | 写稿 / 审核 |
-| `/admin/review` | 审核队列与安全检查重试 | 审核员 |
-| `/admin/comments` | 评论管理：待审、隐藏、删除与评论策略 | 审核员 |
+| `/admin/security` | 信息安全：审核队列与安全检查重试、举报认领 / 忽略 / 下架 / 封禁、评论管理与评论策略（旧地址 `/admin/review`、`/admin/reports`、`/admin/comments` 会重定向到这里） | 审核员 |
 | `/admin/media` | 媒体列表（服务端，游标分页）、两步上传、进度、按检查状态筛选与引用片段 | 写稿 |
 | `/admin/pages`、`/admin/pages/new`、`/admin/pages/:id` | 自定义页面列表与页面编排内容 | 管理员 |
 | `/admin/appearance` | 首页首屏、品牌副标题、公告、自定义 CSS（按主题声明的分区裁剪）、导入导出 | 管理员 |
@@ -451,7 +450,6 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | `/admin/access` | 访问限制 + 访问与域名：主域名、别名白名单、SSL 证书（Let's Encrypt / 手动）、CORS、可信代理，并生成 Nginx 与 `.env` 片段；无域名时生产环境只允许公网 IP 直连 | 管理员 |
 | `/admin/storage` | 存储策略：全局本地目录 / S3 兼容对象存储，并按文章媒体、站点图片、用户头像、用户数据/附件分别覆盖，生成 `STORAGE_*` 与 `STORAGE_<SCOPE>_*` 服务端 `.env` 片段；文章正文只读说明存数据库 | 管理员 |
 | `/admin/activity` | 服务端审计日志（`GET /sites/{id}/audit-logs`）：时间、动作、目标、操作人筛选与 CSV 导出 | 管理员 |
-| `/admin/reports` | 举报队列：认领、忽略、下架内容、封禁账户（`/reports`） | 审核员 |
 | `/admin/platform`、`/admin/platform/new`、`/admin/platform/:siteId` | 平台站点：列出部署内站点、新建站点、验证域名并取得交接令牌进入目标站点 | 平台管理员 |
 | `/admin/docs` | 接口清单、契约规模（83 路径 / 100 操作）、已实现 / 仅演示 / 已知限制 | 可进入后台 |
 

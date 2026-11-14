@@ -23,7 +23,7 @@ import { RoleGate } from '../../components/Guards';
 import { usePermissions } from '../../lib/usePermissions';
 import { useToast } from '../../lib/toast';
 
-export function ReviewPage() {
+export function ReviewPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
   const { personal } = usePermissions();
   // 个人博客只有一个作者：没有“别人提交、站长审核”的流程，审核队列整块不存在。
@@ -31,12 +31,12 @@ export function ReviewPage() {
   if (personal) return <Navigate to="/admin/content" replace />;
   return (
     <RoleGate capability="moderate_content" need={t('审核员')}>
-      <ReviewQueue />
+      <ReviewQueue embedded={embedded} />
     </RoleGate>
   );
 }
 
-function ReviewQueue() {
+function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   const { me, site } = useAuth();
   const backend = useBackend();
@@ -62,7 +62,7 @@ function ReviewQueue() {
     [data.data],
   );
 
-  useTitle(t('审核队列'));
+  useTitle(embedded ? t('信息安全') : t('审核队列'));
 
   const act = async (item: Content, action: ContentAction, text?: string) => {
     setBusyId(item.id);
@@ -97,23 +97,33 @@ function ReviewQueue() {
 
   return (
     <>
-      <div className="admin-page-head">
-        <div>
-          <h1>{t('审核队列')}</h1>
-          <p>
-            {site ? `${PUBLISH_LABEL[site.publish_mode]} · ` : ''}
-            {t('{pending} 篇待审，{security} 篇等待安全检查。作者不能审核自己的稿件。', {
-              pending: pending.length,
-              security: security.length,
-            })}
-          </p>
+      {embedded ? null : (
+        <div className="admin-page-head">
+          <div>
+            <h1>{t('审核队列')}</h1>
+            <p>
+              {site ? `${PUBLISH_LABEL[site.publish_mode]} · ` : ''}
+              {t('{pending} 篇待审，{security} 篇等待安全检查。作者不能审核自己的稿件。', {
+                pending: pending.length,
+                security: security.length,
+              })}
+            </p>
+          </div>
+          <div className="admin-page-actions">
+            <Button variant="ghost" size="sm" icon="refresh" onClick={data.reload}>
+              {t('刷新队列')}
+            </Button>
+          </div>
         </div>
-        <div className="admin-page-actions">
+      )}
+
+      {embedded ? (
+        <div className="row gap-8 mb-16" style={{ justifyContent: 'flex-end' }}>
           <Button variant="ghost" size="sm" icon="refresh" onClick={data.reload}>
             {t('刷新队列')}
           </Button>
         </div>
-      </div>
+      ) : null}
 
       {data.error ? (
         <Callout tone="danger" icon="alert" title={t('无法读取队列')}>

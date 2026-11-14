@@ -65,6 +65,8 @@ const fragment: Dictionary = {
   后台导航: 'Admin navigation',
   站点设置导航: 'Site settings navigation',
   '演示数据（浏览器本地）': 'Demo data (browser local)',
+  '展开「{group}」': 'Expand “{group}”',
+  '收起「{group}」': 'Collapse “{group}”',
 };
 
 export default fragment;

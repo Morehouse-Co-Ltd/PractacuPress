@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type {
   Content,
@@ -51,6 +58,8 @@ import { RoleGate } from '../../components/Guards';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import { ArticleCoverPanel } from '../../components/ArticleCoverPanel';
 import { normalizeEditorSource } from '../../lib/editorSource';
+import { htmlToMarkdown } from '../../lib/htmlToMarkdown';
+import { htmlToText, renderMarkdown, sanitizeHtml } from '../../lib/markdown';
 import { toExportMarkdown } from '../../lib/markdownExport';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { useToast } from '../../lib/toast';
@@ -73,6 +82,15 @@ interface FormState {
 }
 
 type SaveStatus = 'draft' | 'pending_review' | 'published';
+
+/**
+ * 写作界面的三种录入方式。
+ *
+ * - rich：所见即所得（当前默认），内部把 DOM 序列化成 Markdown 存盘；
+ * - html / markdown：源码编辑，右侧实时预览；两者在切换时互转，保存时仍统一成
+ *   Markdown（HTML 源码会先转成 Markdown 再提交），因此公开页始终走服务端清洗。
+ */
+type EditorMode = 'rich' | 'html' | 'markdown';
 
 /** 服务端 ISO 时间转成 datetime-local 需要的本地值。 */
 function toDateTimeLocal(iso?: string): string {
@@ -143,6 +161,10 @@ function EditorWorkspace() {
   const [error, setError] = useState('');
   // 编辑区内容只在「切换稿件 / 导入 Markdown」时重灌；输入过程中不重置 DOM，否则光标会跳。
   const [surface, setSurface] = useState<{ html: string; revision: string }>({ html: '', revision: '0' });
+  const [editorMode, setEditorMode] = useState<EditorMode>('rich');
+  /** HTML 模式下的源码草稿；Markdown 始终是 form.source_body 这份 canonical 文本。 */
+  const [htmlDraft, setHtmlDraft] = useState('');
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [wordCount, setWordCount] = useState(0);
   const [tagInput, setTagInput] = useState('');
   const revisionRef = useRef(0);
@@ -201,6 +223,8 @@ function EditorWorkspace() {
       setInitial(next);
       setLoadedId(current.id);
       mountSurface(normalized.html);
+      setEditorMode('rich');
+      setHtmlDraft('');
     },
     [mountSurface],
   );
@@ -211,6 +235,8 @@ function EditorWorkspace() {
       setInitial(EMPTY);
       setLoadedId('new');
       mountSurface('');
+      setEditorMode('rich');
+      setHtmlDraft('');
       return;
     }
     if (!item || item.id === loadedId) return;
@@ -277,6 +303,8 @@ function EditorWorkspace() {
     setRestoredSavedAt(draft.saved_at);
     // 正文要从草稿的 Markdown 重新渲染，不能只替换表单字段。
     mountSurface(normalizeEditorSource('markdown', draft.payload.source_body).html);
+    setEditorMode('rich');
+    setHtmlDraft('');
     setPendingDraft(null);
     setDraftDeferred(false);
     toast.push('ok', t('本地草稿已恢复'), t('还没有保存到服务器，记得保存草稿。'));
@@ -319,9 +347,120 @@ function EditorWorkspace() {
 
   const update = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
+  /** Markdown 的实时渲染结果；HTML 模式直接从源码清洗，避免先把 HTML 转成 Markdown 再渲染。 */
+  const markdownPreview = useMemo(
+    () => sanitizeHtml(renderMarkdown(form.source_body)),
+    [form.source_body],
+  );
+  const livePreview =
+    editorMode === 'html' ? sanitizeHtml(htmlDraft) : markdownPreview;
+
+  /**
+   * 切换录入方式。
+   *
+   * 三种方式共用同一份 canonical Markdown（`form.source_body`）：
+   * - 进入 HTML 时把 Markdown 渲染成 HTML 放进源码框；
+   * - HTML 每次输入都由 `htmlToMarkdown` 同步回 Markdown，所以切回 Markdown 时不丢内容；
+   * - 回到富文本时重新挂载渲染结果，不会覆盖已保存的 Markdown。
+   */
+  const switchEditorMode = (next: EditorMode) => {
+    if (!editable || next === editorMode) return;
+    if (next === 'html' || next === 'rich') {
+      // 从 Markdown 派生 HTML：切换 / 重新挂载都走同一条渲染链路。
+      const html = renderMarkdown(form.source_body);
+      if (next === 'html') setHtmlDraft(html);
+      else mountSurface(html);
+    }
+    setEditorMode(next);
+  };
+
+  const changeHtmlSource = (value: string) => {
+    setHtmlDraft(value);
+    // 源码里的 HTML 立即折算成 Markdown 存盘：预览与公开页都使用同一份 canonical 文本。
+    update({
+      source_format: 'markdown',
+      source_body: htmlToMarkdown(sanitizeHtml(value)),
+    });
+  };
+
+  const changeMarkdownSource = (value: string) => {
+    update({ source_format: 'markdown', source_body: value });
+  };
+
+  /** 源码框里的格式化快捷键：包住选区（没有选区时插入占位文字）。 */
+  const wrapSourceSelection = (
+    textarea: HTMLTextAreaElement,
+    before: string,
+    after: string,
+    placeholder: string,
+  ) => {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+    const selected = value.slice(start, end) || placeholder;
+    const next = `${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`;
+    if (editorMode === 'html') changeHtmlSource(next);
+    else changeMarkdownSource(next);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(
+        start + before.length,
+        start + before.length + selected.length,
+      );
+    });
+  };
+
+  const insertSourceText = (textarea: HTMLTextAreaElement, text: string) => {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+    const next = `${value.slice(0, start)}${text}${value.slice(end)}`;
+    if (editorMode === 'html') changeHtmlSource(next);
+    else changeMarkdownSource(next);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + text.length, start + text.length);
+    });
+  };
+
+  const handleSourceKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = event.currentTarget;
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      insertSourceText(textarea, '  ');
+      return;
+    }
+    const mod = event.metaKey || event.ctrlKey;
+    if (!mod || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key === 'b' && !event.shiftKey) {
+      event.preventDefault();
+      if (editorMode === 'html') wrapSourceSelection(textarea, '<strong>', '</strong>', '粗体文字');
+      else wrapSourceSelection(textarea, '**', '**', '粗体文字');
+      return;
+    }
+    if (key === 'i' && !event.shiftKey) {
+      event.preventDefault();
+      if (editorMode === 'html') wrapSourceSelection(textarea, '<em>', '</em>', '斜体文字');
+      else wrapSourceSelection(textarea, '*', '*', '斜体文字');
+      return;
+    }
+    if (key === 'k' && !event.shiftKey) {
+      event.preventDefault();
+      if (editorMode === 'html') {
+        wrapSourceSelection(textarea, '<a href="https://">', '</a>', '链接文字');
+      } else {
+        wrapSourceSelection(textarea, '[', '](https://)', '链接文字');
+      }
+    }
+  };
+
   const reviewer = canReview(me?.role);
   const canPublishDirectly = reviewer || site?.publish_mode === 'open';
   const category = taxonomy.categories.find((term) => term.id === form.category_id);
+  // 源码模式显示源码本身的长度；字数按渲染后的正文统计，和富文本模式保持同一口径。
+  const sourceLength = editorMode === 'html' ? htmlDraft.length : form.source_body.length;
+  const effectiveWordCount = editorMode === 'rich' ? wordCount : htmlToText(livePreview).length;
 
   const toggleTag = (name: string) => {
     update({
@@ -374,6 +513,8 @@ function EditorWorkspace() {
       const body = (await file.text()).slice(0, 200_000);
       update({ source_format: 'markdown', source_body: body });
       mountSurface(normalizeEditorSource('markdown', body).html);
+      setEditorMode('rich');
+      setHtmlDraft('');
       toast.push('ok', t('已导入 Markdown'), t('内容还没有保存，记得保存草稿。'));
     } catch {
       toast.push('error', t('导入失败'), t('无法读取这个 Markdown 文件。'));
@@ -502,6 +643,35 @@ function EditorWorkspace() {
       setSaveBusy('');
     }
   };
+
+  /**
+   * 写作快捷键：Ctrl/Cmd+S 保存草稿，Ctrl/Cmd+Enter 发布或提交审核。
+   *
+   * 监听 window 而不是编辑区：作者在标题、摘要里也可能想直接保存；输入法组合期间
+   * 不处理（event.isComposing），避免中文输入时误触。
+   */
+  useEffect(() => {
+    if (!editable) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing) return;
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 's') {
+        event.preventDefault();
+        void save('draft');
+        return;
+      }
+      if (key === 'enter') {
+        event.preventDefault();
+        void save(canPublishDirectly ? 'published' : 'pending_review');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // save 每次都捕获最新表单；依赖里保留它保证快捷键不会写到旧状态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, canPublishDirectly, save]);
 
   const runAction = async (action: ContentAction, reason?: string) => {
     if (!item) return;
@@ -741,9 +911,9 @@ function EditorWorkspace() {
 
             <div className="editor-controls">
               <div className="editor-mode">
-                <span>{t('{count} 字符', { count: form.source_body.length.toLocaleString() })}</span>
+                <span>{t('{count} 字符', { count: sourceLength.toLocaleString() })}</span>
                 {form.source_body ? (
-                  <span>{t('· 约 {count} 字', { count: wordCount.toLocaleString() })}</span>
+                  <span>{t('· 约 {count} 字', { count: effectiveWordCount.toLocaleString() })}</span>
                 ) : null}
                 {autosaveLabel ? (
                   <span className="tiny faint" role="status" aria-live="polite">
@@ -751,20 +921,104 @@ function EditorWorkspace() {
                   </span>
                 ) : null}
               </div>
-              <span className="tiny faint">
-                {t('所见即所得 · 直接输入 Markdown · 保存时使用 Markdown')}
-              </span>
+              <div className="editor-controls-right">
+                <div className="editor-mode-switch" role="group" aria-label={t('正文编辑格式')}>
+                  {(
+                    [
+                      { key: 'rich', label: t('富文本') },
+                      { key: 'html', label: 'HTML' },
+                      { key: 'markdown', label: 'Markdown' },
+                    ] as const
+                  ).map((entry) => (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      className={`pill${editorMode === entry.key ? ' is-on' : ''}`}
+                      aria-pressed={editorMode === entry.key}
+                      disabled={!editable}
+                      onClick={() => switchEditorMode(entry.key)}
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="editor-shortcut-hint"
+                  onClick={() => setShortcutsOpen(true)}
+                  title={t('查看写作快捷键')}
+                >
+                  <Icon name="command" size={12} /> {t('快捷键')}
+                </button>
+              </div>
             </div>
 
-            <RichTextEditor
-              initialHtml={surface.html}
-              revision={surface.revision}
-              disabled={!editable}
-              onChange={(markdown, stats) => {
-                update({ source_format: 'markdown', source_body: markdown });
-                setWordCount(stats.text);
-              }}
-            />
+            {editorMode === 'rich' ? (
+              <>
+                <RichTextEditor
+                  initialHtml={surface.html}
+                  revision={surface.revision}
+                  disabled={!editable}
+                  onChange={(markdown, stats) => {
+                    update({ source_format: 'markdown', source_body: markdown });
+                    setWordCount(stats.text);
+                  }}
+                />
+                <p className="field-hint">
+                  {t('正文以所见即所得方式编辑：在段首输入')} <code># </code>
+                  <code>- </code>
+                  <code>1. </code>
+                  <code>&gt; </code>
+                  {t('或行内')} <code>**{t('粗体')}**</code>
+                  {t('、')}
+                  <code>[{t('文字')}](https://…)</code> {t('会即时转成排版；空段落输入')} <code>/</code>
+                  {t('可打开插入指令。保存与导出使用 Markdown，公开页面仍以服务端清洗后的 rendered_html 为准。')}
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="editor-source-split">
+                  <div className="editor-source-pane">
+                    <div className="editor-source-head">
+                      <strong>{editorMode === 'html' ? 'HTML' : 'Markdown'}</strong>
+                      <span className="tiny faint">{t('左侧编辑源码')}</span>
+                    </div>
+                    <Textarea
+                      className="editor-source-input"
+                      value={editorMode === 'html' ? htmlDraft : form.source_body}
+                      onChange={(event) =>
+                        editorMode === 'html'
+                          ? changeHtmlSource(event.target.value)
+                          : changeMarkdownSource(event.target.value)
+                      }
+                      onKeyDown={handleSourceKeyDown}
+                      disabled={!editable}
+                      spellCheck={false}
+                      aria-label={editorMode === 'html' ? 'HTML' : 'Markdown'}
+                      placeholder={
+                        editorMode === 'html'
+                          ? t('在这里写 HTML；右侧会实时预览。')
+                          : t('在这里写 Markdown；右侧会实时预览。')
+                      }
+                    />
+                  </div>
+                  <div className="editor-preview-pane">
+                    <div className="editor-source-head">
+                      <strong>{t('实时预览')}</strong>
+                      <span className="tiny faint">{t('与服务端同一套清洗规则')}</span>
+                    </div>
+                    <div
+                      className="article-body editor-preview-body"
+                      // HTML / Markdown 已经过 sanitizeHtml：脚本、事件属性与危险 URL 都会被剥掉。
+                      dangerouslySetInnerHTML={{ __html: livePreview }}
+                    />
+                  </div>
+                </div>
+                <p className="field-hint">
+                  {t('HTML 与 Markdown 会互相转换：在这里改完切到另一种格式，内容会同步过去；保存时统一写成 Markdown。')}
+                </p>
+              </>
+            )}
 
             {pendingDraft && draftDeferred ? (
               <Callout tone="warn" icon="alert" title={t('有未处理的本地草稿')}>
@@ -785,17 +1039,6 @@ function EditorWorkspace() {
                 </div>
               </Callout>
             ) : null}
-
-            <p className="field-hint">
-              {t('正文以所见即所得方式编辑：在段首输入')} <code># </code>
-              <code>- </code>
-              <code>1. </code>
-              <code>&gt; </code>
-              {t('或行内')} <code>**{t('粗体')}**</code>
-              {t('、')}
-              <code>[{t('文字')}](https://…)</code> {t('会即时转成排版；空段落输入')} <code>/</code>
-              {t('可打开插入指令。保存与导出使用 Markdown，公开页面仍以服务端清洗后的 rendered_html 为准。')}
-            </p>
 
             {error ? (
               <Callout tone="danger" icon="alert">
@@ -1199,6 +1442,43 @@ function EditorWorkspace() {
             )}
           </aside>
         </div>
+
+      <Modal
+        open={shortcutsOpen}
+        title={t('写作快捷键')}
+        description={t('在正文里直接使用；Mac 上把 Ctrl 换成 ⌘。输入法组合期间不会触发。')}
+        onClose={() => setShortcutsOpen(false)}
+        footer={
+          <Button onClick={() => setShortcutsOpen(false)}>{t('知道了')}</Button>
+        }
+      >
+        <div className="shortcut-list">
+          {(
+            [
+              { keys: ['Ctrl', 'S'], label: t('保存草稿') },
+              { keys: ['Ctrl', 'Enter'], label: t('发布或提交审核') },
+              { keys: ['Ctrl', 'B'], label: t('粗体') },
+              { keys: ['Ctrl', 'I'], label: t('斜体') },
+              { keys: ['Ctrl', 'K'], label: t('插入链接') },
+              { keys: ['Ctrl', 'Alt', '1–3'], label: t('标题二 / 三 / 四级（富文本）') },
+              { keys: ['Ctrl', 'Shift', '7'], label: t('有序列表（富文本）') },
+              { keys: ['Ctrl', 'Shift', '8'], label: t('无序列表（富文本）') },
+              { keys: ['Ctrl', 'Shift', '9'], label: t('引用（富文本）') },
+              { keys: ['Tab'], label: t('源码缩进两格（HTML / Markdown）') },
+              { keys: ['/'], label: t('打开插入指令（富文本）') },
+            ] as { keys: string[]; label: string }[]
+          ).map((entry) => (
+            <div className="shortcut-row" key={entry.label}>
+              <span className="shortcut-label">{entry.label}</span>
+              <span className="shortcut-keys">
+                {entry.keys.map((key) => (
+                  <kbd key={key}>{key}</kbd>
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       <Modal
         open={rejectOpen}

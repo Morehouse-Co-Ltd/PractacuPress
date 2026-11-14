@@ -44,7 +44,7 @@ const STATUS_TONE: Record<CommentStatus, 'ok' | 'warn' | 'muted' | 'danger'> = {
   deleted: 'danger',
 };
 
-export function CommentsPage() {
+export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
   const { me, site, applySite } = useAuth();
   const backend = useBackend();
@@ -69,7 +69,7 @@ export function CommentsPage() {
   const [deleting, setDeleting] = useState<Comment | null>(null);
   const [busyId, setBusyId] = useState('');
   const seq = useRef(0);
-  useTitle(t('评论与审核'));
+  useTitle(embedded ? t('信息安全') : t('评论与审核'));
 
   // 评论状态的中文原文作键，取值时按当前语言翻译。
   const statusLabel: Record<CommentStatus, string> = {
@@ -369,17 +369,25 @@ export function CommentsPage() {
 
   return (
     <RoleGate capability="moderate_comment" need={t('审核员')}>
-      <div className="admin-page-head">
-        <div>
-          <h1>{t('评论与审核')}</h1>
-          <p>{t('处理待审评论、隐藏不合适的发言，并决定本站的评论策略。')}</p>
-        </div>
-        <div className="admin-page-actions">
+      {embedded ? (
+        <div className="row gap-8 mb-16" style={{ justifyContent: 'flex-end' }}>
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => void load('')}>
             {t('刷新')}
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="admin-page-head">
+          <div>
+            <h1>{t('评论与审核')}</h1>
+            <p>{t('处理待审评论、隐藏不合适的发言，并决定本站的评论策略。')}</p>
+          </div>
+          <div className="admin-page-actions">
+            <Button variant="ghost" size="sm" icon="refresh" onClick={() => void load('')}>
+              {t('刷新')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="settings-grid">
         <section className="panel">
