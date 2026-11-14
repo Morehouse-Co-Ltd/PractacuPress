@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Asset, ScanStatus, StorageScope } from '../../types';
 import { useBackend, isDemo } from '../../lib/backend';
+import { useAuth } from '../../lib/session';
 import { useMediaSrc } from '../../lib/assetUrl';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { formatBytes, formatDateTime } from '../../lib/format';
@@ -50,6 +51,7 @@ function MediaThumb({ asset, src }: { asset: Asset; src: string }) {
 export function MediaPage() {
   const t = useT();
   const backend = useBackend();
+  const { site } = useAuth();
   const demo = isDemo(backend);
   const toast = useToast();
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -111,7 +113,21 @@ export function MediaPage() {
 
   const visible = scan === 'all' ? assets : assets.filter((asset) => asset.scan_status === scan);
 
-  const limit = demo ? 2 * 1024 * 1024 : 25 * 1024 * 1024;
+  // 单文件上限是接口层的硬限制，与站点额度是两件事：额度是站点累计可用的总量
+  // （在「站点设置 → 媒体额度」里配置，null 表示跟随部署默认，0 表示无限）。
+  const fileLimit = demo ? 2 * 1024 * 1024 : 25 * 1024 * 1024;
+  const siteQuota = (() => {
+    const raw = site?.media_quota_bytes;
+    if (raw === null || raw === undefined) return null;
+    const value = typeof raw === 'string' ? Number(raw) : raw;
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  })();
+  const quotaLabel =
+    siteQuota === null
+      ? t('跟随部署默认')
+      : siteQuota === 0
+        ? t('无限额度')
+        : formatBytes(siteQuota);
 
   const srcOf = (asset: Asset): string => {
     if (asset.url) return asset.url;
@@ -130,8 +146,8 @@ export function MediaPage() {
       );
       return;
     }
-    if (file.size > limit) {
-      setError(t('文件超过上限（{limit}）。', { limit: formatBytes(limit) }));
+    if (file.size > fileLimit) {
+      setError(t('文件超过上限（{limit}）。', { limit: formatBytes(fileLimit) }));
       return;
     }
     setBusy(true);
@@ -186,9 +202,10 @@ export function MediaPage() {
       >
         <h3>{t('把文件拖到这里')}</h3>
         <p>
-          {t('允许 {types}，单个文件上限 {limit}{demo}。', {
+          {t('允许 {types}，站点媒体额度 {quota}，单个文件上限 {limit}{demo}。', {
             types: ALLOWED.map(mimeLabel).join(' · '),
-            limit: formatBytes(limit),
+            quota: quotaLabel,
+            limit: formatBytes(fileLimit),
             demo: demo ? t('（演示模式）') : '',
           })}
         </p>
@@ -350,7 +367,7 @@ export function MediaPage() {
         </p>
       )}
 
-      <div className="dash-grid mt-32">
+      <div className="dash-grid media-info-grid mt-32">
         <section className="panel">
           <div className="panel-head">
             <div>
@@ -421,8 +438,12 @@ export function MediaPage() {
                 </span>
               </div>
               <div className="mini-row">
+                <span className="mini-label">{t('站点媒体额度')}</span>
+                <span className="mini-value">{quotaLabel}</span>
+              </div>
+              <div className="mini-row">
                 <span className="mini-label">{t('单文件上限')}</span>
-                <span className="mini-value">25 MiB</span>
+                <span className="mini-value">{formatBytes(fileLimit)}</span>
               </div>
               <div className="mini-row">
                 <span className="mini-label">{t('安全检查')}</span>

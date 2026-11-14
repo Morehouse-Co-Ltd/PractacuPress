@@ -116,6 +116,16 @@ describe('theme token normalization', () => {
   });
 });
 
+describe('article column width', () => {
+  it('defaults wider and clamps older 720px customizations up to the new minimum', () => {
+    expect(DEFAULT_THEME.content_width).toBe(880);
+    // 旧配置里的 720 落在新范围之外，归一化后会被抬到 840（预期行为）。
+    expect(normalizeThemeSettings({ ...DEFAULT_THEME, content_width: 720 }).content_width).toBe(840);
+    expect(normalizeThemeSettings({ ...DEFAULT_THEME, content_width: 960 }).content_width).toBe(960);
+    expect(normalizeThemeSettings({ ...DEFAULT_THEME, content_width: 2000 }).content_width).toBe(1120);
+  });
+});
+
 describe('themeCss keeps injected tokens inside :root', () => {
   for (const payload of INJECTION_PAYLOADS) {
     it(`does not emit ${payload.slice(0, 24)}…`, () => {

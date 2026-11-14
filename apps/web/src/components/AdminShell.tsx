@@ -107,8 +107,8 @@ export function AdminShell() {
     });
   };
 
-  // 侧栏不再 display:none，而是 200ms 内滑出/淡出；收起后原按钮不可见，
-  // 把焦点交给「展开」按钮，键盘用户不会丢失当前位置。
+  // 收起后侧栏变成一条窄图标栏：焦点仍留在同一个开关上，键盘用户不会丢失位置。
+  // 窄屏收起时侧栏整条隐藏，焦点改落到固定「展开」按钮。
   const expandRef = useRef<HTMLButtonElement>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
   const toggledOnce = useRef(false);
@@ -117,7 +117,11 @@ export function AdminShell() {
       toggledOnce.current = true;
       return;
     }
-    (collapsed ? expandRef : collapseRef).current?.focus({ preventScroll: true });
+    const target =
+      collapsed && expandRef.current?.offsetParent !== null
+        ? expandRef.current
+        : collapseRef.current;
+    target?.focus({ preventScroll: true });
   }, [collapsed]);
 
   // 后台有自己的明暗模式：固定 data-surface=admin 隔离站点主题，data-admin-theme
@@ -407,14 +411,19 @@ export function AdminShell() {
           type="button"
           className="admin-side-collapse"
           onClick={toggleCollapsed}
-          aria-label={t('收起侧边栏')}
+          aria-label={collapsed ? t('展开侧边栏') : t('收起侧边栏')}
           aria-controls="admin-sidebar"
           aria-expanded={!collapsed}
-          title={t('收起侧边栏')}
+          title={collapsed ? t('展开侧边栏') : t('收起侧边栏')}
         >
-          <Icon name="chevron-left" size={15} />
+          <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={15} />
         </button>
-        <Link to="/admin" className="admin-brand">
+        <Link
+          to="/admin"
+          className="admin-brand"
+          title={collapsed ? t('仪表盘') : undefined}
+          aria-label={collapsed ? t('仪表盘') : undefined}
+        >
           <span className="brand-mark">{Array.from(site?.name ?? 'P')[0]}</span>
           <span className="admin-brand-text">
             Practacu Press
@@ -449,13 +458,15 @@ export function AdminShell() {
 
         <nav className="admin-nav" aria-label={t('后台导航')}>
           {groups.map((group) => (
-            <div key={group.label} style={{ display: 'contents' }}>
+            <div key={group.label} className="admin-nav-group">
               <p className="admin-nav-label">{group.label}</p>
               {group.items.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   end={item.end}
+                  title={collapsed ? item.label : undefined}
+                  aria-label={collapsed ? item.label : undefined}
                   className={({ isActive }) =>
                     `admin-nav-link${
                       isActive || (item.to === '/admin/settings' && inSiteSettings) ? ' is-active' : ''
@@ -472,20 +483,20 @@ export function AdminShell() {
         </nav>
 
         <div className="admin-side-foot">
-          <Link to="/">
-            <Icon name="arrow-left" size={14} /> {t('返回站点')}
+          <Link to="/" title={collapsed ? t('返回站点') : undefined}>
+            <Icon name="arrow-left" size={14} /> <span>{t('返回站点')}</span>
           </Link>
           {config.mode === 'demo' ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 12, color: 'var(--muted)' }}>
-              <Icon name="database" size={14} /> {t('演示数据（浏览器本地）')}
+            <span className="admin-side-note" title={collapsed ? t('演示数据（浏览器本地）') : undefined}>
+              <Icon name="database" size={14} /> <span>{t('演示数据（浏览器本地）')}</span>
             </span>
           ) : (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 12, color: 'var(--muted)' }}>
-              <Icon name="server" size={14} /> {backend.origin || window.location.origin}
+            <span className="admin-side-note" title={collapsed ? backend.origin || window.location.origin : undefined}>
+              <Icon name="server" size={14} /> <span>{backend.origin || window.location.origin}</span>
             </span>
           )}
-          <button type="button" onClick={handleLogout}>
-            <Icon name="logout" size={14} /> {t('退出登录')}
+          <button type="button" onClick={handleLogout} title={collapsed ? t('退出登录') : undefined}>
+            <Icon name="logout" size={14} /> <span>{t('退出登录')}</span>
           </button>
         </div>
       </aside>

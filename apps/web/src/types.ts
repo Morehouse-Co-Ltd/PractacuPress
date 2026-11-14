@@ -942,7 +942,7 @@ export interface ThemeSettings {
   heading_font: HeadingFont;
   /** 正文（文章页）字号，14–20 px。 */
   body_size: number;
-  /** 正文栏宽，640–860 px。 */
+  /** 正文栏宽，840–1120 px。 */
   content_width: number;
   /** 圆角基准，0–12 px。 */
   radius: number;
@@ -1147,7 +1147,7 @@ export interface ThemeSettings {
   heading_font: HeadingFont;
   /** 正文（文章页）字号，14–20 px。 */
   body_size: number;
-  /** 正文栏宽，640–860 px。 */
+  /** 正文栏宽，840–1120 px。 */
   content_width: number;
   /** 圆角基准，0–12 px。 */
   radius: number;

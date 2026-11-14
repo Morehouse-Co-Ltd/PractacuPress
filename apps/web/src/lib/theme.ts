@@ -314,7 +314,7 @@ export const DEFAULT_THEME: ThemeSettings = {
   accent: '#1f5c4a',
   heading_font: 'serif',
   body_size: 17.5,
-  content_width: 720,
+  content_width: 880,
   radius: 6,
   soften: DEFAULT_SOFTEN,
 };
@@ -428,7 +428,7 @@ export function normalizeThemeSettings(value: unknown): ThemeSettings {
     tokens: normalizeThemeTokens(raw.tokens),
     heading_font: raw.heading_font === 'sans' ? 'sans' : 'serif',
     body_size: themeHalfNumber(raw.body_size, DEFAULT_THEME.body_size, 14, 20),
-    content_width: themeNumber(raw.content_width, DEFAULT_THEME.content_width, 620, 900),
+    content_width: themeNumber(raw.content_width, DEFAULT_THEME.content_width, 840, 1120),
     radius: themeNumber(raw.radius, DEFAULT_THEME.radius, 0, 12),
     soften: {
       enabled: rawSoften.enabled === true,

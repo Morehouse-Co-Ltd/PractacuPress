@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { PerformanceSettings } from '../../types';
 import { useAuth } from '../../lib/session';
@@ -29,6 +29,10 @@ import { Icon } from '../../components/Icon';
 import { NumberField } from '../../components/NumberField';
 import { RoleGate } from '../../components/Guards';
 import { EffectCards, type EffectCardItem } from '../../components/EffectCards';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
+
+/** 自动保存的防抖时长：停止编辑 700ms 后写回，避免每敲一下都发请求。 */
+const AUTOSAVE_DELAY_MS = 700;
 
 function linesOf(value: string): string[] {
   return value
@@ -47,55 +51,122 @@ export function PerformancePage() {
   const saved = useMemo(() => readPerformance(config), [config]);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<PerformanceSettings>(() => saved);
-  const [preconnectText, setPreconnectText] = useState('');
-  const dirty =
-    JSON.stringify(draft) !== savedKey ||
-    preconnectText !== saved.preconnect.join('\n');
+  const [preconnectText, setPreconnectText] = useState(() => saved.preconnect.join('\n'));
+  const [saveState, setSaveState] = useState<AutoSaveState>('idle');
+  const [saveError, setSaveError] = useState('');
+  /** 草稿归一化后的真正写入值：渲染期算一次，既做签名去重也做保存内容。 */
+  const payload = useMemo(
+    () => readPerformance({ performance: { ...draft, preconnect: linesOf(preconnectText) } }),
+    [draft, preconnectText],
+  );
+  const payloadKey = JSON.stringify(payload);
+  /** 当前草稿签名；保存完成后据此判断期间有没有新的输入。 */
+  const payloadKeyRef = useRef(payloadKey);
+  payloadKeyRef.current = payloadKey;
+  /** 数据库连接数不合法时只提示、不写服务端，与旧的手动保存一致。 */
+  const invalidReason =
+    draft.db_max_open_conns > 0 && draft.db_max_idle_conns > draft.db_max_open_conns
+      ? t('空闲连接不能超过最大连接数')
+      : '';
+  /** 上一次的校验失败原因；只在原因变化时提示一次，避免连续输入时刷屏。 */
+  const lastInvalidRef = useRef('');
+  /** 最近一次已写入（或已从服务端读到）的归一化签名；签名相同就不重复保存。 */
+  const savedSig = useRef(payloadKey);
+  /** 自动保存串行队列：后一次永远排在前一次完成之后，避免并发覆盖。 */
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  /** 上一次同步过的服务端签名；挂载时只记下，不同步也不保存。 */
+  const syncedKey = useRef(savedKey);
 
+  /** 把一次保存排进串行队列；执行时签名已对齐就说明无需再写。 */
+  const enqueueSave = (sig: string, next: PerformanceSettings) => {
+    saveQueue.current = saveQueue.current
+      .then(async () => {
+        if (sig === savedSig.current) {
+          setSaveState('idle');
+          return;
+        }
+        setSaveState('saving');
+        const ok = await saveSiteConfig({ performance: next });
+        if (!ok) {
+          // useSaveSiteConfig 已经提示了服务端拒绝的原因；状态留给下一次编辑重试。
+          setSaveState('error');
+          return;
+        }
+        savedSig.current = sig;
+        setSaveState('saved');
+        toast.push('ok', t('已自动保存'));
+        // 与旧的手动保存一致：期间没有新的输入时把草稿归一化成真正写入的值。
+        if (payloadKeyRef.current === sig) {
+          setDraft(next);
+          setPreconnectText(next.preconnect.join('\n'));
+        }
+        if (me) {
+          noteActivity(
+            backend,
+            me.user.display_name,
+            '修改性能设置',
+            site?.name ?? '站点',
+            `首屏 ${next.feed_limit} 条 · ${next.request_cache ? '请求缓存开启' : '请求缓存关闭'}`,
+          );
+        }
+      })
+      .catch(() => setSaveState('error'));
+  };
+
+  // 草稿变化后尾随防抖自动保存：与已保存值一致就不动，校验不通过只报错不发请求。
   useEffect(() => {
+    if (payloadKey === savedSig.current) {
+      setSaveState((state) => (state === 'saving' ? state : 'idle'));
+      setSaveError('');
+      lastInvalidRef.current = '';
+      return;
+    }
+    if (invalidReason) {
+      setSaveState('error');
+      setSaveError(invalidReason);
+      if (lastInvalidRef.current !== invalidReason) {
+        lastInvalidRef.current = invalidReason;
+        toast.push('error', t('自动保存失败'), invalidReason);
+      }
+      return;
+    }
+    lastInvalidRef.current = '';
+    setSaveState('pending');
+    setSaveError('');
+    const timer = window.setTimeout(() => enqueueSave(payloadKey, payload), AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // enqueueSave 只依赖 ref 与稳定回调；签名变化才是重新排队的依据。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payloadKey, invalidReason]);
+
+  // 服务端配置更新（开屏水合或本页保存完成）时同步草稿：本地有更新的内容就保留，
+  // 既避免冲掉正在输入的内容，也避免把刚同步回来的值当成新改动再保存一次。
+  useEffect(() => {
+    if (syncedKey.current === savedKey) return;
+    syncedKey.current = savedKey;
     const next = readPerformance(config);
-    setDraft(next);
-    setPreconnectText(next.preconnect.join('\n'));
+    if (payloadKey === savedSig.current) {
+      setDraft(next);
+      setPreconnectText(next.preconnect.join('\n'));
+    }
+    savedSig.current = JSON.stringify(next);
+    // 只跟服务端配置变化同步；payloadKey 故意不入依赖。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
-  const save = async () => {
-    if (draft.db_max_open_conns > 0 && draft.db_max_idle_conns > draft.db_max_open_conns) {
-      toast.push(
-        'error',
-        t('数据库连接数不合法'),
-        t('空闲连接不能超过最大连接数；API 启动时会拒绝这组环境变量。'),
-      );
-      return;
-    }
-    const next = readPerformance({
-      performance: { ...draft, preconnect: linesOf(preconnectText) },
-    });
-    const ok = await saveSiteConfig({ performance: next });
+  const reset = async () => {
+    const next = readPerformance({ performance: DEFAULT_PERFORMANCE });
+    // 先把草稿与签名一起对齐默认值，避免自动保存把恢复前的旧草稿又写回去。
+    savedSig.current = JSON.stringify(next);
     setDraft(next);
     setPreconnectText(next.preconnect.join('\n'));
-    if (!ok) return;
-    toast.push(
-      'ok',
-      t('性能设置已保存'),
-      t('已写入站点服务端配置：首屏条数、缓存与懒加载对访客生效；服务器超时、数据库连接池与网关缓存需要按片段部署后重启。'),
-    );
-    if (me) {
-      noteActivity(
-        backend,
-        me.user.display_name,
-        '修改性能设置',
-        site?.name ?? '站点',
-        `首屏 ${next.feed_limit} 条 · ${next.request_cache ? '请求缓存开启' : '请求缓存关闭'}`,
-      );
+    setSaveError('');
+    const ok = await saveSiteConfig({ performance: next });
+    if (!ok) {
+      setSaveState('error');
+      return;
     }
-  };
-
-  const reset = async () => {
-    const ok = await saveSiteConfig({ performance: DEFAULT_PERFORMANCE });
-    setDraft(DEFAULT_PERFORMANCE);
-    setPreconnectText('');
-    if (!ok) return;
+    setSaveState('saved');
     toast.push('ok', t('已恢复默认性能设置'), t('前台请求量与缓存回到稳妥默认值。'));
   };
 
@@ -161,12 +232,10 @@ export function PerformancePage() {
           </p>
         </div>
         <div className="admin-page-actions">
+          <AutoSaveStatus state={saveState} error={saveError} />
           <Link to="/admin/access" className="btn btn-ghost btn-sm">
             <Icon name="shield" size={14} /> {t('访问限制')}
           </Link>
-          <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
         </div>
       </div>
 
@@ -182,7 +251,7 @@ export function PerformancePage() {
           <div className="panel-head">
             <div>
               <h3>{t('当前效果')}</h3>
-              <p>{t('按已保存的设置汇总；修改后点「保存修改」才会更新。')}</p>
+              <p>{t('按已保存的设置汇总；修改会自动保存，并刷新这里的数字。')}</p>
             </div>
             <Badge tone="muted">{t('即时生效')}</Badge>
           </div>
@@ -457,25 +526,6 @@ export function PerformancePage() {
               </details>
             </div>
           </section>
-        <div className="row gap-8">
-          <Button disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
-          {dirty ? (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setDraft(readPerformance(config));
-                setPreconnectText(saved.preconnect.join('\n'));
-              }}
-            >
-              {t('放弃未保存的修改')}
-            </Button>
-          ) : (
-            <span className="tiny faint">{t('没有未保存的修改')}</span>
-          )}
-        </div>
-
         <div className="danger-zone">
           <h3>{t('恢复默认性能设置')}</h3>
           <p>{t('回到稳妥默认值；不会改变访问限制、域名或加载动画。')}</p>

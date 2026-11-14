@@ -238,13 +238,15 @@ func TestAnonymousReadOnPublicSite(t *testing.T) {
 
 	var payload struct {
 		Items []struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
+			ID       string `json:"id"`
+			Status   string `json:"status"`
+			AuthorID string `json:"author_id"`
 		} `json:"items"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &payload))
 	require.Len(t, payload.Items, 1, "an anonymous reader sees published items only")
 	require.Equal(t, "pub", payload.Items[0].ID)
+	require.Equal(t, "u1", payload.Items[0].AuthorID, "the reader page resolves the real author from this id")
 }
 
 func TestAnonymousReadOnMembersOnlySiteIsRefused(t *testing.T) {
@@ -273,6 +275,8 @@ func TestAnonymousCanReadPublishedByID(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/articles/pub", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"author_id":"u1"`,
+		"the detail response carries the author id the article page needs")
 }
 
 // TestAnonymousAuthorArchiveFiltersPublishedByAuthor covers the query parameter the

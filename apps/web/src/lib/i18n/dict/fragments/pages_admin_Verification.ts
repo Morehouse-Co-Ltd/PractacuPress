@@ -125,8 +125,8 @@ const fragment: Dictionary = {
   未配置密钥: 'No key configured',
   读取失败: 'Could not read',
   读不到服务端状态: 'Server state unavailable',
-  '服务端没有回答人机验证状态；保存仍然可用，但这里无法确认校验是否真的生效。请稍后点「刷新状态」。':
-    'The server did not report its verification state. Saving still works, but this page cannot confirm the check runs; try "Refresh status" again shortly.',
+  '服务端没有回答人机验证状态；自动保存仍然可用，但这里无法确认校验是否真的生效。请稍后点「刷新状态」。':
+    'The server did not report its verification state. Auto-save still works, but this page cannot confirm the check runs; try "Refresh status" again shortly.',
   按服务端实际配置: 'From the real server state',
   '登录 / 注册 / 评论 / 找回密码': 'Sign-in / sign-up / comments / password reset',
 };

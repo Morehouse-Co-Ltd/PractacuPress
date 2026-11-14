@@ -3,6 +3,7 @@ import { useBackend } from '../../lib/backend';
 import { useAuth } from '../../lib/session';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { activityCsv, activityTone, formatDateTime } from '../../lib/format';
+import { activityActionLabel } from '../../lib/activityLabels';
 import type { ActivityEntry } from '../../types';
 import type { AuditLog } from '../../types';
 import {
@@ -79,24 +80,48 @@ function rangeStart(range: Range): string | undefined {
   return new Date(Date.now() - hours * 3_600_000).toISOString();
 }
 
-function detailText(entry: AuditLog): string {
-  if (!entry.detail) return '';
-  const parts = Object.entries(entry.detail)
-    .slice(0, 3)
-    .map(([key, value]) => {
-      if (value === null || value === undefined) return key;
-      if (typeof value === 'object') return `${key}: …`;
-      return `${key}: ${String(value)}`;
-    });
-  return parts.join(' · ');
+/** detail 里只承载内部标识的技术键：值对读者没有意义，展示时直接跳过。 */
+const DETAIL_TECHNICAL_KEY = /^(?:id|.*_ids?|.*_token|.*_hash|.*_path|.*_url|.*_ip|request_id|ip)$/i;
+
+/** 单个 detail 值 → 一行可读文字；对象等结构值可能是内部数据，直接略过。 */
+function detailValueText(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text || undefined;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const parts = value.map(detailValueText).filter((part): part is string => !!part);
+    return parts.length ? parts.join(' / ') : undefined;
+  }
+  return undefined;
 }
 
-function toActivityEntry(entry: AuditLog): ActivityEntry {
+/**
+ * detail 详情行：省掉技术键，只展示可读的值。
+ *
+ * 审计 detail 的字段名是给服务端和调试用的（article_id、request_id 之类），
+ * 直接 `key: value` 印出来对站长没有帮助；这里最多取三个可读值，用「·」分隔。
+ */
+function detailText(entry: AuditLog): string {
+  if (!entry.detail) return '';
+  const values: string[] = [];
+  for (const [key, value] of Object.entries(entry.detail)) {
+    if (DETAIL_TECHNICAL_KEY.test(key)) continue;
+    const text = detailValueText(value);
+    if (text) values.push(text);
+    if (values.length >= 3) break;
+  }
+  return values.join(' · ');
+}
+
+function toActivityEntry(entry: AuditLog, actionLabel: string): ActivityEntry {
   return {
     id: entry.id,
     at: entry.created_at,
     actor: entry.actor_name || entry.actor_id || '—',
-    action: entry.action,
+    action: actionLabel,
     target: entry.target_name || entry.target_id || entry.target_type || '—',
     detail: entry.detail ? JSON.stringify(entry.detail) : undefined,
   };
@@ -176,7 +201,10 @@ export function ActivityPage() {
   };
 
   const exportCsv = () => {
-    const csv = activityCsv(items.map(toActivityEntry));
+    // CSV 与表格口径保持一致：导出人话动作名，而不是后端动作码。
+    const csv = activityCsv(
+      items.map((entry) => toActivityEntry(entry, activityActionLabel(entry.action, t))),
+    );
     const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -241,7 +269,7 @@ export function ActivityPage() {
           <option value="">{t('全部动作')}</option>
           {ACTION_OPTIONS.map((code) => (
             <option key={code} value={code}>
-              {code}
+              {activityActionLabel(code, t)}
             </option>
           ))}
         </Select>
@@ -280,8 +308,11 @@ export function ActivityPage() {
                 <span className="act-actor">
                   {entry.actor_name || entry.actor_id || t('系统')}
                 </span>
-                <span className="act-action">
-                  <Badge tone={activityTone(entry.action)}>{entry.action}</Badge>
+                {/* title 保留原始动作码，排障时仍能对到服务端 audit_logs。 */}
+                <span className="act-action" title={entry.action}>
+                  <Badge tone={activityTone(entry.action)}>
+                    {activityActionLabel(entry.action, t)}
+                  </Badge>
                 </span>
                 <span className="act-target" title={entry.target_id}>
                   {entry.target_name || entry.target_id || entry.target_type || '—'}

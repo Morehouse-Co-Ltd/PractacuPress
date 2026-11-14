@@ -38,8 +38,8 @@ const fragment: Dictionary = {
   '，请一并部署。': ' — deploy it together with the rest.',
   'proxy_set_header Host 主域名;': 'proxy_set_header Host <primary domain>;',
   主域名: 'Primary domain',
-  '保存后会直接写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。':
-    'Saving writes it straight into the site configuration; leave it empty to set no domain (production falls back to direct public IP access).',
+  '修改会自动写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。':
+    'Changes are written into the site configuration automatically; leave it empty to set no domain (production falls back to direct public IP access).',
   '未设置（公网 IP）': 'Not set (public IP)',
   '只填主机名，例如 press.example.com；不要带 https://、路径或端口。':
     'Enter the host name only, for example press.example.com; do not include https://, a path, or a port.',
@@ -86,8 +86,8 @@ const fragment: Dictionary = {
   '别名 301 到主域名（生成配置）': '301 aliases to the primary domain (generated config)',
   '统一 SEO 与 Cookie 作用域。': 'Unifies SEO and the cookie scope.',
   'SSL 证书': 'SSL certificate',
-  '选择 HTTPS 的启用方式；这里只记录部署方式与服务器上的证书路径，不会保存私钥内容。 保存后把下方 Nginx 片段与证书一起部署。':
-    'Choose how HTTPS is enabled; only the deployment mode and the certificate paths on the server are recorded, and private key contents are never stored. Deploy the Nginx snippet below together with the certificate after saving.',
+  '选择 HTTPS 的启用方式；这里只记录部署方式与服务器上的证书路径，不会保存私钥内容。 修改会自动保存，再把下方 Nginx 片段与证书一起部署。':
+    'Choose how HTTPS is enabled; only the deployment mode and the certificate paths on the server are recorded, and private key contents are never stored. Changes are saved automatically; then deploy the Nginx snippet below together with the certificate.',
   未启用: 'Off',
   手动证书: 'Manual certificate',
   不启用: 'Off',
@@ -170,8 +170,8 @@ const fragment: Dictionary = {
   主域名已验证: 'Primary domain verified',
   '公网域名已经生效；如果刚改过 DNS，浏览器可能需要几分钟缓存。':
     'The public domain is live; if you just changed DNS, browsers may cache the old answer for a few minutes.',
-  '已保存的域名与当前输入不一致：重新保存后会生成新的 TXT 验证记录。':
-    'The saved domain differs from the current input: saving again issues a new TXT verification record.',
+  '已保存的域名与当前输入不一致：修改主域名并自动保存后会生成新的 TXT 验证记录。':
+    'The saved domain differs from the current input: changing the primary domain and letting it auto-save issues a new TXT verification record.',
   域名验证成功: 'Domain verified',
   '公网域名已经生效。': 'The public domain is now live.',
   '还没有验证通过，请稍后重试。': 'Verification has not passed yet; please try again later.',

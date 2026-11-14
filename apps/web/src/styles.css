@@ -2465,6 +2465,7 @@ img {
   white-space: nowrap;
 }
 .admin-nav { display: flex; flex-direction: column; gap: 1px; }
+.admin-nav-group { display: flex; flex-direction: column; gap: 1px; }
 .admin-nav-label {
   margin: 16px 8px 6px;
   font-size: 9.5px;
@@ -2506,6 +2507,23 @@ img {
   padding: 16px 8px 0;
   border-top: 1px solid var(--line);
 }
+.admin-side-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.admin-side-note > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-side-foot a > span,
+.admin-side-foot button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-side-foot a,
 .admin-side-foot button {
   display: flex;
@@ -2581,6 +2599,30 @@ img {
 .admin-shell .dash-insights-grid { gap: 16px; margin-top: 16px; }
 .admin-shell .settings-grid { gap: 20px; }
 .admin-shell .admin-page-head { margin-bottom: 20px; }
+/* 设置页的自动保存状态：一行小字 + 小圆点，不抢表单注意力。 */
+.autosave-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.autosave-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex: none;
+}
+.autosave-status.is-pending .autosave-dot,
+.autosave-status.is-saving .autosave-dot { background: var(--accent); }
+.autosave-status.is-saving .autosave-dot { animation: autosave-pulse 1s ease-in-out infinite; }
+.autosave-status.is-saved { color: var(--ok); }
+.autosave-status.is-saved .autosave-dot { background: var(--ok); }
+.autosave-status.is-error { color: var(--danger); }
+.autosave-status.is-error .autosave-dot { background: var(--danger); }
+@keyframes autosave-pulse {
+  50% { opacity: 0.3; }
+}
 
 /* 后台内部的页签也是悬浮的圆角矩形，不再用下划线贴边。 */
 .admin-shell .tabs {
@@ -3188,6 +3230,14 @@ img {
 .media-drop p { margin-top: 5px; font-size: 12px; color: var(--muted); }
 .media-drop .btn { margin-top: 14px; }
 .media-drop.is-over { border-color: var(--accent); background: var(--accent-soft); }
+/* 媒体库底部的「上传流程 / 存储与限制」并排成同一行，两块面板上下沿对齐。 */
+.media-info-grid { align-items: stretch; }
+.media-info-grid > .panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.media-info-grid > .panel > .panel-body { flex: 1; }
 
 .settings-grid {
   display: grid;
@@ -8744,25 +8794,82 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   to { opacity: 1; transform: none; }
 }
 .admin-side-expand:hover { color: var(--ink); border-color: var(--line-strong); }
-/* 收起：grid 轨道从 236px 过渡到 0、间距同步收拢，主内容向左平滑补位；
-   侧栏本身再左移淡出，最终宽高为 0 且不可点击（不是 display:none 的瞬间消失）。 */
+/* 收起：侧栏变成一条窄图标栏，仍然留在原地——不再整块滑走。
+   只隐藏文字与分组标题，图标、在线状态与未读徽标保留；每个图标都有 title 提示，
+   鼠标悬停即可知道通向哪里，点击开关可以直接展开。 */
 .admin-shell.is-side-collapsed {
-  grid-template-columns: 0px minmax(0, 1fr);
-  gap: 0;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
 }
 .admin-shell.is-side-collapsed .admin-side {
-  padding: 0;
-  border-width: 0;
-  opacity: 0;
-  transform: translateX(-20px);
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    padding 200ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-width 200ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 180ms ease,
-    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
-    visibility 0s linear 200ms;
+  padding: 12px 8px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.admin-shell.is-side-collapsed .admin-side-collapse {
+  position: static;
+  margin: 0 auto 6px;
+  background: var(--bg-subtle);
+  border-color: var(--line);
+}
+.admin-shell.is-side-collapsed .admin-brand {
+  justify-content: center;
+  padding: 4px 0 12px;
+  margin-bottom: 10px;
+}
+.admin-shell.is-side-collapsed .admin-brand-text { display: none; }
+.admin-shell.is-side-collapsed .admin-identity {
+  justify-content: center;
+  margin: 0 auto 10px;
+  padding: 6px;
+  width: fit-content;
+  border-color: transparent;
+  background: transparent;
+}
+.admin-shell.is-side-collapsed .admin-identity-body { display: none; }
+.admin-shell.is-side-collapsed .admin-nav { gap: 2px; }
+.admin-shell.is-side-collapsed .admin-nav-label { display: none; }
+.admin-shell.is-side-collapsed .admin-nav-group + .admin-nav-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.admin-shell.is-side-collapsed .admin-nav-link {
+  position: relative;
+  justify-content: center;
+  gap: 0;
+  padding: 9px 0;
+  border-left: 0;
+}
+.admin-shell.is-side-collapsed .admin-nav-link > span:not(.admin-nav-badge) { display: none; }
+.admin-shell.is-side-collapsed .admin-nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin-left: 0;
+  padding: 0 4px;
+  min-width: 15px;
+  text-align: center;
+  background: var(--admin-panel, #fff);
+}
+.admin-shell.is-side-collapsed .admin-side-foot {
+  padding: 12px 0 0;
+}
+.admin-shell.is-side-collapsed .admin-side-foot a,
+.admin-shell.is-side-collapsed .admin-side-foot button {
+  justify-content: center;
+  padding: 8px 0;
+}
+.admin-shell.is-side-collapsed .admin-side-foot a > span,
+.admin-shell.is-side-collapsed .admin-side-foot button > span,
+.admin-shell.is-side-collapsed .admin-side-note > span { display: none; }
+.admin-shell.is-side-collapsed .admin-side-note {
+  justify-content: center;
+  padding: 8px 0;
+}
+/* 窄图标栏本身就是展开开关，桌面上不再叠一个固定按钮。 */
+@media (min-width: 901px) {
+  .admin-side-expand { display: none; }
 }
 
 

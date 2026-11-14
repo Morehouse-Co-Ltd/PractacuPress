@@ -9,6 +9,11 @@ const fragment: Dictionary = {
   把文件拖到这里: 'Drag files here',
   '允许 {types}，单个文件上限 {limit}{demo}。':
     'Allowed types: {types}; per-file limit {limit}{demo}.',
+  '允许 {types}，站点媒体额度 {quota}，单个文件上限 {limit}{demo}。':
+    'Allowed types: {types}; site media quota {quota}; per-file limit {limit}{demo}.',
+  站点媒体额度: 'Site media quota',
+  跟随部署默认: 'Deployment default',
+  无限额度: 'Unlimited',
   '（演示模式）': ' (demo mode)',
   选择文件: 'Choose a file',
   用途: 'Purpose',

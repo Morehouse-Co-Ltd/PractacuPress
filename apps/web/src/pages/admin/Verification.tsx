@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HumanVerificationProvider, HumanVerificationSettings } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
@@ -13,6 +13,10 @@ import { Badge, Button, Callout, CopyButton, Field, Input, Toggle } from '../../
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 import { EffectCards, type EffectCardItem } from '../../components/EffectCards';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
+
+/** 自动保存的防抖时长：停止编辑 700ms 后写回，避免每敲一下都发请求。 */
+const AUTOSAVE_DELAY_MS = 700;
 
 type Translator = ReturnType<typeof useT>;
 type SceneKey = 'on_login' | 'on_register' | 'on_comment' | 'on_password_reset';
@@ -50,9 +54,26 @@ export function VerificationPage() {
   const toast = useToast();
   const { customization, update } = useCustomization();
   const saved = customization.verification;
+  const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<HumanVerificationSettings>(saved);
   const [secret, setSecret] = useState('');
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const [saveState, setSaveState] = useState<AutoSaveState>('idle');
+  const [saveError, setSaveError] = useState('');
+  /** 真正会写入的归一化值：Site Key 去掉首尾空白，Secret 永远不进配置。 */
+  const payload = useMemo(
+    () => ({ ...draft, site_key: draft.site_key.trim().slice(0, 200) }),
+    [draft],
+  );
+  const payloadKey = JSON.stringify(payload);
+  /** 当前草稿签名；保存完成后据此判断期间有没有新的输入。 */
+  const payloadKeyRef = useRef(payloadKey);
+  payloadKeyRef.current = payloadKey;
+  /** 最近一次已写入（或已从服务端读到）的归一化签名；签名相同就不重复保存。 */
+  const savedSig = useRef(payloadKey);
+  /** 自动保存串行队列：后一次永远排在前一次完成之后，避免并发覆盖。 */
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  /** 上一次同步过的服务端签名；挂载时只记下，不同步也不保存。 */
+  const syncedKey = useRef(savedKey);
   const providers = providerChoices(t);
   const scenes = sceneChoices(t);
   const provider = providers.find((item) => item.value === draft.provider) ?? providers[0];
@@ -83,41 +104,82 @@ export function VerificationPage() {
     window.setTimeout(refreshStatus, 1400);
   };
 
-  const save = () => {
-    const next: HumanVerificationSettings = {
-      ...draft,
-      site_key: draft.site_key.trim().slice(0, 200),
-    };
-    update({ verification: next });
-    setDraft(next);
-    // 服务端执行的是站点文档里的配置；保存后重新读一次真实状态，并让前台表单
-    // 丢掉可能还写着「未启用」的短期缓存。
-    refreshStatusAfterSave();
-    toast.push(
-      'ok',
-      t('人机验证设置已保存'),
-      next.enabled
-        ? serverReady
-          ? t('已启用 {provider}；前台对应表单会显示验证组件。', { provider: provider.label })
-          : t('配置已保存，但服务端还没有 {provider} 的 Secret，暂时不会校验。', {
-              provider: provider.label,
-            })
-        : t('人机验证已关闭，前台表单恢复原样。'),
-    );
-    if (me) {
-      noteActivity(
-        backend,
-        me.user.display_name,
-        '修改人机验证',
-        site?.name ?? '站点',
-        next.enabled ? `${provider.label} · ${next.site_key ? '已填 Site Key' : '待填 Site Key'}` : '已关闭',
-      );
-    }
+  /** 把一次保存排进串行队列；执行时签名已对齐就说明无需再写。 */
+  const enqueueSave = (sig: string, next: HumanVerificationSettings) => {
+    saveQueue.current = saveQueue.current
+      .then(() => {
+        if (sig === savedSig.current) {
+          setSaveState('idle');
+          return;
+        }
+        setSaveState('saving');
+        // update() 会合并写回本机配置，并排队把站点文档同步到服务端；
+        // 这一页没有可等待的服务端确认，写回即视为成功。
+        update({ verification: next });
+        savedSig.current = sig;
+        setSaveState('saved');
+        toast.push('ok', t('已自动保存'));
+        // 与旧的手动保存一致：期间没有新的输入时把草稿归一化成真正写入的值。
+        if (payloadKeyRef.current === sig) {
+          setDraft(next);
+        }
+        // 服务端执行的是站点文档里的配置；保存后重新读一次真实状态，并让前台表单
+        // 丢掉可能还写着「未启用」的短期缓存。
+        refreshStatusAfterSave();
+        if (me) {
+          noteActivity(
+            backend,
+            me.user.display_name,
+            '修改人机验证',
+            site?.name ?? '站点',
+            next.enabled
+              ? `${provider.label} · ${next.site_key ? '已填 Site Key' : '待填 Site Key'}`
+              : '已关闭',
+          );
+        }
+      })
+      .catch(() => setSaveState('error'));
   };
 
+  // 草稿变化后尾随防抖自动保存：与已保存值一致就不动。
+  useEffect(() => {
+    if (payloadKey === savedSig.current) {
+      setSaveState((state) => (state === 'saving' ? state : 'idle'));
+      setSaveError('');
+      return;
+    }
+    setSaveState('pending');
+    setSaveError('');
+    const timer = window.setTimeout(() => enqueueSave(payloadKey, payload), AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // enqueueSave 只依赖 ref 与稳定回调；签名变化才是重新排队的依据。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payloadKey]);
+
+  // 站点自定义配置更新（开屏水合或本页保存完成）时同步草稿：本地有更新的内容就保留，
+  // 既避免冲掉正在输入的内容，也避免把刚同步回来的值当成新改动再保存一次。
+  useEffect(() => {
+    if (syncedKey.current === savedKey) return;
+    syncedKey.current = savedKey;
+    if (payloadKey === savedSig.current) {
+      setDraft(saved);
+    }
+    savedSig.current = savedKey;
+    // 只跟服务端配置变化同步；payloadKey 故意不入依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedKey]);
+
   const reset = () => {
-    update({ verification: DEFAULT_VERIFICATION });
-    setDraft(DEFAULT_VERIFICATION);
+    const next: HumanVerificationSettings = {
+      ...DEFAULT_VERIFICATION,
+      site_key: DEFAULT_VERIFICATION.site_key.trim().slice(0, 200),
+    };
+    // 先把草稿与签名一起对齐默认值，避免自动保存把恢复前的旧草稿又写回去。
+    savedSig.current = JSON.stringify(next);
+    setDraft(next);
+    setSaveError('');
+    update({ verification: next });
+    setSaveState('saved');
     refreshStatusAfterSave();
     toast.push('ok', t('已恢复默认人机验证'), t('关闭验证并回到 Cloudflare Turnstile。'));
   };
@@ -170,9 +232,7 @@ export function VerificationPage() {
           <p>{t('用 CAPTCHA 保护登录、注册、找回密码与评论；密钥只保存在服务端环境变量。')}</p>
         </div>
         <div className="admin-page-actions">
-          <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
+          <AutoSaveStatus state={saveState} error={saveError} />
         </div>
       </div>
 
@@ -184,7 +244,7 @@ export function VerificationPage() {
 
       {statusUnreadable ? (
         <Callout tone="warn" icon="alert" title={t('读不到服务端状态')}>
-          {t('服务端没有回答人机验证状态；保存仍然可用，但这里无法确认校验是否真的生效。请稍后点「刷新状态」。')}
+          {t('服务端没有回答人机验证状态；自动保存仍然可用，但这里无法确认校验是否真的生效。请稍后点「刷新状态」。')}
         </Callout>
       ) : null}
 
@@ -363,19 +423,6 @@ export function VerificationPage() {
               </p>
             </div>
           </section>
-        <div className="row gap-8">
-          <Button disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
-          {dirty ? (
-            <Button variant="ghost" onClick={() => setDraft(saved)}>
-              {t('放弃未保存的修改')}
-            </Button>
-          ) : (
-            <span className="tiny faint">{t('没有未保存的修改')}</span>
-          )}
-        </div>
-
         <div className="danger-zone">
           <h3>{t('恢复默认人机验证')}</h3>
           <p>{t('关闭验证并回到 Cloudflare Turnstile；不会影响文章、评论或访问限制。')}</p>

@@ -62,8 +62,8 @@ const fragment: Dictionary = {
   '{count} 套策略': { one: '1 strategy', other: '{count} strategies' },
   '查看「{scope}」的储存策略': 'View the storage strategy for “{scope}”',
   '「{scope}」的储存策略': 'Storage strategies for “{scope}”',
-  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；点「完成」后记得保存修改。':
-    'This scope can use one strategy, or several in order with capacity caps; click Done, then save the page changes.',
+  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存。':
+    'This scope can use one strategy, or several in order with capacity caps; changes are saved automatically when the dialog closes.',
   '位置：{path}': 'Location: {path}',
   '有用途指向云策略，但全局策略还是本地储存':
     'A scope points at a cloud strategy, but the global strategy is still local storage',
@@ -275,16 +275,16 @@ const fragment: Dictionary = {
     'The server currently supports one set of cloud credentials; multiple cloud strategies need the deployer to provide the endpoint, region, and Access Key separately.',
   '已写入这台电脑的本地安装配置；用途分配、容量上限与切换顺序都会一并保存。':
     'Written to this computer’s local install config; scope assignments, capacity caps, and switching order are saved together.',
-  '引用它的用途已经从分配里移除，空出来的位置回落到第一套策略，点「保存修改」后生效；不会删除任何文件。':
-    'The scopes using it have removed it from their assignments and the freed slots fall back to the first strategy; this takes effect after “Save changes” and no files are deleted.',
+  '引用它的用途已经从分配里移除，空出来的位置回落到第一套策略；改动会自动保存，不会删除任何文件。':
+    'The scopes using it have removed it from their assignments and the freed slots fall back to the first strategy; the change is saved automatically and no files are deleted.',
   '没有用途在使用这套策略，删除不会改变上传位置，也不会删除任何文件。':
     'No scope uses this strategy; deleting it changes no upload location and removes no files.',
   '删除后这些用途里的这套策略会被移除，空出来的位置回落到第一套策略「{name}」：':
     'After deleting, this strategy is removed from these scopes and the freed slot falls back to the first strategy “{name}”:',
   '删除只改这台电脑的配置，不会删除任何文件，也不会修改服务器的存储配置；已经上传的文件仍留在原位置。':
     'Deleting only changes this computer’s config: no files are removed, the server storage config is untouched, and uploaded files stay where they are.',
-  '点右上角「保存修改」写入这台电脑的本地安装配置。':
-    'Click “Save changes” in the top right to write it to this computer’s local install config.',
+  '改动会自动写入这台电脑的本地安装配置。':
+    'The change is saved automatically to this computer’s local install config.',
   '策略名会出现在用途分配里；密钥不在这个弹窗保存。':
     'The strategy name appears in scope assignments; the secret is not saved from this dialog.',
   '回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。':

@@ -268,6 +268,25 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
   const content = useAsync(() => backend.getContent(kind, id), [backend, kind, id]);
   const item = content.data;
+  // 内容响应只带 author_id，不带作者名。作者名缺失时补一次公开资料请求；
+  // author_name 已经在响应里（或内容没有作者）时完全不发请求。依赖里带 author_id，
+  // useAsync 会按作者去重，同一篇文章不会重复请求。
+  const authorProfile = useAsync(async () => {
+    if (!item?.author_id || item.author_name) return null;
+    try {
+      return await backend.publicUser(item.author_id);
+    } catch {
+      // 作者资料读不到时保留兜底文案，不影响正文与评论区。
+      return null;
+    }
+  }, [backend, item?.author_id, item?.author_name]);
+  // useAsync 在新依赖解析前会保留上一份 data：导航到另一篇文章时，只有 user_id
+  // 与当前作者一致的结果才算数，避免短暂显示上一篇的作者名。
+  const profileAuthorName =
+    authorProfile.data && authorProfile.data.user_id === item?.author_id
+      ? authorProfile.data.display_name
+      : undefined;
+  const authorName = item?.author_name || profileAuthorName;
   // 作者明确隐藏封面时，整块 .article-hero 不渲染，避免留下空画框。
   const coverHidden = useCoverHidden(item?.id);
   // 详情页的封面改成「全宽封面头」：有上传的图片就铺图片，没有就铺同款程序化封面，
@@ -294,7 +313,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     image: item ? firstImage(item.rendered_html) : undefined,
     publishedAt: item?.published_at,
     modifiedAt: item?.updated_at,
-    author: item?.author_name,
+    author: authorName,
     keywords: item?.kind === 'article' ? [t('文章')] : [t('帖子')],
     jsonLd: item
       ? [
@@ -304,7 +323,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
             siteName: site?.name ?? 'Practacu Press',
             publisher: customization.seo.publisher || site?.name || 'Practacu Press',
             image: firstImage(item.rendered_html),
-            author: item.author_name,
+            author: authorName,
           }),
           breadcrumbJsonLd([
             { name: t('首页'), url: `${window.location.origin}/` },
@@ -667,6 +686,8 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   }
 
   const url = `/${kind === 'article' ? 'a' : 'p'}/${item.id}`;
+  // 作者名优先用响应里的字段；缺失时用公开资料补齐，真正读不到时才退回「作者」。
+  const authorLabel = authorName ?? t('作者');
   const isUnpublished = item.status !== 'published';
   // 分类名同时用于文章头的分类标记与「显示什么数据」里的「分类」。
   const articleCategory = item.category_id
@@ -678,9 +699,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   const metaRow = (extraClass = '') => (
     <div className={`article-meta${extraClass ? ` ${extraClass}` : ''}`}>
       <span className="author-line">
-        <Avatar name={item.author_name ?? t('编辑部')} size={32} />
+        <Avatar name={authorLabel} size={32} />
         <span>
-          <span className="author-name">{item.author_name ?? t('编辑部')}</span>
+          <span className="author-name">{authorLabel}</span>
           <span className="meta-text" style={{ display: 'block' }}>
             {formatDateTime(item.published_at ?? item.created_at)}
           </span>
@@ -882,9 +903,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
           {item.author_id ? (
             <div className="author-card">
-              <Avatar name={item.author_name} size={44} />
+              <Avatar name={authorLabel} size={44} />
               <div className="author-main">
-                <strong>{item.author_name ?? t('作者')}</strong>
+                <strong>{authorLabel}</strong>
                 <p>{t('写作者 · 已发布内容归作者所有')}</p>
               </div>
               {me && me.user.id !== item.author_id ? (

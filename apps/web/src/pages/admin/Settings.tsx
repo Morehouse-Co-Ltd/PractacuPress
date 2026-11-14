@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  MediaQuotaBytes,
   PublishMode,
   Role,
+  Site,
   SiteKind,
   StepUpSettings,
   StepUpSettingsUpdate,
   VisibilityMode,
+  WebConfig,
 } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
@@ -31,10 +34,68 @@ import {
   Textarea,
   Toggle,
 } from '../../components/ui';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 import { useStepUp } from '../../lib/stepUp';
 import { useToast } from '../../lib/toast';
+
+/** 停止编辑后多久自动保存：足够跨越连续输入，又不至于让站长等太久。 */
+const AUTO_SAVE_DEBOUNCE_MS = 700;
+
+/**
+ * 自动保存用来判断「要不要发请求」的归一化快照。
+ *
+ * 只放真正会写到服务端的字段：任何一项与上一次成功保存不同才发请求；相同就跳过，
+ * 避免 applySite 之后 site 换成新对象又触发一轮重复请求。`description` 为 null
+ * 表示当前后端没返回简介、用户也没改过，这次不写 `description`（沿用旧行为）。
+ */
+interface SettingsDraft {
+  name: string;
+  domain: string;
+  description: string | null;
+  visibility: VisibilityMode;
+  publish: PublishMode;
+  registrationOpen: boolean;
+  /** `bytes:<字节数>` 或 `raw:<原始输入>`：无效输入也有稳定签名，但不会发请求。 */
+  mediaQuota: string;
+  adminPath: string;
+  kind: SiteKind;
+}
+
+function draftSignatureOf(draft: SettingsDraft): string {
+  return JSON.stringify(draft);
+}
+
+/** 后台入口的归一化规则与保存时保持一致：空串回退默认入口，去掉结尾斜杠。 */
+function normalizedAdminPathValue(raw: string): string {
+  return (raw.trim() || '/admin').replace(/\/+$/, '');
+}
+
+function mediaQuotaSignature(
+  parsed: ReturnType<typeof parseMediaQuotaMbInput>,
+  raw: string,
+): string {
+  return parsed.valid ? `bytes:${parsed.value}` : `raw:${raw}`;
+}
+
+/** 服务端当前快照对应的「已保存」基线：水合与保存成功后都用它。 */
+function savedDraftOf(site: Site, config: WebConfig): SettingsDraft {
+  const kind = siteKindOf(config);
+  const mediaQuotaDraft = bytesToMbString(site.media_quota_bytes);
+  return {
+    name: site.name.trim(),
+    domain: site.domain.trim().toLowerCase(),
+    description: site.description !== undefined ? site.description.trim() : null,
+    // 个人博客固定公开阅读、直接发布：与保存时的强制规则保持一致。
+    visibility: kind === 'personal' ? 'public' : site.visibility_mode,
+    publish: kind === 'personal' ? 'open' : site.publish_mode,
+    registrationOpen: kind === 'personal' ? false : site.registration_open !== false,
+    mediaQuota: mediaQuotaSignature(parseMediaQuotaMbInput(mediaQuotaDraft), mediaQuotaDraft),
+    adminPath: normalizedAdminPathValue(adminPathOf({ admin_path: config.admin_path })),
+    kind,
+  };
+}
 
 export function SettingsPage() {
   const t = useT();
@@ -68,10 +129,32 @@ export function SettingsPage() {
   const [stepUpBusy, setStepUpBusy] = useState(false);
   const [stepUpPassword, setStepUpPassword] = useState('');
   const [stepUpPasswordConfirm, setStepUpPasswordConfirm] = useState('');
+  /** 自动保存状态：驱动页面顶部与底部的 AutoSaveStatus。 */
+  const [autoSaveState, setAutoSaveState] = useState<AutoSaveState>('idle');
+  const [autoSaveError, setAutoSaveError] = useState('');
+  /** 上一次成功保存（或水合）时的归一化签名；null 表示基线还没建立。 */
+  const savedSignatureRef = useRef<string | null>(null);
+  /** 当前渲染的归一化签名：防抖回调触发时以它为准。 */
+  const draftSignatureRef = useRef('');
+  /** 表单是否偏离上次成功保存：重置 effect 用它避免吞掉用户输入。 */
+  const dirtyRef = useRef(false);
+  /** 保存请求是否在途：串行化自动保存，也挡住保存期间的重置。 */
+  const savingRef = useRef(false);
+  /** 防抖计时器。 */
+  const debounceTimerRef = useRef<number | null>(null);
+  /** 最新一轮的保存 / 排期函数：effect 与计时器只拿 ref，避免闭包过期。 */
+  const runSaveRef = useRef<() => Promise<void>>(async () => undefined);
+  const scheduleSaveRef = useRef<() => void>(() => undefined);
+  /** 已经为哪个形态弹过确认框：取消后同一形态不再反复弹。 */
+  const kindPromptedRef = useRef<SiteKind | null>(null);
   useTitle(t('站点设置'));
 
   useEffect(() => {
     if (!site) return;
+    // 自动保存进行中、或用户有更新的未保存修改时，不要用服务端快照覆盖表单：
+    // applySite 之后 site 会换新对象，这个 effect 会再跑一次，此时重置就会吞掉
+    // 用户刚输入的内容，或把一次还没写完的保存改回旧值。
+    if (savingRef.current || dirtyRef.current) return;
     setName(site.name);
     setDomain(site.domain);
     setDescription(site.description ?? '');
@@ -79,8 +162,12 @@ export function SettingsPage() {
     setPublishMode(site.publish_mode);
     setRegistrationOpen(site.registration_open !== false);
     setMediaQuotaDraft(bytesToMbString(site.media_quota_bytes));
+    // 后台入口存在站点级配置里：空闲时跟配置对齐，避免把别处改过的入口又写回去。
+    setAdminPath(config.admin_path ?? '/admin');
     setDescriptionTouched(false);
-  }, [site]);
+    // 这份快照就是服务端已有的状态：之后只有偏离它才自动保存。
+    savedSignatureRef.current = draftSignatureOf(savedDraftOf(site, config));
+  }, [site, config]);
 
   useEffect(() => {
     setKind(siteKindOf(config));
@@ -178,43 +265,82 @@ export function SettingsPage() {
   const kindChanged = kind !== siteKindOf(config);
   const mediaQuota = parseMediaQuotaMbInput(mediaQuotaDraft);
   const savedMediaQuotaDraft = bytesToMbString(site?.media_quota_bytes);
-  const dirty =
-    !!site &&
-    (name !== site.name ||
-      domain !== site.domain ||
-      description !== (site.description ?? '') ||
-      visibility !== site.visibility_mode ||
-      publishMode !== site.publish_mode ||
-      registrationOpen !== (site.registration_open !== false) ||
-      mediaQuotaDraft !== savedMediaQuotaDraft ||
-      kindChanged ||
-      adminPath !== (config.admin_path ?? '/admin'));
-
-  const save = async () => {
-    if (!me || !site) return;
-    if (!name.trim()) {
-      setError(t('站点名称不能为空。'));
-      return;
-    }
-    if (!mediaQuota.valid) {
-      setError(t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。'));
-      return;
-    }
-    const normalizedAdminPath = (adminPath.trim() || '/admin').replace(/\/+$/, '');
-    // 与服务端同一套规则：提前拦住只会被拒绝的保存（占用站点路径、带查询参数等）。
-    const pathIssue = adminPathError(normalizedAdminPath);
-    if (pathIssue) {
-      setError(pathIssue);
-      return;
-    }
-    setAdminPath(normalizedAdminPath);
-    if (kindChanged) {
-      // 形态切换影响注册入口、登录策略与权限模型，先确认再落盘。
-      setKindConfirmOpen(true);
-      return;
-    }
-    await commit();
+  const descriptionKnown = descriptionTouched || site?.description !== undefined;
+  /** 当前表单对应的归一化快照：只有它偏离「已保存」基线时才会发请求。 */
+  const draft: SettingsDraft = {
+    name: name.trim(),
+    domain: domain.trim().toLowerCase(),
+    description: descriptionKnown ? description.trim() : null,
+    // 个人博客固定公开阅读、直接发布：与保存时的强制规则保持一致。
+    visibility: kind === 'personal' ? 'public' : visibility,
+    publish: kind === 'personal' ? 'open' : publishMode,
+    registrationOpen: kind === 'personal' ? false : registrationOpen,
+    mediaQuota: mediaQuotaSignature(mediaQuota, mediaQuotaDraft),
+    adminPath: normalizedAdminPathValue(adminPath),
+    kind,
   };
+  const draftSignature = draftSignatureOf(draft);
+  const dirty =
+    !!site && savedSignatureRef.current !== null && draftSignature !== savedSignatureRef.current;
+  // 渲染阶段先更新 ref：重置 effect 在渲染之后运行，要拿这一帧算出的「是否偏离已保存状态」。
+  dirtyRef.current = dirty;
+  draftSignatureRef.current = draftSignature;
+
+  const clearAutoSaveTimer = () => {
+    if (debounceTimerRef.current === null) return;
+    window.clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = null;
+  };
+
+  /**
+   * 排一次防抖自动保存。
+   *
+   * 保存请求在途时不排期：等这一笔结束的 finally 再按最新签名决定是否补一次，
+   * 这样两次写入永远不会重叠。非法输入留给保存函数校验，不在这里发请求。
+   */
+  const scheduleAutoSave = () => {
+    if (!site || !me || savedSignatureRef.current === null) return;
+    if (draftSignatureRef.current === savedSignatureRef.current) return;
+    // 正在写：等这一笔结束的 finally 再按最新签名决定是否补一次。
+    if (savingRef.current) return;
+    clearAutoSaveTimer();
+    setAutoSaveState('pending');
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      void runSaveRef.current();
+    }, AUTO_SAVE_DEBOUNCE_MS);
+  };
+  scheduleSaveRef.current = scheduleAutoSave;
+
+  // 自动保存调度器：只有偏离已保存状态时才排期；水合时只建立基线，绝不写入。
+  useEffect(() => {
+    if (!site || !me || savedSignatureRef.current === null) return;
+    if (draftSignature === savedSignatureRef.current) {
+      // 改回和已保存一致：撤掉排队中的写入，别发一次没有意义的请求。
+      clearAutoSaveTimer();
+      setAutoSaveState((prev) => (prev === 'saving' || prev === 'saved' ? prev : 'idle'));
+      return;
+    }
+    if (kindChanged) {
+      // 形态切换必须先确认；确认前的其它修改也一起等，避免只落一半。
+      setAutoSaveState((prev) => (prev === 'saving' ? prev : 'pending'));
+      return;
+    }
+    scheduleSaveRef.current();
+    return clearAutoSaveTimer;
+  }, [draftSignature, site?.id, me?.user.id, kindChanged]);
+
+  // 选中的形态与已保存形态不同：弹一次确认框。取消后同一形态不再重复弹。
+  useEffect(() => {
+    if (!site || !me) return;
+    if (!kindChanged) {
+      kindPromptedRef.current = null;
+      return;
+    }
+    if (kindPromptedRef.current === kind) return;
+    kindPromptedRef.current = kind;
+    setKindConfirmOpen(true);
+  }, [kind, kindChanged, site, me]);
 
   /**
    * 个人博客下所有账户都是最高权限：切过去时把成员提升为站点管理员，并记住原角色；
@@ -248,91 +374,185 @@ export function SettingsPage() {
     }
   };
 
-  const commit = async () => {
-    if (!me || !site) return;
+  /** 表单校验：返回可直接展示的错误；空串表示可以保存。 */
+  const validationIssue = (): string => {
+    if (!name.trim()) return t('站点名称不能为空。');
     if (!mediaQuota.valid) {
-      setError(t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。'));
-      return;
+      return t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。');
     }
-    const normalizedAdminPath = (adminPath.trim() || '/admin').replace(/\/+$/, '');
-    setError('');
-    if (kindChanged) {
-      // 切换站点形态会批量修改成员角色（服务端的受保护路由），先通过二次验证；
-      // 取消或验证失败就什么都不提交。
-      const ok = await ensureStepUp(t('切换站点形态'));
-      if (!ok) return;
+    // 与服务端同一套规则：提前拦住只会被拒绝的保存（占用站点路径、带查询参数等）。
+    return adminPathError(normalizedAdminPathValue(adminPath));
+  };
+
+  /**
+   * 把表单里的全部设置写到服务端。
+   *
+   * `switchKind` 为 true 表示这次写入来自形态确认弹窗：只有这条路径会二次验证并
+   * 同步账户角色；普通自动保存永远不切换站点形态。返回值表示服务端是否接受。
+   */
+  const persist = async (switchKind: boolean): Promise<boolean> => {
+    if (!me || !site) return false;
+    // 上一笔还没写完：由它结束时按最新状态决定是否补一次，两次请求不重叠。
+    if (savingRef.current) return false;
+    const issue = validationIssue();
+    if (issue) {
+      // 非法值不发请求，也不冒充「已保存」：直接展示校验原因。
+      setError(issue);
+      setAutoSaveError(issue);
+      setAutoSaveState('error');
+      return false;
     }
-    setBusy(true);
+    const switching = switchKind && kindChanged;
+    const normalizedAdminPath = normalizedAdminPathValue(adminPath);
+    // 记下这一笔要写入的归一化状态：保存期间用户继续输入不会被误认为已保存。
+    const signature = draftSignatureRef.current;
     // 个人博客固定公开阅读、直接发布：没有需要审核的其他成员。
+    const nextName = name.trim();
+    const nextDomain = domain.trim().toLowerCase();
+    const nextDescription = description.trim();
+    const sendDescription = site.description !== undefined || descriptionTouched;
     const nextVisibility: VisibilityMode = kind === 'personal' ? 'public' : visibility;
     const nextPublish: PublishMode = kind === 'personal' ? 'open' : publishMode;
+    // O-3：个人博客固定关闭注册，不把开关的旧值写回去。
+    const nextRegistration = kind === 'personal' ? false : registrationOpen;
+    // 只有输入框里的额度变了才带上：留空 = 继承部署默认（null），0 = 无限。
+    const mediaQuotaBytes: MediaQuotaBytes = mediaQuota.valid ? mediaQuota.value : null;
+    const mediaQuotaPatch: { media_quota_bytes?: MediaQuotaBytes } =
+      mediaQuotaDraft !== savedMediaQuotaDraft ? { media_quota_bytes: mediaQuotaBytes } : {};
+    setError('');
+    setBusy(true);
+    savingRef.current = true;
+    setAutoSaveState('saving');
+    setAutoSaveError('');
+    /** 这一笔是否真的写成功：决定 finally 里要不要为「保存期间的新输入」补一次。 */
+    let saved = false;
     try {
-      const sendDescription = site.description !== undefined || descriptionTouched;
-      const trimmedDomain = domain.trim().toLowerCase();
+      if (switching) {
+        // 切换站点形态会批量修改成员角色（服务端的受保护路由），先通过二次验证；
+        // 取消或验证失败就什么都不提交。
+        const ok = await ensureStepUp(t('切换站点形态'));
+        if (!ok) {
+          // 取消二次验证：改动还留着，等一下次确认，不要显示成已保存。
+          setAutoSaveState('pending');
+          return false;
+        }
+      }
       // 主域名单独走域名端点：它会同时写入 domain_verified_at，避免设置后站点 404。
       await backend.updateSite(site.id, {
-        name: name.trim(),
-        ...(sendDescription ? { description: description.trim() } : {}),
+        name: nextName,
+        ...(sendDescription ? { description: nextDescription } : {}),
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
-        // O-3：个人博客固定关闭注册，不把开关的旧值写回去。
-        registration_open: kind === 'personal' ? false : registrationOpen,
-        ...(mediaQuotaDraft !== savedMediaQuotaDraft
-          ? { media_quota_bytes: mediaQuota.value }
-          : {}),
+        registration_open: nextRegistration,
+        ...mediaQuotaPatch,
       });
-      if (trimmedDomain !== site.domain) {
-        await backend.setSiteDomain(site.id, trimmedDomain);
+      if (nextDomain !== site.domain) {
+        await backend.setSiteDomain(site.id, nextDomain);
       }
       applySite({
         ...site,
-        name: name.trim(),
-        domain: trimmedDomain,
-        ...(sendDescription ? { description: description.trim() } : {}),
+        name: nextName,
+        domain: nextDomain,
+        ...(sendDescription ? { description: nextDescription } : {}),
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
-        registration_open: kind === 'personal' ? false : registrationOpen,
-        ...(mediaQuotaDraft !== savedMediaQuotaDraft
-          ? { media_quota_bytes: mediaQuota.value }
-          : {}),
+        registration_open: nextRegistration,
+        ...mediaQuotaPatch,
       });
-      if (kindChanged) {
+      if (switching) {
         updateConfig({ site_kind: kind });
         await syncRoles(kind);
       }
       // 后台入口进站点级配置：换设备、换浏览器都要从同一个地址进后台。保存成功后
       // 地址栏会立刻切到新入口，`/admin` 不再能进后台（见 lib/adminPathRoute.ts）。
-      const adminPathSaved = await saveSiteConfig({
-        admin_path: adminPathOf({ admin_path: normalizedAdminPath }),
-      });
-      if (!adminPathSaved) {
-        setError(t('后台入口没有保存到服务端，仍在使用原来的入口。'));
-        return;
+      // 只有入口真的变了才发这次 site-config 写入，改其它字段时不顺带 PUT 一遍。
+      if (normalizedAdminPath !== adminPathOf(config)) {
+        const adminPathSaved = await saveSiteConfig({
+          admin_path: adminPathOf({ admin_path: normalizedAdminPath }),
+        });
+        if (!adminPathSaved) {
+          const text = t('后台入口没有保存到服务端，仍在使用原来的入口。');
+          setError(text);
+          setAutoSaveError(text);
+          setAutoSaveState('error');
+          return false;
+        }
+        // 没有更新的输入时顺手把输入框归一化（例如引用默认入口 /admin）。
+        if (draftSignatureRef.current === signature) setAdminPath(normalizedAdminPath);
       }
+      savedSignatureRef.current = signature;
       setDescriptionTouched(false);
       noteActivity(
         backend,
         me.user.display_name,
-        kindChanged ? '切换站点形态' : '修改站点设置',
-        name.trim(),
+        switching ? '切换站点形态' : '修改站点设置',
+        nextName,
         `${SITE_KIND_LABEL[kind]} · ${VISIBILITY_LABEL[nextVisibility]} · ${PUBLISH_LABEL[nextPublish]}`,
       );
       setKindConfirmOpen(false);
-      toast.push(
-        'ok',
-        kindChanged ? t('站点形态已切换') : t('站点设置已保存'),
-        kind === 'personal'
-          ? t('个人博客模式已生效：注册入口关闭，所有账户都能登录后台。')
-          : t('社区站点模式已生效：注册入口按「开放注册」开关生效，权限组按角色生效。'),
-      );
+      setAutoSaveState('saved');
+      saved = true;
+      if (switching) {
+        toast.push(
+          'ok',
+          t('已自动保存'),
+          kind === 'personal'
+            ? t('个人博客模式已生效：注册入口关闭，所有账户都能登录后台。')
+            : t('社区站点模式已生效：注册入口按「开放注册」开关生效，权限组按角色生效。'),
+        );
+      } else {
+        toast.push('ok', t('已自动保存'));
+      }
+      return true;
     } catch (err) {
       const text = err instanceof Error ? err.message : t('保存失败。');
       setError(text);
+      setAutoSaveError(text);
+      setAutoSaveState('error');
       toast.push('error', t('保存失败'), text);
+      return false;
     } finally {
+      savingRef.current = false;
       setBusy(false);
+      // 保存期间用户继续输入 / 把值改了回去：成功时按最新状态再排一次，让服务端最终
+      // 与表单一致；失败时只在确实有更新的输入时重排，避免对同一个错误反复重试。
+      const hasNewerEdits = draftSignatureRef.current !== signature;
+      if (saved) {
+        if (draftSignatureRef.current !== savedSignatureRef.current) scheduleSaveRef.current();
+      } else if (hasNewerEdits) {
+        scheduleSaveRef.current();
+      }
     }
   };
+
+  /** 自动保存入口：形态切换未确认时只排队，由确认弹窗走 persist(true) 一次写全。 */
+  const runAutoSave = async () => {
+    if (!me || !site) return;
+    if (kindChanged) {
+      setAutoSaveState((prev) => (prev === 'saving' ? prev : 'pending'));
+      return;
+    }
+    await persist(false);
+  };
+
+  /** 形态确认弹窗的「确认切换」：走和保存完全相同的提交路径。 */
+  const confirmKindSwitch = async () => {
+    await persist(true);
+  };
+
+  /**
+   * 取消形态切换：退回服务端已保存的形态，让其它字段的自动保存恢复。
+   *
+   * 如果不退回，单选按钮会停在新形态，自动保存会一直因为「形态未确认」而暂停，
+   * 站长接下来改的名字/简介都写不进去。
+   */
+  const cancelKindSwitch = () => {
+    setKindConfirmOpen(false);
+    setKind(siteKindOf(config));
+    setAutoSaveError('');
+  };
+
+  runSaveRef.current = runAutoSave;
 
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
@@ -342,11 +562,9 @@ export function SettingsPage() {
           <p>{t('左侧切换基本信息、访问与域名、SEO 与性能优化；登录方式与日志有独立入口。')}</p>
         </div>
         <div className="admin-page-actions">
+          <AutoSaveStatus state={autoSaveState} error={autoSaveError} />
           <Button variant="secondary" size="sm" onClick={() => window.open('/', '_blank')} icon="eye">
             {t('预览站点')}
-          </Button>
-          <Button size="sm" loading={busy} disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
           </Button>
         </div>
       </div>
@@ -822,31 +1040,9 @@ export function SettingsPage() {
             </div>
           </section>
 
+          {/* 「保存修改」按钮已移除：角标会说明停止输入后的自动保存进度。 */}
           <div className="row gap-8">
-            <Button loading={busy} disabled={!dirty} onClick={save} icon="check">
-              {t('保存修改')}
-            </Button>
-            {dirty ? (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (!site) return;
-                  setName(site.name);
-                  setDomain(site.domain);
-                  setDescription(site.description ?? '');
-                  setVisibility(site.visibility_mode);
-                  setPublishMode(site.publish_mode);
-                  setRegistrationOpen(site.registration_open !== false);
-                  setKind(siteKindOf(config));
-                  setAdminPath(config.admin_path ?? '/admin');
-                  setError('');
-                }}
-              >
-                {t('放弃未保存的修改')}
-              </Button>
-            ) : (
-              <span className="tiny faint">{t('没有未保存的修改')}</span>
-            )}
+            <AutoSaveStatus state={autoSaveState} error={autoSaveError} />
           </div>
 
         </div>
@@ -872,13 +1068,13 @@ export function SettingsPage() {
             ? t('注册入口会关闭，所有账户获得后台最高权限。')
             : t('注册入口重新开放，权限组按角色生效。')
         }
-        onClose={() => setKindConfirmOpen(false)}
+        onClose={cancelKindSwitch}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setKindConfirmOpen(false)}>
+            <Button variant="ghost" onClick={cancelKindSwitch}>
               {t('取消')}
             </Button>
-            <Button loading={busy} onClick={() => void commit()} icon="check">
+            <Button loading={busy} onClick={() => void confirmKindSwitch()} icon="check">
               {t('确认切换')}
             </Button>
           </>

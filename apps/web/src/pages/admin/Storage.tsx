@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
   StorageScope,
@@ -49,6 +49,10 @@ import {
 import { Icon, type IconName } from '../../components/Icon';
 import { NumberField } from '../../components/NumberField';
 import { RoleGate } from '../../components/Guards';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
+
+/** 自动保存的防抖时长：停止编辑 700ms 后写回，避免每敲一下都写本地配置。 */
+const AUTOSAVE_DELAY_MS = 700;
 
 /** 用途固定顺序与图标；文案在组件里按当前语言取。 */
 const SCOPE_META: {
@@ -123,7 +127,22 @@ export function StoragePage() {
   const [form, setForm] = useState<StorageStrategy>(() => emptyStrategy());
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<StorageStrategy | null>(null);
-  const dirty = JSON.stringify(draft) !== savedKey;
+  const [saveState, setSaveState] = useState<AutoSaveState>('idle');
+  const [saveError, setSaveError] = useState('');
+  /** 草稿归一化后的真正写入值；签名相同就不再重复保存。 */
+  const payload = useMemo(() => normalizeStorage(draft), [draft]);
+  const payloadKey = JSON.stringify(payload);
+  /** 当前草稿签名；保存完成后据此判断期间有没有新的输入。 */
+  const payloadKeyRef = useRef(payloadKey);
+  payloadKeyRef.current = payloadKey;
+  /** 上一次的校验失败原因；只在原因变化时提示一次，避免连续输入时刷屏。 */
+  const lastInvalidRef = useRef('');
+  /** 最近一次已写入（或已从服务端读到）的归一化签名；签名相同就不重复保存。 */
+  const savedSig = useRef(payloadKey);
+  /** 自动保存串行队列：后一次永远排在前一次完成之后，避免并发覆盖。 */
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  /** 上一次同步过的服务端签名；挂载时只记下，不同步也不保存。 */
+  const syncedKey = useRef(savedKey);
 
   const driverItems = [
     { key: 'local' as const, label: t('本地储存') },
@@ -137,8 +156,104 @@ export function StoragePage() {
     attachment: t('用户上传的附件与私有数据，通常需要鉴权后才能访问。'),
   };
 
+  /** 保存前校验：S3 必须有桶名，端点与公开地址必须是 http(s) 绝对地址。 */
+  const validationError = (() => {
+    for (const strategy of payload.strategies) {
+      if (strategy.driver === 's3' && !strategy.s3_bucket) {
+        return t('云策略「{name}」缺少桶名', { name: strategy.name });
+      }
+      const endpointError = storageUrlError(strategy.s3_endpoint);
+      if (endpointError) {
+        return t('策略「{name}」的 Endpoint {error}', {
+          name: strategy.name,
+          error: endpointError,
+        });
+      }
+      const publicError = storageUrlError(strategy.s3_public_base_url);
+      if (publicError) {
+        return t('策略「{name}」的公开访问地址{error}', {
+          name: strategy.name,
+          error: publicError,
+        });
+      }
+    }
+    return '';
+  })();
+
+  /** 把一次保存排进串行队列；执行时签名已对齐就说明无需再写。 */
+  const enqueueSave = (sig: string, next: StorageSettings) => {
+    saveQueue.current = saveQueue.current
+      .then(() => {
+        if (sig === savedSig.current) {
+          setSaveState('idle');
+          return;
+        }
+        setSaveState('saving');
+        // 本页只写这台电脑的本地安装配置，updateConfig 是同步落盘的。
+        updateConfig({ storage: next });
+        savedSig.current = sig;
+        setSaveState('saved');
+        toast.push('ok', t('已自动保存'));
+        // 与旧的手动保存一致：期间没有新的输入时把草稿归一化成真正写入的值。
+        if (payloadKeyRef.current === sig) {
+          setDraft(next);
+        }
+        if (me) {
+          const multiCount = STORAGE_SCOPES.filter(
+            (scope) => scopeAllocation(next, scope).mode === 'quota',
+          ).length;
+          noteActivity(
+            backend,
+            me.user.display_name,
+            '修改储存策略',
+            site?.name ?? '站点',
+            t('{count} 套策略 · {multi} 个用途多策略', {
+              count: next.strategies.length,
+              multi: multiCount,
+            }),
+          );
+        }
+      })
+      .catch(() => setSaveState('error'));
+  };
+
+  // 草稿变化后尾随防抖自动保存：与已保存值一致就不动，校验不通过只报错不写入。
   useEffect(() => {
-    setDraft(readStorage(config));
+    if (payloadKey === savedSig.current) {
+      setSaveState((state) => (state === 'saving' ? state : 'idle'));
+      setSaveError('');
+      lastInvalidRef.current = '';
+      return;
+    }
+    if (validationError) {
+      setSaveState('error');
+      setSaveError(validationError);
+      if (lastInvalidRef.current !== validationError) {
+        lastInvalidRef.current = validationError;
+        toast.push('error', t('自动保存失败'), validationError);
+      }
+      return;
+    }
+    lastInvalidRef.current = '';
+    setSaveState('pending');
+    setSaveError('');
+    const timer = window.setTimeout(() => enqueueSave(payloadKey, payload), AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // enqueueSave 只依赖 ref 与稳定回调；签名变化才是重新排队的依据。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payloadKey, validationError]);
+
+  // 本地配置更新（开屏水合或本页保存完成）时同步草稿：本地有更新的内容就保留，
+  // 既避免冲掉正在编辑的内容，也避免把刚同步回来的值当成新改动再保存一次。
+  useEffect(() => {
+    if (syncedKey.current === savedKey) return;
+    syncedKey.current = savedKey;
+    const next = readStorage(config);
+    if (payloadKey === savedSig.current) {
+      setDraft(next);
+    }
+    savedSig.current = JSON.stringify(next);
+    // 只跟配置变化同步；payloadKey 故意不入依赖。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
@@ -240,7 +355,7 @@ export function StoragePage() {
     toast.push(
       'ok',
       t('已更新储存策略'),
-      t('点右上角「保存修改」写入这台电脑的本地安装配置。'),
+      t('改动会自动写入这台电脑的本地安装配置。'),
     );
   };
 
@@ -272,72 +387,19 @@ export function StoragePage() {
       'ok',
       t('已删除储存策略「{name}」', { name: target.name }),
       deleteScopes.length
-        ? t('引用它的用途已经从分配里移除，空出来的位置回落到第一套策略，点「保存修改」后生效；不会删除任何文件。')
+        ? t('引用它的用途已经从分配里移除，空出来的位置回落到第一套策略；改动会自动保存，不会删除任何文件。')
         : t('没有用途在使用这套策略，删除不会改变上传位置，也不会删除任何文件。'),
     );
   };
 
-  const save = () => {
-    const next = normalizeStorage(draft);
-    for (const strategy of next.strategies) {
-      if (strategy.driver === 's3' && !strategy.s3_bucket) {
-        toast.push(
-          'error',
-          t('云策略「{name}」缺少桶名', { name: strategy.name }),
-          t('STORAGE_DRIVER=s3 时桶名必填，API 启动会直接拒绝这组环境变量。'),
-        );
-        return;
-      }
-      const endpointError = storageUrlError(strategy.s3_endpoint);
-      if (endpointError) {
-        toast.push(
-          'error',
-          t('Endpoint 格式不对'),
-          t('策略「{name}」的 Endpoint {error}', { name: strategy.name, error: endpointError }),
-        );
-        return;
-      }
-      const publicError = storageUrlError(strategy.s3_public_base_url);
-      if (publicError) {
-        toast.push(
-          'error',
-          t('公开访问地址格式不对'),
-          t('策略「{name}」的公开访问地址{error}', {
-            name: strategy.name,
-            error: publicError,
-          }),
-        );
-        return;
-      }
-    }
-    updateConfig({ storage: next });
-    setDraft(next);
-    toast.push(
-      'ok',
-      t('储存策略已保存'),
-      t('已写入这台电脑的本地安装配置；用途分配、容量上限与切换顺序都会一并保存。'),
-    );
-    if (me) {
-      const multiCount = STORAGE_SCOPES.filter(
-        (scope) => scopeAllocation(next, scope).mode === 'quota',
-      ).length;
-      noteActivity(
-        backend,
-        me.user.display_name,
-        '修改储存策略',
-        site?.name ?? '站点',
-        t('{count} 套策略 · {multi} 个用途多策略', {
-          count: next.strategies.length,
-          multi: multiCount,
-        }),
-      );
-    }
-  };
-
   const reset = () => {
-    const next = defaultStorage();
-    updateConfig({ storage: next });
+    const next = normalizeStorage(defaultStorage());
+    // 先把草稿与签名一起对齐默认值，避免自动保存把恢复前的旧草稿又写回去。
+    savedSig.current = JSON.stringify(next);
     setDraft(next);
+    setSaveError('');
+    updateConfig({ storage: next });
+    setSaveState('saved');
     toast.push(
       'ok',
       t('已恢复默认储存策略'),
@@ -496,12 +558,10 @@ export function StoragePage() {
           </p>
         </div>
         <div className="admin-page-actions">
+          <AutoSaveStatus state={saveState} error={saveError} />
           <Link to="/admin/media" className="btn btn-ghost btn-sm">
             <Icon name="image" size={14} /> {t('媒体库')}
           </Link>
-          <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
         </div>
       </div>
 
@@ -716,7 +776,7 @@ export function StoragePage() {
           <Modal
             open
             title={t('「{scope}」的储存策略', { scope: scopeLabel(allocationScope) })}
-            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；点「完成」后记得保存修改。')}
+            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存。')}
             onClose={() => setAllocationScope(null)}
             width={680}
             footer={
@@ -967,19 +1027,6 @@ export function StoragePage() {
             ) : null}
           </div>
         </section>
-
-        <div className="row gap-8">
-          <Button disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
-          {dirty ? (
-            <Button variant="ghost" onClick={() => setDraft(readStorage(config))}>
-              {t('放弃未保存的修改')}
-            </Button>
-          ) : (
-            <span className="tiny faint">{t('没有未保存的修改')}</span>
-          )}
-        </div>
 
         <div className="danger-zone">
           <h3>{t('恢复默认储存策略')}</h3>

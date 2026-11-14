@@ -5921,6 +5921,11 @@ components:
           type: string
           description: The only representation a client may render. Produced by the security service.
         policy_version: { type: string }
+        author_id:
+          type: string
+          description: |
+            Read only. The account that wrote the item. Reader surfaces resolve the
+            display name from the public profile endpoint (`GET /users/{userID}`).
         revision:
           type: integer
           description: Current version number in the item's revision history.

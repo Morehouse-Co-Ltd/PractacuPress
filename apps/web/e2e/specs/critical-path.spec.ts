@@ -339,11 +339,11 @@ test('6. 后台设置：储存多策略、性能效果卡、人机验证保存�
   await expect(contentScope.locator('.storage-current')).toContainText('2 套策略');
   await shot(world, page, '14-storage-multi-before-save');
 
-  await page
-    .locator('.admin-page-actions')
-    .getByRole('button', { name: '保存修改', exact: true })
-    .click();
-  await expectToast(page, '储存策略已保存');
+  // 储存策略改成自动保存：最后一次改动停止后，防抖写回本机配置。
+  await page.waitForTimeout(1500);
+  await expect(page.locator('.autosave-status')).toContainText('已自动保存', {
+    timeout: 30_000,
+  });
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '储存策略' }).first()).toBeVisible({
@@ -376,11 +376,10 @@ test('6. 后台设置：储存多策略、性能效果卡、人机验证保存�
   await shot(world, page, '16-performance-effect-cards');
 
   await page.locator('#performance-feed').fill('12');
-  await page
-    .locator('.admin-page-actions')
-    .getByRole('button', { name: '保存修改', exact: true })
-    .click();
-  await expectToast(page, '性能设置已保存');
+  // 性能设置改成自动保存：停止输入后写入服务端。
+  await expect(page.locator('.autosave-status')).toContainText('已自动保存', {
+    timeout: 30_000,
+  });
 
   await page.reload();
   await expect(page.locator('#performance-feed')).toHaveValue('12', { timeout: 20_000 });
@@ -404,11 +403,10 @@ test('6. 后台设置：储存多策略、性能效果卡、人机验证保存�
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await page.locator('#verification-site-key').fill('e2e-site-key-2026');
-  await page
-    .locator('.admin-page-actions')
-    .getByRole('button', { name: '保存修改', exact: true })
-    .click();
-  await expectToast(page, '人机验证设置已保存');
+  // 人机验证设置改成自动保存：停止输入后写入站点文档。
+  await expect(page.locator('.autosave-status')).toContainText('已自动保存', {
+    timeout: 30_000,
+  });
 
   await page.reload();
   await expect(page.getByRole('heading', { name: '人机验证' }).first()).toBeVisible({

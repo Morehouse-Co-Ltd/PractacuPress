@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AccessSettings, RateRule } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useSaveSiteConfig } from '../../lib/siteConfigSave';
@@ -28,9 +28,12 @@ import {
   Input,
   Toggle,
 } from '../../components/ui';
-import { Icon } from '../../components/Icon';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
 import { NumberField } from '../../components/NumberField';
 import { RoleGate } from '../../components/Guards';
+
+/** 自动保存的防抖间隔：停下编辑这么久才写服务端，避免每敲一下都发一次 PUT。 */
+const AUTOSAVE_DELAY_MS = 700;
 
 function RuleEditor({
   idPrefix,
@@ -99,37 +102,136 @@ export function AccessPage({ embedded = false }: { embedded?: boolean }) {
   const snapshot = useAccessSnapshot(1000);
   const tabs = useSiteTabPresence(saved.enabled && saved.tabs.enabled, saved.tabs.limit);
   const domains = useMemo(() => readDomains(config), [config]);
-  const dirty = JSON.stringify(draft) !== savedKey;
+  /** 自动保存状态：设置改成自动保存后，这是站长确认改动真的落地的唯一入口。 */
+  const [saveState, setSaveState] = useState<AutoSaveState>('idle');
+  const [saveError, setSaveError] = useState('');
+  /**
+   * 最近一次写入服务端的载荷签名。
+   *
+   * 初值就是首屏那份配置：挂载时草稿与配置一致、签名相同，自动保存不会在打开页面
+   * 时白写一次。之后成功的保存、配置回填与「恢复默认」都会更新它。
+   */
+  const lastSavedRef = useRef(savedKey);
+  /**
+   * 草稿与最近一次写入/回填的内容是否不同。
+   *
+   * 用「上次保存的基线」而不是「当前配置」判断：站点会在挂载后再水合一次配置，
+   * 若拿未变的草稿去比新配置，会被误判成「有未保存修改」而拒绝回填。
+   */
+  const draftSignature = JSON.stringify(readAccess({ access: draft }));
+  const dirty = draftSignature !== lastSavedRef.current;
+  /** 定时器与排队任务里读最新草稿，避免拿到旧闭包。 */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** 有没有更新的本地编辑；配置回填时据此决定要不要覆盖输入。 */
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  /** 串行队列：同一时间只允许一笔保存在途，避免后发请求被前一笔覆盖。 */
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
 
   // 保存后跟着配置收敛一次，避免草稿与真正生效的规则分叉。
+  // 只在没有更新的本地编辑时回填：否则保存响应会把用户刚敲进去的内容冲掉。
   useEffect(() => {
-    setDraft(readAccess(config));
+    const next = readAccess(config);
+    const nextKey = JSON.stringify(next);
+    if (dirtyRef.current) return;
+    lastSavedRef.current = nextKey;
+    setDraft((prev) => (JSON.stringify(prev) === nextKey ? prev : next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey]);
 
-  const save = async () => {
-    const next = readAccess({ access: draft });
-    const ok = await saveSiteConfig({ access: next });
-    setDraft(next);
-    if (!ok) return;
-    toast.push(
-      'ok',
-      t('访问限制已保存'),
-      next.enabled
-        ? t('已写入站点服务端配置：访客刷新页面后按这套规则计数。')
-        : t('浏览器端保护当前关闭。'),
-    );
-    if (me) {
-      noteActivity(backend, me.user.display_name, '修改访问限制', site?.name ?? '站点', next.enabled ? '已启用' : '已关闭');
-    }
+  /** 串行写：自动保存与「恢复默认」都排队，保证最后一次操作真正落库。 */
+  const queueSave = (task: () => Promise<void>) => {
+    queueRef.current = queueRef.current.then(task).catch(() => {});
   };
 
+  /** 自动保存：整份草稿写回站点配置，成功后再提示并记录动态。 */
+  const autosave = () => {
+    queueSave(async () => {
+      const next = readAccess({ access: draftRef.current });
+      const signature = JSON.stringify(next);
+      // 排队期间草稿可能已经保存过（或被回填成同一份）：不重复写。
+      if (signature === lastSavedRef.current) {
+        setSaveState((prev) => (prev === 'pending' ? 'idle' : prev));
+        return;
+      }
+      setSaveState('saving');
+      setSaveError('');
+      let ok = false;
+      try {
+        ok = await saveSiteConfig({ access: next });
+      } catch {
+        // saveSiteConfig 自己会提示服务端拒绝的原因，这里只兜住意外。
+        ok = false;
+      }
+      // 失败时本地配置已经被乐观更新：基线跟着走到这份载荷，避免自动重试风暴。
+      lastSavedRef.current = signature;
+      if (!ok) {
+        setSaveError(t('自动保存失败'));
+        setSaveState('error');
+        return;
+      }
+      // 保存期间可能又改过：只有没有更新的编辑时才把草稿收敛成归一化后的写法。
+      if (JSON.stringify(draftRef.current) === signature) {
+        draftRef.current = next;
+        setDraft(next);
+      }
+      setSaveState('saved');
+      toast.push('ok', t('已自动保存'));
+      if (me) {
+        noteActivity(
+          backend,
+          me.user.display_name,
+          '修改访问限制',
+          site?.name ?? '站点',
+          next.enabled ? '已启用' : '已关闭',
+        );
+      }
+    });
+  };
+
+  // 草稿停下 700ms 后自动保存；签名与上次写入一致说明只是回填/重复渲染，不发请求。
+  useEffect(() => {
+    const signature = JSON.stringify(readAccess({ access: draft }));
+    if (signature === lastSavedRef.current) {
+      // 用回已保存的内容时清掉旧错误：pending / error 都收回 idle，「已保存」保留。
+      setSaveState((prev) => (prev === 'pending' || prev === 'error' ? 'idle' : prev));
+      setSaveError((prev) => (prev ? '' : prev));
+      return;
+    }
+    setSaveState('pending');
+    const timer = window.setTimeout(autosave, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+
+  /** 队列/定时器里的最新保存函数；卸载时用它补写，避免 700ms 内切走丢掉修改。 */
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) autosaveRef.current();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const reset = async () => {
-    const ok = await saveSiteConfig({ access: DEFAULT_ACCESS });
-    setDraft(DEFAULT_ACCESS);
-    accessController.clear();
-    if (!ok) return;
-    toast.push('ok', t('已恢复默认限制'), t('浏览器端保护已关闭；已保存的网关数值也回到默认。'));
+    queueSave(async () => {
+      // 恢复默认是一次显式写入：先把它设成基线，排队中的旧草稿不会再覆盖回去。
+      lastSavedRef.current = JSON.stringify(DEFAULT_ACCESS);
+      const ok = await saveSiteConfig({ access: DEFAULT_ACCESS });
+      draftRef.current = DEFAULT_ACCESS;
+      setDraft(DEFAULT_ACCESS);
+      accessController.clear();
+      if (!ok) {
+        setSaveError(t('自动保存失败'));
+        setSaveState('error');
+        return;
+      }
+      setSaveError('');
+      setSaveState('saved');
+      toast.push('ok', t('已恢复默认限制'), t('浏览器端保护已关闭；已保存的网关数值也回到默认。'));
+    });
   };
 
   const clearBlock = () => {
@@ -148,11 +250,9 @@ export function AccessPage({ embedded = false }: { embedded?: boolean }) {
           </p>
         </div>
         <div className="admin-page-actions">
+          <AutoSaveStatus state={saveState} error={saveError} />
           <Button variant="ghost" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
             {t('查看前台')}
-          </Button>
-          <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
           </Button>
         </div>
       </div>
@@ -378,25 +478,6 @@ export function AccessPage({ embedded = false }: { embedded?: boolean }) {
             </Button>
           </div>
         </aside>
-      </div>
-
-      <div className="row gap-8 mt-20">
-        <Button disabled={!dirty} onClick={save} icon="check">
-          {t('保存修改')}
-        </Button>
-        {dirty ? (
-          <Button
-            variant="ghost"
-            onClick={() => setDraft(readAccess(config))}
-          >
-            {t('放弃未保存的修改')}
-          </Button>
-        ) : (
-          <span className="tiny faint">{t('没有未保存的修改')}</span>
-        )}
-        <span className="tiny faint">
-          <Icon name="shield" size={12} /> {t('管理后台请求不受这些限制影响')}
-        </span>
       </div>
     </RoleGate>
   );

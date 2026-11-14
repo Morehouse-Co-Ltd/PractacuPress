@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import type { LoadingPreset, LoadingSettings } from '../../types';
 import { useAuth } from '../../lib/session';
@@ -34,6 +34,10 @@ import { Icon } from '../../components/Icon';
 import { NumberField } from '../../components/NumberField';
 import { LoadingMark, LoadingScene } from '../../components/LoadingScene';
 import { RoleGate } from '../../components/Guards';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
+
+/** 自动保存的防抖时长：停止编辑 700ms 后写回，避免每敲一下都发请求。 */
+const AUTOSAVE_DELAY_MS = 700;
 
 export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
@@ -44,9 +48,23 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
   const { customization } = useCustomization();
   const toast = useToast();
   const saved = useMemo(() => readLoading(config), [config]);
+  const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<LoadingSettings>(() => saved);
   const [replayKey, setReplayKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [saveState, setSaveState] = useState<AutoSaveState>('idle');
+  const [saveError, setSaveError] = useState('');
+  /** 草稿归一化后的真正写入值；签名相同就不再重复保存。 */
+  const payload = useMemo(() => readLoading({ loading: draft }), [draft]);
+  const payloadKey = JSON.stringify(payload);
+  /** 当前草稿签名；保存完成后据此判断期间有没有新的输入。 */
+  const payloadKeyRef = useRef(payloadKey);
+  payloadKeyRef.current = payloadKey;
+  const savedSig = useRef(payloadKey);
+  /** 自动保存串行队列：后一次永远排在前一次完成之后，避免并发覆盖。 */
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  /** 上一次同步过的服务端签名；挂载时只记下，不同步也不保存。 */
+  const syncedKey = useRef(savedKey);
   const tokens = useMemo(() => resolveTokens(customization.theme), [customization.theme]);
   const palette = useMemo(
     () =>
@@ -57,7 +75,6 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
       }),
     [draft, tokens],
   );
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   /** 骨架预设走原位骨架：不盖全屏遮罩，也不看两个显示场景开关。 */
   const skeleton = isSkeletonPreset(draft.preset);
   const motion = skeletonMotion(draft);
@@ -116,40 +133,87 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
     );
   };
 
-  const save = async () => {
-    const next = readLoading({ loading: draft });
-    const nextSkeleton = isSkeletonPreset(next.preset);
-    const ok = await saveSiteConfig({ loading: next });
-    setDraft(next);
-    if (!ok) return;
-    toast.push(
-      'ok',
-      t('加载动画已保存'),
-      next.enabled
-        ? nextSkeleton
-          ? t('已写入站点服务端配置：访客等待内容时会看到原位骨架。')
-          : t('已写入站点服务端配置：访客刷新或切换页面时会看到这段动画。')
-        : t('加载动画当前关闭。'),
-    );
-    if (me) {
-      noteActivity(
-        backend,
-        me.user.display_name,
-        '修改加载动画',
-        site?.name ?? '站点',
-        next.enabled
-          ? nextSkeleton
-            ? `${next.preset} · ${t('原位骨架')}`
-            : `${next.preset} · ${next.min_duration_ms} ms`
-          : t('已关闭'),
-      );
-    }
+  /** 把一次保存排进串行队列；执行时签名已对齐就说明无需再写。 */
+  const enqueueSave = (sig: string, next: LoadingSettings) => {
+    saveQueue.current = saveQueue.current
+      .then(async () => {
+        if (sig === savedSig.current) {
+          setSaveState('idle');
+          return;
+        }
+        setSaveState('saving');
+        const ok = await saveSiteConfig({ loading: next });
+        if (!ok) {
+          // useSaveSiteConfig 已经提示了服务端拒绝的原因；状态留给下一次编辑重试。
+          setSaveState('error');
+          return;
+        }
+        savedSig.current = sig;
+        setSaveState('saved');
+        toast.push('ok', t('已自动保存'));
+        // 与旧的手动保存一致：期间没有新的输入时把草稿归一化成真正写入的值。
+        if (payloadKeyRef.current === sig) {
+          setDraft(next);
+        }
+        if (me) {
+          const nextSkeleton = isSkeletonPreset(next.preset);
+          noteActivity(
+            backend,
+            me.user.display_name,
+            '修改加载动画',
+            site?.name ?? '站点',
+            next.enabled
+              ? nextSkeleton
+                ? `${next.preset} · ${t('原位骨架')}`
+                : `${next.preset} · ${next.min_duration_ms} ms`
+              : t('已关闭'),
+          );
+        }
+      })
+      .catch(() => setSaveState('error'));
   };
 
+  // 草稿变化后尾随防抖自动保存：与已保存值一致就不动。
+  useEffect(() => {
+    if (payloadKey === savedSig.current) {
+      setSaveState((state) => (state === 'saving' ? state : 'idle'));
+      setSaveError('');
+      return;
+    }
+    setSaveState('pending');
+    setSaveError('');
+    const timer = window.setTimeout(() => enqueueSave(payloadKey, payload), AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // enqueueSave 只依赖 ref 与稳定回调；签名变化才是重新排队的依据。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payloadKey]);
+
+  // 服务端配置更新（开屏水合或本页保存完成）时同步草稿：本地有更新的内容就保留，
+  // 既避免冲掉正在输入的内容，也避免把刚同步回来的值当成新改动再保存一次。
+  useEffect(() => {
+    if (syncedKey.current === savedKey) return;
+    syncedKey.current = savedKey;
+    const next = readLoading(config);
+    if (payloadKey === savedSig.current) {
+      setDraft(next);
+    }
+    savedSig.current = JSON.stringify(next);
+    // 只跟服务端配置变化同步；payloadKey 故意不入依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedKey]);
+
   const reset = async () => {
-    const ok = await saveSiteConfig({ loading: DEFAULT_LOADING });
-    setDraft(DEFAULT_LOADING);
-    if (!ok) return;
+    const next = readLoading({ loading: DEFAULT_LOADING });
+    // 先把草稿与签名一起对齐默认值，避免自动保存把恢复前的旧草稿又写回去。
+    savedSig.current = JSON.stringify(next);
+    setDraft(next);
+    setSaveError('');
+    const ok = await saveSiteConfig({ loading: next });
+    if (!ok) {
+      setSaveState('error');
+      return;
+    }
+    setSaveState('saved');
     toast.push('ok', t('已恢复默认加载动画'), t('加载画面关闭，图形回到圆环。'));
   };
 
@@ -168,9 +232,7 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
               {t('全屏预览')}
             </Button>
           )}
-          <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
+          <AutoSaveStatus state={saveState} error={saveError} />
           <span className="tiny faint">{t('加载动画只在站点前台出现')}</span>
         </div>
       ) : (
@@ -194,9 +256,7 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
                 {t('全屏预览')}
               </Button>
             )}
-            <Button size="sm" disabled={!dirty} onClick={save} icon="check">
-              {t('保存修改')}
-            </Button>
+            <AutoSaveStatus state={saveState} error={saveError} />
           </div>
         </div>
       )}
@@ -556,16 +616,6 @@ export function LoadingPage({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       <div className="row gap-8 mt-20">
-        <Button disabled={!dirty} onClick={save} icon="check">
-          {t('保存修改')}
-        </Button>
-        {dirty ? (
-          <Button variant="ghost" onClick={() => setDraft(saved)}>
-            {t('放弃未保存的修改')}
-          </Button>
-        ) : (
-          <span className="tiny faint">{t('没有未保存的修改')}</span>
-        )}
         <span className="tiny faint">
           <Icon name="sparkle" size={12} /> {t('只影响站点前台')}
         </span>

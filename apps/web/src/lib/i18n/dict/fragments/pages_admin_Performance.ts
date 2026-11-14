@@ -131,8 +131,8 @@ const fragment: Dictionary = {
 
   // ---- 横向「当前效果」卡组 ----
   '即时生效': 'Immediate',
-  '按已保存的设置汇总；修改后点「保存修改」才会更新。':
-    'Summarised from saved settings; click “Save changes” to update it.',
+  '按已保存的设置汇总；修改会自动保存，并刷新这里的数字。':
+    'Summarised from the saved settings; changes are saved automatically and refresh these numbers.',
   '文章 + 帖子': 'Articles + posts',
   '归档页': 'Archive',
   '分页大小': 'Page size',

@@ -126,6 +126,10 @@ type contentResponse struct {
 	Slug         string `json:"slug"`
 	Summary      string `json:"summary"`
 	SourceFormat string `json:"source_format"`
+	// AuthorID is the account that wrote the item. Reader surfaces such as the article
+	// page resolve the display name from the public profile endpoint, so the name is
+	// not duplicated here.
+	AuthorID string `json:"author_id,omitempty"`
 	// SourceBody is the author's original text. It is returned only to the item's
 	// author and to editors: rendering it directly would bypass the sanitizer that
 	// produced RenderedHTML, so anonymous readers never receive it.
@@ -731,6 +735,7 @@ func (h *Handler) view(item Content, actor Actor) contentResponse {
 		Slug:              item.Slug,
 		Summary:           item.Summary,
 		SourceFormat:      string(item.SourceFormat),
+		AuthorID:          item.AuthorID,
 		RenderedHTML:      item.RenderedHTML,
 		PolicyVersion:     item.PolicyVersion,
 		CategoryID:        item.CategoryID,

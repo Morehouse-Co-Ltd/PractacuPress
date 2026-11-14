@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DomainSettings, SiteDomainVerification } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
@@ -38,13 +38,46 @@ import {
   Toggle,
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
+import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
 import { RoleGate } from '../../components/Guards';
+
+/** 自动保存的防抖间隔：停下编辑这么久才写服务端，避免每敲一下都发一次 PUT。 */
+const AUTOSAVE_DELAY_MS = 700;
 
 function linesOf(value: string): string[] {
   return value
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/** 页面里参与保存的几块表单内容；自动保存的签名与逐条校验都基于这份快照。 */
+interface DomainsForm {
+  draft: DomainSettings;
+  primaryText: string;
+  aliasText: string;
+  originText: string;
+  proxyText: string;
+}
+
+/**
+ * 把表单收敛成将要保存的域名配置。
+ *
+ * 自动保存靠它做「有没有变化」的比较：归一化后签名相同就不发请求；真正写下去的
+ * 也是这份对象，页面看到的与保存的不会分叉。
+ */
+function domainsPayloadOf(form: DomainsForm): DomainSettings {
+  const primary = normalizeDomain(form.primaryText);
+  return readDomains({
+    domains: {
+      ...form.draft,
+      primary: primary || form.draft.primary,
+      aliases: linesOf(form.aliasText),
+      cors_origins: linesOf(form.originText),
+      trusted_proxies: linesOf(form.proxyText),
+      tls: { ...form.draft.tls, email: form.draft.tls.email.trim() },
+    },
+  });
 }
 
 export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
@@ -62,7 +95,6 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
   const [proxyText, setProxyText] = useState('');
   const [primaryText, setPrimaryText] = useState(() => site?.domain || saved.primary);
   const [errors, setErrors] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
   /** V-12：主域名归属验证状态；旧后端没有该端点时保持 null，退回原来的展示。 */
   const [domainCheck, setDomainCheck] = useState<SiteDomainVerification | null>(null);
   const [verifyBusy, setVerifyBusy] = useState(false);
@@ -81,22 +113,77 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
   const ipExempt = saved.allow_ip && isIpHost(host);
   const hostIsPublicIp = isPublicIp(host);
   const allowed = boundDomains(saved, primary);
-  const dirty =
-    JSON.stringify(draft) !== savedKey ||
-    aliasText !== saved.aliases.join('\n') ||
-    originText !== saved.cors_origins.join('\n') ||
-    proxyText !== saved.trusted_proxies.join('\n') ||
-    primaryText.trim() !== primary;
+  /** 自动保存状态：设置改成自动保存后，这是站长确认改动真的落地的唯一入口。 */
+  const [saveState, setSaveState] = useState<AutoSaveState>('idle');
+  const [saveError, setSaveError] = useState('');
+  /**
+   * 最近一次写入服务端的载荷签名。
+   *
+   * 初值就是首屏那份配置：挂载时表单与配置一致、签名相同，自动保存不会在打开页面
+   * 时白写一次。之后成功的保存、配置回填与「恢复默认」都会更新它。
+   */
+  const initialForm: DomainsForm = {
+    draft: saved,
+    primaryText: site?.domain || saved.primary,
+    aliasText: saved.aliases.join('\n'),
+    originText: saved.cors_origins.join('\n'),
+    proxyText: saved.trusted_proxies.join('\n'),
+  };
+  const lastSavedRef = useRef(JSON.stringify(domainsPayloadOf(initialForm)));
+  /** 表单快照：自动保存的定时器与队列任务都从这里读最新输入，避免拿到旧闭包。 */
+  const formRef = useRef<DomainsForm>({
+    draft,
+    primaryText,
+    aliasText,
+    originText,
+    proxyText,
+  });
+  formRef.current = { draft, primaryText, aliasText, originText, proxyText };
+  /**
+   * 表单与最近一次写入/回填的内容是否不同。
+   *
+   * 用「上次保存的基线」而不是「当前配置」判断：站点与配置会在挂载后再水合一次，
+   * 若拿未变的表单去比新配置，会被误判成「有未保存修改」而拒绝回填。
+   */
+  const formSignature = JSON.stringify(domainsPayloadOf(formRef.current));
+  const dirty = formSignature !== lastSavedRef.current;
+  /** 有没有更新的本地编辑；配置回填时据此决定要不要覆盖输入。 */
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  /** 串行队列：同一时间只允许一笔保存在途，避免后发请求被前一笔覆盖。 */
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
 
+  /** 一次性把整份表单写进渲染状态与快照，异步保存回调用它收敛草稿。 */
+  const applyForm = (next: DomainsForm) => {
+    formRef.current = next;
+    setDraft(next.draft);
+    setPrimaryText(next.primaryText);
+    setAliasText(next.aliasText);
+    setOriginText(next.originText);
+    setProxyText(next.proxyText);
+  };
+
+  // 保存后跟着配置收敛一次，避免草稿与真正生效的域名配置分叉。
+  // 只在没有更新的本地编辑时回填：否则保存响应会把用户刚敲进去的内容冲掉。
   useEffect(() => {
     const next = readDomains(config);
-    setDraft(next);
-    setAliasText(next.aliases.join('\n'));
-    setOriginText(next.cors_origins.join('\n'));
-    setProxyText(next.trusted_proxies.join('\n'));
-    setPrimaryText(site?.domain || next.primary);
+    const nextForm: DomainsForm = {
+      draft: next,
+      primaryText: site?.domain || next.primary,
+      aliasText: next.aliases.join('\n'),
+      originText: next.cors_origins.join('\n'),
+      proxyText: next.trusted_proxies.join('\n'),
+    };
+    if (dirtyRef.current) return;
+    lastSavedRef.current = JSON.stringify(domainsPayloadOf(nextForm));
+    applyForm(nextForm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey, site?.domain]);
+
+  /** 串行写：自动保存与「恢复默认」都排队，保证最后一次操作真正落库。 */
+  const queueSave = (task: () => Promise<void>) => {
+    queueRef.current = queueRef.current.then(task).catch(() => {});
+  };
 
   // V-12：保存域名后服务端进入「待验证」，验证状态（TXT 记录名/值）需要单独读取。
   // 旧后端没有这个端点：静默降级，页面照旧显示域名输入。
@@ -123,6 +210,138 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
       alive = false;
     };
   }, [backend, site?.id]);
+
+  /** 保存前的逐条校验；自动保存只有在全部通过后才发请求。 */
+  const validateForm = (form: DomainsForm): string[] => {
+    const aliasProblems = linesOf(form.aliasText)
+      .map((item) => domainEntryError(item))
+      .filter(Boolean);
+    const originProblems = linesOf(form.originText)
+      .map((item) => normalizeOrigin(item))
+      .filter((item) => !item)
+      .map(() => t('CORS 来源必须是以 http(s) 开头的地址。'));
+    const problems = [...aliasProblems, ...originProblems];
+    const normalizedPrimary = normalizeDomain(form.primaryText);
+    if (form.primaryText.trim() && !normalizedPrimary) {
+      problems.push(t('主域名不是有效域名。'));
+    }
+    if (normalizedPrimary && (isIpHost(normalizedPrimary) || normalizedPrimary.startsWith('*.'))) {
+      problems.push(t('主域名必须是具体域名，不能是 IP 或通配符。'));
+    }
+    if (form.draft.tls.mode === 'letsencrypt') {
+      if (!normalizedPrimary) problems.push(t("Let's Encrypt 需要先填写主域名。"));
+      if (!form.draft.tls.email.trim()) problems.push(t("Let's Encrypt 需要一个通知邮箱。"));
+    }
+    if (form.draft.tls.mode === 'manual') {
+      if (!form.draft.tls.cert_path.trim() || !form.draft.tls.key_path.trim()) {
+        problems.push(t('手动证书需要填写证书链与私钥的服务器路径。'));
+      }
+    }
+    return problems;
+  };
+
+  /** 自动保存：校验通过后写主域名与整份域名配置，成功再提示并记录动态。 */
+  const autosave = () => {
+    queueSave(async () => {
+      const form = formRef.current;
+      const problems = validateForm(form);
+      if (problems.length) {
+        // 有非法值就不发请求：逐条错误留在页面上，状态条也停在明确的错误态。
+        setErrors(problems);
+        setSaveError(problems[0]);
+        setSaveState('error');
+        return;
+      }
+      const payload = domainsPayloadOf(form);
+      const signature = JSON.stringify(payload);
+      // 排队期间草稿可能已经保存过（或被回填成同一份）：不重复写。
+      if (signature === lastSavedRef.current) {
+        setSaveState((prev) => (prev === 'pending' ? 'idle' : prev));
+        return;
+      }
+      setErrors([]);
+      setSaveError('');
+      setSaveState('saving');
+      const normalizedPrimary = normalizeDomain(form.primaryText);
+      try {
+        if (normalizedPrimary !== primary && site) {
+          await backend.setSiteDomain(site.id, normalizedPrimary);
+          applySite({ ...site, domain: normalizedPrimary });
+          setVerifyError('');
+          // 保存后进入「待验证」：刷新 TXT 记录信息，让站长能直接完成验证。
+          await reloadDomainCheck(site.id);
+        }
+        // 域名白名单是站点级配置：写服务端，访客才读得到（本机 localStorage 只做首屏缓存）。
+        const ok = await saveSiteConfig({ domains: payload });
+        // 失败时本地配置已经被乐观更新：基线跟着走到这份载荷，避免自动重试风暴。
+        lastSavedRef.current = signature;
+        if (!ok) {
+          const message = t('配置没有保存到服务端，请稍后重试。');
+          setErrors([message]);
+          setSaveError(message);
+          setSaveState('error');
+          return;
+        }
+        // 保存期间可能又改过：只有没有更新的编辑时才把表单收敛成标准写法。
+        if (JSON.stringify(domainsPayloadOf(formRef.current)) === signature) {
+          applyForm({
+            draft: payload,
+            primaryText: normalizedPrimary,
+            aliasText: payload.aliases.join('\n'),
+            originText: payload.cors_origins.join('\n'),
+            proxyText: payload.trusted_proxies.join('\n'),
+          });
+          setSaveState('saved');
+        } else {
+          setSaveState('pending');
+        }
+        toast.push('ok', t('已自动保存'));
+        if (me) {
+          noteActivity(
+            backend,
+            me.user.display_name,
+            '修改访问与域名',
+            normalizedPrimary || '未设置域名',
+            `${payload.aliases.length} 个别名 · TLS ${payload.tls.mode}`,
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('保存失败。');
+        setErrors([message]);
+        setSaveError(message);
+        setSaveState('error');
+        toast.push('error', t('无法保存主域名'), message);
+      }
+    });
+  };
+
+  // 停下编辑 700ms 后自动保存；签名与上次写入一致说明只是回填/重复渲染，不发请求。
+  useEffect(() => {
+    const form = formRef.current;
+    const signature = JSON.stringify(domainsPayloadOf(form));
+    const problems = validateForm(form);
+    if (!problems.length && signature === lastSavedRef.current) {
+      // 用回已保存的内容时清掉旧错误：pending / error 都收回 idle，「已保存」保留。
+      setSaveState((prev) => (prev === 'pending' || prev === 'error' ? 'idle' : prev));
+      setErrors((prev) => (prev.length ? [] : prev));
+      setSaveError((prev) => (prev ? '' : prev));
+      return;
+    }
+    setSaveState('pending');
+    const timer = window.setTimeout(autosave, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, primaryText, aliasText, originText, proxyText]);
+
+  /** 队列/定时器里的最新保存函数；卸载时用它补写，避免 700ms 内切走丢掉修改。 */
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) autosaveRef.current();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** 立即验证主域名：成功后刷新状态并提示；失败按 reason 映射成可读文案。 */
   const runDomainVerify = async () => {
@@ -153,104 +372,28 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
-  const save = async () => {
-    const aliasLines = linesOf(aliasText);
-    const aliasProblems = aliasLines
-      .map((item) => domainEntryError(item))
-      .filter(Boolean);
-    const originProblems = linesOf(originText)
-      .map((item) => normalizeOrigin(item))
-      .filter((item) => !item)
-      .map(() => t('CORS 来源必须是以 http(s) 开头的地址。'));
-    const problems = [...aliasProblems, ...originProblems];
-    const normalizedPrimary = normalizeDomain(primaryText);
-    if (primaryText.trim() && !normalizedPrimary) {
-      problems.push(t('主域名不是有效域名。'));
-    }
-    if (normalizedPrimary && (isIpHost(normalizedPrimary) || normalizedPrimary.startsWith('*.'))) {
-      problems.push(t('主域名必须是具体域名，不能是 IP 或通配符。'));
-    }
-    if (draft.tls.mode === 'letsencrypt') {
-      if (!normalizedPrimary) problems.push(t("Let's Encrypt 需要先填写主域名。"));
-      if (!draft.tls.email.trim()) problems.push(t("Let's Encrypt 需要一个通知邮箱。"));
-    }
-    if (draft.tls.mode === 'manual') {
-      if (!draft.tls.cert_path.trim() || !draft.tls.key_path.trim()) {
-        problems.push(t('手动证书需要填写证书链与私钥的服务器路径。'));
-      }
-    }
-    if (problems.length) {
-      setErrors(problems);
-      return;
-    }
-    setErrors([]);
-    setBusy(true);
-    try {
-      if (normalizedPrimary !== primary && site) {
-        await backend.setSiteDomain(site.id, normalizedPrimary);
-        applySite({ ...site, domain: normalizedPrimary });
-        setVerifyError('');
-        // 保存后进入「待验证」：刷新 TXT 记录信息，让站长能直接完成验证。
-        await reloadDomainCheck(site.id);
-      }
-      const next = readDomains({
-        domains: {
-          ...draft,
-          primary: normalizedPrimary || draft.primary,
-          aliases: aliasLines,
-          cors_origins: linesOf(originText),
-          trusted_proxies: linesOf(proxyText),
-          tls: { ...draft.tls, email: draft.tls.email.trim() },
-        },
-      });
-      // 域名白名单是站点级配置：写服务端，访客才读得到（本机 localStorage 只做首屏缓存）。
-      const ok = await saveSiteConfig({ domains: next });
-      setDraft(next);
-      setPrimaryText(normalizedPrimary);
-      setAliasText(next.aliases.join('\n'));
-      setOriginText(next.cors_origins.join('\n'));
-      setProxyText(next.trusted_proxies.join('\n'));
+  const reset = async () => {
+    queueSave(async () => {
+      const resetForm: DomainsForm = {
+        draft: DEFAULT_DOMAINS,
+        primaryText: site?.domain || '',
+        aliasText: '',
+        originText: '',
+        proxyText: '',
+      };
+      // 恢复默认是一次显式写入：先把它设成基线，排队中的旧草稿不会再覆盖回去。
+      lastSavedRef.current = JSON.stringify(domainsPayloadOf(resetForm));
+      const ok = await saveSiteConfig({ domains: DEFAULT_DOMAINS });
+      applyForm(resetForm);
+      setErrors([]);
+      setSaveError('');
       if (!ok) {
-        setErrors([t('配置没有保存到服务端，请稍后重试。')]);
+        setSaveState('error');
         return;
       }
-      toast.push(
-        'ok',
-        t('访问与域名已保存'),
-        normalizedPrimary
-          ? t(
-              '主域名已保存，待完成 TXT 验证；验证完成前公网域名暂不生效，可在本机继续管理。把下方部署片段应用后，域名与 HTTPS 才会真正对外服务。',
-            )
-          : t('未设置主域名：生产环境将只允许公网 IP 直连（本机 localhost 例外）。'),
-      );
-      if (me) {
-        noteActivity(
-          backend,
-          me.user.display_name,
-          '修改访问与域名',
-          normalizedPrimary || '未设置域名',
-          `${next.aliases.length} 个别名 · TLS ${next.tls.mode}`,
-        );
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('保存失败。');
-      setErrors([message]);
-      toast.push('error', t('无法保存主域名'), message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const reset = async () => {
-    const ok = await saveSiteConfig({ domains: DEFAULT_DOMAINS });
-    setDraft(DEFAULT_DOMAINS);
-    setAliasText('');
-    setOriginText('');
-    setProxyText('');
-    setPrimaryText(site?.domain || '');
-    setErrors([]);
-    if (!ok) return;
-    toast.push('ok', t('已恢复默认域名设置'), t('白名单关闭，localhost 与 IP 默认允许。'));
+      setSaveState('saved');
+      toast.push('ok', t('已恢复默认域名设置'), t('白名单关闭，localhost 与 IP 默认允许。'));
+    });
   };
 
   return (
@@ -263,9 +406,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
           </p>
         </div>
         <div className="admin-page-actions">
-          <Button size="sm" disabled={!dirty || busy} loading={busy} onClick={save} icon="check">
-            {t('保存修改')}
-          </Button>
+          <AutoSaveStatus state={saveState} error={saveError} />
         </div>
       </div>
 
@@ -297,7 +438,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
             <div className="panel-head">
               <div>
                 <h3>{t('主域名')}</h3>
-                <p>{t('保存后会直接写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。')}</p>
+                <p>{t('修改会自动写入站点配置；留空表示不设置域名（生产环境回退到公网 IP 直连）。')}</p>
               </div>
               <Badge
                 tone={
@@ -395,7 +536,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
               {primaryDomain && !domainPending && !domainVerified && domainCheck && domainCheck.domain ? (
                 <div className="mt-16">
                   <Callout tone="info" icon="globe">
-                    {t('已保存的域名与当前输入不一致：重新保存后会生成新的 TXT 验证记录。')}
+                    {t('已保存的域名与当前输入不一致：修改主域名并自动保存后会生成新的 TXT 验证记录。')}
                   </Callout>
                 </div>
               ) : null}
@@ -531,7 +672,7 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
               <div>
                 <h3>{t('SSL 证书')}</h3>
                 <p>
-                  {t('选择 HTTPS 的启用方式；这里只记录部署方式与服务器上的证书路径，不会保存私钥内容。 保存后把下方 Nginx 片段与证书一起部署。')}
+                  {t('选择 HTTPS 的启用方式；这里只记录部署方式与服务器上的证书路径，不会保存私钥内容。 修改会自动保存，再把下方 Nginx 片段与证书一起部署。')}
                 </p>
               </div>
               <Badge tone={draft.tls.mode === 'off' ? 'muted' : 'ok'}>
@@ -773,28 +914,6 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
             </Button>
           </div>
         </aside>
-      </div>
-
-      <div className="row gap-8 mt-20">
-        <Button disabled={!dirty} onClick={save} icon="check">
-          {t('保存修改')}
-        </Button>
-        {dirty ? (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setDraft(readDomains(config));
-              setAliasText(saved.aliases.join('\n'));
-              setOriginText(saved.cors_origins.join('\n'));
-              setProxyText(saved.trusted_proxies.join('\n'));
-              setErrors([]);
-            }}
-          >
-            {t('放弃未保存的修改')}
-          </Button>
-        ) : (
-          <span className="tiny faint">{t('没有未保存的修改')}</span>
-        )}
       </div>
     </RoleGate>
   );

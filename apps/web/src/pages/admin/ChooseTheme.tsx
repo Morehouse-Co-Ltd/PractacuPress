@@ -11,7 +11,6 @@ import {
   THEME_MARKETPLACE_URL,
   activeTheme,
   builtinThemeBundle,
-  downloadThemeFile,
   newThemeId,
   parseThemeFile,
   themeLibrary,
@@ -20,6 +19,15 @@ import {
   variantLabel,
 } from '../../lib/themes';
 import { cloneTheme, sameLayout, useThemeSwitch } from '../../lib/themeSwitch';
+import {
+  buildThemePackage,
+  layoutPatches,
+  readThemePackage,
+  siteThemeFromPackage,
+  themeManifestFromCustomization,
+  themePackageFileName,
+  type ParsedThemePackage,
+} from '../../lib/themePackage';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
 import { useToast } from '../../lib/toast';
@@ -94,6 +102,8 @@ export function ChooseThemePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState('');
   const [pendingImport, setPendingImport] = useState<SiteTheme | null>(null);
+  // zip 主题包：清单与页面编排要一起写回，预览仍复用 pendingImport 的主题卡片。
+  const [pendingPackage, setPendingPackage] = useState<ParsedThemePackage | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SiteTheme | null>(null);
   const [getThemeOpen, setGetThemeOpen] = useState(false);
   // 从零创建一套主题：名称、版式、起点与外观功能。
@@ -128,9 +138,17 @@ export function ChooseThemePage() {
     if (!file) return;
     setImportError('');
     try {
-      const parsed = parseThemeFile(await file.text());
-      setPendingImport(parsed);
+      const isZip = /\.zip$/i.test(file.name) || file.type.includes('zip');
+      if (isZip) {
+        const parsed = await readThemePackage(file);
+        setPendingPackage(parsed);
+        setPendingImport(siteThemeFromPackage(parsed, newThemeId()));
+      } else {
+        setPendingPackage(null);
+        setPendingImport(parseThemeFile(await file.text()));
+      }
     } catch (err) {
+      setPendingPackage(null);
       setImportError(err instanceof Error ? err.message : t('无法读取这个主题文件。'));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
@@ -142,6 +160,60 @@ export function ChooseThemePage() {
     if (customThemes.length >= 20) {
       setImportError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       setPendingImport(null);
+      setPendingPackage(null);
+      return;
+    }
+    // zip 主题包：主题定义与页面编排一起落盘；旧 JSON 仍然只换主题。
+    if (pendingPackage) {
+      const layouts = layoutPatches(pendingPackage);
+      const bundle = siteThemeFromPackage(pendingPackage, newThemeId());
+      const nextPages = [...customization.pages];
+      for (const item of layouts.pages) {
+        const index = nextPages.findIndex((page) => page.slug === item.slug);
+        if (index >= 0) {
+          nextPages[index] = {
+            ...nextPages[index],
+            title: nextPages[index].title || item.title,
+            layout: item.layout,
+            updated_at: new Date().toISOString(),
+          };
+        } else {
+          const now = new Date().toISOString();
+          nextPages.push({
+            id: newThemeId(),
+            title: item.title,
+            slug: item.slug,
+            body: '',
+            status: 'published',
+            show_in_nav: false,
+            created_at: now,
+            updated_at: now,
+            layout: item.layout,
+          });
+        }
+      }
+      update({
+        themes: [...customThemes, bundle],
+        theme: cloneTheme(bundle.theme),
+        layout: { ...customization.layout, variant: bundle.variant },
+        ...(pendingPackage.manifest.appearance
+          ? { appearance: pendingPackage.manifest.appearance }
+          : {}),
+        ...(layouts.home ? { home: layouts.home } : {}),
+        ...(layouts.article ? { article: layouts.article } : {}),
+        ...(layouts.pages.length ? { pages: nextPages } : {}),
+        active_theme: bundle.id,
+      });
+      toast.push(
+        'ok',
+        t('已导入并应用「{name}」', { name: bundle.name }),
+        layouts.pages.length
+          ? t('配色、版式与 {count} 个页面编排已写入。', { count: layouts.pages.length })
+          : t('配色与版式已写入；组件与后端包需要在「扩展」页安装。'),
+      );
+      setDetailId(bundle.id);
+      setPendingImport(null);
+      setPendingPackage(null);
       return;
     }
     const next = [...customThemes, pendingImport];
@@ -210,14 +282,29 @@ export function ChooseThemePage() {
   };
 
   const exportCurrent = () => {
-    downloadThemeFile({
+    const { manifest, pages } = themeManifestFromCustomization(customization, {
       id: currentId,
       name: modified ? `${currentName}${t('（当前调整）')}` : currentName,
       note: applied?.note ?? '',
-      variant: customization.layout.variant,
-      theme: cloneTheme(currentTheme),
       appearance: { sections: selectedSections },
     });
+    const blob = buildThemePackage({
+      manifest,
+      files: pages.map((page) => ({ name: page.file, data: page.data })),
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = themePackageFileName(manifest.name);
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.push(
+      'ok',
+      t('已导出主题包'),
+      pages.length
+        ? t('包含配色、版式与 {count} 个页面编排。', { count: pages.length })
+        : t('包含配色与版式；还没有可导出的页面编排。'),
+    );
   };
 
   const openCreate = () => {
@@ -327,9 +414,6 @@ export function ChooseThemePage() {
           </p>
         </div>
         <div className="admin-page-actions">
-          <Button variant="secondary" size="sm" icon="plus" onClick={openCreate}>
-            {t('创建主题')}
-          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -358,7 +442,7 @@ export function ChooseThemePage() {
           <input
             ref={fileRef}
             type="file"
-            accept="application/json,.json"
+            accept="application/zip,.zip,application/json,.json"
             hidden
             onChange={(event) => void pickFile(event.target.files?.[0])}
           />
@@ -383,14 +467,6 @@ export function ChooseThemePage() {
                 {currentName}
                 {modified ? t(' · 已微调') : ''}
               </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="upload"
-                onClick={() => fileRef.current?.click()}
-              >
-                {t('导入')}
-              </Button>
             </div>
           </div>
           <div className="panel-body">
@@ -814,11 +890,24 @@ export function ChooseThemePage() {
             ? t('导入主题「{name}」？', { name: pendingImport.name })
             : t('导入主题？')
         }
-        description={t('主题只包含配色、排版与单栏 / 卡片 / 双栏版式；不会导入文章、页面或自定义 CSS。')}
-        onClose={() => setPendingImport(null)}
+        description={
+          pendingPackage
+            ? t('主题包会写入配色、版式与页面编排；组件与后端包需要在「扩展」页安装。')
+            : t('主题只包含配色、排版与单栏 / 卡片 / 双栏版式；不会导入文章、页面或自定义 CSS。')
+        }
+        onClose={() => {
+          setPendingImport(null);
+          setPendingPackage(null);
+        }}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setPendingImport(null)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPendingImport(null);
+                setPendingPackage(null);
+              }}
+            >
               {t('取消')}
             </Button>
             <Button onClick={confirmImport} icon="upload">
@@ -840,6 +929,14 @@ export function ChooseThemePage() {
                 </span>
               </div>
             </div>
+            {pendingPackage ? (
+              <Callout tone="info" icon="layers">
+                {t(
+                  '这个主题包包含 {count} 个页面编排。导入后可在页面编排器里继续调整。',
+                  { count: pendingPackage.layouts.length },
+                )}
+              </Callout>
+            ) : null}
             <Callout tone="info" icon="info">
               {t('导入后会立即应用。当前主题与配色会被替换；文章、页面正文与账户不受影响。')}
             </Callout>

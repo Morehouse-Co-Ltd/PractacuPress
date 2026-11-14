@@ -1351,8 +1351,8 @@ export function ThemesPage() {
                     <div className="range-field">
                       <input
                         type="range"
-                        min={620}
-                        max={900}
+                        min={840}
+                        max={1120}
                         step={10}
                         value={currentTheme.content_width}
                         onChange={(event) => setTheme({ content_width: Number(event.target.value) })}

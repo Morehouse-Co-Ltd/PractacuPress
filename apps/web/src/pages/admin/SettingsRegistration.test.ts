@@ -11,8 +11,10 @@ import { bytesToMbString, parseMediaQuotaMbInput } from '../../lib/mediaQuota';
 import { SettingsPage } from './Settings';
 
 /**
- * O-3：站点设置页的「开放注册」开关必须走 settings PATCH，且把 registration_open
- * 明确带在请求体里（关闭 = false）。
+ * 站点设置页的自动保存，以及 O-3 注册开关 / 媒体额度的语义。
+ *
+ * 页面已经没有「保存修改」按钮：改动在停手约 700ms 后自动写到设置 PATCH。
+ * 这里用真实计时器等防抖窗口过去（`waitFor` / `waitPastAutoSave`），不再点按钮。
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,10 +114,15 @@ async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
   throw new Error('等待界面进入预期状态超时');
 }
 
-function buttonsWithText(text: string): HTMLButtonElement[] {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>('button')).filter((button) =>
-    button.textContent?.includes(text),
-  );
+/**
+ * 等过自动保存的防抖窗口。
+ *
+ * 用来断言「什么都没有发生」：水合 / 只渲染不应触发任何写入。
+ */
+async function waitPastAutoSave(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  });
 }
 
 function setInputValue(input: HTMLInputElement, value: string): void {
@@ -146,7 +153,7 @@ async function renderSettings(backend: Backend): Promise<void> {
 }
 
 describe('站点设置页的注册开关', () => {
-  it('sends registration_open=false in the settings PATCH when turned off', async () => {
+  it('autosaves registration_open=false in the settings PATCH when turned off', async () => {
     const { backend, updateSite } = fakeBackend(siteOf(true));
 
     await renderSettings(backend);
@@ -160,17 +167,17 @@ describe('站点设置页的注册开关', () => {
     });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
 
-    const saveButtons = buttonsWithText('保存修改');
-    expect(saveButtons.length).toBeGreaterThan(0);
-    await act(async () => {
-      saveButtons[0].click();
-    });
-
+    // 没有「保存修改」按钮：等防抖窗口过去，设置 PATCH 应该自己发出去。
     await waitFor(() => updateSite.mock.calls.length > 0);
     expect(updateSite).toHaveBeenCalledWith(
       'site_1',
       expect.objectContaining({ registration_open: false }),
     );
+    // 保存成功后状态角标会显示「已自动保存」（同时有 toast）。
+    await waitFor(() => (container.textContent ?? '').includes('已自动保存'));
+    // 自动保存不能因为 applySite / 水合重算又发一次重复请求。
+    await waitPastAutoSave();
+    expect(updateSite).toHaveBeenCalledTimes(1);
   });
 
   it('shows the switch as on for an open site and leaves it untouched without edits', async () => {
@@ -181,12 +188,14 @@ describe('站点设置页的注册开关', () => {
     await waitFor(() => !!container.querySelector('button[aria-label="开放注册"]'));
     const toggle = container.querySelector<HTMLButtonElement>('button[aria-label="开放注册"]')!;
     expect(toggle.getAttribute('aria-checked')).toBe('true');
+    // 挂载 / 水合只建立基线：等过防抖窗口也不该发出保存请求。
+    await waitPastAutoSave();
     expect(updateSite).not.toHaveBeenCalled();
   });
 });
 
 describe('站点设置页的媒体额度', () => {
-  it('shows MB semantics and sends zero for unlimited quota', async () => {
+  it('shows MB semantics and autosaves zero for unlimited quota', async () => {
     const { backend, updateSite } = fakeBackend(siteOf(true, null));
 
     await renderSettings(backend);
@@ -198,12 +207,6 @@ describe('站点设置页的媒体额度', () => {
     );
     await act(async () => {
       setInputValue(input, '0');
-    });
-
-    const saveButton = buttonsWithText('保存修改')[0];
-    expect(saveButton.disabled).toBe(false);
-    await act(async () => {
-      saveButton.click();
     });
 
     await waitFor(() => updateSite.mock.calls.length > 0);
@@ -225,10 +228,6 @@ describe('站点设置页的媒体额度', () => {
       setInputValue(input, '');
     });
 
-    await act(async () => {
-      buttonsWithText('保存修改')[0].click();
-    });
-
     await waitFor(() => updateSite.mock.calls.length > 0);
     expect(updateSite).toHaveBeenCalledWith(
       'site_1',
@@ -244,10 +243,6 @@ describe('站点设置页的媒体额度', () => {
     const input = await waitForInput('本站媒体额度（MB）');
     await act(async () => {
       setInputValue(input, '1.5');
-    });
-
-    await act(async () => {
-      buttonsWithText('保存修改')[0].click();
     });
 
     await waitFor(() => updateSite.mock.calls.length > 0);
@@ -267,16 +262,14 @@ describe('站点设置页的媒体额度', () => {
       setInputValue(input, '-1');
     });
 
-    await act(async () => {
-      buttonsWithText('保存修改')[0].click();
-    });
-
+    // 非法值不落盘：等校验提示出现，确认没有发出任何请求，也没有冒充「已保存」。
     await waitFor(() =>
       (container.textContent ?? '').includes(
         '媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。',
       ),
     );
     expect(updateSite).not.toHaveBeenCalled();
+    expect((container.textContent ?? '').includes('已自动保存')).toBe(false);
   });
 });
 
