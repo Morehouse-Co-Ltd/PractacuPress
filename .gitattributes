@@ -6,6 +6,11 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
+# Shell scripts and the Linux package templates are consumed by bash / systemd /
+# Nginx on Linux; keep them LF even on a Windows checkout.
+*.sh text eol=lf
+deploy/linux/** text eol=lf
+
 # Binary artefacts.
 *.exe binary
 *.db  binary

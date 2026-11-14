@@ -6,7 +6,7 @@ NPM ?= npm
 PKG := ./apps/api/...
 
 .PHONY: build test vet generate migrate tidy smoke \
-	web-install web-typecheck web-build web-test web-dev web-start web-package package \
+	web-install web-typecheck web-build web-test web-dev web-start web-package package package-linux \
 	migrations-test config-test verify verify-go verify-web verify-migrations verify-config ci
 
 build:
@@ -51,6 +51,11 @@ web-package:
 # Same pipeline as scripts/package.ps1: builds web + Rust + Go, runs the packaged
 # smoke test, then writes release/PractacuPress and the zip.
 package: web-package
+
+# Linux x86_64 install package: prebuilt Go + Rust binaries, install.sh wizard,
+# systemd/Nginx templates, tar.gz + sha256 in release/.
+package-linux:
+	node scripts/package-linux.mjs
 
 migrations-test:
 	$(GO) test -v -count=1 ./tests/migrations/...

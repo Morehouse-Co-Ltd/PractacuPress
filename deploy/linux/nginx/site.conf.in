@@ -1,0 +1,17 @@
+# Practacu Press —— HTTP 站点（安装引导 / 内网形态）
+# 由 install.sh 生成；要改模板请改 deploy/linux/nginx/site.conf.in。
+
+map $http_upgrade $pp_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    # 安装引导阶段是 127.0.0.1:8080（只绑回环，必须经 SSH 隧道或本机浏览器访问，
+    # 否则谁先连上谁就成了管理员）；内网形态是 <公网/内网端口>。
+    listen @@LISTEN@@;
+    server_name @@SERVER_NAME@@;
+    server_tokens off;
+
+    include @@LOCATIONS_CONF@@;
+}

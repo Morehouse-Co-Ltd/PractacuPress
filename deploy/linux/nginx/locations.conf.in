@@ -1,0 +1,121 @@
+# Practacu Press —— 由 install.sh 生成，请不要直接改这个文件；
+# 要改模板请改仓库里的 deploy/linux/nginx/locations.conf.in 后重新安装或升级。
+#
+# 这段被站点与 TLS 两份配置 include 进 server 块：静态文件 + 同源反向代理。
+# 浏览器只跟 Nginx 说话：/api、/healthz、/readyz、/plugins、/sitemap.xml、/robots.txt
+# 转到只监听回环的 Go API，所以前端没有跨域配置，Cookie 与 WebSocket 天然同源。
+
+root @@WEB_ROOT@@;
+index index.html;
+
+# 与 API 的单文件上限（25 MiB）留出表单开销。
+client_max_body_size 30m;
+
+# 安全响应头与启动器 / Docker 版本保持一致。
+# frame-src 必须含 'self'：页面编排用同源 iframe 预览真实前台；
+# frame-ancestors 才是防别的站嵌本站的开关。
+add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.gstatic.com; script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com https://www.google.com https://www.gstatic.com; frame-src 'self' https: http:; connect-src 'self' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+add_header X-Content-Type-Options "nosniff" always;
+
+# 启动器控制面绝不对外。
+location = /__pp { return 404; }
+location /__pp/ { return 404; }
+
+# 服务端渲染的 HTML 不进缓存，避免发版后拿到旧壳。
+# 注意：location 里一旦出现 add_header，就不再继承 server 级安全头，
+# 所以这里用 expires（不参与 add_header 继承）而不是 add_header。
+location = /index.html {
+    expires -1;
+}
+
+# certbot 的 HTTP-01 挑战目录（只在需要签证书的形态下真的有人访问）。
+location /.well-known/acme-challenge/ {
+    root @@ACME_ROOT@@;
+    default_type text/plain;
+    access_log off;
+}
+
+# 带内容哈希的构建产物可以长期缓存。这里必须自带 add_header，
+# 因为 Nginx 的 add_header 不跨层继承。
+location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.gstatic.com; script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com https://www.google.com https://www.gstatic.com; frame-src 'self' https: http:; connect-src 'self' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+}
+
+location = /healthz {
+    proxy_pass http://@@API_ADDR@@;
+    proxy_set_header Host $host;
+    access_log off;
+}
+
+location = /readyz {
+    proxy_pass http://@@API_ADDR@@;
+    proxy_set_header Host $host;
+    access_log off;
+}
+
+# 爬虫文件由 API 按请求 Host 解析站点后生成。必须是精确匹配，
+# 否则会落到下面的 SPA 兜底，把 index.html 当成 sitemap 返回。
+location = /sitemap.xml {
+    proxy_pass http://@@API_ADDR@@;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    access_log off;
+}
+
+location = /robots.txt {
+    proxy_pass http://@@API_ADDR@@;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    access_log off;
+}
+
+# 扩展前端 bundle / CSS 由 API 提供（/plugins/<id>/<version>/...）。
+location /plugins/ {
+    proxy_pass http://@@API_ADDR@@;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /api/ {
+    proxy_pass http://@@API_ADDR@@;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # /api/v1/ws 要升级成 WebSocket；其余请求 Connection 为 close。
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection $pp_connection_upgrade;
+
+    # 媒体下载与 WebSocket 是长连接，读超时需要放宽。
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+
+# 单页应用：静态文件优先，其余交给前端路由。
+location / {
+    try_files $uri $uri/ /index.html;
+}
