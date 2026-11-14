@@ -2,7 +2,7 @@
 #
 # Practacu Press · Linux 安装向导
 #
-#   sudo ./install.sh                 # 交互式安装；装完在浏览器里走七步安装引导
+#   sudo ./install.sh                 # 交互式安装；装完在浏览器里走八步安装引导
 #   sudo ./install.sh --finalize      # 引导完成后，切换为「内网 HTTP」或「公网 HTTPS」
 #   sudo ./install.sh --status        # 查看安装状态与访问地址
 #   sudo ./install.sh --help          # 全部参数
@@ -108,7 +108,7 @@ usage() {
 
 示例：
   sudo ./install.sh
-  # …在浏览器里完成七步安装引导（第一个账户就是平台管理员）…
+  # …在浏览器里完成八步安装引导（第一个账户就是平台管理员）…
   sudo ./install.sh --finalize --mode public --domain press.example.com
   sudo ./install.sh --finalize --mode lan
 USAGE
@@ -621,7 +621,7 @@ do_install() {
 
 print_next_steps() {
     local ssh_user="${SUDO_USER:-$(id -un)}"
-    printf '\n%s安装完成，还差最后一步：在浏览器里走完七步安装引导。%s\n\n' "$C_BOLD" "$C_RESET"
+    printf '\n%s安装完成，还差最后一步：在浏览器里走完八步安装引导。%s\n\n' "$C_BOLD" "$C_RESET"
     printf '  1. 打开安装引导（只绑回环，必须用本机浏览器或 SSH 隧道）：\n'
     if [ "$NGINX_ENABLED" = "yes" ]; then
         printf '       · 服务器本机有桌面：http://127.0.0.1:%s\n' "$SETUP_PORT"
@@ -795,7 +795,7 @@ do_finalize() {
     curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1 \
         || die "API 服务未运行：sudo systemctl start practacu-press-api 后重试"
     if ! check_admin_ready; then
-        die "安装引导还没完成（没有管理员账户）。请先在浏览器里走完七步安装引导，再执行 --finalize。"
+        die "安装引导还没完成（没有管理员账户）。请先在浏览器里走完八步安装引导，再执行 --finalize。"
     fi
 
     local mode="$FINALIZE_MODE"

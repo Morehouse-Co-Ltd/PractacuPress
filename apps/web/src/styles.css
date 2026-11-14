@@ -2331,6 +2331,20 @@ img {
     grid-template-columns 200ms cubic-bezier(0.4, 0, 0.2, 1),
     gap 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* 后台字号倍率：安装向导写入 --admin-font-scale，这里用 zoom 统一缩放整个后台。
+   侧栏高度与吸顶偏移按倍率反向补偿，放大后视觉上仍然正好占满一屏，不会把底部
+   的「返回站点 / 退出登录」顶出视口。 */
+html[data-surface='admin'] body { zoom: var(--admin-font-scale, 1); }
+html[data-surface='admin'] .admin-shell { min-height: calc(100vh / var(--admin-font-scale, 1)); }
+html[data-surface='admin'] .admin-side {
+  top: calc(16px / var(--admin-font-scale, 1));
+  height: calc((100vh - 32px) / var(--admin-font-scale, 1));
+}
+html[data-surface='admin'] .admin-topbar { top: calc(16px / var(--admin-font-scale, 1)); }
+html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admin-font-scale, 1)); }
+@media (max-width: 900px) {
+  html[data-surface='admin'] .admin-side { top: auto; height: auto; }
+}
 .admin-side {
   min-width: 0;
   border: 1px solid #ecece6;
@@ -3493,6 +3507,64 @@ img {
   max-width: 600px;
 }
 .wiz-content { margin-top: 34px; }
+/* 安装向导 · 字体大小：后台与前台两套字号并排预览 */
+.wiz-font-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.wiz-font-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: #fff;
+}
+.wiz-font-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wiz-font-head strong { display: block; font-size: 13.5px; font-weight: 500; }
+.wiz-font-head span { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+.wiz-font-head output {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.wiz-font-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 118px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  color: var(--ink-soft);
+}
+.wiz-font-preview.is-admin { gap: 7px; }
+.wiz-font-preview-strong {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+.wiz-font-preview.is-article p { margin: 6px 0 0; line-height: 1.75; color: var(--prose, #26261f); }
+.wiz-font-preview-meta { margin-top: auto; font-size: 11px; color: var(--muted); }
+.wiz-font-range { width: 100%; accent-color: var(--accent); }
+.wiz-font-card .field-hint { margin: 0; }
+@media (max-width: 720px) {
+  .wiz-font-grid { grid-template-columns: 1fr; }
+}
 .wiz-foot {
   display: flex;
   align-items: center;
@@ -8794,54 +8866,81 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   to { opacity: 1; transform: none; }
 }
 .admin-side-expand:hover { color: var(--ink); border-color: var(--line-strong); }
-/* 收起：侧栏变成一条窄图标栏，仍然留在原地——不再整块滑走。
-   只隐藏文字与分组标题，图标、在线状态与未读徽标保留；每个图标都有 title 提示，
-   鼠标悬停即可知道通向哪里，点击开关可以直接展开。 */
+/* 收起：侧栏变成一条窄图标栏，但每一行的高度、内边距与图标横向位置都沿用展开时的
+   几何——只隐藏文字，把分组标题换成同样高度的分隔线。这样收起/展开时导航图标不会
+   上下跳、也不会缩到左边，点击区域与展开时一致。 */
 .admin-shell.is-side-collapsed {
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr);
   gap: 12px;
 }
 .admin-shell.is-side-collapsed .admin-side {
-  padding: 12px 8px 14px;
+  padding: 18px 14px 16px;
   overflow-y: auto;
   overflow-x: hidden;
 }
+/* 收起开关绝对定位，不占文档流：它不会再像之前那样把下面的图标整体往下推。 */
 .admin-shell.is-side-collapsed .admin-side-collapse {
-  position: static;
-  margin: 0 auto 6px;
+  position: absolute;
+  top: 8px;
+  right: 2px;
   background: var(--bg-subtle);
   border-color: var(--line);
 }
+/* 品牌与身份卡保持展开时的上下外边距与高度；身份卡只留头像，位置与展开时同一点。 */
 .admin-shell.is-side-collapsed .admin-brand {
-  justify-content: center;
-  padding: 4px 0 12px;
-  margin-bottom: 10px;
+  justify-content: flex-start;
+  padding: 2px 8px 20px;
+  margin-bottom: 16px;
 }
 .admin-shell.is-side-collapsed .admin-brand-text { display: none; }
 .admin-shell.is-side-collapsed .admin-identity {
-  justify-content: center;
-  margin: 0 auto 10px;
-  padding: 6px;
-  width: fit-content;
-  border-color: transparent;
+  justify-content: flex-start;
+  margin: 0 4px 16px;
+  padding: 9.4px 10px;
   background: transparent;
+  border-color: transparent;
+  overflow: visible;
 }
 .admin-shell.is-side-collapsed .admin-identity-body { display: none; }
-.admin-shell.is-side-collapsed .admin-nav { gap: 2px; }
-.admin-shell.is-side-collapsed .admin-nav-label { display: none; }
-.admin-shell.is-side-collapsed .admin-nav-group + .admin-nav-group {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
+.admin-shell.is-side-collapsed .admin-nav { gap: 1px; }
+/* 分组标题保持展开时的高度、字号与上下外边距（文本透明但仍占位），只在上方叠
+   一条分隔线：后续图标与展开时处在同一行高，不会因为标题消失而整体上移。 */
+.admin-shell.is-side-collapsed .admin-nav-label {
+  position: relative;
+  margin: 16px 8px 6px;
+  color: transparent;
+  overflow: hidden;
+  white-space: nowrap;
 }
+.admin-shell.is-side-collapsed .admin-nav-label::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--line);
+}
+.admin-shell.is-side-collapsed .admin-nav-group + .admin-nav-group {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+/* 行高与展开时一致（图标 15px + 上下 8px = 37.3px 的文本行）。图标放大到 18px 后
+   把上下内边距收窄到 9.65px，行高仍是 37.3px，所以整列图标不会逐行往下漂。 */
 .admin-shell.is-side-collapsed .admin-nav-link {
   position: relative;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0;
-  padding: 9px 0;
+  padding: 9.65px 10px;
   border-left: 0;
 }
 .admin-shell.is-side-collapsed .admin-nav-link > span:not(.admin-nav-badge) { display: none; }
+/* 收起后的图标略放大，但用 -1.5px 偏移把中心点对回展开时的图标中心。 */
+.admin-shell.is-side-collapsed .admin-nav-link > svg,
+.admin-shell.is-side-collapsed .admin-side-foot a > svg,
+.admin-shell.is-side-collapsed .admin-side-foot button > svg,
+.admin-shell.is-side-collapsed .admin-side-note > svg { margin-left: -1.5px; }
 .admin-shell.is-side-collapsed .admin-nav-badge {
   position: absolute;
   top: 2px;
@@ -8853,19 +8952,19 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   background: var(--admin-panel, #fff);
 }
 .admin-shell.is-side-collapsed .admin-side-foot {
-  padding: 12px 0 0;
+  padding: 16px 0 0;
 }
 .admin-shell.is-side-collapsed .admin-side-foot a,
 .admin-shell.is-side-collapsed .admin-side-foot button {
-  justify-content: center;
-  padding: 8px 0;
+  justify-content: flex-start;
+  padding: 4.7px 10px;
 }
 .admin-shell.is-side-collapsed .admin-side-foot a > span,
 .admin-shell.is-side-collapsed .admin-side-foot button > span,
 .admin-shell.is-side-collapsed .admin-side-note > span { display: none; }
 .admin-shell.is-side-collapsed .admin-side-note {
-  justify-content: center;
-  padding: 8px 0;
+  justify-content: flex-start;
+  padding: 4.7px 10px;
 }
 /* 窄图标栏本身就是展开开关，桌面上不再叠一个固定按钮。 */
 @media (min-width: 901px) {

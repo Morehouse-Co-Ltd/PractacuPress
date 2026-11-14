@@ -2079,6 +2079,12 @@ export interface WebConfig {
   /** 后台入口地址别名，例如 /manage；缺省为 /admin。 */
   admin_path?: string;
   /**
+   * 管理后台界面字号倍率（0.8–1.2，100% = 默认）。
+   *
+   * 这是设备级显示偏好，保存在本机安装配置里，不进站点设计文档；安装向导会给出初始值。
+   */
+  admin_font_scale?: number;
+  /**
    * 匿名访客的只读配置：由启动探测（`lib/visitorBootstrap.ts`）构造，只存在内存里。
    *
    * 带这个标记的配置不写回 localStorage，也不参与「安装校验 / 设计水合 / 设计回写」，

@@ -39,7 +39,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | --- | --- |
 | **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。容器部署只有三个镜像：API、安全服务、静态站。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
-| **使用便捷** | 七步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
+| **使用便捷** | 八步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
 | **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 83 条路径 / 100 个操作）之后，换前端按契约写即可。 |
 
 然后再回到产品本身——Practacu Press 想同时拿到三样：
@@ -88,7 +88,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 ### 3.4 安装与分发
 
-- **七步安装引导**：欢迎 → 运行方式 → 数据库 → 管理员 → 默认站点 → 登录方式 → 检查与完成。
+- **八步安装引导**：欢迎 → 连接后端 → 数据库 → 管理员 → 安全 → 默认站点 → 字体大小 → 检查与完成。
 - **两种模式任选**：**演示数据**只写浏览器 `localStorage`，不需要任何服务；**真实环境**自动连上同源 API，不用填地址。
 - **Windows 一键启动器**：前端经 `go:embed` 打进 exe，默认 80 端口，被占用自动退到 8080；`/api`、`/healthz`、`/readyz` 由启动器同源反向代理，因此没有跨域配置，Cookie 与 WebSocket 天然同源；后台改端口会立即生效并迁移浏览器数据。
 - **一键打包**：`打包.bat` 走完构建前端 → 编译 Rust → 内嵌 → 编译启动器 → **在临时端口真启动产物做自检** → 出 zip 与 sha256，自检不通过不产出新包。
@@ -153,7 +153,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 docker compose up -d --build
 ```
 
-打开 `http://localhost:8080` 走完七步安装引导，**第一个账户即平台管理员**。默认只绑 `127.0.0.1`；数据在命名卷 `practacu-data`（`practacu.db` 与 `media/`）。完整说明见 [README 的 Docker 章节](../README.md)。
+打开 `http://localhost:8080` 走完八步安装引导，**第一个账户即平台管理员**。默认只绑 `127.0.0.1`；数据在命名卷 `practacu-data`（`practacu.db` 与 `media/`）。完整说明见 [README 的 Docker 章节](../README.md)。
 
 > 开发机上没有 Docker，这套镜像与 compose **没有实跑验证**，只做了 YAML / 文件引用 / 健康检查链路的静态校验。
 
@@ -243,7 +243,7 @@ apps/api/           Go API
     platform/{config,logging,errors,page,mailer}/
     infrastructure/             Ent 仓储、存储适配器、Rust gRPC 客户端
     transport/{http/gin,ws}     HTTP 中间件与 WebSocket
-apps/web/           React 前台、管理后台与七步安装引导
+apps/web/           React 前台、管理后台与八步安装引导
 apps/launcher/      Windows 一键启动器（go:embed + 同源反代）
 services/security/  Rust 安全服务（tonic）
 packages/contracts/ OpenAPI 3.1 与 protobuf，含生成代码

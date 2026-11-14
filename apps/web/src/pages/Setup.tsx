@@ -13,6 +13,15 @@ import { INSTALL_RESET_KEY, saveConfig } from '../lib/backend';
 import { SITE_KIND_LABEL } from '../lib/site';
 import { passwordProblem, passwordProblemText } from '../lib/passwordPolicy';
 import { installCustomization } from '../lib/customize';
+import { DEFAULT_THEME } from '../lib/theme';
+import {
+  ADMIN_FONT_SCALE_MAX,
+  ADMIN_FONT_SCALE_MIN,
+  ADMIN_FONT_SCALE_STEP,
+  DEFAULT_ADMIN_FONT_SCALE,
+  adminFontPercent,
+  normalizeAdminFontScale,
+} from '../lib/adminFont';
 import { DEFAULT_AUTH } from '../lib/authProviders';
 import { errorText, useTitle } from '../lib/hooks';
 import { LOCALES, normalizeLocale, setLocale, useT, type Locale } from '../lib/i18n';
@@ -53,6 +62,13 @@ interface Draft {
     visibility_mode: Site['visibility_mode'];
     publish_mode: Site['publish_mode'];
   };
+  /**
+   * 安装时顺手定的两套字号：后台界面倍率与前台正文字号。
+   *
+   * 后台倍率写进这台设备的安装配置（不进站点设计），前台字号写进站点主题的
+   * `body_size`，之后都可以在后台继续调整。
+   */
+  fonts: { adminScale: number; siteBodySize: number };
 }
 
 function cloneAuth(source: AuthSettings): AuthSettings {
@@ -71,7 +87,7 @@ const DRAFT_KEY = 'pp.setup.draft.v1';
  * 保护与站点规则。「连接后端」不是一个可跳过的选项，而是安装链路的第一段，所以它在
  * 进度里占一格。
  */
-const STEPS = ['welcome', 'connect', 'database', 'admin', 'safety', 'site', 'checks'] as const;
+const STEPS = ['welcome', 'connect', 'database', 'admin', 'safety', 'site', 'fonts', 'checks'] as const;
 
 type StepKey = (typeof STEPS)[number];
 
@@ -92,7 +108,24 @@ function defaultDraft(): Draft {
       visibility_mode: 'public',
       publish_mode: 'review',
     },
+    fonts: {
+      adminScale: DEFAULT_ADMIN_FONT_SCALE,
+      siteBodySize: DEFAULT_THEME.body_size,
+    },
   };
+}
+
+/** 前台正文字号的边界与步进，与「主题设置 → 正文栏宽」旁的滑杆保持一致。 */
+const SITE_BODY_SIZE_MIN = 14;
+const SITE_BODY_SIZE_MAX = 20;
+const SITE_BODY_SIZE_STEP = 0.5;
+
+/** 旧草稿没有字号字段、或手改越界时收敛到滑杆能表示的值。 */
+function normalizeSiteBodySize(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_THEME.body_size;
+  const clamped = Math.min(SITE_BODY_SIZE_MAX, Math.max(SITE_BODY_SIZE_MIN, numeric));
+  return Math.round(clamped / SITE_BODY_SIZE_STEP) * SITE_BODY_SIZE_STEP;
 }
 
 function loadDraft(): Draft {
@@ -123,6 +156,10 @@ function loadDraft(): Draft {
       admin: { ...base.admin, ...saved.admin, password: '', confirm: '' },
       safety: { ...base.safety, ...saved.safety, password: '', confirm: '' },
       site,
+      fonts: {
+        adminScale: normalizeAdminFontScale(saved.fonts?.adminScale),
+        siteBodySize: normalizeSiteBodySize(saved.fonts?.siteBodySize),
+      },
     };
   } catch {
     return base;
@@ -166,6 +203,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       else delete root.dataset.surface;
     };
   }, []);
+  // 一键启动直接落在连接阶段；普通首次运行从欢迎页开始。
   // 一键启动直接落在连接阶段；普通首次运行从欢迎页开始。
   const [step, setStep] = useState(forceLive ? 1 : 0);
   const [draft, setDraft] = useState<Draft>(loadDraft);
@@ -284,7 +322,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   }, [draft]);
 
   useEffect(() => {
-    if (step === 6) void runChecks();
+    if (step === STEPS.indexOf('checks')) void runChecks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
@@ -299,6 +337,15 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
 
   const updateSite = (patch: Partial<Draft['site']>) =>
     setDraft((prev) => ({ ...prev, site: { ...prev.site, ...patch } }));
+
+  const updateFonts = (patch: Partial<Draft['fonts']>) =>
+    setDraft((prev) => ({
+      ...prev,
+      fonts: {
+        adminScale: normalizeAdminFontScale(patch.adminScale ?? prev.fonts.adminScale),
+        siteBodySize: normalizeSiteBodySize(patch.siteBodySize ?? prev.fonts.siteBodySize),
+      },
+    }));
 
   const updateAdmin = (patch: Partial<Draft['admin']>) =>
     setDraft((prev) => ({ ...prev, admin: { ...prev.admin, ...patch } }));
@@ -674,7 +721,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       }
       setBusy(false);
     }
-    if (step === 6) {
+    if (step === STEPS.indexOf('checks')) {
       await complete();
       return;
     }
@@ -777,7 +824,8 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
         docs_url: `${normalizeOrigin(draft.apiBase) || window.location.origin}/api/v1/docs`,
         site_kind: draft.site.kind,
         owner_email: (showExisting ? existing.email : draft.admin.email).trim().toLowerCase(),
-        customization: installCustomization(draft.language),
+        customization: installCustomization(draft.language, draft.fonts.siteBodySize),
+        admin_font_scale: normalizeAdminFontScale(draft.fonts.adminScale),
         auth: cloneAuth(DEFAULT_AUTH),
       };
       localStorage.removeItem(DRAFT_KEY);
@@ -880,6 +928,15 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   </span>
                 </div>
                 <div className="mini-row">
+                  <span className="mini-label">{t('字号')}</span>
+                  <span className="mini-value">
+                    {t('后台 {admin} · 前台正文 {site} px', {
+                      admin: `${adminFontPercent(draft.fonts.adminScale)}%`,
+                      site: draft.fonts.siteBodySize,
+                    })}
+                  </span>
+                </div>
+                <div className="mini-row">
                   <span className="mini-label">{t('访问端口')}</span>
                   <span className="mini-value mono">
                     {currentPort()}
@@ -919,6 +976,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     admin: t('管理员'),
     safety: t('安全'),
     site: t('默认站点'),
+    fonts: t('字体大小'),
     checks: t('检查与完成'),
   };
   const stepHint: Record<StepKey, string> = {
@@ -928,6 +986,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     admin: t('第一个账户'),
     safety: t('高威胁操作保护'),
     site: t('名称、域名与规则'),
+    fonts: t('后台与前台字号'),
     checks: t('迁移、健康检查'),
   };
   const currentKey = STEPS[step];
@@ -1832,7 +1891,99 @@ go run ./apps/api/cmd/server`}</pre>
 
           {step === 6 ? (
             <>
-              <p className="wiz-eyebrow">Checks</p>
+              <p className="wiz-eyebrow">Typography</p>
+              <h1 className="wiz-title">{t('把字号调到看着舒服。')}</h1>
+              <p className="wiz-lede">
+                {t(
+                  '后台是每天工作的地方，前台是读者阅读的地方：两套字号分开调整，互不影响。之后都可以在后台继续修改。',
+                )}
+              </p>
+
+              <div className="wiz-content">
+                <div className="wiz-font-grid">
+                  <section className="wiz-font-card">
+                    <div className="wiz-font-head">
+                      <div>
+                        <strong>{t('后台界面字号')}</strong>
+                        <span>{t('管理后台的菜单、表单与列表')}</span>
+                      </div>
+                      <output>{adminFontPercent(draft.fonts.adminScale)}%</output>
+                    </div>
+                    <div className="wiz-font-preview is-admin">
+                      <span
+                        className="wiz-font-preview-strong"
+                        style={{ fontSize: `${14 * draft.fonts.adminScale}px` }}
+                      >
+                        {t('媒体库')}
+                      </span>
+                      <span style={{ fontSize: `${11.5 * draft.fonts.adminScale}px` }}>
+                        {t('仪表盘 · 内容库 · 媒体库 · 站点设置')}
+                      </span>
+                      <span style={{ fontSize: `${12 * draft.fonts.adminScale}px` }}>
+                        {t('两步上传：先开会话，再传字节，最后由安全服务检查。')}
+                      </span>
+                    </div>
+                    <input
+                      className="wiz-font-range"
+                      type="range"
+                      min={ADMIN_FONT_SCALE_MIN * 100}
+                      max={ADMIN_FONT_SCALE_MAX * 100}
+                      step={ADMIN_FONT_SCALE_STEP * 100}
+                      value={adminFontPercent(draft.fonts.adminScale)}
+                      aria-label={t('后台界面字号')}
+                      onChange={(event) =>
+                        updateFonts({ adminScale: Number(event.target.value) / 100 })
+                      }
+                    />
+                    <p className="field-hint">
+                      {t('只影响这台电脑上的管理后台，不影响访客看到的页面。')}
+                    </p>
+                  </section>
+
+                  <section className="wiz-font-card">
+                    <div className="wiz-font-head">
+                      <div>
+                        <strong>{t('前台正文字号')}</strong>
+                        <span>{t('文章与自定义页面的正文大小')}</span>
+                      </div>
+                      <output>{draft.fonts.siteBodySize} px</output>
+                    </div>
+                    <div className="wiz-font-preview is-article">
+                      <span className="wiz-font-preview-strong">{t('独立出版的账本')}</span>
+                      <p style={{ fontSize: `${draft.fonts.siteBodySize}px` }}>
+                        {t('独立出版最浪漫的部分是「独立」，最不浪漫的部分是「出版」。')}
+                      </p>
+                      <span className="wiz-font-preview-meta">{t('约 3 分钟阅读')}</span>
+                    </div>
+                    <input
+                      className="wiz-font-range"
+                      type="range"
+                      min={SITE_BODY_SIZE_MIN}
+                      max={SITE_BODY_SIZE_MAX}
+                      step={SITE_BODY_SIZE_STEP}
+                      value={draft.fonts.siteBodySize}
+                      aria-label={t('前台正文字号')}
+                      onChange={(event) =>
+                        updateFonts({ siteBodySize: Number(event.target.value) })
+                      }
+                    />
+                    <p className="field-hint">
+                      {t('影响文章与自定义页面的正文；之后可以在「主题设置 → 主题与版式」里继续调整。')}
+                    </p>
+                  </section>
+                </div>
+
+                <div className="mt-20">
+                  <Callout tone="info" icon="info" title={t('两处字号互相独立')}>
+                    {t('把后台调大一点更好点按；把前台调大一点更适合长文阅读。访客仍然可以用文章页右侧工具栏临时缩放。')}
+                  </Callout>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {step === 7 ? (
+            <>
               <h1 className="wiz-title">{t('在开门之前，先绕房子走一圈。')}</h1>
               <p className="wiz-lede">
                 {t('检查只读取健康端点与公开接口，不会修改数据。安全服务没有独立探针，它由发布与上传流程 fail-closed 验证。')}
@@ -1909,6 +2060,15 @@ go run ./apps/api/cmd/server`}</pre>
                   <div className="mini-row">
                     <span className="mini-label">{t('站点')}</span>
                     <span className="mini-value">{draft.site.name}</span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('字号')}</span>
+                    <span className="mini-value">
+                      {t('后台 {admin} · 前台正文 {site} px', {
+                        admin: `${adminFontPercent(draft.fonts.adminScale)}%`,
+                        site: draft.fonts.siteBodySize,
+                      })}
+                    </span>
                   </div>
                   <div className="mini-row">
                     <span className="mini-label">{t('高威胁操作保护')}</span>

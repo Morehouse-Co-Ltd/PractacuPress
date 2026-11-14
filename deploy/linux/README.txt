@@ -2,7 +2,7 @@ Practacu Press · Linux 安装包
 ================================
 
 这个目录装的是 Practacu Press 的 Linux x86_64 版本：Go API、Rust 安全服务与
-前端（含七步安装引导）都在包里，目标机不需要 Go / Node / Rust，也不需要 Docker。
+前端（含八步安装引导）都在包里，目标机不需要 Go / Node / Rust，也不需要 Docker。
 
 三步装好
 --------

@@ -6,6 +6,7 @@ import { useAdminTheme } from '../lib/adminTheme';
 import { ROLE_LABEL } from '../lib/format';
 import { usePermissions } from '../lib/usePermissions';
 import { navigateWithTransition } from '../lib/themeTransition';
+import { normalizeAdminFontScale } from '../lib/adminFont';
 import { useT } from '../lib/i18n';
 import {
   adminPageGroup,
@@ -143,6 +144,17 @@ export function AdminShell() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminTheme, location.pathname]);
+
+  // 后台字号是设备级偏好：写进根节点的 CSS 变量，样式表用 zoom 统一缩放整个后台
+  // （侧栏高度与吸顶偏移在 styles.css 里按倍率反向补偿，视觉上仍占满一屏）。
+  const adminFontScale = normalizeAdminFontScale(config.admin_font_scale);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--admin-font-scale', String(adminFontScale));
+    return () => {
+      root.style.removeProperty('--admin-font-scale');
+    };
+  }, [adminFontScale]);
 
   // 兜底再确认一次：被卸载组件的被动清理（站点外壳 / 安装向导）一定晚于本组件的
   // layout effect，属性若被它们删掉或改回 site，后台就会掉回站点主题令牌——深色
@@ -473,7 +485,7 @@ export function AdminShell() {
                     }`
                   }
                 >
-                  <Icon name={item.icon} size={15} />
+                  <Icon name={item.icon} size={collapsed ? 18 : 15} />
                   <span>{item.label}</span>
                   {item.badge ? <span className="admin-nav-badge">{item.badge}</span> : null}
                 </NavLink>
@@ -484,19 +496,19 @@ export function AdminShell() {
 
         <div className="admin-side-foot">
           <Link to="/" title={collapsed ? t('返回站点') : undefined}>
-            <Icon name="arrow-left" size={14} /> <span>{t('返回站点')}</span>
+            <Icon name="arrow-left" size={collapsed ? 17 : 14} /> <span>{t('返回站点')}</span>
           </Link>
           {config.mode === 'demo' ? (
             <span className="admin-side-note" title={collapsed ? t('演示数据（浏览器本地）') : undefined}>
-              <Icon name="database" size={14} /> <span>{t('演示数据（浏览器本地）')}</span>
+              <Icon name="database" size={collapsed ? 17 : 14} /> <span>{t('演示数据（浏览器本地）')}</span>
             </span>
           ) : (
             <span className="admin-side-note" title={collapsed ? backend.origin || window.location.origin : undefined}>
-              <Icon name="server" size={14} /> <span>{backend.origin || window.location.origin}</span>
+              <Icon name="server" size={collapsed ? 17 : 14} /> <span>{backend.origin || window.location.origin}</span>
             </span>
           )}
           <button type="button" onClick={handleLogout} title={collapsed ? t('退出登录') : undefined}>
-            <Icon name="logout" size={14} /> <span>{t('退出登录')}</span>
+            <Icon name="logout" size={collapsed ? 17 : 14} /> <span>{t('退出登录')}</span>
           </button>
         </div>
       </aside>

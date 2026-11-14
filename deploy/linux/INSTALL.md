@@ -4,7 +4,7 @@
 （systemd 发行版，Debian / Ubuntu / RHEL / Rocky / Alma 等）用两条命令跑起来：
 
 1. `sudo ./install.sh` —— 装程序、建数据库、起服务，**只监听本机回环**；
-2. 在浏览器里走完产品自带的七步安装引导，创建第一个账户（平台管理员）；
+2. 在浏览器里走完产品自带的八步安装引导，创建第一个账户（平台管理员）；
 3. `sudo ./install.sh --finalize ...` —— 按需要切成「内网 HTTP」或「公网 HTTPS」。
 
 > 第 2、3 步分开不是安装器多事：产品规定**首个管理员只能在回环地址上注册**
@@ -27,7 +27,7 @@ PractacuPress-Linux-x64/
 │   ├── practacu-seed          建表 + 创建默认站点（幂等）
 │   ├── practacu-migrate       只应用数据库结构（升级/排障用）
 │   └── practacu-security      Rust 安全服务（Argon2id、HTML 白名单、上传检查）
-├── web/                       前端静态文件（含七步安装引导）
+├── web/                       前端静态文件（含八步安装引导）
 └── deploy/
     ├── systemd/*.service.in   systemd 单元模板（安装器渲染后写入 /etc/systemd/system）
     └── nginx/*.conf.in        Nginx 站点模板（安装器渲染后写入 /etc/nginx）

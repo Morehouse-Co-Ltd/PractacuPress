@@ -1655,16 +1655,22 @@ export function createCustomizationWithPages(): SiteCustomization {
  */
 export const INSTALL_DEFAULT_THEME_ID = 'night';
 
-/** 首次安装完成时写进站点设计的完整配置：默认大主题 + 安装时选择的语言。 */
-export function installCustomization(language: Locale): SiteCustomization {
+/** 首次安装完成时写进站点设计的完整配置：默认大主题 + 安装时选择的语言与正文字号。 */
+export function installCustomization(language: Locale, bodySize?: number): SiteCustomization {
   const base = createCustomizationWithPages();
   // 取内置主题的完整排版默认值，而不是只套配色：否则安装完成后会被判成自定义主题。
   const bundle = builtinThemeBundle(INSTALL_DEFAULT_THEME_ID);
   if (!bundle) throw new Error(`Built-in theme "${INSTALL_DEFAULT_THEME_ID}" is missing.`);
+  // 安装向导的「前台正文字号」只是给主题的 body_size 一个初始值；传了才归一化，
+  // 不传时保持与内置主题完全一致（installCustomization 的既有契约）。
+  const theme =
+    bodySize === undefined
+      ? bundle.theme
+      : normalizeThemeSettings({ ...bundle.theme, body_size: bodySize });
   return {
     ...base,
     language,
-    theme: bundle.theme,
+    theme,
     layout: { ...base.layout, variant: bundle.variant },
     active_theme: bundle.id,
     home: defaultHomeLayout(bundle.variant),

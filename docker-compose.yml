@@ -5,7 +5,7 @@
 #   docker compose logs -f            看日志
 #   docker compose down               停止
 #
-# 启动后打开 http://localhost:8080 完成七步安装引导：
+# 启动后打开 http://localhost:8080 完成八步安装引导：
 # 引导里创建的第一个账户就是平台管理员。
 #
 # 默认只绑定回环地址（127.0.0.1），装完之后再把 「127.0.0.1:」前缀去掉

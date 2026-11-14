@@ -373,6 +373,33 @@ const fragment: Dictionary = {
     'Verifying the account and creating a session. This may take a moment.',
   '服务就绪或数据存储未通过。请先启动后端并执行迁移，然后重新检查。':
     'The service or data storage check did not pass. Start the backend, run migrations, and check again.',
+  // ---- 字体大小 ----
+  字体大小: 'Text size',
+  后台与前台字号: 'Backend and frontend text sizes',
+  '把字号调到看着舒服。': 'Set text sizes that feel comfortable.',
+  '后台是每天工作的地方，前台是读者阅读的地方：两套字号分开调整，互不影响。之后都可以在后台继续修改。':
+    'The dashboard is where you work every day and the site is where readers read. The two text sizes are independent, and both can be changed later in the dashboard.',
+  后台界面字号: 'Dashboard text size',
+  '管理后台的菜单、表单与列表': 'Menus, forms and lists in the dashboard',
+  '仪表盘 · 内容库 · 媒体库 · 站点设置':
+    'Dashboard · Content · Media library · Site settings',
+  '两步上传：先开会话，再传字节，最后由安全服务检查。':
+    'Two-step upload: open a session, send the bytes, then the security service checks them.',
+  '只影响这台电脑上的管理后台，不影响访客看到的页面。':
+    'Only affects the dashboard on this computer; visitors do not see this change.',
+  前台正文字号: 'Frontend body text size',
+  '文章与自定义页面的正文大小': 'Body text size for articles and custom pages',
+  独立出版的账本: 'The ledgers of independent publishing',
+  '独立出版最浪漫的部分是「独立」，最不浪漫的部分是「出版」。':
+    'The most romantic part of independent publishing is “independent”; the least romantic part is “publishing”.',
+  '约 3 分钟阅读': 'About a 3 minute read',
+  '影响文章与自定义页面的正文；之后可以在「主题设置 → 主题与版式」里继续调整。':
+    'Affects body text in articles and custom pages; you can fine-tune it later under Theme settings → Theme and layout.',
+  两处字号互相独立: 'The two text sizes are independent',
+  '把后台调大一点更好点按；把前台调大一点更适合长文阅读。访客仍然可以用文章页右侧工具栏临时缩放。':
+    'A larger dashboard is easier to click; a larger frontend is easier for long reads. Visitors can still zoom temporarily with the toolbar on the article page.',
+  字号: 'Text size',
+  '后台 {admin} · 前台正文 {site} px': 'Dashboard {admin} · frontend body {site} px',
 };
 
 export default fragment;

@@ -62,7 +62,7 @@ docker compose up -d --build
 #    （或 SSH 隧道：ssh -L 8080:127.0.0.1:8080 user@server）
 ```
 
-在七步安装引导里：
+在八步安装引导里：
 
 1. 第一个注册的账号会自动成为 `platform_admin`（这是桌面/单站点形态的设计）。
 2. **站点设置 → 域名** 填 `press.example.com`（生产按 Host 解析站点；切生产后
