@@ -2388,9 +2388,18 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   padding: 2px 8px 20px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 16px;
+  overflow: hidden;
+  flex: 0 0 auto;
 }
-.admin-brand .brand-mark { width: 20px; height: 20px; font-size: 13px; transform: none; }
-.admin-brand-text { font-family: var(--serif); font-size: 15px; line-height: 1.2; }
+.admin-brand .brand-mark { width: 20px; height: 20px; font-size: 13px; transform: none; flex: none; }
+.admin-brand-text {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
 .admin-brand-text small {
   display: inline-flex;
   align-items: center;
@@ -2419,6 +2428,7 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   color: inherit;
   text-decoration: none;
   min-width: 0;
+  flex: 0 0 auto;
   transition: border-color 140ms ease, background 140ms ease;
 }
 .admin-identity:hover {
@@ -2478,7 +2488,7 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.admin-nav { display: flex; flex-direction: column; gap: 1px; }
+.admin-nav { display: flex; flex-direction: column; gap: 1px; flex: 0 0 auto; }
 .admin-nav-group { display: flex; flex-direction: column; gap: 1px; }
 .admin-nav-label {
   margin: 16px 8px 6px;
@@ -2486,6 +2496,8 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   letter-spacing: 0.14em;
   color: var(--faint);
   text-transform: uppercase;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .admin-nav-link {
   display: flex;
@@ -2499,6 +2511,14 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 .admin-nav-link svg { color: var(--muted); flex: none; }
+/* 文字不折行：收起/展开的 200ms 里侧栏宽度会经过很窄的中间值，如果标签折行，
+   行高会被撑高，整列图标就会上下跳。超出部分裁掉即可。 */
+.admin-nav-link > span:not(.admin-nav-badge) {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .admin-nav-link:hover { background: var(--bg-subtle); color: var(--ink); }
 .admin-nav-link.is-active {
   background: #f2f3ee;
@@ -2520,6 +2540,7 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   margin-top: auto;
   padding: 16px 8px 0;
   border-top: 1px solid var(--line);
+  flex: 0 0 auto;
 }
 .admin-side-note {
   display: flex;
@@ -8866,9 +8887,10 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   to { opacity: 1; transform: none; }
 }
 .admin-side-expand:hover { color: var(--ink); border-color: var(--line-strong); }
-/* 收起：侧栏变成一条窄图标栏，但每一行的高度、内边距与图标横向位置都沿用展开时的
-   几何——只隐藏文字，把分组标题换成同样高度的分隔线。这样收起/展开时导航图标不会
-   上下跳、也不会缩到左边，点击区域与展开时一致。 */
+/* 收起：侧栏变成一条 76px 的图标栏。
+   顶部的 logo 隐藏但保留原来的高度，展开按钮占据 logo 的位置；
+   头像缩小并居中，导航与底部图标同样居中；所有行高与展开时一致，
+   展开/收起的 200ms 里图标不会上下跳、也不会把主内容顶动。 */
 .admin-shell.is-side-collapsed {
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 12px;
@@ -8878,30 +8900,42 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   overflow-y: auto;
   overflow-x: hidden;
 }
-/* 收起开关绝对定位，不占文档流：它不会再像之前那样把下面的图标整体往下推。 */
+/* logo 不显示，但元素本身仍占位：展开时品牌行高度不会突变。 */
+.admin-shell.is-side-collapsed .admin-brand {
+  visibility: hidden;
+  pointer-events: none;
+}
+/* 展开按钮放到 logo 的位置：品牌行高 43px，按钮 30px，垂直居中；水平居中。 */
 .admin-shell.is-side-collapsed .admin-side-collapse {
   position: absolute;
-  top: 8px;
-  right: 2px;
+  top: 24.5px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
   background: var(--bg-subtle);
   border-color: var(--line);
+  z-index: 2;
 }
-/* 品牌与身份卡保持展开时的上下外边距与高度；身份卡只留头像，位置与展开时同一点。 */
-.admin-shell.is-side-collapsed .admin-brand {
-  justify-content: flex-start;
-  padding: 2px 8px 20px;
-  margin-bottom: 16px;
-}
-.admin-shell.is-side-collapsed .admin-brand-text { display: none; }
+/* 身份卡保留展开时的整行高度（62.8px），头像缩到 34px 并水平/垂直居中。 */
 .admin-shell.is-side-collapsed .admin-identity {
-  justify-content: flex-start;
+  height: 62.8px;
   margin: 0 4px 16px;
-  padding: 9.4px 10px;
-  background: transparent;
+  padding: 0;
+  justify-content: center;
+  align-items: center;
   border-color: transparent;
-  overflow: visible;
+  background: transparent;
 }
 .admin-shell.is-side-collapsed .admin-identity-body { display: none; }
+.admin-shell.is-side-collapsed .admin-identity-avatar .avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 14px;
+}
+.admin-shell.is-side-collapsed .admin-identity-online { width: 9px; height: 9px; }
 .admin-shell.is-side-collapsed .admin-nav { gap: 1px; }
 /* 分组标题保持展开时的高度、字号与上下外边距（文本透明但仍占位），只在上方叠
    一条分隔线：后续图标与展开时处在同一行高，不会因为标题消失而整体上移。 */
@@ -8926,25 +8960,20 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
   padding-top: 0;
   border-top: 0;
 }
-/* 行高与展开时一致（图标 15px + 上下 8px = 37.3px 的文本行）。图标放大到 18px 后
-   把上下内边距收窄到 9.65px，行高仍是 37.3px，所以整列图标不会逐行往下漂。 */
+/* 行高与展开时一致（文本行 37.3px）；图标放大到 18px 后收窄上下内边距保持行高，
+   水平居中，视觉上是一列整齐的图标 tab。 */
 .admin-shell.is-side-collapsed .admin-nav-link {
   position: relative;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 0;
-  padding: 9.65px 10px;
+  padding: 9.65px 0;
   border-left: 0;
 }
 .admin-shell.is-side-collapsed .admin-nav-link > span:not(.admin-nav-badge) { display: none; }
-/* 收起后的图标略放大，但用 -1.5px 偏移把中心点对回展开时的图标中心。 */
-.admin-shell.is-side-collapsed .admin-nav-link > svg,
-.admin-shell.is-side-collapsed .admin-side-foot a > svg,
-.admin-shell.is-side-collapsed .admin-side-foot button > svg,
-.admin-shell.is-side-collapsed .admin-side-note > svg { margin-left: -1.5px; }
 .admin-shell.is-side-collapsed .admin-nav-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 3px;
+  right: 3px;
   margin-left: 0;
   padding: 0 4px;
   min-width: 15px;
@@ -8956,15 +8985,15 @@ html[data-surface='admin'] .admin-subnav::-webkit-scrollbar {
 }
 .admin-shell.is-side-collapsed .admin-side-foot a,
 .admin-shell.is-side-collapsed .admin-side-foot button {
-  justify-content: flex-start;
-  padding: 4.7px 10px;
+  justify-content: center;
+  padding: 4.7px 0;
 }
 .admin-shell.is-side-collapsed .admin-side-foot a > span,
 .admin-shell.is-side-collapsed .admin-side-foot button > span,
 .admin-shell.is-side-collapsed .admin-side-note > span { display: none; }
 .admin-shell.is-side-collapsed .admin-side-note {
-  justify-content: flex-start;
-  padding: 4.7px 10px;
+  justify-content: center;
+  padding: 4.7px 0;
 }
 /* 窄图标栏本身就是展开开关，桌面上不再叠一个固定按钮。 */
 @media (min-width: 901px) {
