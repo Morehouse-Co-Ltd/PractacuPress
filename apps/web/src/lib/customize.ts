@@ -43,6 +43,7 @@ import {
   themeCss,
   type ThemePreset,
 } from './theme';
+import { normalizeThemeSettingValues } from './themeSettings';
 import {
   BUILTIN_THEME_IDS,
   builtinThemeBundle,
@@ -1319,6 +1320,7 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
     theme,
     active_theme: activeTheme,
     themes,
+    theme_settings: normalizeThemeSettingValues(raw.theme_settings),
     layout: {
       brand_sub: text(layout.brand_sub, DEFAULT_LAYOUT.brand_sub, 60),
       show_articles: bool(layout.show_articles, true),

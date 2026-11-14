@@ -1,6 +1,7 @@
 import type { AppearanceSectionId, LayoutVariant, SiteTheme, ThemeSettings } from '../types';
 import { t } from './i18n';
 import { applyPreset, DEFAULT_THEME, normalizeThemeSettings } from './theme';
+import { normalizeThemeSettingsSchema } from './themeSettings';
 import { liveCatalog } from './i18n/live';
 
 /**
@@ -214,6 +215,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
   }
   if (BUILTIN_THEME_IDS.has(id)) id = `custom_${id}`;
   const appearance = normalizeAppearance(raw.appearance);
+  const settings = normalizeThemeSettingsSchema(raw.settings);
   return {
     id,
     name,
@@ -221,6 +223,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
     variant: normalizeVariant(raw.variant),
     theme: normalizeThemeSettings(raw.theme),
     ...(appearance ? { appearance } : {}),
+    ...(settings ? { settings } : {}),
   };
 }
 
@@ -259,6 +262,7 @@ export function parseThemeFile(raw: string): SiteTheme {
   const name = themeText(record.name ?? record.site, t('导入的主题'), 40).trim() || t('导入的主题');
   const note = themeText(record.note ?? record.summary, '', 160);
   const appearance = normalizeAppearance(record.appearance);
+  const settings = normalizeThemeSettingsSchema(record.settings);
   return {
     id: newThemeId(),
     name,
@@ -266,6 +270,7 @@ export function parseThemeFile(raw: string): SiteTheme {
     variant,
     theme: normalizeThemeSettings(themeSource),
     ...(appearance ? { appearance } : {}),
+    ...(settings ? { settings } : {}),
   };
 }
 
@@ -280,6 +285,7 @@ export function downloadThemeFile(theme: SiteTheme): void {
     variant: theme.variant,
     theme: theme.theme,
     ...(theme.appearance ? { appearance: theme.appearance } : {}),
+    ...(theme.settings ? { settings: theme.settings } : {}),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

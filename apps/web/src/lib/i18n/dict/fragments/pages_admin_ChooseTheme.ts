@@ -67,6 +67,10 @@ const fragment: Dictionary = {
     'The package writes the palette, layout variant and page layouts; component and backend packages are installed from Extensions.',
   '这个主题包包含 {count} 个页面编排。导入后可在页面编排器里继续调整。':
     'This package contains {count} page layouts. You can keep editing them in the page builder.',
+  '双击直接使用「{name}」': 'Double-click to use “{name}”',
+  '预览「{name}」': 'Preview “{name}”',
+  预览主题: 'Preview theme',
+  这个主题正在使用: 'This theme is in use',
 };
 
 export default fragment;

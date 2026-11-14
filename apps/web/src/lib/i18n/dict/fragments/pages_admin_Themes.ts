@@ -401,6 +401,10 @@ const fragment: Dictionary = {
     'The cover fills the whole card with a gaussian blur, and the title and summary sit over the image.',
   '作用于「文章卡网格」「文章列表」「精选文章」三个区块；「置顶文章 / 热门文章」网格本来就以封面铺底，保持原样。':
     'Applies to the article grid, article list and featured article blocks; the pinned / popular grid already uses covers as its background and stays as is.',
+  主题自定义: 'Theme settings',
+  当前主题使用自己的主题设置: 'This theme uses its own settings',
+  '这套主题声明放弃内置的配色与排版微调，改用主题自己的设置字段；导航与页脚、外观和加载动画仍然可用。':
+    'This theme opts out of the built-in colour and typography tuning and uses its own settings fields; Navigation and footer, Appearance and Loading animation remain available.',
 };
 
 export default fragment;

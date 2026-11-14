@@ -1,6 +1,7 @@
 import type { ScreenLayout, SiteCustomization, SiteTheme, ThemeAppearance } from '../types';
 import { normalizeScreenLayout } from './customize';
 import { normalizeThemeSettings } from './theme';
+import { normalizeThemeSettingsSchema } from './themeSettings';
 import { normalizeAppearance, normalizeVariant } from './themes';
 import type { LayoutVariant, ThemeSettings } from '../types';
 import { createZip, readZip, safeZipName, type ZipEntry } from './zip';
@@ -58,7 +59,7 @@ export interface ThemePackageManifest {
     id: string;
     routes?: { method: string; path: string; auth?: string }[];
   };
-  admin?: { tabs?: string };
+  admin?: { tabs?: string; replace_default?: boolean };
   assets?: string[];
 }
 
@@ -511,6 +512,10 @@ export function siteThemeFromPackage(
   parsed: ParsedThemePackage,
   themeId: string,
 ): SiteTheme {
+  const settings = normalizeThemeSettingsSchema(
+    parsed.adminTabs,
+    parsed.manifest.admin?.replace_default === true,
+  );
   return {
     id: themeId,
     name: parsed.manifest.name,
@@ -518,6 +523,7 @@ export function siteThemeFromPackage(
     variant: parsed.manifest.variant,
     theme: parsed.manifest.theme,
     ...(parsed.manifest.appearance ? { appearance: parsed.manifest.appearance } : {}),
+    ...(settings ? { settings } : {}),
   };
 }
 

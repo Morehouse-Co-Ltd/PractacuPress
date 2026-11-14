@@ -92,9 +92,9 @@ function HeroPreview({
   );
 }
 
-export function AppearancePage() {
+export function AppearancePage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
-  useTitle(t('外观'));
+  useTitle(embedded ? t('主题设置') : t('外观'));
   const { site } = useAuth();
   const saveSiteConfig = useSaveSiteConfig();
   const { customization, update } = useCustomization();
@@ -198,34 +198,36 @@ export function AppearancePage() {
 
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
-      <div className="admin-page-head">
-        <div>
-          <h1>{t('外观')}</h1>
-          <p>
-            {t('首页首屏、品牌、公告条与自定义 CSS。导航 Tab 与页脚栏目在「主题设置」里；')}{' '}
-            {t('显示哪些分区由当前主题决定。')}
-          </p>
+      {embedded ? null : (
+        <div className="admin-page-head">
+          <div>
+            <h1>{t('外观')}</h1>
+            <p>
+              {t('首页首屏、品牌、公告条与自定义 CSS。导航 Tab 与页脚栏目在「主题设置」里；')}{' '}
+              {t('显示哪些分区由当前主题决定。')}
+            </p>
+          </div>
+          <div className="admin-page-actions">
+            <Link to="/admin/themes" className="btn btn-secondary btn-sm">
+              <Icon name="palette" size={14} /> {t('主题设置')}
+            </Link>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="download"
+              onClick={() => downloadCustomization(customization, site?.name ?? 'Practacu Press')}
+            >
+              {t('导出配置')}
+            </Button>
+            <Link to="/admin/theme" className="btn btn-primary btn-sm">
+              <Icon name="layers" size={14} /> {t('页面编排')}
+            </Link>
+            <Button variant="secondary" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
+              {t('预览站点')}
+            </Button>
+          </div>
         </div>
-        <div className="admin-page-actions">
-          <Link to="/admin/themes" className="btn btn-secondary btn-sm">
-            <Icon name="palette" size={14} /> {t('主题设置')}
-          </Link>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="download"
-            onClick={() => downloadCustomization(customization, site?.name ?? 'Practacu Press')}
-          >
-            {t('导出配置')}
-          </Button>
-          <Link to="/admin/theme" className="btn btn-primary btn-sm">
-            <Icon name="layers" size={14} /> {t('页面编排')}
-          </Link>
-          <Button variant="secondary" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
-            {t('预览站点')}
-          </Button>
-        </div>
-      </div>
+      )}
 
       <div className="theme-banner">
         <div className="theme-banner-main">

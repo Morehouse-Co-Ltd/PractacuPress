@@ -2896,6 +2896,86 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   background: transparent;
   color: var(--ink);
 }
+/* 标题上方的元信息条：封面 / 分类与标签 / 发布状态 */
+.editor-meta-bar {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) minmax(0, 0.85fr);
+  gap: 16px;
+  align-items: stretch;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+.editor-cover-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+  color: inherit;
+  cursor: pointer;
+}
+.editor-cover-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.editor-cover-card .cover { width: 100%; height: 100%; }
+.editor-cover-card:hover { border-color: var(--ink); }
+.editor-cover-card-label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  backdrop-filter: blur(6px);
+}
+.editor-meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.editor-meta-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.editor-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.editor-meta-category { max-width: 220px; }
+.editor-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 58px;
+  overflow: auto;
+}
+.editor-meta-tags .tag-chip { cursor: default; }
+/* 摘要与正文之间的「发布与访问」横向面板 */
+.editor-publish-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+@media (max-width: 1100px) {
+  .editor-meta-bar { grid-template-columns: 104px minmax(0, 1fr); }
+  .editor-meta-bar .editor-meta-block:last-child { grid-column: 1 / -1; }
+  .editor-publish-grid { grid-template-columns: 1fr; }
+}
 .editor-title-input:focus { outline: none; border-color: var(--ink); }
 .editor-title-input::placeholder { color: var(--faint); }
 .editor-mode {
@@ -8217,6 +8297,67 @@ body.builder-mode .admin-side { display: none !important; }
   transform: none;
 }
 .theme-tile-edit:hover { color: var(--accent); border-color: var(--accent); }
+/* 未使用的主题：悬停时封面中心浮出「预览主题」。 */
+.theme-tile-preview {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--admin-panel, #fff) 92%, transparent);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+  transform: translate(-50%, -46%);
+  transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 30px -18px rgb(20 20 15 / .6);
+}
+.theme-tile:hover .theme-tile-preview,
+.theme-tile:focus-within .theme-tile-preview {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+.theme-tile-preview:hover { border-color: var(--ink); }
+.theme-preview-modal-cover {
+  max-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+.theme-preview-modal-cover .theme-bundle-preview { border-radius: 0; }
+/* 主题自带的设置字段（admin/tabs.json） */
+.theme-setting-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px 20px;
+  align-items: start;
+}
+.theme-setting-field { min-width: 0; }
+.theme-setting-field.is-wide { grid-column: 1 / -1; }
+.theme-setting-grid > .field { min-width: 0; }
+.theme-setting-color { display: flex; align-items: center; gap: 8px; }
+.theme-setting-color input[type='color'] {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .theme-setting-grid { grid-template-columns: 1fr; }
+}
 .theme-tile.is-new {
   border-style: dashed;
   background: transparent;

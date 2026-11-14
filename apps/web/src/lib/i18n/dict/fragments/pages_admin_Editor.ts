@@ -234,6 +234,18 @@ const fragment: Dictionary = {
   '在这里写 Markdown；右侧会实时预览。': 'Write Markdown here; the right side previews it live.',
   'HTML 与 Markdown 会互相转换：在这里改完切到另一种格式，内容会同步过去；保存时统一写成 Markdown。':
     'HTML and Markdown convert both ways: edit here, switch formats, and the content follows. Saving always writes Markdown.',
+
+  // ---- 标题上方的元信息条 ----
+  设置封面: 'Set cover',
+  '列表、首页卡片与详情页优先显示这里的图片；也可以在这里隐藏封面。':
+    'This image is preferred in listings, home cards and the detail page; the cover can also be hidden here.',
+  分类与标签: 'Category and tags',
+  '分类用于归档，标签用于跨分类关联主题；最多 12 个标签。':
+    'Categories archive content; tags connect topics across categories. Up to 12 tags.',
+  '{count} 个标签': { one: '1 tag', other: '{count} tags' },
+  '还没有标签。': 'No tags yet.',
+  '更新于 {date}': 'Updated {date}',
+  '保存后会生成一份内容。': 'Saving creates a piece of content.',
 };
 
 export default fragment;

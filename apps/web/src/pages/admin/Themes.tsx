@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type {
   AppearanceSectionId,
   ArticleCardStyle,
@@ -43,7 +43,10 @@ import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
 import { useToast } from '../../lib/toast';
 import { ThemeTokensPanel } from '../../components/theme/ThemeTokensPanel';
+import { ThemeCustomSettings } from '../../components/theme/ThemeCustomSettings';
+import { themeHasSettings } from '../../lib/themeSettings';
 import { LoadingPage } from './Loading';
+import { AppearancePage } from './Appearance';
 import {
   Badge,
   Button,
@@ -70,7 +73,18 @@ export function ThemesPage() {
   const [saveNote, setSaveNote] = useState('');
   const [saveError, setSaveError] = useState('');
   // 「加载动画」并入主题设置，用顶部分区切换。
-  const [tab, setTab] = useState<'theme' | 'chrome' | 'loading'>('theme');
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState<'theme' | 'chrome' | 'loading' | 'appearance' | 'custom'>(
+    params.get('tab') === 'appearance' ? 'appearance' : 'theme',
+  );
+  /** 切换分区时同步 URL：从「外观」旧入口重定向过来时能直接落在这一栏。 */
+  const selectTab = (next: 'theme' | 'chrome' | 'loading' | 'appearance' | 'custom') => {
+    setTab(next);
+    const copy = new URLSearchParams(params);
+    if (next === 'appearance') copy.set('tab', 'appearance');
+    else copy.delete('tab');
+    setParams(copy, { replace: true });
+  };
   // 每个 Tab 的二级导航编辑器是否展开；默认展开，便于直接添加入口。
   const [openNavChildren, setOpenNavChildren] = useState<Record<string, boolean>>({});
 
@@ -1204,7 +1218,7 @@ export function ThemesPage() {
         <button
           type="button"
           className={tab === 'theme' ? 'is-on' : ''}
-          onClick={() => setTab('theme')}
+          onClick={() => selectTab('theme')}
           aria-pressed={tab === 'theme'}
         >
           {t('主题与版式')}
@@ -1212,27 +1226,60 @@ export function ThemesPage() {
         <button
           type="button"
           className={tab === 'chrome' ? 'is-on' : ''}
-          onClick={() => setTab('chrome')}
+          onClick={() => selectTab('chrome')}
           aria-pressed={tab === 'chrome'}
         >
           {t('导航与页脚')}
         </button>
         <button
           type="button"
+          className={tab === 'appearance' ? 'is-on' : ''}
+          onClick={() => selectTab('appearance')}
+          aria-pressed={tab === 'appearance'}
+        >
+          {t('外观')}
+        </button>
+        {themeHasSettings(selected) ? (
+          <button
+            type="button"
+            className={tab === 'custom' ? 'is-on' : ''}
+            onClick={() => selectTab('custom')}
+            aria-pressed={tab === 'custom'}
+          >
+            {t('主题自定义')}
+          </button>
+        ) : null}
+        <button
+          type="button"
           className={tab === 'loading' ? 'is-on' : ''}
-          onClick={() => setTab('loading')}
+          onClick={() => selectTab('loading')}
           aria-pressed={tab === 'loading'}
         >
           {t('加载动画')}
         </button>
       </div>
 
-      {tab === 'loading' ? (
+      {tab === 'custom' && selected ? (
+        <div className="mt-20">
+          <ThemeCustomSettings theme={selected} />
+        </div>
+      ) : tab === 'appearance' ? (
+        <div className="mt-20">
+          <AppearancePage embedded />
+        </div>
+      ) : tab === 'loading' ? (
         <div className="mt-20">
           <LoadingPage embedded />
         </div>
       ) : tab === 'chrome' ? (
         <div className="mt-20">{renderChrome()}</div>
+      ) : selected?.settings?.replace_default ? (
+        <div className="mt-20">
+          <Callout tone="info" icon="palette" title={t('当前主题使用自己的主题设置')}>
+            {t('这套主题声明放弃内置的配色与排版微调，改用主题自己的设置字段；导航与页脚、外观和加载动画仍然可用。')}
+          </Callout>
+          <ThemeCustomSettings theme={selected} />
+        </div>
       ) : (
       <div className="settings-grid no-side">
         <div className="editor-main">

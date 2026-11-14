@@ -261,7 +261,6 @@ export function AdminShell() {
     ? ([
         { to: '/admin/themes/choose', label: t('选择主题'), icon: 'grid' },
         { to: '/admin/themes', label: t('主题设置'), icon: 'palette', end: true },
-        { to: '/admin/appearance', label: t('外观'), icon: 'image' },
         { to: '/admin/extensions', label: t('扩展'), icon: 'grid' },
       ] as NavItem[])
     : [];
@@ -393,7 +392,6 @@ export function AdminShell() {
     { match: /^\/admin\/pages/, title: t('页面') },
     { match: /^\/admin\/themes\/choose/, title: t('选择主题') },
     { match: /^\/admin\/themes/, title: t('主题设置') },
-    { match: /^\/admin\/appearance/, title: t('外观') },
     { match: /^\/admin\/loading/, title: t('加载动画') },
     { match: /^\/admin\/theme/, title: t('页面编排') },
     { match: /^\/admin\/platform\/overview/, title: t('平台总览') },

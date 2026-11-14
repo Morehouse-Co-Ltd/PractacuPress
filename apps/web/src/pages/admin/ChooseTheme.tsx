@@ -131,6 +131,11 @@ export function ChooseThemePage() {
   const selectedSections = themeSections(applied);
   // 右侧详情面板的选择：默认对准正在使用的主题；点击卡片只切换详情，不立即应用。
   const [detailId, setDetailId] = useState<string>(customization.active_theme ?? 'default');
+  /** 悬停卡片时「预览主题」打开的弹窗；只影响查看，不改变当前站点。 */
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewTheme = previewId ? (library.find((item) => item.id === previewId) ?? null) : null;
+  /** 预览按钮的单双击区分：单击等 220ms 再开弹窗，双击直接套用。 */
+  const previewTimer = useRef<number | null>(null);
   const detailTheme =
     library.find((item) => item.id === detailId) ?? library[0] ?? null;
 
@@ -288,9 +293,32 @@ export function ChooseThemePage() {
       note: applied?.note ?? '',
       appearance: { sections: selectedSections },
     });
+    // 主题自带的设置字段随主题包一起导出，重新导入后还能继续使用。
+    const settings = applied?.settings;
+    const adminTabs = settings
+      ? {
+          version: 1,
+          theme: manifest.id,
+          replace_default: settings.replace_default,
+          tabs: settings.tabs,
+        }
+      : null;
     const blob = buildThemePackage({
-      manifest,
-      files: pages.map((page) => ({ name: page.file, data: page.data })),
+      manifest: adminTabs
+        ? {
+            ...manifest,
+            admin: {
+              tabs: 'admin/tabs.json',
+              ...(settings?.replace_default ? { replace_default: true } : {}),
+            },
+          }
+        : manifest,
+      files: [
+        ...pages.map((page) => ({ name: page.file, data: page.data })),
+        ...(adminTabs
+          ? [{ name: 'admin/tabs.json', data: JSON.stringify(adminTabs, null, 2) }]
+          : []),
+      ],
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -484,8 +512,15 @@ export function ChooseThemePage() {
                       type="button"
                       className="theme-tile-select"
                       onClick={() => setDetailId(bundle.id)}
+                      onDoubleClick={(event) => {
+                        event.preventDefault();
+                        setDetailId(bundle.id);
+                        // 双击即用：和右侧详情里的「使用这套主题」走同一条切换逻辑。
+                        if (!isApplied) applyBundle(bundle);
+                      }}
                       aria-pressed={isDetail}
                       aria-label={t('查看「{name}」的详细介绍', { name: bundle.name })}
+                      title={isApplied ? undefined : t('双击直接使用「{name}」', { name: bundle.name })}
                     >
                       <span className="theme-tile-cover">
                         <ThemePreview bundle={bundle} large />
@@ -509,6 +544,34 @@ export function ChooseThemePage() {
                         </span>
                       </span>
                     </button>
+                    {/* 未使用的主题悬停时，封面中心浮出「预览主题」。 */}
+                    {!isApplied ? (
+                      <button
+                        type="button"
+                        className="theme-tile-preview"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (previewTimer.current !== null) {
+                            window.clearTimeout(previewTimer.current);
+                            previewTimer.current = null;
+                          }
+                          // 双击预览按钮 = 直接使用该主题；单击 = 打开预览弹窗。
+                          if (event.detail >= 2) {
+                            setDetailId(bundle.id);
+                            applyBundle(bundle);
+                            return;
+                          }
+                          previewTimer.current = window.setTimeout(() => {
+                            previewTimer.current = null;
+                            setPreviewId(bundle.id);
+                          }, 220);
+                        }}
+                        aria-label={t('预览「{name}」', { name: bundle.name })}
+                        title={t('预览主题')}
+                      >
+                        <Icon name="eye" size={15} /> {t('预览主题')}
+                      </button>
+                    ) : null}
                     {/* 鼠标移到封面上方时，左上角出现「编辑」：进入页面编排。 */}
                     <button
                       type="button"
@@ -660,6 +723,53 @@ export function ChooseThemePage() {
           )}
         </aside>
       </div>
+
+      <Modal
+        open={!!previewTheme}
+        title={previewTheme ? previewTheme.name : t('预览主题')}
+        description={
+          previewTheme
+            ? `${variantLabel(previewTheme.variant)} · ${
+                previewTheme.theme.mode === 'dark' ? t('深色') : t('浅色')
+              }`
+            : undefined
+        }
+        onClose={() => setPreviewId(null)}
+        width={780}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPreviewId(null)}>
+              {t('关闭')}
+            </Button>
+            <Button
+              icon="palette"
+              disabled={!previewTheme || customization.active_theme === previewTheme.id}
+              onClick={() => {
+                if (!previewTheme) return;
+                applyBundle(previewTheme);
+                setDetailId(previewTheme.id);
+                setPreviewId(null);
+              }}
+            >
+              {previewTheme && customization.active_theme === previewTheme.id
+                ? t('这个主题正在使用')
+                : t('使用这套主题')}
+            </Button>
+          </>
+        }
+      >
+        {previewTheme ? (
+          <>
+            <div className="theme-preview-modal-cover">
+              <ThemePreview bundle={previewTheme} large />
+            </div>
+            <p className="theme-detail-note">
+              {previewTheme.note || t('一套自定义主题。')}
+            </p>
+            <p className="theme-detail-intro">{themeIntro(previewTheme)}</p>
+          </>
+        ) : null}
+      </Modal>
 
       <Modal
         open={createOpen}

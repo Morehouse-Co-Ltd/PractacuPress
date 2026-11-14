@@ -981,6 +981,41 @@ export interface SiteTheme {
   theme: ThemeSettings;
   /** 主题制作者声明的外观功能；缺省时按内置全集处理。 */
   appearance?: ThemeAppearance;
+  /**
+   * 主题自带的主题设置（来自主题包 `admin/tabs.json`）。
+   *
+   * 有这份声明时，主题设置页会渲染主题自己的字段；`replace_default` 为 true 表示
+   * 主题放弃内置的配色/排版微调，用自己的设置接口取代那部分界面。
+   */
+  settings?: ThemeSettingsSchema;
+}
+
+/** 主题自定义设置里的一个字段。 */
+export type ThemeSettingFieldType = 'text' | 'textarea' | 'toggle' | 'select' | 'color' | 'number';
+
+export interface ThemeSettingField {
+  key: string;
+  label: string;
+  type: ThemeSettingFieldType;
+  default?: string | number | boolean;
+  hint?: string;
+  options?: { value: string; label: string }[];
+  maxLength?: number;
+  min?: number;
+  max?: number;
+}
+
+export interface ThemeSettingTab {
+  id: string;
+  label: string;
+  description?: string;
+  fields: ThemeSettingField[];
+}
+
+export interface ThemeSettingsSchema {
+  tabs: ThemeSettingTab[];
+  /** true 时主题放弃默认的主题设置界面，使用这里声明的字段。 */
+  replace_default: boolean;
 }
 
 export type ExtensionId =
@@ -1724,6 +1759,13 @@ export interface SiteCustomization {
   logic: LogicSettings;
   /** 站点设置 · 人机验证（CAPTCHA）意图配置。 */
   verification: HumanVerificationSettings;
+  /**
+   * 主题自定义设置的值：`theme_settings[themeId][tabId][fieldKey]`。
+   *
+   * 由主题包 `admin/tabs.json` 声明的字段，站长在「主题设置 → 主题自定义」里填写；
+   * 跟着站点设计一起同步到服务端。
+   */
+  theme_settings?: Record<string, Record<string, Record<string, string | number | boolean>>>;
   /** 评论开关、先审后发与评论须知。 */
   comments: CommentSettings;
   /** 分类与标签；契约 v0.1.0 没有分类端点，因此与外观一起保存在本地配置。 */

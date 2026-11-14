@@ -57,6 +57,10 @@ import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import { ArticleCoverPanel } from '../../components/ArticleCoverPanel';
+import { Cover } from '../../components/Cover';
+import { useCustomization } from '../../lib/customize';
+import { coverFor, coverImageStyle } from '../../lib/covers';
+import { useMediaSrc } from '../../lib/assetUrl';
 import { normalizeEditorSource } from '../../lib/editorSource';
 import { htmlToMarkdown } from '../../lib/htmlToMarkdown';
 import { htmlToText, renderMarkdown, sanitizeHtml } from '../../lib/markdown';
@@ -142,6 +146,7 @@ function EditorWorkspace() {
   const { adminEntry } = usePermissions();
   const backend = useBackend();
   const demo = isDemo(backend);
+  const { customization } = useCustomization();
   const { taxonomy, saveTerm: saveTaxonomyTerm } = useTaxonomy();
   const navigate = useNavigate();
   const location = useLocation();
@@ -165,6 +170,8 @@ function EditorWorkspace() {
   /** HTML 模式下的源码草稿；Markdown 始终是 form.source_body 这份 canonical 文本。 */
   const [htmlDraft, setHtmlDraft] = useState('');
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [wordCount, setWordCount] = useState(0);
   const [tagInput, setTagInput] = useState('');
   const revisionRef = useRef(0);
@@ -183,6 +190,9 @@ function EditorWorkspace() {
 
   const content = useAsync(async () => (isNew ? null : backend.getContent(kind, id!)), [backend, kind, id, isNew]);
   const item = content.data;
+  // 顶部元信息条的封面缩略图：有自定义图片就显示图片，否则显示程序化封面。
+  const cover = coverFor(customization, item?.id);
+  const coverSrc = useMediaSrc(cover?.url ?? '');
   useTitle(isNew ? t('新建{kind}', { kind: KIND_LABEL[kind] }) : item?.title ?? t('编辑内容'));
 
   const history = useAsync(
@@ -882,6 +892,89 @@ function EditorWorkspace() {
 
       <div className="editor-grid">
           <div className="editor-main">
+            {/* 顶部元信息条：封面 / 分类与标签 / 发布状态横向排在标题上方。 */}
+            <div className="editor-meta-bar">
+              <button
+                type="button"
+                className="editor-cover-card"
+                onClick={() => setCoverOpen(true)}
+                aria-label={t('设置封面')}
+                title={t('设置封面')}
+                disabled={!editable}
+              >
+                {cover?.url && !cover.hidden ? (
+                  <img src={coverSrc.src || undefined} alt="" style={coverImageStyle(cover)} />
+                ) : (
+                  <Cover seed={item?.id ?? 'draft'} label={form.title || t('未命名')} ratio="16 / 9" plain />
+                )}
+                <span className="editor-cover-card-label">
+                  <Icon name="image" size={12} /> {cover?.hidden ? t('封面已隐藏') : t('封面')}
+                </span>
+              </button>
+
+              <div className="editor-meta-block">
+                <span className="editor-meta-label">{t('分类与标签')}</span>
+                <div className="editor-meta-row">
+                  <Select
+                    className="editor-meta-category"
+                    value={form.category_id}
+                    disabled={!editable}
+                    aria-label={t('分类')}
+                    onChange={(event) => update({ category_id: event.target.value })}
+                  >
+                    <option value="">{t('未分类')}</option>
+                    {taxonomy.categories.map((term) => (
+                      <option key={term.id} value={term.id}>
+                        {term.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="tag"
+                    disabled={!editable && !form.tags.length}
+                    onClick={() => setTagsOpen(true)}
+                  >
+                    {form.tags.length ? t('{count} 个标签', { count: form.tags.length }) : t('添加标签')}
+                  </Button>
+                </div>
+                <div className="editor-meta-tags">
+                  {form.tags.length ? (
+                    form.tags.map((tag) => (
+                      <span className="tag-chip is-on" key={tag}>
+                        #{tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="field-hint">{t('还没有标签。')}</span>
+                  )}
+                </div>
+                {category?.description ? (
+                  <p className="field-hint">{category.description}</p>
+                ) : null}
+              </div>
+
+              <div className="editor-meta-block">
+                <span className="editor-meta-label">{t('发布状态')}</span>
+                <div className="editor-meta-row">
+                  {item ? (
+                    <StatusBadge status={item.status} />
+                  ) : (
+                    <Badge tone="muted">{t('未保存')}</Badge>
+                  )}
+                  <span className="tiny faint">
+                    {site ? PUBLISH_LABEL[site.publish_mode] : '—'}
+                  </span>
+                </div>
+                <p className="field-hint">
+                  {item
+                    ? t('更新于 {date}', { date: formatDateTime(item.updated_at) })
+                    : t('保存后会生成一份内容。')}
+                </p>
+              </div>
+            </div>
+
             <input
               className="editor-title-input"
               value={form.title}
@@ -908,6 +1001,120 @@ function EditorWorkspace() {
                 placeholder={t('用一两句话说明这篇稿子。')}
               />
             </Field>
+
+            {/* 发布与访问横向排在摘要与正文之间，不再占用右侧信息栏。 */}
+            <section className="panel editor-publish-strip">
+              <div className="panel-head">
+                <div>
+                  <h3>{t('发布与访问')}</h3>
+                  <p>{t('预约发布时间、访问权限与单篇评论策略。')}</p>
+                </div>
+              </div>
+              <div className="panel-body">
+                <div className="editor-publish-grid">
+                  <Field
+                    label={t('预约发布时间')}
+                    htmlFor="editor-publish-at"
+                    hint={
+                      !canPublishDirectly
+                        ? t('站点要求先审核，审核通过后才能预约或直接发布。')
+                        : form.publish_at
+                          ? t('保存后到点自动发布；手动发布会清除预约。')
+                          : t('留空表示不预约。到点后由服务端自动发布。')
+                    }
+                  >
+                    <div className="row gap-8">
+                      <Input
+                        id="editor-publish-at"
+                        type="datetime-local"
+                        value={form.publish_at}
+                        disabled={!editable || published || !canPublishDirectly}
+                        onChange={(event) => update({ publish_at: event.target.value })}
+                      />
+                      {form.publish_at && canPublishDirectly ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!editable || published}
+                          onClick={() => update({ publish_at: '' })}
+                        >
+                          {t('取消预约')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </Field>
+
+                  <Field
+                    label={t('访问权限')}
+                    htmlFor="editor-access-mode"
+                    hint={
+                      form.access_mode === 'public'
+                        ? t('公开内容会出现在列表、搜索与订阅源里。')
+                        : t('密码与仅登录内容只能通过链接访问，不会出现在列表、搜索、订阅源或站点地图里。')
+                    }
+                  >
+                    <Select
+                      id="editor-access-mode"
+                      value={form.access_mode}
+                      disabled={!editable}
+                      onChange={(event) =>
+                        update({
+                          access_mode: event.target.value as ContentAccessMode,
+                          access_password: '',
+                        })
+                      }
+                    >
+                      <option value="public">{t('公开')}</option>
+                      <option value="password">{t('密码访问')}</option>
+                      <option value="members">{t('仅登录读者')}</option>
+                    </Select>
+                  </Field>
+
+                  {form.access_mode === 'password' ? (
+                    <Field
+                      label={t('访问密码')}
+                      htmlFor="editor-access-password"
+                      hint={
+                        item?.has_access_password
+                          ? t('已设置访问密码；留空表示保持不变。')
+                          : t('至少 4 个字符，保存后只保留哈希。')
+                      }
+                    >
+                      <Input
+                        id="editor-access-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={form.access_password}
+                        maxLength={128}
+                        disabled={!editable}
+                        placeholder={item?.has_access_password ? t('留空保持不变') : t('设置访问密码')}
+                        onChange={(event) => update({ access_password: event.target.value })}
+                      />
+                    </Field>
+                  ) : null}
+
+                  <Field
+                    label={t('评论策略')}
+                    htmlFor="editor-comment-policy"
+                    hint={t('单篇设置优先于站点级评论开关。')}
+                  >
+                    <Select
+                      id="editor-comment-policy"
+                      value={form.comment_policy}
+                      disabled={!editable}
+                      onChange={(event) =>
+                        update({ comment_policy: event.target.value as ContentCommentPolicy })
+                      }
+                    >
+                      <option value="inherit">{t('跟随站点设置')}</option>
+                      <option value="open">{t('开启评论')}</option>
+                      <option value="disabled">{t('关闭评论')}</option>
+                      <option value="review">{t('先审后发')}</option>
+                    </Select>
+                  </Field>
+                </div>
+              </div>
+            </section>
 
             <div className="editor-controls">
               <div className="editor-mode">
@@ -1057,10 +1264,6 @@ function EditorWorkspace() {
               <div className="panel-body" style={{ paddingTop: 6 }}>
                 <div className="mini-list">
                   <div className="mini-row">
-                    <span className="mini-label">{t('状态')}</span>
-                    <span className="mini-value">{item ? STATUS_LABEL[item.status] : t('未保存')}</span>
-                  </div>
-                  <div className="mini-row">
                     <span className="mini-label">{t('类型')}</span>
                     <span className="mini-value">{KIND_LABEL[kind]}</span>
                   </div>
@@ -1080,10 +1283,6 @@ function EditorWorkspace() {
                     <span className="mini-label">{t('安全策略')}</span>
                     <span className="mini-value mono">{item?.policy_version ?? 'policy-2026.10'}</span>
                   </div>
-                  <div className="mini-row">
-                    <span className="mini-label">{t('发布模式')}</span>
-                    <span className="mini-value">{site ? PUBLISH_LABEL[site.publish_mode] : '—'}</span>
-                  </div>
                 </div>
 
                 <div className="mt-16">
@@ -1102,227 +1301,6 @@ function EditorWorkspace() {
                     />
                   </Field>
                 </div>
-              </div>
-            </div>
-
-            <ArticleCoverPanel contentId={item?.id} title={form.title} />
-
-            <div className="panel">
-              <div className="panel-head">
-                <div>
-                  <h3>{t('发布与访问')}</h3>
-                  <p>{t('预约发布时间、访问权限与单篇评论策略。')}</p>
-                </div>
-              </div>
-              <div className="panel-body form-stack">
-                <Field
-                  label={t('预约发布时间')}
-                  htmlFor="editor-publish-at"
-                  hint={
-                    !canPublishDirectly
-                      ? t('站点要求先审核，审核通过后才能预约或直接发布。')
-                      : form.publish_at
-                        ? t('保存后到点自动发布；手动发布会清除预约。')
-                        : t('留空表示不预约。到点后由服务端自动发布。')
-                  }
-                >
-                  <div className="row gap-8">
-                    <Input
-                      id="editor-publish-at"
-                      type="datetime-local"
-                      value={form.publish_at}
-                      disabled={!editable || published || !canPublishDirectly}
-                      onChange={(event) => update({ publish_at: event.target.value })}
-                    />
-                    {form.publish_at && canPublishDirectly ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={!editable || published}
-                        onClick={() => update({ publish_at: '' })}
-                      >
-                        {t('取消预约')}
-                      </Button>
-                    ) : null}
-                  </div>
-                </Field>
-
-                <Field
-                  label={t('访问权限')}
-                  htmlFor="editor-access-mode"
-                  hint={
-                    form.access_mode === 'public'
-                      ? t('公开内容会出现在列表、搜索与订阅源里。')
-                      : t('密码与仅登录内容只能通过链接访问，不会出现在列表、搜索、订阅源或站点地图里。')
-                  }
-                >
-                  <Select
-                    id="editor-access-mode"
-                    value={form.access_mode}
-                    disabled={!editable}
-                    onChange={(event) =>
-                      update({
-                        access_mode: event.target.value as ContentAccessMode,
-                        access_password: '',
-                      })
-                    }
-                  >
-                    <option value="public">{t('公开')}</option>
-                    <option value="password">{t('密码访问')}</option>
-                    <option value="members">{t('仅登录读者')}</option>
-                  </Select>
-                </Field>
-
-                {form.access_mode === 'password' ? (
-                  <Field
-                    label={t('访问密码')}
-                    htmlFor="editor-access-password"
-                    hint={
-                      item?.has_access_password
-                        ? t('已设置访问密码；留空表示保持不变。')
-                        : t('至少 4 个字符，保存后只保留哈希。')
-                    }
-                  >
-                    <Input
-                      id="editor-access-password"
-                      type="password"
-                      autoComplete="new-password"
-                      value={form.access_password}
-                      maxLength={128}
-                      disabled={!editable}
-                      placeholder={item?.has_access_password ? t('留空保持不变') : t('设置访问密码')}
-                      onChange={(event) => update({ access_password: event.target.value })}
-                    />
-                  </Field>
-                ) : null}
-
-                <Field
-                  label={t('评论策略')}
-                  htmlFor="editor-comment-policy"
-                  hint={t('单篇设置优先于站点级评论开关。')}
-                >
-                  <Select
-                    id="editor-comment-policy"
-                    value={form.comment_policy}
-                    disabled={!editable}
-                    onChange={(event) =>
-                      update({ comment_policy: event.target.value as ContentCommentPolicy })
-                    }
-                  >
-                    <option value="inherit">{t('跟随站点设置')}</option>
-                    <option value="open">{t('开启评论')}</option>
-                    <option value="disabled">{t('关闭评论')}</option>
-                    <option value="review">{t('先审后发')}</option>
-                  </Select>
-                </Field>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-head">
-                <div>
-                  <h3>{t('分类与标签')}</h3>
-                  <p>{t('分类用于归档，标签用于跨分类关联主题。')}</p>
-                </div>
-                {adminEntry ? (
-                  <Link to="/admin/taxonomy" className="link-btn">
-                    {t('管理')}
-                  </Link>
-                ) : null}
-              </div>
-              <div className="panel-body form-stack">
-                <Field
-                  label={t('分类')}
-                  htmlFor="editor-category"
-                  hint={category?.description || t('每篇内容选择一个分类。')}
-                >
-                  <Select
-                    id="editor-category"
-                    value={form.category_id}
-                    disabled={!editable}
-                    onChange={(event) => update({ category_id: event.target.value })}
-                  >
-                    <option value="">{t('未分类')}</option>
-                    {taxonomy.categories.map((term) => (
-                      <option key={term.id} value={term.id}>
-                        {term.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <div className="field">
-                  <div className="field-head">
-                    <span className="field-label">{t('标签')}</span>
-                    <span className="field-aside">{form.tags.length}/12</span>
-                  </div>
-                  <div className="tag-picker">
-                    {taxonomy.tags.map((term) => (
-                      <button
-                        key={term.id}
-                        type="button"
-                        disabled={!editable}
-                        className={`tag-chip${form.tags.includes(term.name) ? ' is-on' : ''}`}
-                        onClick={() => toggleTag(term.name)}
-                      >
-                        #{term.name}
-                      </button>
-                    ))}
-                    {!taxonomy.tags.length ? (
-                      <span className="tiny faint">{t('还没有标签，可以在下方直接添加。')}</span>
-                    ) : null}
-                  </div>
-                  {form.tags.length ? (
-                    <p className="field-hint">
-                      {t('已选：{tags}', { tags: form.tags.map((tag) => `#${tag}`).join(' · ') })}
-                    </p>
-                  ) : null}
-                  {editable ? (
-                    <div className="tag-add-row">
-                      <Input
-                        value={tagInput}
-                        maxLength={24}
-                        placeholder={t('添加新标签，回车确认')}
-                        aria-label={t('添加标签')}
-                        onChange={(event) => setTagInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            addCustomTag();
-                          }
-                        }}
-                      />
-                      <Button variant="secondary" size="sm" icon="plus" onClick={addCustomTag}>
-                        {t('添加')}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-head">
-                <div>
-                  <h3>{t('发布状态')}</h3>
-                  <p>{t('右上角决定存草稿还是发布；这里显示当前状态。')}</p>
-                </div>
-                {item ? <StatusBadge status={item.status} /> : <Badge tone="muted">{t('未保存')}</Badge>}
-              </div>
-              <div className="panel-body">
-                <div className="mini-list">
-                  <div className="mini-row">
-                    <span className="mini-label">{t('当前状态')}</span>
-                    <span className="mini-value">{item ? STATUS_LABEL[item.status] : t('未保存')}</span>
-                  </div>
-                  <div className="mini-row">
-                    <span className="mini-label">{t('发布模式')}</span>
-                    <span className="mini-value">{site ? PUBLISH_LABEL[site.publish_mode] : '—'}</span>
-                  </div>
-                </div>
-                <p className="field-hint mt-12">
-                  {t('作者不能审核自己的内容；如果当前账户没有直接发布权限，右上角主按钮会显示「提交审核」。')}
-                </p>
               </div>
             </div>
 
@@ -1442,6 +1420,90 @@ function EditorWorkspace() {
             )}
           </aside>
         </div>
+
+      <Modal
+        open={coverOpen}
+        title={t('设置封面')}
+        description={t('列表、首页卡片与详情页优先显示这里的图片；也可以在这里隐藏封面。')}
+        onClose={() => setCoverOpen(false)}
+        width={720}
+        footer={<Button onClick={() => setCoverOpen(false)}>{t('完成')}</Button>}
+      >
+        <ArticleCoverPanel contentId={item?.id} title={form.title} />
+      </Modal>
+
+      <Modal
+        open={tagsOpen}
+        title={t('分类与标签')}
+        description={t('分类用于归档，标签用于跨分类关联主题；最多 12 个标签。')}
+        onClose={() => setTagsOpen(false)}
+        footer={<Button onClick={() => setTagsOpen(false)}>{t('完成')}</Button>}
+      >
+        <div className="form-stack">
+          <Field label={t('分类')} htmlFor="editor-category-modal" hint={category?.description || t('每篇内容选择一个分类。')}>
+            <Select
+              id="editor-category-modal"
+              value={form.category_id}
+              disabled={!editable}
+              onChange={(event) => update({ category_id: event.target.value })}
+            >
+              <option value="">{t('未分类')}</option>
+              {taxonomy.categories.map((term) => (
+                <option key={term.id} value={term.id}>
+                  {term.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">{t('标签')}</span>
+              <span className="field-aside">{form.tags.length}/12</span>
+            </div>
+            <div className="tag-picker">
+              {taxonomy.tags.map((term) => (
+                <button
+                  key={term.id}
+                  type="button"
+                  disabled={!editable}
+                  className={`tag-chip${form.tags.includes(term.name) ? ' is-on' : ''}`}
+                  onClick={() => toggleTag(term.name)}
+                >
+                  #{term.name}
+                </button>
+              ))}
+              {!taxonomy.tags.length ? (
+                <span className="tiny faint">{t('还没有标签，可以在下方直接添加。')}</span>
+              ) : null}
+            </div>
+            {form.tags.length ? (
+              <p className="field-hint">
+                {t('已选：{tags}', { tags: form.tags.map((tag) => `#${tag}`).join(' · ') })}
+              </p>
+            ) : null}
+            {editable ? (
+              <div className="tag-add-row">
+                <Input
+                  value={tagInput}
+                  maxLength={24}
+                  placeholder={t('添加新标签，回车确认')}
+                  aria-label={t('添加标签')}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addCustomTag();
+                    }
+                  }}
+                />
+                <Button variant="secondary" size="sm" icon="plus" onClick={addCustomTag}>
+                  {t('添加')}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={shortcutsOpen}

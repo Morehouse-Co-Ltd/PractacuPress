@@ -80,7 +80,6 @@ import { ActivityPage } from './pages/admin/Activity';
 import { DocsPage } from './pages/admin/Docs';
 import { PagesPage } from './pages/admin/Pages';
 import { PageEditorPage } from './pages/admin/PageEditor';
-import { AppearancePage } from './pages/admin/Appearance';
 import { ThemesPage } from './pages/admin/Themes';
 import { ChooseThemePage } from './pages/admin/ChooseTheme';
 import { ExtensionsPage } from './pages/admin/Extensions';
@@ -658,7 +657,8 @@ export default function App() {
                 <Route path="pages/:id" element={<PageEditorPage />} />
                 <Route path="themes" element={<ThemesPage />} />
                 <Route path="themes/choose" element={<ChooseThemePage />} />
-                <Route path="appearance" element={<AppearancePage />} />
+                {/* 外观并入「主题设置」，旧入口重定向到对应分区。 */}
+                <Route path="appearance" element={<Navigate to="/admin/themes?tab=appearance" replace />} />
                 <Route path="seo" element={<SeoPage />} />
                 <Route
                   path="theme"
