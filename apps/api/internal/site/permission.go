@@ -486,14 +486,12 @@ func (s *Service) AssignMemberGroup(
 	if target.Role == RolePlatformAdmin && actor.Role != RolePlatformAdmin {
 		return ErrPermissionDenied
 	}
-	if target.Role == RolePlatformAdmin && group.BaseRole != RolePlatformAdmin {
-		admins, countErr := s.repo.CountMembersByRole(ctx, siteID, RolePlatformAdmin)
-		if countErr != nil {
-			return countErr
-		}
-		if admins <= 1 {
-			return ErrLastPlatformAdmin
-		}
+	// The highest administrator seat is fixed to the account that registered the
+	// site. Moving anyone in would mint a second super admin, and moving the
+	// registered account out would demote the only operator, so user management
+	// accepts only a no-op (owner group to an existing owner).
+	if (target.Role == RolePlatformAdmin) != (group.BaseRole == RolePlatformAdmin) {
+		return ErrPlatformAdminLocked
 	}
 
 	persist, ok := s.repo.(PermissionGroupRepository)

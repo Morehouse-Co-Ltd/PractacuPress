@@ -5,21 +5,22 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 // The local provider is a self-hosted alternative to the third party widget
-// services: this process asks a small arithmetic question and remembers the answer
-// for a couple of minutes. It exists for deployments that cannot depend on an
-// external CDN or an operator-supplied secret (offline, intranet, privacy-first),
-// and it is deliberately modest: it stops naive scripted sign-ups, not a determined
-// human or a captcha farm.
+// services: this process draws a small picture challenge (slider, click or
+// select) and remembers the expected answer for a couple of minutes. It exists
+// for deployments that cannot depend on an external CDN or an operator-supplied
+// secret (offline, intranet, privacy-first), and it is deliberately modest: it
+// stops naive scripted sign-ups, not a determined human or a captcha farm.
 //
 // The protocol has two public endpoints (see handler.go):
 //
-//	GET  /api/v1/captcha/local/challenge?scene=...  -> {challenge_id, question, expires_at}
+//	GET  /api/v1/captcha/local/challenge?scene=...  -> picture + geometry
 //	POST /api/v1/captcha/local/verify               -> {token, expires_at}
 //
 // The token is then handed to the protected endpoint exactly like a Turnstile or
@@ -27,7 +28,7 @@ import (
 
 const (
 	// DefaultLocalChallengeTTL bounds how long a visitor may take to answer a
-	// question. It is short because the answer travels only between two requests.
+	// challenge. It is short because the answer travels only between two requests.
 	DefaultLocalChallengeTTL = 2 * time.Minute
 	// DefaultLocalTokenTTL is the lifetime of the solved token between the local
 	// verify call and the protected request (login, register, ...).
@@ -41,19 +42,89 @@ const (
 
 	// localSweepInterval throttles the lazy cleanup of expired entries.
 	localSweepInterval = 30 * time.Second
-
-	// Operands stay small enough to answer mentally; the answer is a plain integer.
-	localOperandMax = 12
 )
 
-// LocalChallenge is one issued arithmetic question.
-type LocalChallenge struct {
-	ID        string    `json:"challenge_id"`
-	Question  string    `json:"question"`
-	ExpiresAt time.Time `json:"expires_at"`
+// LocalKind names one of the challenge interactions the local provider rotates.
+type LocalKind string
+
+// The challenge kinds, in the order the provider rotates them.
+const (
+	LocalKindSlider LocalKind = "slider"
+	LocalKindClick  LocalKind = "click"
+	LocalKindSelect LocalKind = "select"
+)
+
+// LocalKinds lists every challenge kind. It is exported so tests and clients can
+// assert the rotation does not silently shrink to one kind.
+var LocalKinds = []LocalKind{LocalKindSlider, LocalKindClick, LocalKindSelect}
+
+// Valid reports whether k is a known challenge kind.
+func (k LocalKind) Valid() bool {
+	switch k {
+	case LocalKindSlider, LocalKindClick, LocalKindSelect:
+		return true
+	default:
+		return false
+	}
 }
 
-// LocalStore keeps the pending questions and the issued tokens in memory.
+// LocalPoint is a point in the challenge picture's own pixel space.
+type LocalPoint struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// LocalAnswer is the visitor's solution. Exactly one field is meaningful,
+// depending on the challenge kind:
+//
+//   - slider: X is the left edge of the piece, in picture pixels;
+//   - click:  Points are the clicked coordinates, in picture pixels;
+//   - select: Tiles are the selected cell indexes, row-major.
+//
+// Keeping all three shapes in one struct lets the HTTP layer decode an answer
+// before it knows the kind; the store still rejects a shape that does not match
+// the issued challenge.
+type LocalAnswer struct {
+	X      *int         `json:"x,omitempty"`
+	Points []LocalPoint `json:"points,omitempty"`
+	Tiles  []int        `json:"tiles,omitempty"`
+}
+
+// Empty reports whether the answer carries nothing at all. An empty answer is a
+// malformed request, not a wrong solution, and the handler reports it as such.
+func (a LocalAnswer) Empty() bool {
+	return a.X == nil && len(a.Points) == 0 && len(a.Tiles) == 0
+}
+
+// LocalChallenge is one issued challenge. It carries everything a browser needs
+// to render the task and nothing that reveals the answer.
+type LocalChallenge struct {
+	ID        string    `json:"challenge_id"`
+	Kind      LocalKind `json:"kind"`
+	Prompt    string    `json:"prompt"`
+	ExpiresAt time.Time `json:"expires_at"`
+	// Width and Height are the picture's natural pixel size; click coordinates
+	// are submitted in this space even when CSS scales the picture down.
+	Width  int `json:"width"`
+	Height int `json:"height"`
+	// Image is the single picture of the click and select kinds.
+	Image string `json:"image,omitempty"`
+	// Background and Piece are the slider kind's two pictures.
+	Background string `json:"background,omitempty"`
+	Piece      string `json:"piece,omitempty"`
+	PieceSize  int    `json:"piece_size,omitempty"`
+	PieceTop   int    `json:"piece_top,omitempty"`
+	// MaxOffset is the largest legal slider X, so the piece cannot leave the
+	// picture.
+	MaxOffset int `json:"max_offset,omitempty"`
+	// TargetCount is how many stars or cells the visitor has to pick.
+	TargetCount int `json:"target_count,omitempty"`
+	// Rows and Cols describe the select grid.
+	Rows int `json:"rows,omitempty"`
+	Cols int `json:"cols,omitempty"`
+}
+
+// LocalStore keeps the pending challenges and the issued tokens in memory.
 //
 // One process issues and redeems everything, which is the honest boundary of this
 // provider: a multi-instance deployment must route the two local calls (and the
@@ -76,7 +147,8 @@ type LocalStore struct {
 }
 
 type localChallenge struct {
-	answer    int
+	kind      LocalKind
+	expected  LocalAnswer
 	scene     Scene
 	expiresAt time.Time
 }
@@ -88,7 +160,7 @@ type localToken struct {
 
 // LocalStoreConfig configures a LocalStore. The zero value is production ready.
 type LocalStoreConfig struct {
-	// ChallengeTTL bounds a pending question. Zero uses DefaultLocalChallengeTTL.
+	// ChallengeTTL bounds a pending challenge. Zero uses DefaultLocalChallengeTTL.
 	ChallengeTTL time.Duration
 	// TokenTTL bounds a solved token. Zero uses DefaultLocalTokenTTL.
 	TokenTTL time.Duration
@@ -120,38 +192,43 @@ func NewLocalStore(cfg LocalStoreConfig) *LocalStore {
 	}
 }
 
-// Issue creates one arithmetic question for scene.
+// Issue creates one picture challenge for scene.
 func (s *LocalStore) Issue(scene Scene) (LocalChallenge, error) {
+	challenge, _, err := s.IssueWithAnswer(scene)
+	return challenge, err
+}
+
+// IssueWithAnswer issues a challenge and returns the expected answer with it.
+//
+// The HTTP endpoint uses Issue: the answer must stay in this process. The variant
+// exists for in-process callers (tests, smoke checks) that have to mint a token
+// without a browser. Treat the returned answer as a secret.
+func (s *LocalStore) IssueWithAnswer(scene Scene) (LocalChallenge, LocalAnswer, error) {
 	if s == nil {
-		return LocalChallenge{}, fmt.Errorf("%w: %s", ErrNotConfigured, ProviderLocal)
+		return LocalChallenge{}, LocalAnswer{}, fmt.Errorf("%w: %s", ErrNotConfigured, ProviderLocal)
 	}
 	if !scene.Valid() {
-		return LocalChallenge{}, ErrSceneUnknown
+		return LocalChallenge{}, LocalAnswer{}, ErrSceneUnknown
 	}
 
-	operandA, err := randomBelow(localOperandMax)
+	kindIndex, err := randomBelow(len(LocalKinds))
 	if err != nil {
-		return LocalChallenge{}, fmt.Errorf("%w: %v", ErrUpstream, err)
+		return LocalChallenge{}, LocalAnswer{}, fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
-	operandB, err := randomBelow(localOperandMax)
+	challenge, answer, err := generateLocalChallenge(LocalKinds[kindIndex], scene)
 	if err != nil {
-		return LocalChallenge{}, fmt.Errorf("%w: %v", ErrUpstream, err)
+		return LocalChallenge{}, LocalAnswer{}, fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
-	operandA++
-	operandB++
-	operation, err := randomBelow(2)
-	if err != nil {
-		return LocalChallenge{}, fmt.Errorf("%w: %v", ErrUpstream, err)
-	}
-	question, answer := localQuestion(operandA, operandB, operation)
 
 	id, err := randomID()
 	if err != nil {
-		return LocalChallenge{}, fmt.Errorf("%w: %v", ErrUpstream, err)
+		return LocalChallenge{}, LocalAnswer{}, fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
 
 	now := s.now()
 	expiresAt := now.Add(s.challengeTTL)
+	challenge.ID = id
+	challenge.ExpiresAt = expiresAt
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -159,17 +236,22 @@ func (s *LocalStore) Issue(scene Scene) (LocalChallenge, error) {
 	if len(s.challenges) >= localMaxChallenges {
 		s.evictSoonestChallengeLocked()
 	}
-	s.challenges[id] = localChallenge{answer: answer, scene: scene, expiresAt: expiresAt}
+	s.challenges[id] = localChallenge{
+		kind:      challenge.Kind,
+		expected:  answer,
+		scene:     scene,
+		expiresAt: expiresAt,
+	}
 
-	return LocalChallenge{ID: id, Question: question, ExpiresAt: expiresAt}, nil
+	return challenge, answer, nil
 }
 
 // Solve checks one answer and, when it is right, mints a token bound to the scene.
 //
 // The challenge is consumed by the first verify attempt, right or wrong: leaving a
-// solved-but-wrong challenge open would let a script brute-force the two digit
-// answer range on a single question.
-func (s *LocalStore) Solve(challengeID string, answer int, scene Scene) (string, time.Time, error) {
+// solved-but-wrong challenge open would let a script probe the answer space (a
+// slider has only ~220 legal offsets) on a single picture.
+func (s *LocalStore) Solve(challengeID string, answer LocalAnswer, scene Scene) (string, time.Time, error) {
 	if s == nil {
 		return "", time.Time{}, fmt.Errorf("%w: %s", ErrNotConfigured, ProviderLocal)
 	}
@@ -186,21 +268,21 @@ func (s *LocalStore) Solve(challengeID string, answer int, scene Scene) (string,
 	defer s.mu.Unlock()
 	s.sweepLocked(now)
 
-	challenge, ok := s.challenges[id]
+	stored, ok := s.challenges[id]
 	if !ok {
 		return "", time.Time{}, fmt.Errorf("%w: local challenge is unknown or already answered", ErrRejected)
 	}
 	delete(s.challenges, id)
-	if now.After(challenge.expiresAt) {
+	if now.After(stored.expiresAt) {
 		return "", time.Time{}, fmt.Errorf("%w: local challenge expired", ErrRejected)
 	}
-	if challenge.scene != scene {
+	if stored.scene != scene {
 		return "", time.Time{}, fmt.Errorf(
 			"%w: local challenge for %q submitted to %q",
-			ErrActionMismatch, challenge.scene, scene,
+			ErrActionMismatch, stored.scene, scene,
 		)
 	}
-	if answer != challenge.answer {
+	if !verifyLocalAnswer(stored.kind, stored.expected, answer) {
 		return "", time.Time{}, fmt.Errorf("%w: local challenge answer was wrong", ErrRejected)
 	}
 
@@ -260,14 +342,75 @@ func (s *LocalStore) Redeem(token string, scene Scene) (Result, error) {
 		)
 	}
 
-	// Redeeming is the moment the token stops being usable: a second call, even by a
-	// second request that raced this one, finds it in used.
+	// Redeeming is the moment the token stops being usable: a second call, even by
+	// a second request that raced this one, finds it in used.
 	delete(s.tokens, token)
 	s.used[token] = stored.expiresAt
 	if len(s.used) >= localMaxTokens {
 		s.evictSoonestUsedLocked()
 	}
 	return Result{Provider: ProviderLocal, CheckedAt: now}, nil
+}
+
+// verifyLocalAnswer compares a submitted answer with the stored one.
+//
+// Every comparison is tolerant in pixels, not exact: a visitor's pointer lands
+// near the target, and a slider drag reports a rounded offset. The tolerances are
+// tight enough that guessing (say, picking three random cells out of nine) is not
+// a strategy.
+func verifyLocalAnswer(kind LocalKind, expected, got LocalAnswer) bool {
+	switch kind {
+	case LocalKindSlider:
+		if expected.X == nil || got.X == nil {
+			return false
+		}
+		delta := *got.X - *expected.X
+		if delta < 0 {
+			delta = -delta
+		}
+		return delta <= localSliderTolerance
+	case LocalKindClick:
+		if len(expected.Points) == 0 || len(got.Points) != len(expected.Points) {
+			return false
+		}
+		used := make([]bool, len(got.Points))
+		tolerance := localClickTolerance * localClickTolerance
+		for _, target := range expected.Points {
+			matched := false
+			for index, point := range got.Points {
+				if used[index] {
+					continue
+				}
+				dx := point.X - target.X
+				dy := point.Y - target.Y
+				if dx*dx+dy*dy <= tolerance {
+					used[index] = true
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return false
+			}
+		}
+		return true
+	case LocalKindSelect:
+		if len(expected.Tiles) == 0 || len(got.Tiles) != len(expected.Tiles) {
+			return false
+		}
+		wanted := append([]int(nil), expected.Tiles...)
+		actual := append([]int(nil), got.Tiles...)
+		sort.Ints(wanted)
+		sort.Ints(actual)
+		for index := range wanted {
+			if wanted[index] != actual[index] {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // sweepLocked drops expired entries. It is lazy and throttled: no background
@@ -295,7 +438,7 @@ func (s *LocalStore) sweepLocked(now time.Time) {
 }
 
 // evictSoonestChallengeLocked makes room by dropping the challenge that expires
-// first. A visitor who lost that one can simply ask for another question.
+// first. A visitor who lost that one can simply ask for another challenge.
 func (s *LocalStore) evictSoonestChallengeLocked() {
 	var soonestID string
 	var soonest time.Time
@@ -339,19 +482,6 @@ func (s *LocalStore) evictSoonestUsedLocked() {
 	}
 }
 
-// localQuestion renders the question text and its expected integer answer.
-func localQuestion(operandA, operandB, operation int) (string, int) {
-	if operation == 0 {
-		return fmt.Sprintf("%d + %d = ?", operandA, operandB), operandA + operandB
-	}
-	// Subtraction keeps the subtrahend at most the minuend so the answer is never
-	// negative (a visitor typing "-2" is a UX trap, not a harder check).
-	if operandB > operandA {
-		operandA, operandB = operandB, operandA
-	}
-	return fmt.Sprintf("%d - %d = ?", operandA, operandB), operandA - operandB
-}
-
 // randomBelow returns a uniformly random integer in [0, max).
 func randomBelow(max int) (int, error) {
 	if max <= 0 {
@@ -362,6 +492,18 @@ func randomBelow(max int) (int, error) {
 		return 0, err
 	}
 	return int(binary.BigEndian.Uint64(buf[:]) % uint64(max)), nil
+}
+
+// randBetween returns a uniformly random integer in [min, max].
+func randBetween(min, max int) (int, error) {
+	if max < min {
+		return 0, fmt.Errorf("local challenge: invalid range [%d,%d]", min, max)
+	}
+	offset, err := randomBelow(max - min + 1)
+	if err != nil {
+		return 0, err
+	}
+	return min + offset, nil
 }
 
 // randomID returns 128 random bits as hex. It is long enough that guessing a

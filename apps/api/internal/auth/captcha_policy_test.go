@@ -3,7 +3,6 @@ package auth_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -225,9 +224,9 @@ func TestLocalChallengeTokenIsEnforcedEndToEnd(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, refused.Code)
 	require.Equal(t, "captcha_required", problemReason(t, refused))
 
-	challenge, err := store.Issue(captcha.SceneLogin)
+	challenge, answer, err := store.IssueWithAnswer(captcha.SceneLogin)
 	require.NoError(t, err)
-	token, _, err := store.Solve(challenge.ID, localAnswer(t, challenge.Question), captcha.SceneLogin)
+	token, _, err := store.Solve(challenge.ID, answer, captcha.SceneLogin)
 	require.NoError(t, err)
 
 	accepted := postJSON(t, h, "/api/v1/auth/login/password", map[string]string{
@@ -246,22 +245,4 @@ func TestLocalChallengeTokenIsEnforcedEndToEnd(t *testing.T) {
 	})
 	require.Equal(t, http.StatusBadRequest, replayed.Code)
 	require.Equal(t, "captcha_replayed", problemReason(t, replayed))
-}
-
-// localAnswer solves the arithmetic question the way a visitor would.
-func localAnswer(t *testing.T, question string) int {
-	t.Helper()
-	var left, right int
-	var operation string
-	_, err := fmt.Sscanf(question, "%d %s %d = ?", &left, &operation, &right)
-	require.NoError(t, err, "question %q is not an arithmetic challenge", question)
-	switch operation {
-	case "+":
-		return left + right
-	case "-":
-		return left - right
-	default:
-		t.Fatalf("unknown local challenge operation %q", operation)
-		return 0
-	}
 }

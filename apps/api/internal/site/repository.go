@@ -28,9 +28,11 @@ var (
 	// ErrEmailTaken means another account already owns the requested email. Email is
 	// a login identity, so the address is unique across the whole install.
 	ErrEmailTaken = errors.New("site: email already taken")
-	// ErrLastPlatformAdmin means the change would leave the site with no platform
-	// administrator able to log in. The site could never be recovered afterwards.
-	ErrLastPlatformAdmin = errors.New("site: last platform administrator")
+	// ErrPlatformAdminLocked means the caller tried to move an account into or out
+	// of the highest administrator group. That seat belongs to the account that
+	// registered the site; user management may neither hand it to anyone else nor
+	// take it away.
+	ErrPlatformAdminLocked = errors.New("site: platform administrator group is locked")
 	// ErrCannotManageSelf means the caller tried to administer its own account.
 	ErrCannotManageSelf = errors.New("site: cannot manage own account")
 	// ErrTargetTooPrivileged means the target is not lower ranked than the caller;
@@ -217,11 +219,6 @@ type Repository interface {
 	// The setup wizard reads this to tell a finished install from a database that
 	// was wiped: a site nobody can administer cannot be configured any further.
 	CountAdmins(ctx context.Context, siteID string) (int, error)
-	// CountMembersByRole returns how many active members of a site hold role.
-	//
-	// It backs the last platform administrator guard: a role change must not leave
-	// a site that no account can administer.
-	CountMembersByRole(ctx context.Context, siteID string, role Role) (int, error)
 	// UpdateMemberRole changes a role and records the audit entry atomically.
 	UpdateMemberRole(ctx context.Context, siteID, userID string, role Role, audit AuditEntry) error
 	// UpdateMemberProfile changes the account fields behind a membership and records

@@ -391,17 +391,26 @@ paths:
   /captcha/local/challenge:
     get:
       tags: [auth]
-      summary: Issue a self-hosted arithmetic challenge
+      summary: Issue a self-hosted picture challenge
       description: |
-        Issues a short-lived arithmetic question for the built-in `local` provider.
+        Issues a short-lived picture challenge for the built-in `local` provider.
         Public on purpose: the login, registration, password reset and comment forms
         call it before rendering their widget, exactly like they call
         `/captcha/status` first.
 
-        The answer never leaves the server: the browser posts it back to
-        `/captcha/local/verify`, which returns the token the protected endpoint
-        expects. A deployment that does not wire the local challenge store answers
-        503, and `/captcha/status` never reports the provider as effective there.
+        Three interactions rotate at random, named by `kind`:
+
+        - `slider`: drag a circular piece into the socket cut out of `background`;
+          the challenge carries `piece`, `piece_size`, `piece_top` and `max_offset`;
+        - `click`: click every star in `image` (`target_count` of them);
+        - `select`: pick the `target_count` cells of the `rows` x `cols` grid in
+          `image` that contain a circle.
+
+        The expected answer never leaves the server: the browser posts its geometry
+        back to `/captcha/local/verify`, which returns the token the protected
+        endpoint expects. A deployment that does not wire the local challenge store
+        answers 503, and `/captcha/status` never reports the provider as effective
+        there.
 
         The local provider is stateful per process: the challenge and the verify call
         (and later the protected request) must reach the same API instance.
@@ -419,18 +428,54 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [challenge_id, question, expires_at]
+                required: [challenge_id, kind, prompt, expires_at, width, height]
                 properties:
                   challenge_id:
                     type: string
                     description: Opaque id to submit with the answer; single use.
-                  question:
+                  kind:
                     type: string
-                    example: 8 + 3 = ?
-                    description: Human readable arithmetic question.
+                    enum: [slider, click, select]
+                    description: Which interaction the browser must render.
+                  prompt:
+                    type: string
+                    description: Human readable instruction for non-browser clients.
                   expires_at:
                     type: string
                     format: date-time
+                  width:
+                    type: integer
+                    description: Picture width in its own pixel space.
+                  height:
+                    type: integer
+                    description: Picture height in its own pixel space.
+                  image:
+                    type: string
+                    description: PNG data URL for the `click` and `select` kinds.
+                  background:
+                    type: string
+                    description: PNG data URL of the scene for the `slider` kind.
+                  piece:
+                    type: string
+                    description: PNG data URL of the movable piece for the `slider` kind.
+                  piece_size:
+                    type: integer
+                    description: Piece edge length in picture pixels (`slider`).
+                  piece_top:
+                    type: integer
+                    description: Vertical position of the piece in picture pixels (`slider`).
+                  max_offset:
+                    type: integer
+                    description: Largest legal piece X offset in picture pixels (`slider`).
+                  target_count:
+                    type: integer
+                    description: Number of stars or cells to pick (`click`, `select`).
+                  rows:
+                    type: integer
+                    description: Grid rows (`select`).
+                  cols:
+                    type: integer
+                    description: Grid columns (`select`).
         '400':
           $ref: '#/components/responses/ValidationFailed'
         '503':
@@ -439,12 +484,14 @@ paths:
   /captcha/local/verify:
     post:
       tags: [auth]
-      summary: Solve a self-hosted arithmetic challenge
+      summary: Solve a self-hosted picture challenge
       description: |
         Checks the answer to a challenge issued by `/captcha/local/challenge` and
-        mints a one-shot token bound to the scene. A wrong answer consumes the
-        challenge too (the browser asks for another one), so a script cannot probe
-        one question until it hits the right number.
+        mints a one-shot token bound to the scene. Only the field matching the
+        challenge `kind` is read: `x` for a slider, `points` for a click and `tiles`
+        for a select challenge. A wrong answer consumes the challenge too (the
+        browser asks for another one), so a script cannot probe the answer space on a
+        single picture.
 
         The returned token is submitted as `captcha_token` to the protected endpoint,
         exactly like a Turnstile or hCaptcha token, and is valid for five minutes at
@@ -459,7 +506,26 @@ paths:
               required: [challenge_id, answer, scene]
               properties:
                 challenge_id: { type: string }
-                answer: { type: integer }
+                answer:
+                  type: object
+                  description: The geometry of the solution; only the matching field is used.
+                  properties:
+                    x:
+                      type: integer
+                      description: Left edge of the piece in picture pixels (`slider`).
+                    points:
+                      type: array
+                      description: Clicked points in picture pixels (`click`).
+                      items:
+                        type: object
+                        required: [x, y]
+                        properties:
+                          x: { type: integer }
+                          y: { type: integer }
+                    tiles:
+                      type: array
+                      description: Selected cell indexes, row-major (`select`).
+                      items: { type: integer }
                 scene: { type: string, enum: [login, register, password_reset, comment] }
       responses:
         '200':

@@ -84,7 +84,7 @@ func TestProvidersListsTheSelectableProviders(t *testing.T) {
 	require.True(t, ProviderLocal.Valid())
 	require.False(t, Provider("recaptcha").Valid(), "reCAPTCHA is removed; only the legacy name is normalised")
 	require.Equal(t, ProviderTurnstile, Provider("recaptcha").Normalize())
-	require.Equal(t, "本地算术验证", ProviderLocal.Label())
+	require.Equal(t, "本地图形验证", ProviderLocal.Label())
 	require.False(t, ProviderLocal.RequiresSiteKey())
 	require.True(t, ProviderTurnstile.RequiresSiteKey())
 }

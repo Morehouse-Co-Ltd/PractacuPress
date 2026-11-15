@@ -11,33 +11,28 @@ import (
 	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
 
-// localChallengeResponse is the question a browser renders.
-type localChallengeResponse struct {
-	ChallengeID string    `json:"challenge_id"`
-	Question    string    `json:"question"`
-	ExpiresAt   time.Time `json:"expires_at"`
-}
-
 // localVerifyResponse is the solved token the protected form submits.
 type localVerifyResponse struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// localVerifyRequest is the answer to one issued question.
+// localVerifyRequest is the answer to one issued challenge.
 type localVerifyRequest struct {
 	ChallengeID string `json:"challenge_id"`
 	Scene       string `json:"scene"`
-	// Answer is a pointer so an omitted answer is distinguishable from a wrong one.
-	// Both are refused, but only the wrong one burns the challenge in the store.
-	Answer *int `json:"answer"`
+	// Answer is a pointer so an omitted answer is distinguishable from an empty
+	// one. Both are refused, but only a present-but-wrong answer burns the
+	// challenge in the store.
+	Answer *LocalAnswer `json:"answer"`
 }
 
-// LocalChallenge issues a self-hosted arithmetic challenge.
+// LocalChallenge issues a self-hosted picture challenge.
 //
-// The response is public and self-contained: it carries no secret, and the answer
-// only lives in this process's memory. A deployment that does not wire the local
-// store answers 503 rather than handing out a challenge it cannot verify.
+// The response is public and self-contained: it carries pictures and geometry but
+// never the expected answer, which only lives in this process's memory. A
+// deployment that does not wire the local store answers 503 rather than handing
+// out a challenge it cannot verify.
 func (h *Handler) LocalChallenge(c *gin.Context) {
 	requestID := h.requestID(c)
 	if h.local == nil {
@@ -67,18 +62,14 @@ func (h *Handler) LocalChallenge(c *gin.Context) {
 	}
 
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, localChallengeResponse{
-		ChallengeID: challenge.ID,
-		Question:    challenge.Question,
-		ExpiresAt:   challenge.ExpiresAt.UTC(),
-	})
+	c.JSON(http.StatusOK, challenge)
 }
 
 // LocalVerify checks the answer and mints the one-shot token.
 //
 // The challenge is single use: a wrong answer consumes it too, so a script cannot
-// probe one question until it hits the right number. The browser simply requests a
-// new challenge and tries again.
+// probe one slider offset or one grid combination at leisure. The browser simply
+// requests a new challenge and tries again.
 func (h *Handler) LocalVerify(c *gin.Context) {
 	requestID := h.requestID(c)
 	if h.local == nil {
@@ -112,7 +103,7 @@ func (h *Handler) LocalVerify(c *gin.Context) {
 			WithRequestID(requestID))
 		return
 	}
-	if req.Answer == nil {
+	if req.Answer == nil || req.Answer.Empty() {
 		_ = c.Error(apperr.ValidationField("answer is required", "answer", "required").
 			WithDetail("reason", "answer_required").
 			WithRequestID(requestID))

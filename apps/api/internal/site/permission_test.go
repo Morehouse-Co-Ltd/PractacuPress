@@ -169,6 +169,37 @@ func TestGuestCannotBeAssigned(t *testing.T) {
 	require.ErrorIs(t, service.AssignMemberGroup(context.Background(), admin, "s1", "writer", GroupGuest, ""), ErrInvalidInput)
 }
 
+// TestHighestAdminGroupIsFixed keeps the owner group attached to the account that
+// registered the site: no one can be promoted into it, and the owner cannot be
+// moved out of it, even when a second platform administrator exists.
+func TestHighestAdminGroupIsFixed(t *testing.T) {
+	repo := newFakeRepo()
+	service, err := NewService(repo)
+	require.NoError(t, err)
+	root := activeMember("s1", "root", RolePlatformAdmin)
+	other := activeMember("s1", "other", RolePlatformAdmin)
+	writer := activeMember("s1", "writer", RoleMember)
+	repo.members[memberKey("s1", "root")] = root
+	repo.members[memberKey("s1", "other")] = other
+	repo.members[memberKey("s1", "writer")] = writer
+
+	require.ErrorIs(t,
+		service.AssignMemberGroup(context.Background(), root, "s1", "writer", GroupOwner, ""),
+		ErrPlatformAdminLocked, "a second super admin must not be minted")
+	require.ErrorIs(t,
+		service.AssignMemberGroup(context.Background(), root, "s1", "root", GroupAdmin, ""),
+		ErrPlatformAdminLocked, "the registered super admin must not be demoted")
+	require.ErrorIs(t,
+		service.AssignMemberGroup(context.Background(), root, "s1", "other", GroupMember, ""),
+		ErrPlatformAdminLocked, "no platform administrator group is mutable")
+	require.Equal(t, RoleMember, repo.members[memberKey("s1", "writer")].Role)
+	require.Equal(t, RolePlatformAdmin, repo.members[memberKey("s1", "root")].Role)
+	require.Equal(t, RolePlatformAdmin, repo.members[memberKey("s1", "other")].Role)
+
+	// Re-applying the owner group to the owner is a no-op, not a promotion.
+	require.NoError(t, service.AssignMemberGroup(context.Background(), root, "s1", "root", GroupOwner, ""))
+}
+
 // TestSavePermissionGroupRequiresManagePermission keeps the write path behind the
 // same capability the dashboard checks: an editor can read the matrix but cannot
 // rewrite it.

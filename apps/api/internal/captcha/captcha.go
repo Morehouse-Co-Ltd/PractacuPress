@@ -1,5 +1,5 @@
 // Package captcha verifies human-challenge tokens (Cloudflare Turnstile,
-// hCaptcha, or the built-in self-hosted arithmetic challenge) and decides which
+// hCaptcha, or the built-in self-hosted picture challenge) and decides which
 // site forms require one.
 //
 // The package is transport agnostic: it names the protected scenes, reads the
@@ -37,9 +37,9 @@ type Provider string
 const (
 	ProviderTurnstile Provider = "turnstile"
 	ProviderHCaptcha  Provider = "hcaptcha"
-	// ProviderLocal is the built-in, self-hosted arithmetic challenge. It needs no
-	// external service, no site key and no server secret: this process issues the
-	// question and remembers the answer.
+	// ProviderLocal is the built-in, self-hosted picture challenge (slider, click
+	// or select). It needs no external service, no site key and no server secret:
+	// this process draws the challenge and remembers the answer.
 	ProviderLocal Provider = "local"
 )
 
@@ -82,7 +82,7 @@ func (p Provider) Label() string {
 	case ProviderHCaptcha:
 		return "hCaptcha"
 	case ProviderLocal:
-		return "本地算术验证"
+		return "本地图形验证"
 	default:
 		return string(p)
 	}

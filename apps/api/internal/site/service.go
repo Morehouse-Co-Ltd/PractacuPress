@@ -367,16 +367,12 @@ func (s *Service) ChangeMemberRole(
 	if target.Role == RolePlatformAdmin && actor.Role != RolePlatformAdmin {
 		return ErrPermissionDenied
 	}
-	// The site must keep at least one platform administrator that can actually log
-	// in; otherwise nobody could ever restore the role.
-	if target.Role == RolePlatformAdmin && role != RolePlatformAdmin {
-		admins, countErr := s.repo.CountMembersByRole(ctx, siteID, RolePlatformAdmin)
-		if countErr != nil {
-			return countErr
-		}
-		if admins <= 1 {
-			return ErrLastPlatformAdmin
-		}
+	// The highest administrator seat belongs to the account that registered the
+	// site. It cannot be granted to another account, and it cannot be revoked: a
+	// no-op (owner to owner) is the only accepted transition, which keeps exactly
+	// one known super administrator.
+	if (target.Role == RolePlatformAdmin) != (role == RolePlatformAdmin) {
+		return ErrPlatformAdminLocked
 	}
 
 	return s.repo.UpdateMemberRole(ctx, siteID, userID, role, AuditEntry{

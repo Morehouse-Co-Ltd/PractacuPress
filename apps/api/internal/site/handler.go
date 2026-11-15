@@ -1148,8 +1148,12 @@ func mapError(err error) *apperr.Problem {
 	case errors.Is(err, ErrTargetTooPrivileged):
 		return apperr.PermissionDenied().WithDetail("reason", "target_role_not_lower")
 
-	case errors.Is(err, ErrLastPlatformAdmin):
-		return apperr.PermissionDenied().WithDetail("reason", "last_platform_admin")
+	case errors.Is(err, ErrPlatformAdminLocked):
+		// The highest administrator group is reserved for the account that
+		// registered the site: it cannot be granted or revoked from user management.
+		return apperr.PermissionDenied().
+			WithDetail("reason", "platform_admin_locked").
+			WithMessage("最高管理员是注册该账号的人，不能在用户管理中更改用户组")
 
 	case errors.Is(err, ErrTargetNotFound):
 		return apperr.NotFound("member")

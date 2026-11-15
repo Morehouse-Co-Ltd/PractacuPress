@@ -22,7 +22,7 @@ type PolicyReader interface {
 type HandlerConfig struct {
 	// Policy reports the effective rule. Nil answers "off".
 	Policy PolicyReader
-	// Local serves the self-hosted arithmetic challenge. Nil answers 503 on the
+	// Local serves the self-hosted picture challenges. Nil answers 503 on the
 	// local endpoints, which is what a process that does not run the local provider
 	// should say.
 	Local *LocalStore

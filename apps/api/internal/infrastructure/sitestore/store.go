@@ -347,20 +347,6 @@ func (s *Store) UpdateMemberRole(
 	return nil
 }
 
-// CountMembersByRole returns how many active members of a site hold role.
-//
-// Only active memberships count: a suspended platform administrator cannot log in,
-// so it must not keep a site recoverable-looking when nobody else can administer it.
-func (s *Store) CountMembersByRole(ctx context.Context, siteID string, role site.Role) (int, error) {
-	return s.client.SiteMember.Query().
-		Where(
-			sitemember.SiteIDEQ(siteID),
-			sitemember.RoleEQ(string(role)),
-			sitemember.StatusEQ(site.MemberStatusActive),
-		).
-		Count(ctx)
-}
-
 // UpdateMemberProfile changes the account behind a membership.
 //
 // The display name lives on User, while the login address is the email identity:

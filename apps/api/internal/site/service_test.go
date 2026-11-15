@@ -184,17 +184,6 @@ func (f *fakeRepo) UpdateMemberRole(_ context.Context, siteID, userID string, ro
 	return nil
 }
 
-// CountMembersByRole mirrors the store query: only active memberships count.
-func (f *fakeRepo) CountMembersByRole(_ context.Context, siteID string, role Role) (int, error) {
-	count := 0
-	for _, member := range f.members {
-		if member.SiteID == siteID && member.IsActive() && member.Role == role {
-			count++
-		}
-	}
-	return count, nil
-}
-
 func (f *fakeRepo) UpdateMemberProfile(_ context.Context, siteID, userID string, in MemberProfile, audit AuditEntry) error {
 	key := memberKey(siteID, userID)
 	member, ok := f.members[key]
@@ -587,7 +576,7 @@ func memberWithEmail(siteID, userID string, role Role, email string) Member {
 	return member
 }
 
-func TestChangeMemberRoleRejectsDemotingLastPlatformAdmin(t *testing.T) {
+func TestChangeMemberRoleRejectsDemotingThePlatformAdmin(t *testing.T) {
 	repo := newFakeRepo()
 	repo.sites = []Site{{ID: "s1"}}
 	repo.members[memberKey("s1", "root")] = activeMember("s1", "root", RolePlatformAdmin)
@@ -595,12 +584,12 @@ func TestChangeMemberRoleRejectsDemotingLastPlatformAdmin(t *testing.T) {
 	err := newService(t, repo).ChangeMemberRole(context.Background(),
 		repo.members[memberKey("s1", "root")], "s1", "root", RoleMember, "")
 
-	require.ErrorIs(t, err, ErrLastPlatformAdmin)
+	require.ErrorIs(t, err, ErrPlatformAdminLocked)
 	require.Zero(t, repo.roleUpdates)
 	require.Equal(t, RolePlatformAdmin, repo.members[memberKey("s1", "root")].Role)
 }
 
-func TestChangeMemberRoleAllowsDemotingOneOfTwoPlatformAdmins(t *testing.T) {
+func TestChangeMemberRoleRejectsDemotingAnyPlatformAdmin(t *testing.T) {
 	repo := newFakeRepo()
 	repo.sites = []Site{{ID: "s1"}}
 	repo.members[memberKey("s1", "root1")] = activeMember("s1", "root1", RolePlatformAdmin)
@@ -609,8 +598,22 @@ func TestChangeMemberRoleAllowsDemotingOneOfTwoPlatformAdmins(t *testing.T) {
 	err := newService(t, repo).ChangeMemberRole(context.Background(),
 		repo.members[memberKey("s1", "root1")], "s1", "root2", RoleSiteAdmin, "")
 
-	require.NoError(t, err)
-	require.Equal(t, RoleSiteAdmin, repo.members[memberKey("s1", "root2")].Role)
+	require.ErrorIs(t, err, ErrPlatformAdminLocked)
+	require.Zero(t, repo.roleUpdates)
+}
+
+func TestChangeMemberRoleRejectsPromotingToPlatformAdmin(t *testing.T) {
+	repo := newFakeRepo()
+	repo.sites = []Site{{ID: "s1"}}
+	repo.members[memberKey("s1", "root")] = activeMember("s1", "root", RolePlatformAdmin)
+	repo.members[memberKey("s1", "target")] = activeMember("s1", "target", RoleSiteAdmin)
+
+	err := newService(t, repo).ChangeMemberRole(context.Background(),
+		repo.members[memberKey("s1", "root")], "s1", "target", RolePlatformAdmin, "")
+
+	require.ErrorIs(t, err, ErrPlatformAdminLocked)
+	require.Zero(t, repo.roleUpdates)
+	require.Equal(t, RoleSiteAdmin, repo.members[memberKey("s1", "target")].Role)
 }
 
 func TestChangeMemberRoleUnknownTargetIsNotFound(t *testing.T) {

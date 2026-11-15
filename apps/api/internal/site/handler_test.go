@@ -675,14 +675,31 @@ func TestDeleteMemberRejectsSiteAdminAndSelf(t *testing.T) {
 	require.Equal(t, "self_management", decodeReason(t, w))
 }
 
-func TestChangeMemberRoleRejectsDemotingLastPlatformAdmin(t *testing.T) {
+func TestChangeMemberRoleRejectsDemotingThePlatformAdmin(t *testing.T) {
 	h := newHarness(t)
 	adminToken, adminID := h.makePlatformAdmin(t, "root@example.com")
 
 	w := h.do(t, http.MethodPatch, h.memberPath(adminID, "/role"), adminToken, `{"role":"member"}`)
 
 	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
-	require.Equal(t, "last_platform_admin", decodeReason(t, w))
+	require.Equal(t, "platform_admin_locked", decodeReason(t, w))
+}
+
+// TestHighestAdminGroupIsFixedInUserManagement is the user-management half of the
+// rule: the owner group belongs to the account that registered the site, so the
+// group endpoint can neither demote it nor promote another member into it.
+func TestHighestAdminGroupIsFixedInUserManagement(t *testing.T) {
+	h := newHarness(t)
+	rootToken, rootID := h.makePlatformAdmin(t, "root@example.com")
+	targetID := h.userID(t, h.register(t, "target@example.com"))
+
+	promote := h.do(t, http.MethodPatch, h.memberPath(targetID, "/group"), rootToken, `{"group_key":"owner"}`)
+	require.Equal(t, http.StatusForbidden, promote.Code, promote.Body.String())
+	require.Equal(t, "platform_admin_locked", decodeReason(t, promote))
+
+	demote := h.do(t, http.MethodPatch, h.memberPath(rootID, "/group"), rootToken, `{"group_key":"member"}`)
+	require.Equal(t, http.StatusForbidden, demote.Code, demote.Body.String())
+	require.Equal(t, "platform_admin_locked", decodeReason(t, demote))
 }
 
 func TestMemberAdministrationRejectsTokenFromAnotherSite(t *testing.T) {
