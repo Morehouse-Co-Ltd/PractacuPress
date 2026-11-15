@@ -8,6 +8,8 @@
 //	GET  /__pp/runtime              当前端口与地址
 //	POST /__pp/runtime/port         换端口（带一次性数据迁移）
 //	GET  /__pp/state/{token}        新地址读取旧地址的浏览器数据
+//	GET  /__pp/update               服务端读取版本清单并比较
+//	POST /__pp/update/apply         启用本机已准备好的新构建（不重启进程）
 package main
 
 import (
@@ -49,18 +51,75 @@ type snapshot struct {
 }
 
 type app struct {
-	dist      fs.FS
-	distReady bool
 	startedAt time.Time
 	stateFile string
 
-	mu        sync.RWMutex
-	port      int
-	server    *http.Server
-	snapshots map[string]snapshot
-	live      *liveRuntime
-	liveErr   string
-	mode      string
+	// fetcher 是更新清单的取数器，测试注入自己的；为空时用默认策略。
+	fetcher *manifestFetcher
+
+	// 站点文件系统由 mu 保护：/__pp/update/apply 会在运行中替换 dist，
+	// 而 serveStatic 每个请求都要读它，所以统一走 activeDist() 这类访问器。
+	// previousDist 是上一份，用来继续响应已经打开的旧标签页。
+	mu            sync.RWMutex
+	dist          fs.FS
+	previousDist  fs.FS
+	distReady     bool
+	activeVersion string
+	distDir       string
+	port          int
+	server        *http.Server
+	snapshots     map[string]snapshot
+	live          *liveRuntime
+	liveErr       string
+	mode          string
+}
+
+/* ---------- 站点文件系统 ---------- */
+
+// activeDist 返回正在服务的站点文件系统，以及上一份（没有时是 nil）。
+//
+// 用访问器而不是直接读字段，是因为 /__pp/update/apply 会在运行中替换 dist；
+// 每个静态请求都必须在同一把读锁里拿到「当前」这一份，否则换版那一刻的请求
+// 可能看到半新半旧的状态。
+func (a *app) activeDist() (current, previous fs.FS) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.dist, a.previousDist
+}
+
+// distIsReady 报告当前是否有一份可以服务的站点文件。
+func (a *app) distIsReady() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.distReady
+}
+
+// activeDistDir 返回当前 dist 对应的磁盘目录；内置站点（embed）为空。
+func (a *app) activeDistDir() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.distDir
+}
+
+// promote 把 next 换成正在服务的站点文件，返回上一份的版本号。
+//
+// 只换指针，不关监听、不重启进程，所以换版期间正在编辑的页面不会收到 500 或断连。
+// 旧的一份保存在 previousDist 里而不是直接丢弃：浏览器里已经打开的标签页手里还是
+// 旧的 index.html，它引用 assets/<hash>.js 这种只存在于旧构建的文件名；留一份旧 dist
+// 让这些请求继续成功，标签页就不会白屏，等用户自己刷新时才真正切到新版本。
+//
+// 换指针在写锁里一次做完，任何请求都不可能看到「新版 index.html + 旧版 assets」这种
+// 半新半旧的状态，这就是「不停止服务」的全部代价：一次互斥锁以内的几次赋值。
+func (a *app) promote(next fs.FS, version string, dir string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	previousVersion := a.activeVersion
+	a.previousDist = a.dist
+	a.dist = next
+	a.distReady = next != nil
+	a.activeVersion = version
+	a.distDir = dir
+	return previousVersion
 }
 
 func main() {
@@ -77,6 +136,10 @@ func main() {
 		if info, err := fs.Stat(sub, "index.html"); err == nil && !info.IsDir() {
 			a.distReady = true
 		}
+		// 内置站点自带的清单版本记下来，第一次换构建时 previous 才有意义。
+		if manifest, ok := localManifest(sub); ok {
+			a.activeVersion = manifest.Version
+		}
 	}
 
 	portArg := flag.Int("port", 0, "监听端口（默认 8080，可用 PP_WEB_PORT 或后台设置覆盖）")
@@ -87,6 +150,15 @@ func main() {
 	flag.Parse()
 
 	state := readState(a.stateFile)
+
+	// 上次手动更新启用的目录仍然可用就继续用它；不可用则安静地回到内置版本。
+	if state.DistDir != "" {
+		if version, ok := a.restoreStagedDist(state.DistDir); ok {
+			fmt.Printf("已启用上次更新的站点文件：%s（%s）\n", state.DistDir, version)
+		} else {
+			fmt.Printf("上次更新的站点目录已不可用，改用内置版本：%s\n", state.DistDir)
+		}
+	}
 
 	preferred := *portArg
 	if preferred == 0 {
@@ -103,7 +175,7 @@ func main() {
 		preferred = defaultPort
 	}
 
-	if !a.distReady {
+	if !a.distIsReady() {
 		fmt.Println("这个启动器里没有内置站点文件。")
 		fmt.Println("请从官方压缩包解压后再运行；自行构建请先执行 npm run build 并重新打包。")
 		pause()
@@ -455,6 +527,10 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.handlePortChange(w, r)
 	case strings.HasPrefix(r.URL.Path, "/__pp/state/"):
 		a.handleStateImport(w, r)
+	case r.URL.Path == "/__pp/update":
+		a.handleUpdateCheck(w, r)
+	case r.URL.Path == "/__pp/update/apply":
+		a.handleUpdateApply(w, r)
 	case strings.HasPrefix(r.URL.Path, "/__pp/"):
 		writeJSON(w, 404, map[string]any{"code": "not_found", "message": "没有这个运行时接口。"})
 	case isAPIPath(r.URL.Path):
@@ -511,6 +587,7 @@ func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
 	live := a.live
 	mode := a.mode
 	liveErr := a.liveErr
+	distReady := a.distReady
 	a.mu.RUnlock()
 
 	api := map[string]any{"managed": false, "ready": false}
@@ -530,7 +607,7 @@ func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
 		"name":         appName,
 		"port":         port,
 		"origin":       originFor(r, port),
-		"dist_ready":   a.distReady,
+		"dist_ready":   distReady,
 		"api":          api,
 	})
 }
@@ -669,24 +746,37 @@ func (a *app) serveStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	current, previous := a.activeDist()
+
 	clean := path.Clean("/" + r.URL.Path)
 	rel := strings.TrimPrefix(clean, "/")
 	if rel == "" {
 		rel = "index.html"
 	}
-	if info, err := fs.Stat(a.dist, rel); err == nil && info.IsDir() {
+	if info, err := fs.Stat(current, rel); err == nil && info.IsDir() {
 		rel = path.Join(rel, "index.html")
 	}
 
-	if info, err := fs.Stat(a.dist, rel); err == nil && !info.IsDir() {
+	if info, err := fs.Stat(current, rel); err == nil && !info.IsDir() {
 		a.setCache(w, rel)
-		http.FileServer(http.FS(a.dist)).ServeHTTP(w, r)
+		http.FileServer(http.FS(current)).ServeHTTP(w, r)
 		return
+	}
+
+	// 刚换过版本时，已经打开的标签页还在用旧版 HTML，它引用的 hash 资源只存在于
+	// 上一份 dist 里。这里回退到上一份，标签页就不会白屏；等它自己刷新后自然用上新版。
+	// 只回退「确实存在」的文件，真正的缺失资源仍然走下面的 404。
+	if previous != nil {
+		if info, err := fs.Stat(previous, rel); err == nil && !info.IsDir() {
+			a.setCache(w, rel)
+			http.FileServer(http.FS(previous)).ServeHTTP(w, r)
+			return
+		}
 	}
 
 	// 只有导航请求才回退到 index.html，缺失的静态资源要如实 404。
 	if path.Ext(clean) == "" && r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/html") {
-		data, err := fs.ReadFile(a.dist, "index.html")
+		data, err := fs.ReadFile(current, "index.html")
 		if err != nil {
 			writeJSON(w, 500, map[string]any{"code": "internal", "message": "站点入口文件缺失。"})
 			return
@@ -875,6 +965,14 @@ func resolveStateFile() string {
 func (a *app) persistPort(port int) {
 	state := readState(a.stateFile)
 	state.Port = port
+	_ = writeState(a.stateFile, state)
+}
+
+// persistDistDir 记住手动更新启用的站点目录，下次启动继续用它。
+// 写盘失败不算换版失败：本次运行已经切过去了，只是重启后回到内置版本。
+func (a *app) persistDistDir(dir string) {
+	state := readState(a.stateFile)
+	state.DistDir = dir
 	_ = writeState(a.stateFile, state)
 }
 

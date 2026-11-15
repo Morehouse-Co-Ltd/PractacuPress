@@ -21,6 +21,12 @@ type launcherState struct {
 	Port      int    `json:"port,omitempty"`
 	JWTKey    string `json:"jwt_key,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+	// DistDir 是上一次「手动更新」启用的站点目录。
+	//
+	// 换了构建却不记住，重启启动器就会悄悄退回内置版本：用户以为升级成功，第二天
+	// 打开又变成旧版。启动时只在这个目录仍然可用（存在、有 index.html 与合法清单）
+	// 时才启用它，目录被删掉就诚实地回到内置版本。
+	DistDir string `json:"dist_dir,omitempty"`
 }
 
 func readState(file string) launcherState {
