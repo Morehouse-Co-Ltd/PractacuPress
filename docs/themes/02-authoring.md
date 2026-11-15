@@ -52,7 +52,7 @@
 
 ```text
 my-theme.zip
-├── theme.json                 # 主题清单（元数据、令牌、页面索引、组件/后端引用）
+├── theme.json                 # 主题清单（元数据、令牌、预览、页面索引、组件/后端引用）
 ├── README.md                  # 给人看的说明 + 回链本套文档
 ├── components/
 │   ├── plugin.json            # 前端扩展清单：blocks 声明、权限
@@ -73,6 +73,9 @@ my-theme.zip
 
 `theme.json` 的完整字段表见 [04 主题包格式](./04-package.md#manifest)。最小可导入的主题包
 只需要 `theme.json` + `README.md`；只带令牌与版式的旧 `.json` 主题也仍然能导入。
+主题库封面、右侧详情与导入确认里的迷你页面由 `theme.json` 的 `preview` 决定，写法见
+[06 主题自带预览](./06-preview.md)。「预览主题」弹窗另走真实前台 iframe，不需要在
+`preview` 里额外声明什么。
 
 <a id="components"></a>
 

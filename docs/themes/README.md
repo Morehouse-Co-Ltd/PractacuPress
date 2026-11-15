@@ -24,6 +24,7 @@
 | [03 外观与令牌](./03-appearance.md) | 13 个配色令牌、排版与版式变量、哪些外观能改、边界在哪 | 设计师、主题作者 |
 | [04 主题包格式](./04-package.md) | zip 里到底有哪些文件、`theme.json` 每个字段、导入导出流程、校验与安全边界 | 主题作者、运维 |
 | [05 后台侧栏与后端](./05-admin-and-backend.md) | 后台左侧 tab 的两种定制方式、数据文件协议、Go/WASM 后端怎么构建与调用 | 全栈开发者 |
+| [06 主题自带预览](./06-preview.md) | 主题怎么写主题库封面与详情里的迷你页面、「预览主题」弹窗里的真实前台、字段、限制与安全边界 | 主题作者、设计师 |
 
 外部参考：
 
@@ -39,6 +40,8 @@
 - **主题包是一个 zip**，不是一份 JSON：`theme.json` + `components/` + `pages/` + 可选 `admin/`、`backend/`、`README.md`。
 - **组件是前端扩展**：一个经典脚本，调用 `ctx.blocks.register(type, renderer, meta)` 注册区块类型；样式用 `ctx.ui.addStyle(css)` 注入。
 - **页面是 JSON**：`pages/*.json` 里是一棵 `BlockInstance` 树，和页面编排器保存的 `home` / `article` / `pages` 完全同构。
+- **预览分两层**：卡片、详情与导入确认是 `theme.json` 的 `preview` 画出的迷你页；「预览主题」弹窗用同源 iframe 渲染真实前台（首页 / 文章列表），关闭即还原。
+- **预览是主题自己写的**：`theme.json` 的 `preview` 决定主题库卡片与详情面板里的迷你页面；不写就按版式画通用结构图（见 [06](./06-preview.md)）。
 - **编排器能适配**：组件的 `meta` 里声明 `name / description / group / variants / area / defaults / schema`，编排器的「添加组件」、属性面板、默认落位都从这同一份声明来。
 - **后台侧栏**：`ctx.admin.registerPage` 注册一个自己写的后台页面；或提供 `admin/tabs.json`，由服务端按数据生成设置页（数据文件协议见 [05](./05-admin-and-backend.md)）。
 - **后端**：Go `GOOS=wasip1 GOARCH=wasm` 构建，`plugin.json` 声明 routes，页面通过 `ctx.api.fetch('/api/v1/plugins/{id}/...')` 调用；没有文件、网络与环境变量。
@@ -52,7 +55,7 @@
 
 ```text
 my-theme.zip
-├── theme.json                 # 主题清单：名称、令牌、版式、页面索引、组件与后端引用
+├── theme.json                 # 主题清单：名称、令牌、预览、版式、页面索引、组件与后端引用
 ├── README.md                  # 主题说明；链接回本套开发文档
 ├── components/
 │   ├── plugin.json            # 前端扩展清单（block 声明 + 权限）
@@ -105,9 +108,13 @@ my-theme.zip
 | `apps/web/src/components/blocks/index.tsx` | `BlockView`：内置与主题组件的统一渲染入口 |
 | `apps/web/src/components/builder/BlockTreeEditor.tsx` | 「添加组件」面板与分组 |
 | `apps/web/src/pages/admin/ThemeBuilder.tsx` | 页面编排工作台 |
-| `apps/web/src/pages/admin/ChooseTheme.tsx` | 选择主题：创建、导入主题包、导出主题包、删除 |
+| `apps/web/src/pages/admin/ChooseTheme.tsx` | 选择主题：创建、导入主题包、导出主题包、删除、卡片操作 |
 | `apps/web/src/pages/admin/Themes.tsx` | 主题设置：微调、令牌、外观分区、导航与页脚 |
 | `apps/web/src/lib/theme.ts` | 令牌、`resolveTokens`、`themeCss` |
+| `apps/web/src/lib/themePreview.ts` | 主题自带预览的归一化、兜底与配色解析 |
+| `apps/web/src/components/theme/ThemePreview.tsx` | 主题预览迷你页面渲染器 |
+| `apps/web/src/lib/themePreviewLive.ts` | 真实前台预览的会话交接与文档级认领 |
+| `apps/web/src/components/theme/ThemeLivePreview.tsx` | 真实前台预览的 iframe、页面 / 宽度切换与加载态 |
 | `apps/web/src/lib/themes.ts` | 内置主题、主题库、`parseThemeFile` / `downloadThemeFile`（旧 JSON） |
 | `apps/web/src/lib/themePackage.ts` | 主题包 zip 的读取、校验、组装与导出 |
 | `apps/web/src/lib/customize.ts` | 站点设计文档结构、`readCustomization`、页面编排归一化 |
@@ -135,6 +142,7 @@ my-theme.zip
 ## 开发文档
 - 主题开发文档：<站点地址>/docs/themes/README.md（仓库内：docs/themes/README.md）
 - 主题包格式：<站点地址>/docs/themes/04-package.md
+- 主题自带预览：<站点地址>/docs/themes/06-preview.md
 - 扩展与后端 ABI：<站点地址>/docs/extensions/README.md
 
 ## 版本
