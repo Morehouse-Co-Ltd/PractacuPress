@@ -119,7 +119,11 @@ func (s *Store) FindMember(ctx context.Context, siteID, userID string) (site.Mem
 	if identity, err := s.client.UserIdentity.Query().
 		Where(useridentity.UserIDEQ(row.UserID), useridentity.ProviderEQ(providerEmail)).
 		Only(ctx); err == nil {
-		member.Email = identityEmail(identity)
+		email, openErr := s.identityEmail(identity)
+		if openErr != nil {
+			return site.Member{}, openErr
+		}
+		member.Email = email
 	}
 	s.applyMemberGroup(ctx, siteID, &member)
 	return member, nil
@@ -163,7 +167,11 @@ func (s *Store) ListMembers(ctx context.Context, siteID string, limit int) ([]si
 	}
 	emails := make(map[string]string, len(identities))
 	for _, identity := range identities {
-		emails[identity.UserID] = identityEmail(identity)
+		email, openErr := s.identityEmail(identity)
+		if openErr != nil {
+			return nil, openErr
+		}
+		emails[identity.UserID] = email
 	}
 
 	members := make([]site.Member, 0, len(rows))
@@ -269,11 +277,15 @@ func (s *Store) ListMemberDirectory(
 
 // identityEmail returns the address a login identity authenticates, falling back to
 // the provider subject when the denormalised email column is empty.
-func identityEmail(identity *entgen.UserIdentity) string {
+//
+// Both columns are sealed at rest, so the address is opened here before it reaches an
+// administrator screen: showing the envelope would leak ciphertext and look like a
+// corrupt account. A failure to open is an error, never a fallback to the raw value.
+func (s *Store) identityEmail(identity *entgen.UserIdentity) (string, error) {
 	if identity.Email != nil && *identity.Email != "" {
-		return *identity.Email
+		return s.identity.OpenEmail(*identity.Email)
 	}
-	return identity.ProviderSubject
+	return s.identity.OpenSubject(identity.Provider, identity.ProviderSubject)
 }
 
 // CountAdmins returns how many active members may administer a site.
