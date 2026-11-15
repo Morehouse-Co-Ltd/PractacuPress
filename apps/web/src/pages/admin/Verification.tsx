@@ -27,8 +27,8 @@ function providerChoices(t: Translator): { value: HumanVerificationProvider; lab
     { value: 'hcaptcha', label: 'hCaptcha', note: t('隐私友好，可配置难度与主题。') },
     {
       value: 'local',
-      label: t('本地算术验证'),
-      note: t('本站服务端出题，无需外部服务、Site Key 或密钥；适合离线与内网部署。'),
+      label: t('本地图形验证'),
+      note: t('三种图形题（滑块、点击、选择图形）随机出现；无需外部服务、Site Key 或密钥，适合离线与内网部署。'),
     },
   ];
 }
@@ -354,7 +354,7 @@ export function VerificationPage() {
                 {!needsSiteKey ? (
                   <Callout tone="info" icon="info" title={t('本地验证不需要 Site Key')}>
                     {t(
-                      '题目由本站服务端生成并校验，答案只保存在服务端内存中，无需环境变量，也不会向任何外部服务发送数据。由于题目存在单个进程内，多实例部署请改用 Turnstile 或 hCaptcha。',
+                      '题目由本站服务端生成并校验（滑块、点击、选择图形随机出现），答案只保存在服务端内存中，无需环境变量，也不会向任何外部服务发送数据。由于题目存在单个进程内，多实例部署请改用 Turnstile 或 hCaptcha。',
                     )}
                   </Callout>
                 ) : null}
@@ -439,7 +439,7 @@ export function VerificationPage() {
                   ? t(
                       'Site Key 随站点设置保存在服务端文档里；只有 Secret 走环境变量。组件脚本从服务商 CDN 加载，离线或网络受限时显示不出来，表单会给出可读提示。',
                     )
-                  : t('本地验证的题目与答案都在本站服务端生成和校验，不依赖 CDN 或任何外部服务，离线部署也能使用。')}
+                  : t('本地验证的题目（滑块、点击、选择图形）与答案都在本站服务端生成和校验，不依赖 CDN 或任何外部服务，离线部署也能使用。')}
               </p>
             </div>
           </section>

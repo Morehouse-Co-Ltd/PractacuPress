@@ -173,6 +173,25 @@ const fragment: Dictionary = {
   '例如：竞品名、引流词': 'e.g. a competitor name or a spam term',
   'AI：高风险': 'AI: high risk',
   'AI：需留意': 'AI: needs a look',
+
+  // ---- 拆分评论审核 / 审核设置后的队列页 ----
+  评论审核: 'Comment review',
+  '处理待审评论、隐藏不合适的发言；评论策略与 AI 权限在「审核设置」中调整。':
+    'Approve pending comments, hide what does not belong, and adjust comment policy and AI permissions under Moderation settings.',
+  'AI 审核已开启': 'AI moderation is on',
+  'AI 只打风险分，不会代替审核员处理。':
+    'AI only scores risk; it does not act on your behalf.',
+  '先审后发已开启：AI 会自动通过低风险的待审评论，中高风险留给人工。':
+    'Review before publishing is on: AI approves low-risk pending comments and leaves medium and high risk to a person.',
+  '先审后发未开启：AI 会自动删除高风险的公开评论，其余保持不变。':
+    'Review before publishing is off: AI deletes high-risk public comments and leaves the rest untouched.',
+  立即运行: 'Run now',
+  '最近一轮：通过 {approved} 条，删除 {deleted} 条，失败 {failed} 条。':
+    'Last pass: {approved} approved, {deleted} deleted, {failed} failed.',
+  'AI 审核已完成': 'AI moderation finished',
+  '自动通过 {approved} 条，自动删除 {deleted} 条。':
+    'Automatically approved {approved} and deleted {deleted}.',
+  'AI 审核运行失败': 'AI moderation could not run',
 };
 
 export default fragment;

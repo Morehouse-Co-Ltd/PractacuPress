@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type {
-  Comment,
-  CommentModerationAction,
-  CommentStatus,
-  SafetyPolicy,
-  SafetyRateLimit,
-  SensitiveWordMode,
-} from '../../types';
+import type { Comment, CommentModerationAction, CommentStatus } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { useCustomization } from '../../lib/customize';
+import {
+  aiAutoEnabled,
+  aiCommentDecision,
+  aiRiskReasonText,
+  assessCommentRisk,
+} from '../../lib/aiModeration';
 import { noteActivity } from '../../lib/activity';
 import { formatDateTime, KIND_LABEL, shortId } from '../../lib/format';
 import { useT } from '../../lib/i18n';
@@ -20,22 +19,16 @@ import {
   Button,
   Callout,
   EmptyState,
-  Field,
   Input,
   Modal,
   PageLoading,
-  Select,
   Tabs,
-  Textarea,
-  Toggle,
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
-import { useStepUp } from '../../lib/stepUp';
 import { useToast } from '../../lib/toast';
 
 type TabKey = 'all' | CommentStatus;
-type SafetyTab = 'words' | 'rate' | 'ip';
 
 const STATUS_TONE: Record<CommentStatus, 'ok' | 'warn' | 'muted' | 'danger'> = {
   visible: 'ok',
@@ -44,72 +37,15 @@ const STATUS_TONE: Record<CommentStatus, 'ok' | 'warn' | 'muted' | 'danger'> = {
   deleted: 'danger',
 };
 
-/**
- * AI 审核辅助的本地启发式评分。
- *
- * 不把评论正文发送到外部服务：用常见的垃圾评论特征（引流词、外链数量、促销词、
- * 异常大写/标点）算一个风险分，审核员据此决定是否隐藏。真正的拦截仍由「先审后发」、
- * 敏感词与 IP 规则在服务端执行。
- */
-const AI_SPAM_PATTERNS: { pattern: RegExp; weight: number; reason: string }[] = [
-  { pattern: /加(微信|vx|v信|qq)|联系方式|扫码/i, weight: 4, reason: '引导私下联系' },
-  { pattern: /代购|刷单|返利|兼职|赚钱|贷款|博彩|赌博|色情|发票|办证/i, weight: 4, reason: '商业推广' },
-  { pattern: /免费领取|限时优惠|点击链接|立即购买|全网最低/i, weight: 3, reason: '促销话术' },
-  { pattern: /telegram|whatsapp|t\.me|wa\.me/i, weight: 3, reason: '站外引流' },
-  { pattern: /(https?:\/\/\S+){2,}/i, weight: 2, reason: '多条外链' },
-  { pattern: /!{3,}|！{3,}|[A-Z]{10,}/, weight: 1, reason: '异常强调' },
-];
-
-export interface AiCommentRisk {
-  score: number;
-  level: 'low' | 'medium' | 'high';
-  reasons: string[];
-}
-
-export function assessCommentRisk(
-  body: string,
-  settings: { sensitivity: 'low' | 'medium' | 'high'; blocked_terms: string[] },
-): AiCommentRisk {
-  const text = body.trim();
-  let score = 0;
-  const reasons: string[] = [];
-  for (const rule of AI_SPAM_PATTERNS) {
-    if (rule.pattern.test(text)) {
-      score += rule.weight;
-      reasons.push(rule.reason);
-    }
-  }
-  const lower = text.toLowerCase();
-  for (const term of settings.blocked_terms) {
-    if (term && lower.includes(term)) {
-      score += 5;
-      reasons.push(`自定义词：${term}`);
-    }
-  }
-  if (text.length > 600) {
-    score += 1;
-    reasons.push('篇幅异常');
-  }
-  const thresholds =
-    settings.sensitivity === 'high'
-      ? { medium: 2, high: 4 }
-      : settings.sensitivity === 'low'
-        ? { medium: 6, high: 10 }
-        : { medium: 4, high: 7 };
-  const level = score >= thresholds.high ? 'high' : score >= thresholds.medium ? 'medium' : 'low';
-  return { score, level, reasons: Array.from(new Set(reasons)).slice(0, 4) };
-}
-
 export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
-  const { me, site, applySite } = useAuth();
+  const { me, site } = useAuth();
   const backend = useBackend();
   const demo = isDemo(backend);
   const toast = useToast();
-  // 删除敏感词 / IP 规则由服务端的 step-up 守卫保护：保护开启后需要先过一次密码验证。
-  const { ensureStepUp } = useStepUp();
-  const { customization, update } = useCustomization();
+  const { customization } = useCustomization();
   const comments = customization.comments;
+  const ai = comments.ai;
   // 真实后端的评论策略在站点设置里，必须交给服务端执行；演示模式仍用本地配置。
   const commentsEnabled = demo ? comments.enabled : (site?.comments_enabled ?? true);
   const commentsRequireReview = demo ? comments.require_review : (site?.comments_require_review ?? false);
@@ -124,8 +60,14 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<Comment | null>(null);
   const [busyId, setBusyId] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiReport, setAiReport] = useState<{ approved: number; deleted: number; failed: number } | null>(
+    null,
+  );
+  /** 每次进入页面只自动运行一次，避免刷新列表后反复处理。 */
+  const aiAutoRunRef = useRef(false);
   const seq = useRef(0);
-  useTitle(embedded ? t('信息安全') : t('评论与审核'));
+  useTitle(embedded ? t('信息安全') : t('评论审核'));
 
   // 评论状态的中文原文作键，取值时按当前语言翻译。
   const statusLabel: Record<CommentStatus, string> = {
@@ -241,196 +183,80 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
     [counts, t],
   );
 
-  const saveComments = (patch: Partial<typeof comments>) => {
-    update({ comments: { ...comments, ...patch } });
-  };
-
-  /** AI 审核辅助设置；旧配置没有这一段时用关闭的默认值。 */
-  const ai = comments.ai ?? {
-    enabled: false,
-    mode: 'suggest' as const,
-    sensitivity: 'medium' as const,
-    blocked_terms: [],
-  };
-  const saveAi = (patch: Partial<typeof ai>) => saveComments({ ai: { ...ai, ...patch } });
-
-  // 真实后端：评论开关是站点级字段，保存后由 API 强制执行（关闭时 POST /comments 返回 403）。
-  const saveServerPolicy = async (patch: {
-    comments_enabled?: boolean;
-    comments_require_review?: boolean;
-  }) => {
-    if (!me) return;
+  /**
+   * 按 AI 权限处理一轮评论。
+   *
+   * 开启「先审后发」时把低风险待审评论自动通过；未开启时把高风险公开评论自动删除。
+   * 单次最多扫描 100 条，避免一次打开页面触发过长的请求链；更早的评论留给手动处理。
+   */
+  const aiRunningRef = useRef(false);
+  const runAiPass = useCallback(async () => {
+    // 评论关闭时不再动队列：已有评论保留原状，等站长重新开启后再处理。
+    if (aiRunningRef.current || !commentsEnabled || !aiAutoEnabled(ai, 'comment')) return;
+    aiRunningRef.current = true;
+    setAiBusy(true);
+    let approved = 0;
+    let deleted = 0;
+    let failed = 0;
     try {
-      await backend.updateSite(me.site_id, patch);
-      if (site) applySite({ ...site, ...patch });
-      toast.push('ok', t('评论策略已保存'));
+      if (commentsRequireReview) {
+        const page = await backend.allComments({ status: 'pending_review', limit: 100 });
+        for (const comment of page.items) {
+          const risk = assessCommentRisk(comment.body, ai);
+          if (aiCommentDecision(ai, true, risk) !== 'approve') continue;
+          try {
+            await backend.moderateComment(comment.id, 'approve');
+            approved += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+      } else {
+        const page = await backend.allComments({ status: 'visible', limit: 100 });
+        for (const comment of page.items) {
+          const risk = assessCommentRisk(comment.body, ai);
+          if (aiCommentDecision(ai, false, risk) !== 'delete') continue;
+          try {
+            await backend.moderateComment(comment.id, 'delete');
+            deleted += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+      }
+      setAiReport({ approved, deleted, failed });
+      if (approved || deleted || failed) {
+        if (me) {
+          noteActivity(
+            backend,
+            me.user.display_name,
+            'AI 审核',
+            `通过 ${approved} · 删除 ${deleted}`,
+            failed ? `失败 ${failed}` : undefined,
+          );
+        }
+        toast.push(
+          failed ? 'info' : 'ok',
+          t('AI 审核已完成'),
+          t('自动通过 {approved} 条，自动删除 {deleted} 条。', { approved, deleted }),
+        );
+        await load('');
+      }
     } catch (err) {
-      toast.push('error', t('保存失败'), err instanceof Error ? err.message : undefined);
-    }
-  };
-
-  // 内容安全：仅真实后端的站点管理员可维护。演示后端没有这些端点，整块面板隐藏。
-  const canManageSafety = !demo && !!me && (me.role === 'site_admin' || me.role === 'platform_admin');
-  const [safetyTab, setSafetyTab] = useState<SafetyTab>('words');
-  const [safety, setSafety] = useState<SafetyPolicy | null>(null);
-  const [safetyLoading, setSafetyLoading] = useState(false);
-  const [safetyError, setSafetyError] = useState('');
-  const [safetyBusy, setSafetyBusy] = useState('');
-  const [wordDraft, setWordDraft] = useState<{
-    word: string;
-    mode: SensitiveWordMode;
-    replacement: string;
-  }>({ word: '', mode: 'reject', replacement: '***' });
-  const [ruleDraft, setRuleDraft] = useState<{
-    kind: 'allow' | 'deny';
-    value: string;
-    note: string;
-  }>({ kind: 'deny', value: '', note: '' });
-  const [rateDraft, setRateDraft] = useState<SafetyRateLimit>({
-    user_per_window: 5,
-    ip_per_window: 10,
-    window_seconds: 60,
-  });
-
-  const loadSafety = useCallback(async () => {
-    if (!canManageSafety || !me || !backend.safetyPolicy) return;
-    setSafetyLoading(true);
-    setSafetyError('');
-    try {
-      const policy = await backend.safetyPolicy(me.site_id);
-      setSafety(policy);
-      setRateDraft(policy.rate_limit);
-    } catch (err) {
-      setSafetyError(err instanceof Error ? err.message : t('内容安全策略加载失败。'));
+      toast.push('error', t('AI 审核运行失败'), err instanceof Error ? err.message : undefined);
     } finally {
-      setSafetyLoading(false);
+      aiRunningRef.current = false;
+      setAiBusy(false);
     }
-  }, [backend, canManageSafety, me, t]);
+  }, [ai, backend, commentsEnabled, commentsRequireReview, load, me, t, toast]);
 
+  // 进入列表后自动跑一轮；aiAutoRunRef 保证同一页面生命周期内只跑一次。
   useEffect(() => {
-    void loadSafety();
-  }, [loadSafety]);
-
-  const saveRateLimit = async () => {
-    if (!me || !backend.updateSafetyRateLimit) return;
-    setSafetyBusy('rate');
-    try {
-      const updated = await backend.updateSafetyRateLimit(me.site_id, rateDraft);
-      setRateDraft(updated);
-      setSafety((current) => (current ? { ...current, rate_limit: updated } : current));
-      toast.push('ok', t('评论频率已保存'));
-    } catch (err) {
-      toast.push('error', t('保存失败'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setSafetyBusy('');
-    }
-  };
-
-  const addWord = async () => {
-    if (!me || !backend.createSensitiveWord) return;
-    const word = wordDraft.word.trim();
-    if (word.length < 2) {
-      toast.push('error', t('敏感词至少需要 2 个字符'));
-      return;
-    }
-    setSafetyBusy('word');
-    try {
-      await backend.createSensitiveWord(me.site_id, {
-        word,
-        mode: wordDraft.mode,
-        replacement: wordDraft.replacement.trim() || '***',
-      });
-      setWordDraft({ word: '', mode: wordDraft.mode, replacement: wordDraft.replacement });
-      toast.push('ok', t('敏感词已添加'));
-      await loadSafety();
-    } catch (err) {
-      toast.push('error', t('添加失败'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setSafetyBusy('');
-    }
-  };
-
-  const changeWordMode = async (wordId: string, mode: SensitiveWordMode) => {
-    if (!me || !backend.updateSensitiveWord) return;
-    setSafetyBusy(wordId);
-    try {
-      const updated = await backend.updateSensitiveWord(me.site_id, wordId, { mode });
-      setSafety((current) =>
-        current
-          ? { ...current, words: current.words.map((item) => (item.id === wordId ? updated : item)) }
-          : current,
-      );
-      toast.push('ok', t('敏感词规则已更新'));
-    } catch (err) {
-      toast.push('error', t('更新失败'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setSafetyBusy('');
-    }
-  };
-
-  const deleteWord = async (wordId: string) => {
-    if (!me || !backend.deleteSensitiveWord) return;
-    const allowed = await ensureStepUp(t('删除敏感词'));
-    if (!allowed) return;
-    setSafetyBusy(wordId);
-    try {
-      await backend.deleteSensitiveWord(me.site_id, wordId);
-      setSafety((current) =>
-        current ? { ...current, words: current.words.filter((item) => item.id !== wordId) } : current,
-      );
-      toast.push('ok', t('敏感词已删除'));
-    } catch (err) {
-      toast.push('error', t('删除失败'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setSafetyBusy('');
-    }
-  };
-
-  const addIPRule = async () => {
-    if (!me || !backend.createSiteIPRule) return;
-    const value = ruleDraft.value.trim();
-    if (!value) {
-      toast.push('error', t('请填写 IP 地址或 CIDR 网段'));
-      return;
-    }
-    setSafetyBusy('rule');
-    try {
-      const created = await backend.createSiteIPRule(me.site_id, {
-        kind: ruleDraft.kind,
-        value,
-        note: ruleDraft.note.trim() || undefined,
-      });
-      setSafety((current) =>
-        current ? { ...current, ip_rules: [...current.ip_rules, created] } : current,
-      );
-      setRuleDraft({ kind: ruleDraft.kind, value: '', note: '' });
-      toast.push('ok', t('IP 规则已添加'));
-    } catch (err) {
-      toast.push('error', t('添加失败'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setSafetyBusy('');
-    }
-  };
-
-  const deleteIPRule = async (ruleId: string) => {
-    if (!me || !backend.deleteSiteIPRule) return;
-    const allowed = await ensureStepUp(t('删除 IP 规则'));
-    if (!allowed) return;
-    setSafetyBusy(ruleId);
-    try {
-      await backend.deleteSiteIPRule(me.site_id, ruleId);
-      setSafety((current) =>
-        current
-          ? { ...current, ip_rules: current.ip_rules.filter((item) => item.id !== ruleId) }
-          : current,
-      );
-      toast.push('ok', t('IP 规则已删除'));
-    } catch (err) {
-      toast.push('error', t('删除失败'), err instanceof Error ? err.message : undefined);
-    } finally {
-      setSafetyBusy('');
-    }
-  };
+    if (loading || aiAutoRunRef.current) return;
+    if (!aiAutoEnabled(ai, 'comment')) return;
+    aiAutoRunRef.current = true;
+    void runAiPass();
+  }, [ai, loading, runAiPass]);
 
   return (
     <RoleGate capability="moderate_comment" need={t('审核员')}>
@@ -443,8 +269,8 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
       ) : (
         <div className="admin-page-head">
           <div>
-            <h1>{t('评论与审核')}</h1>
-            <p>{t('处理待审评论、隐藏不合适的发言，并决定本站的评论策略。')}</p>
+            <h1>{t('评论审核')}</h1>
+            <p>{t('处理待审评论、隐藏不合适的发言；评论策略与 AI 权限在「审核设置」中调整。')}</p>
           </div>
           <div className="admin-page-actions">
             <Button variant="ghost" size="sm" icon="refresh" onClick={() => void load('')}>
@@ -454,494 +280,40 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
         </div>
       )}
 
-      <div className="settings-grid">
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>{t('评论设置')}</h3>
-              <p>{t(demo ? '立即生效，保存在本地安装配置。' : '立即生效，由服务端强制执行。')}</p>
-            </div>
-            <Badge tone={commentsEnabled ? 'ok' : 'muted'}>{commentsEnabled ? t('已开启') : t('已关闭')}</Badge>
-          </div>
-          <div className="panel-body">
-            <div className="form-stack">
-              <Toggle
-                checked={commentsEnabled}
-                onChange={(next) =>
-                  demo
-                    ? saveComments({ enabled: next })
-                    : void saveServerPolicy({ comments_enabled: next })
-                }
-                label={t('允许评论')}
-                description={t('关闭后文章与帖子底部不再显示评论框，已有评论仍然保留。')}
-              />
-              <Toggle
-                checked={commentsRequireReview}
-                onChange={(next) =>
-                  demo
-                    ? saveComments({ require_review: next })
-                    : void saveServerPolicy({ comments_require_review: next })
-                }
-                label={t('先审后发')}
-                description={t('新评论进入待审核队列，通过后才会公开显示。')}
-              />
-              <Field
-                label={t('评论须知')}
-                htmlFor="comment-notice"
-                aside={`${comments.notice.length}/400`}
-                hint={t('显示在评论框上方，留空则不显示。')}
-              >
-                <Textarea
-                  id="comment-notice"
-                  value={comments.notice}
-                  maxLength={400}
-                  style={{ minHeight: 72 }}
-                  placeholder={t('例如：请就事论事，尊重其他读者；广告与人身攻击会被删除。')}
-                  onChange={(event) => saveComments({ notice: event.target.value })}
-                />
-              </Field>
-              {!demo ? (
-                <Callout tone="info" icon="shield" title={t('评论策略由服务端执行')}>
-                  {t('关闭评论后，即使直接调用接口也会被拒绝；先审后发时新评论进入待审核队列。')}
-                </Callout>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        <aside className="settings-side">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('审核规则')}</h3>
-                <p>{t('评论状态与内容状态是两条独立的流水线。')}</p>
-              </div>
-            </div>
-            <div className="panel-body" style={{ paddingTop: 4 }}>
-              <div className="mini-list">
-                <div className="mini-row">
-                  <span className="mini-label">{t('已发布')}</span>
-                  <span className="mini-value">{t('所有人可见')}</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('待审核')}</span>
-                  <span className="mini-value">{t('作者与审核员可见')}</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('已隐藏')}</span>
-                  <span className="mini-value">{t('仅审核员可见')}</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('已删除')}</span>
-                  <span className="mini-value">{t('保留占位，回复仍在')}</span>
-                </div>
-              </div>
-              <p className="tiny faint mt-12" style={{ lineHeight: 1.75 }}>
-                {t(
-                  '审核员与管理员可以隐藏任何评论；作者可以删除自己的评论。删除是软删除，不会抹掉上下文。',
-                )}
-              </p>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('AI 审核')}</h3>
-                <p>{t('本地风险评分，不把评论正文发送到外部服务。')}</p>
-              </div>
-              <Badge tone={ai.enabled ? 'ok' : 'muted'}>
-                {ai.enabled ? t('已开启') : t('已关闭')}
-              </Badge>
-            </div>
-            <div className="panel-body form-stack">
-              <Toggle
-                checked={ai.enabled}
-                onChange={(enabled) => saveAi({ enabled })}
-                label={t('启用 AI 审核辅助')}
-                description={t('在评论列表里标出高风险评论，并给审核员处理建议；不会自动删除评论。')}
-              />
-              <Field label={t('敏感度')} htmlFor="ai-sensitivity">
-                <Select
-                  id="ai-sensitivity"
-                  value={ai.sensitivity}
-                  disabled={!ai.enabled}
-                  onChange={(event) =>
-                    saveAi({ sensitivity: event.target.value as typeof ai.sensitivity })
-                  }
+      {ai.enabled && ai.scopes.comment ? (
+        <div className="mt-16">
+          <Callout tone="info" icon="sparkle" title={t('AI 审核已开启')}>
+            <p>
+              {!ai.auto
+                ? t('AI 只打风险分，不会代替审核员处理。')
+                : commentsRequireReview
+                  ? t('先审后发已开启：AI 会自动通过低风险的待审评论，中高风险留给人工。')
+                  : t('先审后发未开启：AI 会自动删除高风险的公开评论，其余保持不变。')}
+            </p>
+            {ai.auto ? (
+              <div className="row gap-8 mt-10" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="sparkle"
+                  loading={aiBusy}
+                  onClick={() => void runAiPass()}
                 >
-                  <option value="low">{t('低（只报明显风险）')}</option>
-                  <option value="medium">{t('中（默认）')}</option>
-                  <option value="high">{t('高（宁可多报）')}</option>
-                </Select>
-              </Field>
-              <Field
-                label={t('处理方式')}
-                htmlFor="ai-mode"
-                hint={t('「自动标记」会把高风险评论在列表中标红，并在打开时提示先处理。')}
-              >
-                <Select
-                  id="ai-mode"
-                  value={ai.mode}
-                  disabled={!ai.enabled}
-                  onChange={(event) => saveAi({ mode: event.target.value as typeof ai.mode })}
-                >
-                  <option value="suggest">{t('只给建议')}</option>
-                  <option value="auto_hold">{t('自动标记高风险')}</option>
-                </Select>
-              </Field>
-              <Field
-                label={t('自定义风险词')}
-                htmlFor="ai-blocked-terms"
-                hint={t('用逗号分隔；命中一次加 5 分。')}
-              >
-                <Input
-                  id="ai-blocked-terms"
-                  value={ai.blocked_terms.join(', ')}
-                  disabled={!ai.enabled}
-                  placeholder={t('例如：竞品名、引流词')}
-                  onChange={(event) =>
-                    saveAi({
-                      blocked_terms: event.target.value
-                        .split(/[,，\n]/)
-                        .map((term) => term.trim().toLowerCase())
-                        .filter(Boolean)
-                        .slice(0, 50),
-                    })
-                  }
-                />
-              </Field>
-            </div>
-          </section>
-        </aside>
-      </div>
-
-      {canManageSafety ? (
-        <section className="panel mt-24">
-          <div className="panel-head">
-            <div>
-              <h3>{t('内容安全')}</h3>
-              <p>{t('敏感词、评论频率与 IP 黑白名单均由服务端执行，命中会写入站点日志。')}</p>
-            </div>
-            <Badge tone="ok">{t('服务端执行')}</Badge>
-          </div>
-          <div className="panel-body">
-            <Tabs
-              value={safetyTab}
-              onChange={setSafetyTab}
-              items={[
-                { key: 'words', label: t('敏感词') },
-                { key: 'rate', label: t('评论频率') },
-                { key: 'ip', label: t('IP 名单') },
-              ]}
-            />
-
-            {safetyError ? (
-              <div className="mt-16">
-                <Callout tone="danger" icon="alert">
-                  {safetyError}
-                </Callout>
+                  {t('立即运行')}
+                </Button>
+                {aiReport ? (
+                  <span className="tiny faint">
+                    {t('最近一轮：通过 {approved} 条，删除 {deleted} 条，失败 {failed} 条。', {
+                      approved: aiReport.approved,
+                      deleted: aiReport.deleted,
+                      failed: aiReport.failed,
+                    })}
+                  </span>
+                ) : null}
               </div>
             ) : null}
-
-            {safetyLoading && !safety ? (
-              <PageLoading label={t('正在载入内容安全策略')} />
-            ) : safetyTab === 'words' ? (
-              <div className="form-stack mt-16">
-                <div className="row gap-10" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <Field
-                    label={t('敏感词')}
-                    htmlFor="safety-word"
-                    hint={t('至少 2 个字符；英文匹配不区分大小写。')}
-                  >
-                    <Input
-                      id="safety-word"
-                      value={wordDraft.word}
-                      maxLength={100}
-                      placeholder={t('例如：违禁词')}
-                      onChange={(event) =>
-                        setWordDraft({ ...wordDraft, word: event.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label={t('命中动作')} htmlFor="safety-word-mode">
-                    <Select
-                      id="safety-word-mode"
-                      value={wordDraft.mode}
-                      onChange={(event) =>
-                        setWordDraft({
-                          ...wordDraft,
-                          mode: event.target.value as SensitiveWordMode,
-                        })
-                      }
-                    >
-                      <option value="reject">{t('拒绝提交')}</option>
-                      <option value="replace">{t('替换为占位符')}</option>
-                      <option value="review">{t('标记待审')}</option>
-                    </Select>
-                  </Field>
-                  <Field label={t('占位符')} htmlFor="safety-word-replacement">
-                    <Input
-                      id="safety-word-replacement"
-                      value={wordDraft.replacement}
-                      maxLength={80}
-                      disabled={wordDraft.mode !== 'replace'}
-                      onChange={(event) =>
-                        setWordDraft({ ...wordDraft, replacement: event.target.value })
-                      }
-                    />
-                  </Field>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon="plus"
-                    loading={safetyBusy === 'word'}
-                    onClick={() => void addWord()}
-                  >
-                    {t('添加敏感词')}
-                  </Button>
-                </div>
-
-                {safety && safety.words.length > 0 ? (
-                  <div className="table-wrap">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>{t('敏感词')}</th>
-                          <th style={{ width: 170 }}>{t('命中动作')}</th>
-                          <th>{t('占位符')}</th>
-                          <th>{t('时间')}</th>
-                          <th style={{ width: 90 }}>{t('操作')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {safety.words.map((word) => (
-                          <tr key={word.id}>
-                            <td className="mono">{word.word}</td>
-                            <td>
-                              <Select
-                                value={word.mode}
-                                aria-label={t('命中动作')}
-                                disabled={safetyBusy === word.id}
-                                onChange={(event) =>
-                                  void changeWordMode(
-                                    word.id,
-                                    event.target.value as SensitiveWordMode,
-                                  )
-                                }
-                              >
-                                <option value="reject">{t('拒绝提交')}</option>
-                                <option value="replace">{t('替换为占位符')}</option>
-                                <option value="review">{t('标记待审')}</option>
-                              </Select>
-                            </td>
-                            <td className="mono tiny muted">{word.replacement}</td>
-                            <td className="tiny muted">{formatDateTime(word.created_at)}</td>
-                            <td>
-                              <Button
-                                variant="quiet"
-                                size="sm"
-                                icon="trash"
-                                loading={safetyBusy === word.id}
-                                onClick={() => void deleteWord(word.id)}
-                              >
-                                {t('删除')}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon="shield"
-                    title={t('还没有敏感词')}
-                    body={t('添加后，评论与内容提交会在服务端执行这里配置的动作。')}
-                  />
-                )}
-              </div>
-            ) : safetyTab === 'rate' ? (
-              <div className="form-stack mt-16">
-                <div className="row gap-10" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <Field
-                    label={t('每位用户 / 窗口')}
-                    htmlFor="safety-user-limit"
-                    hint={t('登录用户在该窗口内最多发表的评论数，0 表示停用。')}
-                  >
-                    <Input
-                      id="safety-user-limit"
-                      type="number"
-                      min={0}
-                      max={1000}
-                      value={rateDraft.user_per_window}
-                      onChange={(event) =>
-                        setRateDraft({
-                          ...rateDraft,
-                          user_per_window: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field
-                    label={t('每个 IP / 窗口')}
-                    htmlFor="safety-ip-limit"
-                    hint={t('匿名与登录评论都按来源地址计数，0 表示停用。')}
-                  >
-                    <Input
-                      id="safety-ip-limit"
-                      type="number"
-                      min={0}
-                      max={10000}
-                      value={rateDraft.ip_per_window}
-                      onChange={(event) =>
-                        setRateDraft({
-                          ...rateDraft,
-                          ip_per_window: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label={t('窗口秒数')} htmlFor="safety-window">
-                    <Input
-                      id="safety-window"
-                      type="number"
-                      min={5}
-                      max={86400}
-                      value={rateDraft.window_seconds}
-                      onChange={(event) =>
-                        setRateDraft({
-                          ...rateDraft,
-                          window_seconds: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </Field>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon="check"
-                    loading={safetyBusy === 'rate'}
-                    onClick={() => void saveRateLimit()}
-                  >
-                    {t('保存频率限制')}
-                  </Button>
-                </div>
-                <Callout tone="info" icon="shield" title={t('超限会返回 429')}>
-                  {t(
-                    '超过窗口阈值时，评论接口返回 problem+json 429，并带 Retry-After 与 details.retry_after_seconds。',
-                  )}
-                </Callout>
-              </div>
-            ) : (
-              <div className="form-stack mt-16">
-                <div className="row gap-10" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <Field label={t('类型')} htmlFor="safety-rule-kind">
-                    <Select
-                      id="safety-rule-kind"
-                      value={ruleDraft.kind}
-                      onChange={(event) =>
-                        setRuleDraft({
-                          ...ruleDraft,
-                          kind: event.target.value as 'allow' | 'deny',
-                        })
-                      }
-                    >
-                      <option value="deny">{t('黑名单（拒绝）')}</option>
-                      <option value="allow">{t('白名单（放行）')}</option>
-                    </Select>
-                  </Field>
-                  <Field
-                    label={t('地址或网段')}
-                    htmlFor="safety-rule-value"
-                    hint={t('支持单个 IPv4 / IPv6 地址或 CIDR，例如 203.0.113.0/24。')}
-                  >
-                    <Input
-                      id="safety-rule-value"
-                      value={ruleDraft.value}
-                      maxLength={64}
-                      placeholder={t('例如：203.0.113.0/24')}
-                      onChange={(event) =>
-                        setRuleDraft({ ...ruleDraft, value: event.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label={t('备注（可选）')} htmlFor="safety-rule-note">
-                    <Input
-                      id="safety-rule-note"
-                      value={ruleDraft.note}
-                      maxLength={200}
-                      onChange={(event) =>
-                        setRuleDraft({ ...ruleDraft, note: event.target.value })
-                      }
-                    />
-                  </Field>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon="plus"
-                    loading={safetyBusy === 'rule'}
-                    onClick={() => void addIPRule()}
-                  >
-                    {t('添加 IP 规则')}
-                  </Button>
-                </div>
-                <Callout tone="warn" icon="alert" title={t('黑名单优先')}>
-                  {t(
-                    '只要存在白名单，站点就只放行名单内的地址；黑名单始终优先。本机回环地址始终放行，避免把自己锁在管理页之外。',
-                  )}
-                </Callout>
-
-                {safety && safety.ip_rules.length > 0 ? (
-                  <div className="table-wrap">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>{t('类型')}</th>
-                          <th>{t('地址或网段')}</th>
-                          <th>{t('备注')}</th>
-                          <th>{t('时间')}</th>
-                          <th style={{ width: 90 }}>{t('操作')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {safety.ip_rules.map((rule) => (
-                          <tr key={rule.id}>
-                            <td>
-                              <Badge tone={rule.kind === 'allow' ? 'ok' : 'danger'} dot>
-                                {rule.kind === 'allow' ? t('白名单') : t('黑名单')}
-                              </Badge>
-                            </td>
-                            <td className="mono">{rule.value}</td>
-                            <td className="tiny muted">{rule.note || '—'}</td>
-                            <td className="tiny muted">{formatDateTime(rule.created_at)}</td>
-                            <td>
-                              <Button
-                                variant="quiet"
-                                size="sm"
-                                icon="trash"
-                                loading={safetyBusy === rule.id}
-                                onClick={() => void deleteIPRule(rule.id)}
-                              >
-                                {t('删除')}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon="shield"
-                    title={t('还没有 IP 规则')}
-                    body={t('添加黑名单可拒绝特定来源；添加白名单后仅放行名单内地址。')}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        </section>
+          </Callout>
+        </div>
       ) : null}
 
       <div className="toolbar mt-24">
@@ -1015,7 +387,8 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
               <tbody>
                 {items.map((comment) => {
                   const target = targetOf(comment);
-                  const risk = ai.enabled ? assessCommentRisk(comment.body, ai) : null;
+                  const risk =
+                    ai.enabled && ai.scopes.comment ? assessCommentRisk(comment.body, ai) : null;
                   return (
                     <tr key={comment.id}>
                       <td style={{ maxWidth: 360 }}>
@@ -1051,7 +424,9 @@ export function CommentsPage({ embedded = false }: { embedded?: boolean } = {}) 
                               {risk.level === 'high' ? t('AI：高风险') : t('AI：需留意')}
                             </Badge>
                             {risk.reasons.length ? (
-                              <div className="tiny faint mt-4">{risk.reasons.join(' · ')}</div>
+                              <div className="tiny faint mt-4">
+                                {risk.reasons.map((reason) => aiRiskReasonText(reason)).join(' · ')}
+                              </div>
                             ) : null}
                           </div>
                         ) : null}

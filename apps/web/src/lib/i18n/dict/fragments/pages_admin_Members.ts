@@ -28,6 +28,7 @@ const fragment: Dictionary = {
   '{name} 的用户组': 'Group for {name}',
   '原用户组 {role}': 'Previous group: {role}',
   '最高管理员': 'Super admin',
+  '注册该站的账号，用户组固定': 'Registered this site; the group is fixed',
   '最高管理员（个人博客）': 'Super admin (personal blog)',
   '个人博客': 'Personal blog',
   '按用户组授权': 'Permissions by group',
@@ -51,11 +52,7 @@ const fragment: Dictionary = {
   '无法修改用户组': 'Could not change the group',
   '将 {name} 改为{role}？': 'Change {name} to {role}?',
   '确认变更': 'Confirm change',
-  '平台管理员拥有全部权限': 'Platform admins have every permission',
-  '该用户组可以管理所有站点与全局安全策略。请确认这也是你想要的。':
-    'This group can manage every site and the global security policy. Make sure that is what you want.',
   '变更立即生效，并写入操作日志。': 'The change takes effect immediately and is written to the activity log.',
-  '不能撤销最后一个平台管理员。': 'You cannot revoke the last platform admin.',
 
   // ---- 新建用户 ----
   '新增用户': 'Add user',
@@ -121,8 +118,8 @@ const fragment: Dictionary = {
   // ---- 页面说明卡片 ----
   '个人博客下所有用户都能登录后台并拥有最高权限；用户组原样保留，切回社区站点后恢复。':
     'On a personal blog every user can sign in to the dashboard with full permissions; groups are kept as they are and restored when you switch back to a community site.',
-  '按用户组管理成员。用户组变更会写入操作日志，并立即影响服务端授权。':
-    'Manage members by group. Group changes are written to the activity log and affect server-side authorization immediately.',
+  '按用户组管理成员。最高管理员的用户组固定，其余变更会写入操作日志，并立即影响服务端授权。':
+    'Manage members by group. The super admin group is fixed; other changes are written to the activity log and affect server-side authorization immediately.',
   '个人博客：用户即管理员': 'Personal blog: every user is an admin',
   '站内自助注册已关闭。你创建的每个用户都能登录后台并拥有全部能力，不需要再分配用户组。':
     'Self sign-up is closed. Every user you create can sign in to the dashboard with all capabilities, so there is no need to assign groups.',
@@ -132,8 +129,8 @@ const fragment: Dictionary = {
   '用户组边界': 'Group boundaries',
   '平台管理员管理站点与全局策略；站点管理员管理本站用户与规则；编辑 / 审核员处理内容审核；':
     'Platform admins manage sites and global policy; site admins manage users and rules on this site; editors review content;',
-  '成员可以发布与互动。只有平台管理员可以授予或撤销平台管理员。逐项能力见':
-    'members publish and interact. Only platform admins can grant or revoke the platform admin group. See the capability list in',
+  '成员可以发布与互动。最高管理员固定为注册该站的账号，其他账户不能被提升为该用户组。逐项能力见':
+    'members publish and interact. The super admin is always the account that registered the site; no other account can be promoted into that group. See the capability list in',
   '没有用户': 'No users',
   '创建用户或开放注册后，用户会出现在这里。': 'Users appear here once you create one or open sign-up.',
   '这个用户组里还没有用户。': 'This group has no users yet.',
@@ -162,8 +159,8 @@ const fragment: Dictionary = {
   '站点形态：{kind}。': 'Site type: {kind}.',
   '12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。创建后请通过安全渠道交给对方。':
     '12–128 characters combining at least two of lowercase, uppercase, digits and symbols; common passwords are refused. Hand the initial password over through a safe channel.',
-  '新增用户不能直接设为最高管理员；如需平台管理员，请创建后在用户组里单独调整。':
-    'New users cannot be created as platform administrators; create the account first and grant the role separately if needed.',
+  '最高管理员固定为注册该站的账号；新增用户不能设为该用户组。':
+    'The super admin is always the account that registered the site; a new user cannot be given that group.',
 };
 
 export default fragment;

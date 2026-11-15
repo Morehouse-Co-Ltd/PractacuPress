@@ -1,7 +1,14 @@
-import type { AppearanceSectionId, LayoutVariant, SiteTheme, ThemeSettings } from '../types';
+import type {
+  AppearanceSectionId,
+  LayoutVariant,
+  SiteTheme,
+  ThemePreviewSpec,
+  ThemeSettings,
+} from '../types';
 import { t } from './i18n';
 import { applyPreset, DEFAULT_THEME, normalizeThemeSettings } from './theme';
 import { normalizeThemeSettingsSchema } from './themeSettings';
+import { cloneThemePreview, normalizeThemePreview } from './themePreview';
 import { liveCatalog } from './i18n/live';
 
 /**
@@ -30,6 +37,11 @@ export interface BuiltinThemeDefinition {
    * 圆角与正文栏宽。这些值在套用主题时一起写入，站长仍可在外观页微调。
    */
   style?: Partial<ThemeSettings>;
+  /**
+   * 主题自带的预览。内置主题示范「主题自己写预览」：没有这段时，渲染器会按版式
+   * 画一张通用结构图。字段与限制见 `docs/themes/06-preview.md`。
+   */
+  preview?: ThemePreviewSpec;
 }
 
 /** 外观分区清单：id、名称与用途说明。顺序即外观页的显示顺序。 */
@@ -60,6 +72,18 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
     note: t('纸白浅色 · 经典单栏，适合安静的长文阅读。'),
     preset: 'paper',
     variant: 'classic',
+    preview: {
+      brand: 'PRACTACU PRESS',
+      nav: [t('文章'), t('专题'), t('关于')],
+      kicker: t('独立出版 · 纸白单栏'),
+      title: t('把注意力留给文字'),
+      subtitle: t('长文、随笔与专题，安静克制的阅读版面。'),
+      blocks: [
+        { type: 'media', weight: 2 },
+        { type: 'text' },
+        { type: 'quote', text: t('版面安静下来，文字才有回声。') },
+      ],
+    },
   },
   {
     id: 'night',
@@ -67,6 +91,18 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
     note: t('冷石墨与电光蓝 · 深色杂志布局；切到浅色会得到同一套设计的冷白重配。'),
     preset: 'night',
     variant: 'bento',
+    preview: {
+      brand: 'NIGHTFLIGHT',
+      nav: [t('首页'), t('文章'), t('社区')],
+      kicker: t('夜航 · 冷石墨双栏'),
+      title: t('在冷石墨上读长夜'),
+      subtitle: t('电光蓝强调与杂志网格，适合图片、专题与社区。'),
+      blocks: [
+        { type: 'grid', weight: 2 },
+        { type: 'text' },
+        { type: 'button', text: t('开始阅读') },
+      ],
+    },
   },
 ];
 
@@ -108,6 +144,7 @@ export function builtinThemeBundle(id: string): SiteTheme | null {
     variant: definition.variant,
     theme: { ...applyPreset(DEFAULT_THEME, definition.preset), ...definition.style },
     appearance: { sections: [...DEFAULT_APPEARANCE_SECTIONS] },
+    ...(definition.preview ? { preview: cloneThemePreview(definition.preview) } : {}),
   };
 }
 
@@ -216,6 +253,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
   if (BUILTIN_THEME_IDS.has(id)) id = `custom_${id}`;
   const appearance = normalizeAppearance(raw.appearance);
   const settings = normalizeThemeSettingsSchema(raw.settings);
+  const preview = normalizeThemePreview(raw.preview);
   return {
     id,
     name,
@@ -224,6 +262,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
     theme: normalizeThemeSettings(raw.theme),
     ...(appearance ? { appearance } : {}),
     ...(settings ? { settings } : {}),
+    ...(preview ? { preview } : {}),
   };
 }
 
@@ -263,6 +302,7 @@ export function parseThemeFile(raw: string): SiteTheme {
   const note = themeText(record.note ?? record.summary, '', 160);
   const appearance = normalizeAppearance(record.appearance);
   const settings = normalizeThemeSettingsSchema(record.settings);
+  const preview = normalizeThemePreview(record.preview);
   return {
     id: newThemeId(),
     name,
@@ -271,6 +311,7 @@ export function parseThemeFile(raw: string): SiteTheme {
     theme: normalizeThemeSettings(themeSource),
     ...(appearance ? { appearance } : {}),
     ...(settings ? { settings } : {}),
+    ...(preview ? { preview } : {}),
   };
 }
 
@@ -286,6 +327,7 @@ export function downloadThemeFile(theme: SiteTheme): void {
     theme: theme.theme,
     ...(theme.appearance ? { appearance: theme.appearance } : {}),
     ...(theme.settings ? { settings: theme.settings } : {}),
+    ...(theme.preview ? { preview: theme.preview } : {}),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

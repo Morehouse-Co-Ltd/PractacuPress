@@ -39,6 +39,7 @@ import {
   variantLabel,
 } from '../../lib/themes';
 import { cloneTheme, useThemeSwitch } from '../../lib/themeSwitch';
+import { cloneThemePreview } from '../../lib/themePreview';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
 import { useToast } from '../../lib/toast';
@@ -394,6 +395,7 @@ export function ThemesPage() {
       variant: customization.layout.variant,
       theme: cloneTheme(currentTheme),
       appearance: { sections: [...selectedSections] },
+      ...(selected?.preview ? { preview: cloneThemePreview(selected.preview) } : {}),
     };
     update({
       themes: [...customThemes, item],

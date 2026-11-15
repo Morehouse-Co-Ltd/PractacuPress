@@ -968,6 +968,52 @@ export interface ThemeAppearance {
 }
 
 /**
+ * 主题自带预览里的一个内容块。
+ *
+ * 预览是**声明式**的：主题只给类型、文字与视觉权重，渲染器负责把它画成一张
+ * 迷你页面。这里没有 HTML / CSS / 脚本入口，导入主题不会往后台注入标记。
+ */
+export type ThemePreviewBlockType =
+  | 'heading'
+  | 'text'
+  | 'media'
+  | 'quote'
+  | 'button'
+  | 'grid'
+  | 'divider';
+
+export interface ThemePreviewBlock {
+  type: ThemePreviewBlockType;
+  /** 块内文字（heading / text / quote / button 会显示）；渲染为纯文本。 */
+  text?: string;
+  /** 视觉权重 1–3：影响媒体块高度与文字行数。 */
+  weight?: number;
+}
+
+/**
+ * 主题作者自己写的预览画面。
+ *
+ * 主题可以只声明标题与副标题，也可以加导航、内容块与配色覆盖；缺省字段由渲染器
+ * 按主题令牌与版式补齐。字段级限制见 `docs/themes/06-preview.md`。
+ */
+export interface ThemePreviewSpec {
+  /** 预览顶栏的品牌字，缺省用主题名。 */
+  brand?: string;
+  /** 顶栏导航文字，最多 5 个；缺省画成三条占位短线。 */
+  nav?: string[];
+  /** 开屏眉题。 */
+  kicker?: string;
+  /** 开屏主标题。 */
+  title?: string;
+  /** 开屏副标题。 */
+  subtitle?: string;
+  /** 内容块，最多 12 个；缺省按版式生成。 */
+  blocks?: ThemePreviewBlock[];
+  /** 预览配色覆盖；缺省取主题令牌。只接受十六进制颜色。 */
+  palette?: { background?: string; ink?: string; accent?: string };
+}
+
+/**
  * 一套“大主题”：完整配色与排版 + 布局变体。
  *
  * 原版（classic 单栏）、白昼（daylight 卡片）与夜航（bento 双栏）是内置主题；导入、创建或另存的主题
@@ -981,6 +1027,8 @@ export interface SiteTheme {
   theme: ThemeSettings;
   /** 主题制作者声明的外观功能；缺省时按内置全集处理。 */
   appearance?: ThemeAppearance;
+  /** 主题作者自己写的预览；缺省时按版式画一张通用预览。 */
+  preview?: ThemePreviewSpec;
   /**
    * 主题自带的主题设置（来自主题包 `admin/tabs.json`）。
    *
@@ -1389,15 +1437,56 @@ export interface CaptchaStatus {
 }
 
 /**
+ * 本地（自托管）验证的题型。三种交互轮流出现，答案都在服务端校验：
+ * - `slider`：拖动圆形拼图，把它放进图里的缺口；
+ * - `click`：点中图里所有星星（旁边混着干扰图形）；
+ * - `select`：在九宫格里选出所有包含圆形的格子。
+ */
+export type LocalCaptchaKind = 'slider' | 'click' | 'select';
+
+/** 图片坐标系里的一个点；与图片的原始像素尺寸对应，不受 CSS 缩放影响。 */
+export interface LocalCaptchaPoint {
+  x: number;
+  y: number;
+}
+
+/**
  * 本地（自托管）验证的一道题（`GET /captcha/local/challenge`）。
  *
- * 问题与答案都由本站服务端生成与校验，不需要 Site Key 或环境变量；答案只存在
- * 服务端内存里，前端拿到的只有题面。挑战一次性、短时有效。
+ * 题目与答案都由本站服务端生成与校验，不需要 Site Key 或环境变量；前端拿到的只有
+ * 图形与几何信息，答案只存在服务端内存里。挑战一次性、短时有效。
+ *
+ * `kind` 决定该读哪些字段：`slider` 用 `background` / `piece`，`click` 与 `select`
+ * 用 `image`；`target_count` 是星星或格子数量，`rows` / `cols` 描述选择题的网格。
  */
 export interface LocalCaptchaChallenge {
   challenge_id: string;
-  question: string;
+  kind: LocalCaptchaKind;
+  prompt: string;
   expires_at: string;
+  width: number;
+  height: number;
+  image?: string;
+  background?: string;
+  piece?: string;
+  piece_size?: number;
+  piece_top?: number;
+  max_offset?: number;
+  target_count?: number;
+  rows?: number;
+  cols?: number;
+}
+
+/**
+ * 本地验证的答案。按题型只填其中一项：
+ * - 滑块：`x` 是拼图左边缘在图片里的像素位置；
+ * - 点击：`points` 是点击坐标，顺序不限；
+ * - 选择：`tiles` 是选中的格子序号（按行优先）。
+ */
+export interface LocalCaptchaAnswer {
+  x?: number;
+  points?: LocalCaptchaPoint[];
+  tiles?: number[];
 }
 
 /**
@@ -1416,23 +1505,32 @@ export interface LocalCaptchaSolution {
  * 评论设置。契约 v0.1.0 没有站点级评论配置端点，因此和主题一样保存在本地安装配置里。
  * `require_review` 为真时，新评论进入 pending_review，需要通过后台「评论管理」放行。
  */
-/** AI 审核辅助：目前使用本地启发式评分，不上传评论正文到外部服务。 */
-export interface AiModerationSettings {
-  enabled: boolean;
-  /** suggest：只给审核员建议；auto_hold：命中时在列表里默认标红并建议先隐藏。 */
-  mode: 'suggest' | 'auto_hold';
-  sensitivity: 'low' | 'medium' | 'high';
-  /** 自定义高风险词，逗号分隔；留空时只用内置规则。 */
-  blocked_terms: string[];
-}
-
 export interface CommentSettings {
   enabled: boolean;
   require_review: boolean;
   /** 评论须知，显示在评论框上方；留空则不显示。 */
   notice: string;
-  /** AI 审核辅助设置；旧配置缺省时关闭。 */
-  ai?: AiModerationSettings;
+  /** AI 审核辅助设置。 */
+  ai: AiModerationSettings;
+}
+
+/**
+ * AI 审核辅助：本地启发式评分，不上传文章或评论正文到外部服务。
+ *
+ * `scopes` 决定 AI 参与哪条审核流水线；`auto` 是权限开关。关闭时 AI 只在队列里
+ * 标记风险、给审核员建议；开启时按当前策略自动处理：
+ * - 开启「先审后发」：低风险的待审评论自动通过；待审文章风险低时自动发布；
+ * - 未开启「先审后发」：高风险评论由 AI 直接删除；待审文章仍可自动发布。
+ */
+export interface AiModerationSettings {
+  enabled: boolean;
+  /** 审核范围：文章与评论可以分别开启。 */
+  scopes: { article: boolean; comment: boolean };
+  /** 自动审核权限；`false` 表示只给建议，不代替审核员处理。 */
+  auto: boolean;
+  sensitivity: 'low' | 'medium' | 'high';
+  /** 自定义高风险词，逗号分隔；留空时只用内置规则。 */
+  blocked_terms: string[];
 }
 
 /* ---------- 内容安全 ---------- */
@@ -2193,8 +2291,9 @@ export interface WebConfig {
   /** 站点前台加载动画。旧配置缺省时关闭。 */
   loading?: LoadingSettings;
   /**
-   * 站点更新设置。更新服务尚未接入，字段先保存在本机后台配置里；
-   * 更新服务端地址 / 端口允许为空，不影响其它功能。
+   * 站点更新设置。更新源从预置下拉项里选（见 `lib/siteUpdate.ts` 的
+   * `UPDATE_SERVERS`），没有单独的端口：所有更新源都是标准 HTTPS 或本站相对路径。
+   * 旧配置里的 `auto_update` / `server_port` 会在读取时迁移或丢弃。
    */
   update?: SiteUpdateSettings;
   /**
@@ -2207,26 +2306,51 @@ export interface WebConfig {
 /** 更新通道：稳定版 / 测试版。 */
 export type SiteUpdateChannel = 'stable' | 'beta';
 
-/** 自动检查更新的时机；更新服务接入后由它决定检查频率。 */
+/** 自动检查更新的时机；手动更新模式下不使用。 */
 export type SiteUpdateFrequency = 'startup' | 'daily' | 'weekly';
+
+/** 更新方式：手动（点了「检查更新」才查询）或自动（后台按频率查询）。 */
+export type SiteUpdateMode = 'manual' | 'auto';
+
+/**
+ * 版本清单里的 `style`：这份版本属于哪个发布渠道。
+ *
+ * - `beta`：仓库 main 分支上的测试版；
+ * - `stable`：正式发布的稳定版；
+ * - `local`：本机自行构建 / 二次打包的版本，不对应任何发布渠道。
+ */
+export type SiteUpdateStyle = 'stable' | 'beta' | 'local';
+
+/**
+ * 版本清单（仓库里的 `apps/web/public/version.json`）。
+ *
+ * 四个核心字段：标题、说明、版本号与发布渠道。前端与服务端用同一套规则解析它，
+ * 任何一项缺失或非法都按「清单无效」处理，不会当成新版本。
+ */
+export interface SiteUpdateManifest {
+  title: string;
+  describe: string;
+  version: string;
+  style: SiteUpdateStyle;
+}
 
 /**
  * 站点更新设置。
  *
- * 目前没有真实的更新服务，所以服务器地址 / 端口可以为空；页面会明确提示
- * 「更新服务暂未接入」，不会把空配置当成错误。
+ * 没有「更新服务端端口」这一项：下拉里的更新源都是标准地址，端口由协议决定。
+ * `server_url` 可以是预置项，也可以是指向本站的 `/version.json`（本地构建自检用）。
  */
 export interface SiteUpdateSettings {
-  /** 是否自动检查更新（默认关闭；自动安装始终不支持）。 */
-  auto_update: boolean;
+  /** 更新方式：手动更新 / 自动更新。 */
+  mode: SiteUpdateMode;
   channel: SiteUpdateChannel;
   frequency: SiteUpdateFrequency;
-  /** 更新服务端地址，例如 https://updates.example.com；暂时允许为空。 */
+  /** 更新源地址；来自下拉项，空字符串表示不检查更新。 */
   server_url: string;
-  /** 更新服务端端口；空字符串表示使用协议默认端口。 */
-  server_port: string;
   /** 最近一次检查时间（ISO 字符串）；从未检查时缺省。 */
   last_checked_at?: string;
+  /** 最近一次在服务端看到的版本号，用于判断「是否有新版本」；从未检查时缺省。 */
+  last_remote_version?: string;
 }
 
 export interface ActivityEntry {

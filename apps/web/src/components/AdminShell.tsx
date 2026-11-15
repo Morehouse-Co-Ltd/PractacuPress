@@ -15,6 +15,7 @@ import {
   type AdminPageEntry,
 } from '../lib/plugins/adminRegistry';
 import { Avatar } from './ui';
+import { AutoUpdateWatcher } from './AutoUpdateWatcher';
 import { useMediaSrc } from '../lib/assetUrl';
 import { Icon, type IconName } from './Icon';
 
@@ -434,6 +435,8 @@ export function AdminShell() {
     <div
       className={`admin-shell${collapsed ? ' is-side-collapsed' : ''}`}
     >
+      {/* 自动更新只在后台里做后台检查与提示，从不自动刷新页面。 */}
+      <AutoUpdateWatcher />
       <aside className="admin-side" id="admin-sidebar">
         <button
           ref={collapseRef}

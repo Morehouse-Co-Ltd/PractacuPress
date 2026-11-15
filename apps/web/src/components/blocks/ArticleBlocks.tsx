@@ -3,6 +3,7 @@ import type { BlockInstance } from '../../types';
 import { blockProp } from '../../lib/blocks';
 import { useCustomization } from '../../lib/customize';
 import { useT } from '../../lib/i18n';
+import { documentPreviewToken } from '../../lib/themePreviewLive';
 import { ArticleToc, useArticleToc } from '../ArticleTools';
 import { ResponsiveHtml } from '../ResponsiveHtml';
 import { useArticleSurface } from './ArticleContext';
@@ -20,7 +21,9 @@ import { useArticleSurface } from './ArticleContext';
 function inBuilderPreview(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return window.parent !== window;
+    if (window.parent === window) return false;
+    // 主题的「真实前台预览」也是 iframe，但它要看到真正的文章正文。
+    return !documentPreviewToken();
   } catch {
     // 跨域父窗口读不到：当作普通前台访问。
     return false;

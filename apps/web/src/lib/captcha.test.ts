@@ -3,12 +3,15 @@ import {
   CAPTCHA_SCENES,
   asProvider,
   captchaAction,
+  captchaCellIndex,
   captchaEnvSnippet,
+  captchaPointFromEvent,
   captchaProviderNeedsSiteKey,
   captchaReasonText,
   captchaSceneRequired,
   captchaScriptUrl,
   readCaptchaStatus,
+  readLocalCaptchaChallenge,
 } from './captcha';
 
 describe('readCaptchaStatus', () => {
@@ -141,5 +144,92 @@ describe('captchaReasonText', () => {
   it('未知原因返回空串，交给调用方兜底', () => {
     expect(captchaReasonText(undefined, t)).toBe('');
     expect(captchaReasonText('something_else', t)).toBe('');
+  });
+});
+
+describe('readLocalCaptchaChallenge', () => {
+  it('滑块题读图形与几何字段', () => {
+    const challenge = readLocalCaptchaChallenge({
+      challenge_id: 'c1',
+      kind: 'slider',
+      prompt: '拖动滑块',
+      expires_at: '2026-11-15T10:00:00Z',
+      width: 320,
+      height: 180,
+      background: 'data:image/png;base64,aa',
+      piece: 'data:image/png;base64,bb',
+      piece_size: 52,
+      piece_top: 40,
+      max_offset: 268,
+    });
+    expect(challenge.kind).toBe('slider');
+    expect(challenge.background).toContain('data:image/png');
+    expect(challenge.piece).toContain('data:image/png');
+    expect(challenge.piece_size).toBe(52);
+    expect(challenge.piece_top).toBe(40);
+    expect(challenge.max_offset).toBe(268);
+    expect(challenge.image).toBeUndefined();
+  });
+
+  it('点击题读图片与目标数量', () => {
+    const challenge = readLocalCaptchaChallenge({
+      kind: 'click',
+      width: 320,
+      height: 200,
+      image: 'data:image/png;base64,cc',
+      target_count: 4,
+    });
+    expect(challenge.kind).toBe('click');
+    expect(challenge.target_count).toBe(4);
+    expect(challenge.image).toContain('data:image/png');
+  });
+
+  it('选择题补上网格缺省值', () => {
+    const challenge = readLocalCaptchaChallenge({
+      kind: 'select',
+      image: 'data:image/png;base64,dd',
+      target_count: 3,
+    });
+    expect(challenge.rows).toBe(3);
+    expect(challenge.cols).toBe(3);
+    expect(challenge.width).toBe(288);
+    expect(challenge.height).toBe(288);
+  });
+
+  it('缺失或非法应答不会让渲染崩掉', () => {
+    for (const raw of [null, undefined, {}, 'nope', []]) {
+      const challenge = readLocalCaptchaChallenge(raw);
+      expect(challenge.kind).toBe('slider');
+      expect(challenge.challenge_id).toBe('');
+      expect(challenge.width).toBeGreaterThan(0);
+      expect(challenge.height).toBeGreaterThan(0);
+      expect(challenge.max_offset).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('图片坐标系换算', () => {
+  const rect = { left: 100, top: 50, width: 160, height: 100 };
+
+  it('按显示尺寸缩放到原始像素', () => {
+    // 图片被缩小一半：点在显示区域正中，应落到 320x200 图片的中心。
+    const point = captchaPointFromEvent(rect, 180, 100, 320, 200);
+    expect(point).toEqual({ x: 160, y: 100 });
+  });
+
+  it('越界的点击被忽略', () => {
+    expect(captchaPointFromEvent(rect, 99, 100, 320, 200)).toBeNull();
+    expect(captchaPointFromEvent(rect, 180, 151, 320, 200)).toBeNull();
+    expect(captchaPointFromEvent({ ...rect, width: 0 }, 180, 100, 320, 200)).toBeNull();
+  });
+
+  it('九宫格按行优先给格子编号', () => {
+    const size = { width: 288, height: 288, rows: 3, cols: 3 };
+    expect(captchaCellIndex({ x: 10, y: 10 }, size.width, size.height, size.rows, size.cols)).toBe(0);
+    expect(captchaCellIndex({ x: 150, y: 10 }, size.width, size.height, size.rows, size.cols)).toBe(1);
+    expect(captchaCellIndex({ x: 150, y: 150 }, size.width, size.height, size.rows, size.cols)).toBe(4);
+    expect(captchaCellIndex({ x: 287, y: 287 }, size.width, size.height, size.rows, size.cols)).toBe(8);
+    expect(captchaCellIndex({ x: 288, y: 10 }, size.width, size.height, size.rows, size.cols)).toBeNull();
+    expect(captchaCellIndex({ x: -1, y: 10 }, size.width, size.height, size.rows, size.cols)).toBeNull();
   });
 });

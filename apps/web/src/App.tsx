@@ -89,6 +89,7 @@ import { PageLoading } from './components/ui';
 import { ExtensionBoot } from './components/ExtensionBoot';
 import { AdminExtensionPage } from './components/AdminExtensionPage';
 import { PreviewRouteLock } from './components/PreviewRouteLock';
+import { ThemePreviewParamKeeper } from './components/ThemePreviewParamKeeper';
 // 内置扩展（当前是性能面板）：导入即向 adminPageRegistry 注册后台页面，始终启用。
 import './lib/extensions/builtin';
 
@@ -544,6 +545,8 @@ export default function App() {
           <HistoryRouter history={asRouterHistory(history)}>
             {/* 页面编排预览 iframe 的路由锁：预览只允许停在正在编排的那一页。 */}
             <PreviewRouteLock />
+            {/* 主题真实预览：站内跳转后把预览令牌写回地址，刷新也不丢主题。 */}
+            <ThemePreviewParamKeeper />
             <DomainGuard>
             <ProtectionLayer>
             <LoadingLayer>

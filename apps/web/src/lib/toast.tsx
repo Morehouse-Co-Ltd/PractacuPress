@@ -80,3 +80,14 @@ export function useToast(): ToastApi {
   if (!value) throw new Error(t('useToast 必须在 ToastProvider 内使用'));
   return value;
 }
+
+/**
+ * 后台常驻组件（定时检查之类）用的宽松版本：没有 `ToastProvider` 时返回 null，
+ * 让组件安静地什么都不做。
+ *
+ * 为什么需要它：`AdminShell` 的测试只渲染侧栏，不带提示层；一个“顺带提示一下”的
+ * 后台检查器不该因此把整个后台变成必须包 Provider 才能渲染。
+ */
+export function useOptionalToast(): ToastApi | null {
+  return useContext(ToastContext);
+}

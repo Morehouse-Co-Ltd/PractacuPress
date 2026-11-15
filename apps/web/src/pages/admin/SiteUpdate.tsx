@@ -3,15 +3,30 @@ import { useAuth } from '../../lib/session';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
 import { useToast } from '../../lib/toast';
+import { formatDateTime } from '../../lib/format';
 import { APP_VERSION_LABEL } from '../../lib/appVersion';
 import {
   UPDATE_CHANNELS,
   UPDATE_FREQUENCIES,
-  hasUpdateServer,
-  isValidUpdatePort,
+  UPDATE_MODES,
+  UPDATE_SERVERS,
+  canCheckForUpdates,
+  evaluateUpdate,
+  modeLabel,
   readUpdateSettings,
+  serverOptionOf,
+  styleLabel,
+  updateIntervalMs,
   versionLabel,
 } from '../../lib/siteUpdate';
+import type { UpdateCheck, UpdateApplyResult } from '../../lib/updateClient';
+import {
+  UpdateCheckError,
+  applyUpdateFromDir,
+  checkForUpdate,
+  updateErrorMessage,
+} from '../../lib/updateClient';
+import { applyHotUpdate } from '../../lib/hotUpdate';
 import {
   Badge,
   Button,
@@ -19,7 +34,6 @@ import {
   Field,
   Input,
   Select,
-  Toggle,
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
@@ -27,10 +41,28 @@ import { RoleGate } from '../../components/Guards';
 /**
  * 站点更新。
  *
- * 目前没有真实的更新服务，所以这一页先提供：站点显示名称、当前版本、
- * 自动更新开关、更新通道与检查频率，以及更新服务端地址 / 端口（允许留空）。
- * 空配置只表示“暂不检查更新”，不会影响站点其它功能；所有设置保存在本机后台配置。
+ * 这一页现在能真正做事了：
+ *
+ * - 当前版本来自构建清单 `version.json`（标题 / 说明 / 版本 / 渠道四个核心字段）；
+ * - 「检查更新」会让**服务端**去 GitHub（或所选镜像）读同一份清单再比较，服务端读不到
+ *   时才由浏览器直连兜底；
+ * - 手动更新：把新版本的构建目录交给启动器，它会不停进程地换上去（其他设备与访客
+ *   不受影响，已打开的页面继续用旧资源直到下次加载）；
+ * - 自动更新：后台按频率检查并提示，真正的自动下载安装属于还没实现的服务端部分，
+ *   页面把这件事说清楚，不假装已经能全自动。
+ *
+ * 服务器地址是下拉栏（GitHub / jsDelivr / 本站），没有端口输入：所有更新源都是标准
+ * 地址，端口由协议决定。
  */
+
+const STATUS_TONE: Record<string, 'ok' | 'muted' | 'warn' | 'accent'> = {
+  available: 'accent',
+  up_to_date: 'ok',
+  ahead: 'muted',
+  channel_mismatch: 'warn',
+  invalid: 'warn',
+};
+
 export function SiteUpdatePage() {
   const t = useT();
   useTitle(t('站点更新'));
@@ -38,49 +70,170 @@ export function SiteUpdatePage() {
   const toast = useToast();
   const saved = useMemo(() => readUpdateSettings(config.update), [config.update]);
   const [draft, setDraft] = useState(saved);
-  const [portError, setPortError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<UpdateCheck | null>(null);
+  const [error, setError] = useState('');
+  const [buildDir, setBuildDir] = useState('');
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState<UpdateApplyResult | null>(null);
 
+  // 时间戳由检查动作自己更新，不参与“未保存的修改”判断。
   const dirty =
-    JSON.stringify({ ...draft, last_checked_at: saved.last_checked_at }) !==
-    JSON.stringify(saved);
-  const configured = hasUpdateServer(draft);
+    JSON.stringify({
+      mode: draft.mode,
+      channel: draft.channel,
+      frequency: draft.frequency,
+      server_url: draft.server_url,
+    }) !==
+    JSON.stringify({
+      mode: saved.mode,
+      channel: saved.channel,
+      frequency: saved.frequency,
+      server_url: saved.server_url,
+    });
+  const serverOption = serverOptionOf(draft.server_url);
   const demo = config.mode === 'demo';
+  const autoMode = draft.mode === 'auto';
+
+  const verdict = useMemo(
+    () =>
+      result
+        ? evaluateUpdate({
+            localVersion: result.local.version,
+            remote: result.remote,
+            channel: draft.channel,
+          })
+        : null,
+    [result, draft.channel],
+  );
 
   const patch = (next: Partial<typeof draft>) => setDraft({ ...draft, ...next });
 
   const save = () => {
-    if (!isValidUpdatePort(draft.server_port)) {
-      setPortError(t('端口必须是 1–65535 之间的整数。'));
-      return;
-    }
-    const next = readUpdateSettings({
-      ...draft,
-      server_url: draft.server_url.trim(),
-      server_port: draft.server_port.trim(),
-    });
+    const next = readUpdateSettings(draft);
     updateConfig({ update: next });
     setDraft(next);
-    setPortError('');
+    setError('');
     toast.push(
       'ok',
       t('更新设置已保存'),
-      configured
-        ? t('更新服务端地址已记录；更新服务接入后生效。')
-        : t('更新服务端留空，当前不会检查更新。'),
+      next.mode === 'auto'
+        ? t('自动更新已开启，会按所选频率在后台检查；发现新版本只提示，不会打断编辑。')
+        : t('手动更新已开启：只有你点「检查更新」时才会读取版本清单。'),
     );
   };
 
   const discard = () => {
     setDraft(saved);
-    setPortError('');
+    setError('');
   };
 
-  const check = () => {
-    toast.push(
-      'info',
-      t('更新服务暂未接入'),
-      t('等更新服务端可用后，这里会显示可用的新版本与更新入口。'),
-    );
+  const runCheck = async () => {
+    if (!canCheckForUpdates(draft)) {
+      setError(t('还没有选择更新源。'));
+      return;
+    }
+    setChecking(true);
+    setError('');
+    try {
+      const check = await checkForUpdate(draft);
+      const next = readUpdateSettings({
+        ...draft,
+        last_checked_at: check.checked_at,
+        last_remote_version: check.remote.version,
+      });
+      setResult(check);
+      updateConfig({ update: next });
+      setDraft(next);
+      const judged = evaluateUpdate({
+        localVersion: check.local.version,
+        remote: check.remote,
+        channel: draft.channel,
+      });
+      if (judged.available) {
+        toast.push(
+          'ok',
+          t('发现新版本 {version}', { version: versionLabel(check.remote.version) }),
+          check.remote.title,
+        );
+      } else if (judged.status === 'up_to_date') {
+        toast.push('info', t('已是最新版本'), check.remote.title);
+      } else {
+        toast.push('info', t('没有可用的新版本'), check.remote.title);
+      }
+    } catch (err) {
+      // 服务端给的细节（http 那类）比通用文案有用，直接展示；其余按错误码翻译，
+      // 英文界面才不会看到一段中文键。
+      const message =
+        err instanceof UpdateCheckError
+          ? err.code === 'http' && err.message
+            ? err.message
+            : t(updateErrorMessage(err.code))
+          : t('更新检查失败，请稍后再试。');
+      setError(message);
+      toast.push('error', t('更新检查失败'), message);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const applyBuild = async () => {
+    const dir = buildDir.trim();
+    if (!dir) {
+      setError(t('请先填入新版本构建目录的完整路径。'));
+      return;
+    }
+    setApplying(true);
+    setError('');
+    try {
+      const outcome = await applyUpdateFromDir(dir);
+      setApplied(outcome);
+      setBuildDir('');
+      toast.push(
+        'ok',
+        t('已切换到新版本 {version}', { version: versionLabel(outcome.version) }),
+        t('服务端没有停过；其他设备会继续用旧页面，直到它们下一次加载。'),
+      );
+    } catch (err) {
+      const message =
+        err instanceof UpdateCheckError
+          ? err.code === 'http' && err.message
+            ? err.message
+            : t(updateErrorMessage(err.code))
+          : t('切换失败，请检查目录后重试。');
+      setError(message);
+      toast.push('error', t('切换失败'), message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const reloadIntoNewBuild = async () => {
+    const version = applied?.version || result?.remote.version || '';
+    const outcome = await applyHotUpdate(version);
+    if (outcome.status === 'blocked') {
+      toast.push('info', t('现在先不切换'), t('你正在输入内容，等手头这段写完再重新载入。'));
+    } else if (outcome.status === 'failed') {
+      toast.push('error', t('重新载入失败'), t('新版本的资源没有取全，已保持当前页面。'));
+    }
+  };
+
+  const statusText = () => {
+    if (!verdict) return '';
+    switch (verdict.status) {
+      case 'available':
+        return t('发现新版本 {version}，可按下面的「手动更新」切换。', {
+          version: versionLabel(verdict.remote?.version ?? ''),
+        });
+      case 'up_to_date':
+        return t('已是最新版本。');
+      case 'ahead':
+        return t('本机版本比远端更新，可能是自己构建的版本。');
+      case 'channel_mismatch':
+        return t('远端是测试版，当前通道是稳定版，所以不提示更新。需要测试版请切换通道。');
+      default:
+        return t('更新源返回的不是有效的版本清单。');
+    }
   };
 
   return (
@@ -90,7 +243,7 @@ export function SiteUpdatePage() {
           <h1>{t('站点更新')}</h1>
           <p>
             {t(
-              '在这里查看站点显示名称与当前版本，并决定是否自动检查更新。更新服务端尚未接入，相关地址和端口可以暂时留空，不会影响其它功能。',
+              '查看当前版本与远端发布版本，决定手动还是自动检查更新。更新只替换程序文件，文章、页面、媒体与数据库都在 data 目录里。',
             )}
           </p>
         </div>
@@ -99,8 +252,8 @@ export function SiteUpdatePage() {
             variant="secondary"
             size="sm"
             icon="search"
-            onClick={check}
-            title={t('更新服务暂未接入')}
+            loading={checking}
+            onClick={() => void runCheck()}
           >
             {t('检查更新')}
           </Button>
@@ -110,9 +263,9 @@ export function SiteUpdatePage() {
         </div>
       </div>
 
-      <Callout tone="info" icon="info" title={t('更新服务暂未接入')}>
+      <Callout tone="info" icon="info" title={t('版本清单写在仓库里')}>
         {t(
-          '这一页先提供更新设置入口：当前版本来自前端构建，更新服务端地址与端口可以留空；设置先保存在本机后台配置里。等更新服务上线后，同样的设置会用于检查新版本；在此之前所有功能照常使用。',
+          '仓库里的 apps/web/public/version.json 记录四个核心字段：标题、说明、版本号与发布渠道（稳定版 / 测试版 / 本地构建）。检查更新时由服务端读取这份清单，和本机版本比较。',
         )}
       </Callout>
 
@@ -145,9 +298,13 @@ export function SiteUpdatePage() {
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">{t('更新服务端')}</span>
-                  <span className="mini-value">
-                    {configured ? `${draft.server_url}:${draft.server_port || '默认端口'}` : t('暂未配置')}
+                  <span className="mini-label">{t('更新方式')}</span>
+                  <span className="mini-value">{t(modeLabel(draft.mode))}</span>
+                </div>
+                <div className="mini-row">
+                  <span className="mini-label">{t('更新源')}</span>
+                  <span className="mini-value" data-site-update-server>
+                    {t(serverOption?.name ?? '自定义地址')}
                   </span>
                 </div>
               </dl>
@@ -161,22 +318,65 @@ export function SiteUpdatePage() {
             <div className="panel-head">
               <div>
                 <h3>{t('更新设置')}</h3>
-                <p>{t('选择是否自动检查更新，以及使用的更新通道。')}</p>
+                <p>{t('选择手动更新还是自动更新，以及跟随哪个发布通道。')}</p>
               </div>
-              <Badge tone={draft.auto_update ? 'ok' : 'muted'} dot={draft.auto_update}>
-                {draft.auto_update ? t('自动检查已开启') : t('手动检查')}
+              <Badge tone={autoMode ? 'ok' : 'muted'} dot={autoMode}>
+                {t(modeLabel(draft.mode))}
               </Badge>
             </div>
             <div className="panel-body">
               <div className="form-stack">
-                <Toggle
-                  checked={draft.auto_update}
-                  onChange={(auto_update) => patch({ auto_update })}
-                  label={t('自动检查更新')}
-                  description={t('只检查并提示新版本，不会自动安装。更新服务接入后生效。')}
-                />
                 <div className="form-grid">
-                  <Field label={t('更新通道')} htmlFor="site-update-channel">
+                  <Field
+                    label={t('更新方式')}
+                    htmlFor="site-update-mode"
+                    hint={t(
+                      UPDATE_MODES.find((item) => item.id === draft.mode)?.description ?? '',
+                    )}
+                  >
+                    <Select
+                      id="site-update-mode"
+                      value={draft.mode}
+                      onChange={(event) =>
+                        patch({ mode: event.target.value as typeof draft.mode })
+                      }
+                    >
+                      {UPDATE_MODES.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {t(item.name)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field
+                    label={t('检查频率')}
+                    htmlFor="site-update-frequency"
+                    hint={
+                      autoMode
+                        ? t('自动更新时按这个频率在后台检查。')
+                        : t('手动更新模式下只有点「检查更新」时才读取清单。')
+                    }
+                  >
+                    <Select
+                      id="site-update-frequency"
+                      value={draft.frequency}
+                      disabled={!autoMode}
+                      onChange={(event) =>
+                        patch({ frequency: event.target.value as typeof draft.frequency })
+                      }
+                    >
+                      {UPDATE_FREQUENCIES.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {t(item.name)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field
+                    label={t('更新通道')}
+                    htmlFor="site-update-channel"
+                    hint={t('稳定版通道忽略测试版；测试版通道同时接受两者。')}
+                  >
                     <Select
                       id="site-update-channel"
                       value={draft.channel}
@@ -191,27 +391,20 @@ export function SiteUpdatePage() {
                       ))}
                     </Select>
                   </Field>
-                  <Field
-                    label={t('检查频率')}
-                    htmlFor="site-update-frequency"
-                    hint={t('仅在开启自动检查时使用。')}
-                  >
-                    <Select
-                      id="site-update-frequency"
-                      value={draft.frequency}
-                      disabled={!draft.auto_update}
-                      onChange={(event) =>
-                        patch({ frequency: event.target.value as typeof draft.frequency })
-                      }
-                    >
-                      {UPDATE_FREQUENCIES.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {t(item.name)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
                 </div>
+                {autoMode ? (
+                  <p className="field-hint">
+                    {t(
+                      '自动更新只负责发现并提示新版本（{interval}检查一次），不会在你写作时刷新页面；真正把新版本装上仍需要你确认。',
+                      {
+                        interval:
+                          updateIntervalMs(draft.frequency) === 0
+                            ? t('每次打开后台')
+                            : t('每隔一段时间'),
+                      },
+                    )}
+                  </p>
+                ) : null}
               </div>
             </div>
           </section>
@@ -219,61 +412,155 @@ export function SiteUpdatePage() {
           <section className="panel" data-site-update="server">
             <div className="panel-head">
               <div>
-                <h3>{t('更新服务端')}</h3>
-                <p>{t('更新服务上线前，这两项可以留空。')}</p>
+                <h3>{t('更新源')}</h3>
+                <p>{t('服务端会去这个地址读取版本清单，再和本机版本比较。')}</p>
               </div>
-              <Badge tone={configured ? 'ok' : 'muted'}>{configured ? t('已填写') : t('暂未配置')}</Badge>
+              <Badge tone="muted">{t('标准地址，无需端口')}</Badge>
             </div>
             <div className="panel-body">
               <div className="form-stack">
-                <div className="form-grid">
-                  <Field
-                    label={t('服务器地址')}
-                    htmlFor="site-update-server"
-                    hint={t('留空表示暂不使用更新服务。')}
+                <Field
+                  label={t('服务器地址')}
+                  htmlFor="site-update-server"
+                  hint={t(serverOption?.note ?? '这个地址不在预置列表里，按自定义地址使用。')}
+                >
+                  <Select
+                    id="site-update-server"
+                    value={draft.server_url}
+                    onChange={(event) => patch({ server_url: event.target.value })}
                   >
-                    <Input
-                      id="site-update-server"
-                      value={draft.server_url}
-                      placeholder="https://updates.example.com"
-                      onChange={(event) => patch({ server_url: event.target.value })}
-                    />
-                  </Field>
-                  <Field
-                    label={t('端口')}
-                    htmlFor="site-update-port"
-                    hint={t('留空使用协议默认端口。')}
-                  >
-                    <Input
-                      id="site-update-port"
-                      value={draft.server_port}
-                      inputMode="numeric"
-                      placeholder={t('默认端口')}
-                      aria-invalid={portError ? true : undefined}
-                      onChange={(event) => {
-                        setPortError('');
-                        patch({ server_port: event.target.value });
-                      }}
-                    />
-                  </Field>
-                </div>
-                {portError ? (
-                  <p className="field-error" role="alert">
-                    {portError}
-                  </p>
-                ) : null}
+                    {UPDATE_SERVERS.map((item) => (
+                      <option key={item.id} value={item.url}>
+                        {t(item.name)}
+                      </option>
+                    ))}
+                    {serverOption ? null : (
+                      <option value={draft.server_url}>{draft.server_url}</option>
+                    )}
+                  </Select>
+                </Field>
+                <p className="field-hint mono" style={{ wordBreak: 'break-all' }}>
+                  {draft.server_url}
+                </p>
+
                 <div className="row gap-8" style={{ alignItems: 'center' }}>
                   <Button
                     variant="secondary"
                     size="sm"
                     icon="activity"
-                    disabled
-                    title={t('更新服务暂未接入')}
+                    loading={checking}
+                    onClick={() => void runCheck()}
                   >
-                    {t('测试连接')}
+                    {t('立即检查')}
                   </Button>
-                  <span className="tiny faint">{t('更新服务暂未接入，连接测试会在接入后开放。')}</span>
+                  <span className="tiny faint">
+                    {draft.last_checked_at
+                      ? t('最近检查：{time}', { time: formatDateTime(draft.last_checked_at) })
+                      : t('还没有检查过。')}
+                  </span>
                 </div>
+
+                {error ? (
+                  <p className="field-error" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+
+                {result && verdict ? (
+                  <div className="mini-list mt-12" data-site-update-result>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('远端版本')}</span>
+                      <span className="mini-value mono">
+                        {versionLabel(result.remote.version)}{' '}
+                        <Badge tone={STATUS_TONE[verdict.status] ?? 'muted'}>
+                          {t(styleLabel(result.remote.style))}
+                        </Badge>
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('发布说明')}</span>
+                      <span className="mini-value">
+                        {result.remote.title} · {result.remote.describe}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('检查结果')}</span>
+                      <span className="mini-value">{statusText()}</span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('检查方式')}</span>
+                      <span className="mini-value">
+                        {result.server_side
+                          ? t('由本机服务端读取清单')
+                          : t('服务端不可用，浏览器直接读取清单')}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="panel" data-site-update="manual">
+            <div className="panel-head">
+              <div>
+                <h3>{t('手动更新')}</h3>
+                <p>{t('已经下载好新版本？把构建目录交给服务端，它会在不停进程的情况下换上去。')}</p>
+              </div>
+              <Badge tone="muted">{t('不停机')}</Badge>
+            </div>
+            <div className="panel-body">
+              <div className="form-stack">
+                <Field
+                  label={t('新版本构建目录')}
+                  htmlFor="site-update-apply-dir"
+                  hint={t(
+                    '填解压后 dist 目录的完整路径（里面要有 index.html 与 version.json）。只有运行站点的这台电脑可以操作。',
+                  )}
+                >
+                  <div className="row gap-8">
+                    <Input
+                      id="site-update-apply-dir"
+                      value={buildDir}
+                      placeholder={'C:\\PractacuPress\\dist'}
+                      onChange={(event) => setBuildDir(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !applying) void applyBuild();
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      icon="download"
+                      loading={applying}
+                      disabled={!buildDir.trim()}
+                      onClick={() => void applyBuild()}
+                    >
+                      {t('立即切换')}
+                    </Button>
+                  </div>
+                </Field>
+
+                {applied ? (
+                  <Callout tone="ok" icon="check-circle" title={t('新版本已经就位')}>
+                    {t('已从 {previous} 切换到 {version}，服务端没有停止。', {
+                      previous: applied.previous ? versionLabel(applied.previous) : t('未知版本'),
+                      version: versionLabel(applied.version),
+                    })}{' '}
+                    {t('其他设备会继续用旧页面，直到它们下一次加载。')}
+                    <div className="row gap-8 mt-8">
+                      <Button size="sm" variant="secondary" icon="refresh" onClick={() => void reloadIntoNewBuild()}>
+                        {t('重新载入到新版本')}
+                      </Button>
+                    </div>
+                  </Callout>
+                ) : null}
+
+                <p className="tiny faint">
+                  <Icon name="info" size={12} />{' '}
+                  {t(
+                    '自动下载并安装新版本还没实现（服务端部分稍后补上）；现在这一栏就是完整的手动更新路径。',
+                  )}
+                </p>
               </div>
             </div>
           </section>
@@ -293,24 +580,33 @@ export function SiteUpdatePage() {
                   <span className="mini-value mono">{versionLabel(APP_VERSION_LABEL)}</span>
                 </div>
                 <div className="mini-row">
+                  <span className="mini-label">{t('远端版本')}</span>
+                  <span className="mini-value mono">
+                    {result ? versionLabel(result.remote.version) : t('尚未检查')}
+                  </span>
+                </div>
+                <div className="mini-row">
+                  <span className="mini-label">{t('更新方式')}</span>
+                  <span className="mini-value">{t(modeLabel(draft.mode))}</span>
+                </div>
+                <div className="mini-row">
                   <span className="mini-label">{t('更新通道')}</span>
                   <span className="mini-value">
                     {t(UPDATE_CHANNELS.find((item) => item.id === draft.channel)?.name ?? '')}
                   </span>
                 </div>
                 <div className="mini-row">
-                  <span className="mini-label">{t('自动检查')}</span>
-                  <span className="mini-value">{draft.auto_update ? t('已开启') : t('已关闭')}</span>
-                </div>
-                <div className="mini-row">
                   <span className="mini-label">{t('最近检查')}</span>
                   <span className="mini-value">
-                    {draft.last_checked_at ? t('尚未接入更新服务') : t('从未检查')}
+                    {draft.last_checked_at
+                      ? formatDateTime(draft.last_checked_at)
+                      : t('从未检查')}
                   </span>
                 </div>
               </div>
               <p className="tiny faint mt-12">
-                <Icon name="info" size={12} /> {t('更新服务接入前，检查更新只会提示服务尚未接入。')}
+                <Icon name="info" size={12} />{' '}
+                {t('版本清单的四个字段：标题、说明、版本号与发布渠道。')}
               </p>
             </div>
           </section>

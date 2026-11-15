@@ -13,6 +13,9 @@
  *
  * 只做静态文件与运行时端口接口；/api、/healthz、/readyz 仍然交给反向代理或 Go API，
  * 这里会明确返回 JSON 404，避免 SPA 的 HTML 回退被误判成后端可用。
+ *
+ * 另外提供 `GET /__pp/update`：服务端读取版本清单（`version.json`）并与本机版本比较。
+ * 它和启动器的同名接口行为一致，这样 `npm start` 起的站点也能检查更新。
  */
 
 import http from 'node:http';
@@ -158,6 +161,207 @@ function normalizePort(value) {
   return port;
 }
 
+/* ---------------- 版本清单与更新检查 ---------------- */
+
+/** 构建产物里的版本清单；`public/version.json` 会被原样复制进 dist。 */
+const LOCAL_MANIFEST = 'version.json';
+
+/** 默认更新源：仓库里的清单（与启动器、前端下拉栏里的第一项一致）。 */
+const DEFAULT_UPDATE_SOURCE =
+  'https://raw.githubusercontent.com/practacu/practacu-press/main/apps/web/public/version.json';
+
+/**
+ * 允许服务端去抓的主机。
+ *
+ * 页面只能选下拉栏里的地址，但还是校验一次：这个接口会把请求发到外部，
+ * 不设白名单就等于给了页面一个任意地址的代理。
+ */
+const UPDATE_ALLOWED_HOSTS = new Set([
+  'raw.githubusercontent.com',
+  'github.com',
+  'cdn.jsdelivr.net',
+  'gitee.com',
+]);
+
+const MANIFEST_LIMIT = 64 * 1024;
+const MANIFEST_TIMEOUT_MS = 3000;
+const VERSION_PATTERN = /^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
+const UPDATE_STYLES = new Set(['stable', 'beta', 'local']);
+
+/** 解析版本清单：四个核心字段缺一不可，版本号与渠道都要合法。 */
+function parseManifest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const title = typeof value.title === 'string' ? value.title.trim() : '';
+  const describe = typeof value.describe === 'string' ? value.describe.trim() : '';
+  const version = typeof value.version === 'string' ? value.version.trim() : '';
+  const style = typeof value.style === 'string' ? value.style.trim() : '';
+  if (!title || !describe || !version) return null;
+  if (!VERSION_PATTERN.test(version)) return null;
+  if (!UPDATE_STYLES.has(style)) return null;
+  return { title, describe, version, style };
+}
+
+/**
+ * 去掉开头的 UTF-8 BOM。
+ *
+ * Windows 上 PowerShell 5.1 的 `Set-Content -Encoding utf8` 与部分编辑器会写 BOM，
+ * 而 `JSON.parse` / `encoding/json` 遇到它会直接报「不是合法 JSON」。这一个字节
+ * 不值得让手工改过清单的人看到「版本清单无效」，所以读文本时统一剥掉。
+ */
+function stripBom(text) {
+  return String(text).replace(/^\uFEFF/, '');
+}
+
+/** 版本号拆成三段数字 + 预发布标签；非法返回 null。 */
+function versionParts(version) {
+  const match = VERSION_PATTERN.exec(String(version).trim());
+  if (!match) return null;
+  return {
+    core: [Number(match[1]), Number(match[2]), Number(match[3])],
+    pre: match[4] ? match[4].split('.').filter(Boolean) : [],
+  };
+}
+
+/** 语义版本比较：a>b 返回正数，相等 0，无法解析按相等处理。 */
+function compareVersions(a, b) {
+  const left = versionParts(a);
+  const right = versionParts(b);
+  if (!left || !right) return 0;
+  for (let i = 0; i < 3; i += 1) {
+    if (left.core[i] !== right.core[i]) return left.core[i] > right.core[i] ? 1 : -1;
+  }
+  if (!left.pre.length && !right.pre.length) return 0;
+  if (!left.pre.length) return 1;
+  if (!right.pre.length) return -1;
+  const length = Math.max(left.pre.length, right.pre.length);
+  for (let i = 0; i < length; i += 1) {
+    const l = left.pre[i];
+    const r = right.pre[i];
+    if (l === undefined) return -1;
+    if (r === undefined) return 1;
+    if (l === r) continue;
+    const ln = /^\d+$/.test(l);
+    const rn = /^\d+$/.test(r);
+    if (ln && rn) return Number(l) > Number(r) ? 1 : -1;
+    if (ln !== rn) return ln ? -1 : 1;
+    return l > r ? 1 : -1;
+  }
+  return 0;
+}
+
+/** 读本机清单：构建产物里的 `version.json`。 */
+async function readLocalManifest() {
+  try {
+    const parsed = JSON.parse(stripBom(await readFile(join(DIST, LOCAL_MANIFEST), 'utf8')));
+    return parseManifest(parsed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 服务端抓取远端清单。
+ *
+ * 只接受 https + 白名单主机；请求带 3 秒超时与 64 KiB 上限，避免更新源把静态服务拖住。
+ */
+async function fetchRemoteManifest(source) {
+  let parsed;
+  try {
+    parsed = new URL(source);
+  } catch {
+    return { error: 'validation_failed', status: 400, message: '更新源地址不合法。' };
+  }
+  if (parsed.protocol !== 'https:' || !UPDATE_ALLOWED_HOSTS.has(parsed.hostname)) {
+    return { error: 'permission_denied', status: 403, message: '这个更新源不在允许的名单里。' };
+  }
+  let res;
+  try {
+    res = await fetch(source, {
+      headers: { Accept: 'application/json', 'User-Agent': 'practacu-press-static' },
+      signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      return { error: 'upstream_timeout', status: 504, message: '读取更新源超时，请稍后重试。' };
+    }
+    return { error: 'upstream_failed', status: 502, message: '无法连接更新源。' };
+  }
+  if (!res.ok) {
+    return {
+      error: 'upstream_failed',
+      status: 502,
+      message: `更新源返回了 HTTP ${res.status}。`,
+    };
+  }
+  let text;
+  try {
+    text = await res.text();
+  } catch {
+    return { error: 'upstream_failed', status: 502, message: '读取更新源失败。' };
+  }
+  if (text.length > MANIFEST_LIMIT) {
+    return { error: 'upstream_failed', status: 502, message: '版本清单超出大小上限。' };
+  }
+  let manifest = null;
+  try {
+    manifest = parseManifest(JSON.parse(stripBom(text)));
+  } catch {
+    manifest = null;
+  }
+  if (!manifest) {
+    return { error: 'upstream_failed', status: 502, message: '更新源返回的不是有效的版本清单。' };
+  }
+  return { manifest };
+}
+
+/** `GET /__pp/update?source=…`：服务端读清单并与本机版本比较。 */
+async function handleUpdateCheck(req, res, url) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    sendJson(res, 405, { code: 'method_not_allowed', message: '只支持 GET。' });
+    return;
+  }
+  if (!isLoopback(req.socket.remoteAddress)) {
+    sendJson(res, 403, { code: 'permission_denied', message: '只能在运行站点的这台电脑上检查更新。' });
+    return;
+  }
+  const source = String(url.searchParams.get('source') || '').trim() || DEFAULT_UPDATE_SOURCE;
+
+  let remote;
+  if (source.startsWith('/')) {
+    // 本站自己的清单：直接读构建产物，不走网络。
+    if (source !== `/${LOCAL_MANIFEST}`) {
+      sendJson(res, 400, { code: 'validation_failed', message: '本地更新源只能是 /version.json。' });
+      return;
+    }
+    remote = await readLocalManifest();
+    if (!remote) {
+      sendJson(res, 404, { code: 'not_found', message: '构建产物里没有可用的 version.json。' });
+      return;
+    }
+  } else {
+    const fetched = await fetchRemoteManifest(source);
+    if (fetched.error) {
+      sendJson(res, fetched.status, { code: fetched.error, message: fetched.message });
+      return;
+    }
+    remote = fetched.manifest;
+  }
+
+  const local = await readLocalManifest();
+  const order = local ? compareVersions(remote.version, local.version) : 1;
+  const reason = !local ? 'unknown' : order > 0 ? 'newer' : order < 0 ? 'older' : 'same';
+  sendJson(res, 200, {
+    ok: true,
+    source,
+    fetched_at: new Date().toISOString(),
+    ...(local ? { local } : {}),
+    remote,
+    update_available: order > 0,
+    reason,
+  });
+}
+
+
 let currentPort = DEFAULT_PORT;
 let activeServers = [];
 let distReady = false;
@@ -222,6 +426,20 @@ async function handle(req, res) {
       return;
     }
     sendJson(res, 200, { ok: true, items: entry.items });
+    return;
+  }
+
+  if (pathname === '/__pp/update') {
+    await handleUpdateCheck(req, res, url);
+    return;
+  }
+
+  if (pathname === '/__pp/update/apply') {
+    // 静态服务没有“把另一份构建换上来”的能力：它按磁盘目录直接读文件。
+    sendJson(res, 501, {
+      code: 'not_implemented',
+      message: '静态服务不支持在线切换版本；请用 Windows 启动器运行站点后再手动更新。',
+    });
     return;
   }
 

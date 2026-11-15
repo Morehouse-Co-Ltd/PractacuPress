@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isPreviewFrame } from '../lib/access';
+import { documentPreviewToken } from '../lib/themePreviewLive';
 
 /**
  * 页面编排预览的「路由锁」。
@@ -22,6 +23,8 @@ export function PreviewRouteLock() {
 
   useEffect(() => {
     if (!isPreviewFrame()) return;
+    // 主题「真实前台预览」不是页面编排器：它需要能离开初始页面。
+    if (documentPreviewToken()) return;
     // 第一次拿到的是预览刚打开时的那一页，作为锁定的目标。
     if (lockedPath.current === null) {
       lockedPath.current = pathname;

@@ -1406,7 +1406,7 @@ export class DemoBackend {
 
   async createMember(_siteId: string, input: NewMemberInput): Promise<Member> {
     await wait(240);
-    const actor = this.requireRole('site_admin');
+    this.requireRole('site_admin');
     const email = input.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       this.fail(400, 'validation_failed', '请填写有效的邮箱地址。');
@@ -1421,8 +1421,11 @@ export class DemoBackend {
       this.fail(409, 'conflict', '该邮箱已经注册。');
     }
     const role: Role = input.role ?? 'member';
-    if (role === 'platform_admin' && actor.role !== 'platform_admin') {
-      this.fail(403, 'permission_denied', '只有平台管理员可以创建平台管理员账户。');
+    if (role === 'platform_admin') {
+      // 与真实服务端一致：最高管理员只能是注册该站点的那一个账号。
+      this.fail(403, 'permission_denied', '最高管理员是注册该站的账号，不能用新增用户创建。', {
+        reason: 'platform_admin_locked',
+      });
     }
     const user: DemoUser = {
       id: `usr_${uuid().slice(0, 8)}`,
@@ -1442,17 +1445,15 @@ export class DemoBackend {
 
   async setMemberRole(_siteId: string, userId: string, role: Role): Promise<void> {
     await wait();
-    const actor = this.requireRole('site_admin');
+    this.requireRole('site_admin');
     const target = this.state.users.find((u) => u.id === userId);
     if (!target) this.fail(404, 'not_found', '成员不存在。');
-    if ((role === 'platform_admin' || target.role === 'platform_admin') && actor.role !== 'platform_admin') {
-      this.fail(403, 'permission_denied', '只有平台管理员可以授予或撤销平台管理员角色。');
-    }
-    if (target.role === 'platform_admin' && role !== 'platform_admin') {
-      const admins = this.state.users.filter((u) => u.role === 'platform_admin');
-      if (admins.length <= 1) {
-        this.fail(403, 'permission_denied', '不能撤销最后一个平台管理员。');
-      }
+    // 与真实服务端一致：最高管理员席位固定给注册该站点的账号，既不能授予别人，
+    // 也不能撤销。
+    if ((role === 'platform_admin') !== (target.role === 'platform_admin')) {
+      this.fail(403, 'permission_denied', '最高管理员是注册该账号的人，用户组固定，不能在这里更改。', {
+        reason: 'platform_admin_locked',
+      });
     }
     target.role = role;
     this.log('调整成员角色', target.display_name, role);

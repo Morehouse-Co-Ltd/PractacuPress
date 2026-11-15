@@ -32,6 +32,7 @@ import type {
   FollowEntry,
   ImportConflictStrategy,
   InteractionEntry,
+  LocalCaptchaAnswer,
   LocalCaptchaChallenge,
   LocalCaptchaSolution,
   Me,
@@ -155,7 +156,7 @@ export interface Backend {
    */
   captchaStatus?(): Promise<CaptchaStatus>;
   /**
-   * 本地（自托管）人机验证：取一道算术题。
+   * 本地（自托管）人机验证：取一道图形题（滑块 / 点击 / 选择图形）。
    *
    * 可选：只有真实后端实现了本地验证，旧后端与演示后端没有这些端点。
    */
@@ -163,7 +164,7 @@ export interface Backend {
   /** 本地（自托管）人机验证：提交答案，换一个一次性 token。 */
   captchaLocalVerify?(input: {
     challenge_id: string;
-    answer: number;
+    answer: LocalCaptchaAnswer;
     scene: CaptchaScene;
   }): Promise<LocalCaptchaSolution>;
   /** 仅演示后端：模拟手机 / 第三方登录，以站点管理员身份进入。 */

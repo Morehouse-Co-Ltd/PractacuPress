@@ -163,3 +163,29 @@ describe('themeCss keeps injected tokens inside :root', () => {
     expect((rootBlock(css).match(/\}/g) ?? []).length).toBe(1);
   });
 });
+
+describe('site dark semantic colors', () => {
+  it('derives readable error / warning / success tokens for dark site surfaces', () => {
+    const css = cssFor({}, { preset: 'night', mode: 'dark' });
+
+    expect(css).toContain('html[data-surface="site"][data-mode="dark"]');
+    // 语义色不在 ThemeTokenSet 里：不换的话深色站点会沿用 styles.css 的浅色值，
+    // 后端连不上时的提示卡就是浅粉底 + 浅色字。
+    expect(css).toContain('--danger: #f08a76;');
+    expect(css).toContain('--warn: #e0bd6b;');
+    expect(css).toContain('--ok: #74c69d;');
+    expect(css).toContain(
+      '--danger-soft: color-mix(in srgb, var(--danger) 16%, var(--bg));',
+    );
+  });
+
+  it('does not rewrite the semantic tokens in the :root block', () => {
+    const css = cssFor({}, { preset: 'paper', mode: 'light' });
+
+    // 语义色只出现在站点深色选择器里，:root 仍沿用 styles.css 的浅色基准。
+    expect(rootBlock(css)).not.toContain('--danger');
+    expect(css.indexOf('html[data-surface="site"][data-mode="dark"]')).toBeGreaterThan(
+      css.indexOf('html[data-surface="admin"]'),
+    );
+  });
+});

@@ -1,8 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { APP_VERSION } from './lib/appVersion';
 import { loadConfig } from './lib/backend';
 import { readCustomization, themeCss } from './lib/customize';
+import { rememberBuild, restoreAfterSwap } from './lib/hotUpdate';
 import { DEFAULT_LOCALE, setLocale } from './lib/i18n';
 import { applyMotionPreference, readPerformance } from './lib/performance';
 import { applySoftenAttributes, applyThemeMode } from './lib/theme';
@@ -49,6 +51,13 @@ async function boot() {
       <App />
     </StrictMode>,
   );
+
+  // 换版后的第一次加载：记下当前构建，等首屏挂上去后恢复换版前的滚动位置。
+  // 没有“换版交接”数据时这两个调用什么都不做。
+  rememberBuild(APP_VERSION);
+  const restore = () => restoreAfterSwap({ currentVersion: APP_VERSION });
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restore);
+  else window.setTimeout(restore, 0);
 }
 
 void boot();

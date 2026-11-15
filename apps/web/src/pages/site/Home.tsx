@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../lib/session';
-import { ApiError } from '../../lib/api';
+import { ApiError, isBackendOffline } from '../../lib/api';
 import { useCustomization } from '../../lib/customize';
 import { useSeo } from '../../lib/seo';
 import { Callout } from '../../components/ui';
@@ -18,17 +18,23 @@ function FeedError() {
   const t = useT();
   const { error, reload } = useFeed();
   if (!error) return null;
+  const unauthenticated = error instanceof ApiError && error.code === 'unauthenticated';
+  // 后端连不上（fetch 失败时 status = 0）不是登录问题：标题直接说连接失败，
+  // 也不要给出「去登录」——登录页同样连不上后端，只会把读者带进死路。
+  const offline = isBackendOffline(error);
   return (
-    <Callout tone="danger" icon="alert" title={t('无法读取内容')}>
-      {error instanceof ApiError && error.code === 'unauthenticated'
+    <Callout tone="danger" icon="alert" title={offline ? t('无法连接 API') : t('无法读取内容')}>
+      {unauthenticated
         ? t('这个站点设置为「登录后浏览」，请先登录。')
         : error instanceof Error
           ? error.message
           : t('请求失败。')}
-      <div className="mt-12">
-        <Link to="/login" className="btn btn-secondary btn-sm">
-          {t('去登录')}
-        </Link>
+      <div className="mt-12 row gap-8">
+        {unauthenticated ? (
+          <Link to="/login" className="btn btn-secondary btn-sm">
+            {t('去登录')}
+          </Link>
+        ) : null}
         <button type="button" className="btn btn-ghost btn-sm" onClick={reload}>
           {t('重试')}
         </button>

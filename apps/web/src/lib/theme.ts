@@ -622,6 +622,18 @@ ${adminLines.join('\n')}
   --r-md: 10px;
   --r-lg: 16px;
 }
+/* 站点前台深色：错误 / 警告 / 成功这组语义色不在主题令牌里，styles.css 的基准
+   是浅色纸面。深色主题下沿用浅色值会出现「浅粉底 + 浅色字」——后端连不上时
+   首页与列表页的离线提示就是一块看不见的方块，表单错误也读不清。
+   这里换成亮色语义色 + 由当前底色混出的浅底，与后台深色的处理保持一致。 */
+html[data-surface="site"][data-mode="dark"] {
+  --danger: #f08a76;
+  --warn: #e0bd6b;
+  --ok: #74c69d;
+  --danger-soft: color-mix(in srgb, var(--danger) 16%, var(--bg));
+  --warn-soft: color-mix(in srgb, var(--warn) 16%, var(--bg));
+  --ok-soft: color-mix(in srgb, var(--ok) 16%, var(--bg));
+}
 /* 后台与安装向导：body 底色跟随各自的令牌。后台深色由 data-admin-theme 切换；
    安装向导始终固定浅色。index.html 里的「深色模式首屏防闪」规则优先级相同，
    所以要用同一层的规则把底色与文字拉回当前界面自己的令牌。 */

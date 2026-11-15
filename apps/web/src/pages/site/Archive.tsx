@@ -4,7 +4,7 @@ import type { Content, ContentKind } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import { readPerformance } from '../../lib/performance';
-import { ApiError } from '../../lib/api';
+import { ApiError, isBackendOffline } from '../../lib/api';
 import { KIND_LABEL, formatDate, readingTime } from '../../lib/format';
 import { Badge, Button, Callout, EmptyState, Input, SkeletonRow } from '../../components/ui';
 import { Icon } from '../../components/Icon';
@@ -161,16 +161,26 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
 
       {error ? (
         <div className="mt-24">
-          <Callout tone="danger" icon="alert" title={t('无法读取列表')}>
+          <Callout
+            tone="danger"
+            icon="alert"
+            title={isBackendOffline(error) ? t('无法连接 API') : t('无法读取列表')}
+          >
             {error instanceof ApiError && error.code === 'unauthenticated'
               ? t('这个站点设置为「登录后浏览」，请先登录。')
               : error instanceof Error
                 ? error.message
                 : t('请求失败。')}
-            <div className="mt-12">
-              <Link to="/login" className="btn btn-secondary btn-sm">
-                {t('去登录')}
-              </Link>
+            <div className="mt-12 row gap-8">
+              {error instanceof ApiError && error.code === 'unauthenticated' ? (
+                <Link to="/login" className="btn btn-secondary btn-sm">
+                  {t('去登录')}
+                </Link>
+              ) : null}
+              {/* 后端连不上时登录页同样打不开，这里只留重试。 */}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()}>
+                {t('重试')}
+              </button>
             </div>
           </Callout>
         </div>

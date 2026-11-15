@@ -30,6 +30,21 @@ const fragment: Dictionary = {
   '白底日报 · 单行胶囊 Tab、分栏头版与单栏文章，适合每日更新的站点。':
     'A white daily front page · single-row pill tabs, a split lead and a single-column article, made for sites that publish every day.',
 
+  // ---- 内置主题自带的预览画面（docs/themes/06-preview.md） ----
+  文章: 'Articles',
+  专题: 'Features',
+  关于: 'About',
+  '独立出版 · 纸白单栏': 'Independent publishing · paper white, single column',
+  把注意力留给文字: 'Leave the attention to the words',
+  '长文、随笔与专题，安静克制的阅读版面。':
+    'Long reads, essays and features in a quiet, restrained reading layout.',
+  '版面安静下来，文字才有回声。': 'When the page quiets down, the words begin to echo.',
+  开始阅读: 'Start reading',
+  '夜航 · 冷石墨双栏': 'Night flight · cold graphite, two columns',
+  在冷石墨上读长夜: 'Read through the night on cold graphite',
+  '电光蓝强调与杂志网格，适合图片、专题与社区。':
+    'Electric-blue accents and a magazine grid for imagery, features and community.',
+
   // ---- 版式标签 ----
   双栏: 'Two-column',
   单栏: 'Single column',

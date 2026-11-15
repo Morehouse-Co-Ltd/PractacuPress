@@ -27,6 +27,7 @@ import { BLOCK_SKELETON_SHAPES } from '../../lib/loading';
 import { applyDisplayOverrides } from '../../lib/layout';
 import { isVisibleAt, roleFromSession, type VisibilityContext } from '../../lib/visibility';
 import { isPreviewFrame } from '../../lib/access';
+import { documentPreviewToken } from '../../lib/themePreviewLive';
 import { pluginBlockRegistry } from '../../lib/plugins/registry';
 import { useAuth } from '../../lib/session';
 import { useT } from '../../lib/i18n';
@@ -290,7 +291,8 @@ export function ScreenRenderer({
   const now = useMemo(() => new Date(), []);
   // 编排器预览跑在 iframe 里（带管理员真实登录态）：角色与时间窗在预览里不该生效，
   // 否则作者刚设了限制的区块会当场消失、再也选不中。设备条件仍然生效。
-  const preview = useMemo(() => isPreviewFrame(), []);
+  // 主题「真实前台预览」是给访客看的样子，按真实登录态与时间窗过滤。
+  const preview = useMemo(() => isPreviewFrame() && !documentPreviewToken(), []);
   const visibility = useMemo<VisibilityContext>(
     () => ({ device, role, now, preview }),
     [device, role, now, preview],

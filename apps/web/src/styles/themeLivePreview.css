@@ -1,0 +1,81 @@
+/* 「选择主题」→ 真实前台预览：用同源 iframe 渲染站点本身。 */
+.theme-live {
+  display: grid;
+  gap: 10px;
+}
+
+.theme-live-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.theme-live-pages,
+.theme-live-devices {
+  display: flex;
+  gap: 4px;
+}
+
+.theme-live-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.theme-live-frame {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  min-height: 240px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.theme-live-frame iframe {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: clamp(420px, 56vh, 620px);
+  border: 0;
+  background: #fff;
+}
+
+.theme-live-frame.is-tablet iframe { max-width: 768px; }
+.theme-live-frame.is-mobile iframe { max-width: 390px; }
+
+.theme-live-loading {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.theme-live-empty {
+  margin: auto;
+  padding: 32px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.theme-live-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  .theme-live-actions { margin-left: 0; }
+  .theme-live-frame iframe { height: 58vh; min-height: 320px; }
+}

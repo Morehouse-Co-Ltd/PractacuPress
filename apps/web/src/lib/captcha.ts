@@ -2,6 +2,9 @@ import type {
   CaptchaScene,
   CaptchaStatus,
   HumanVerificationProvider,
+  LocalCaptchaChallenge,
+  LocalCaptchaKind,
+  LocalCaptchaPoint,
 } from '../types';
 
 /**
@@ -112,6 +115,107 @@ export function readCaptchaStatus(raw: unknown): CaptchaStatus {
 export function captchaSceneRequired(status: CaptchaStatus | null, scene: CaptchaScene): boolean {
   if (!status || !status.effective) return false;
   return status.scenes[scene] === true;
+}
+
+/** 本地验证的三种题型，顺序与界面轮换一致。 */
+export const LOCAL_CAPTCHA_KINDS: LocalCaptchaKind[] = ['slider', 'click', 'select'];
+
+function asLocalKind(value: unknown): LocalCaptchaKind {
+  return value === 'click' || value === 'select' || value === 'slider' ? value : 'slider';
+}
+
+function asFiniteInt(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback;
+}
+
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * 把 `GET /captcha/local/challenge` 的应答收敛成固定形状。
+ *
+ * 服务端是可信来源，但这个函数仍然补齐缺省值：题型决定读哪些字段，字段缺失时
+ * 组件应当显示一块可读的降级提示，而不是在渲染时抛异常、让整个登录页白屏。
+ */
+export function readLocalCaptchaChallenge(raw: unknown): LocalCaptchaChallenge {
+  const source = asObject(raw);
+  const kind = asLocalKind(source.kind);
+  const challenge: LocalCaptchaChallenge = {
+    challenge_id: asText(source.challenge_id),
+    kind,
+    prompt: asText(source.prompt),
+    expires_at: asText(source.expires_at),
+    width: asFiniteInt(source.width),
+    height: asFiniteInt(source.height),
+  };
+  if (kind === 'slider') {
+    challenge.background = asText(source.background);
+    challenge.piece = asText(source.piece);
+    challenge.piece_size = asFiniteInt(source.piece_size, 52);
+    challenge.piece_top = asFiniteInt(source.piece_top);
+    challenge.width = challenge.width || 320;
+    challenge.height = challenge.height || 180;
+    challenge.max_offset = asFiniteInt(
+      source.max_offset,
+      Math.max(challenge.width - challenge.piece_size, 0),
+    );
+  } else {
+    challenge.image = asText(source.image);
+    challenge.target_count = asFiniteInt(source.target_count, 3);
+    const fallback = kind === 'select' ? 288 : 320;
+    challenge.width = challenge.width || fallback;
+    challenge.height = challenge.height || (kind === 'select' ? 288 : 200);
+  }
+  if (kind === 'select') {
+    challenge.rows = asFiniteInt(source.rows, 3);
+    challenge.cols = asFiniteInt(source.cols, 3);
+  }
+  return challenge;
+}
+
+/** 图片在页面上的位置与尺寸，来自 `getBoundingClientRect`。 */
+export interface CaptchaRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 把一次点击换算成图片坐标。
+ *
+ * 图片可能被 CSS 缩小（窄屏），所以坐标必须按「显示尺寸 → 原始像素」的比例换算；
+ * 直接提交 `offsetX` 会在手机上偏出目标。越界的点击返回 null，由调用方忽略。
+ */
+export function captchaPointFromEvent(
+  rect: CaptchaRect,
+  clientX: number,
+  clientY: number,
+  naturalWidth: number,
+  naturalHeight: number,
+): LocalCaptchaPoint | null {
+  if (rect.width <= 0 || rect.height <= 0 || naturalWidth <= 0 || naturalHeight <= 0) return null;
+  const x = ((clientX - rect.left) * naturalWidth) / rect.width;
+  const y = ((clientY - rect.top) * naturalHeight) / rect.height;
+  if (x < 0 || y < 0 || x > naturalWidth || y > naturalHeight) return null;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+/** 九宫格题：把一个图片坐标换算成格子序号（行优先）；越界返回 null。 */
+export function captchaCellIndex(
+  point: LocalCaptchaPoint,
+  width: number,
+  height: number,
+  rows: number,
+  cols: number,
+): number | null {
+  if (width <= 0 || height <= 0 || rows <= 0 || cols <= 0) return null;
+  if (point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) return null;
+  const col = Math.floor((point.x / width) * cols);
+  const row = Math.floor((point.y / height) * rows);
+  if (col < 0 || col >= cols || row < 0 || row >= rows) return null;
+  return row * cols + col;
 }
 
 /**

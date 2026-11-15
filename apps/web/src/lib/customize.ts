@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type {
+  AiModerationSettings,
   ArticleCardStyle,
   ArticleCover,
   BlockAnimation,
@@ -44,6 +45,8 @@ import {
   type ThemePreset,
 } from './theme';
 import { normalizeThemeSettingValues } from './themeSettings';
+import { themeApplyPatch } from './themeApply';
+import { documentPreviewTheme } from './themePreviewLive';
 import {
   BUILTIN_THEME_IDS,
   builtinThemeBundle,
@@ -141,10 +144,21 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   variant: 'classic',
 };
 
+export const DEFAULT_AI_MODERATION: AiModerationSettings = {
+  enabled: false,
+  // 旧版本只有评论审核；默认保持评论范围，文章需要站长显式打开。
+  scopes: { article: false, comment: true },
+  // 权限默认跟随当前评论策略：先审后发时自动通过，直接发布时自动删除高风险评论。
+  auto: true,
+  sensitivity: 'medium',
+  blocked_terms: [],
+};
+
 export const DEFAULT_COMMENT_SETTINGS: CommentSettings = {
   enabled: true,
   require_review: false,
   notice: '',
+  ai: { ...DEFAULT_AI_MODERATION, scopes: { ...DEFAULT_AI_MODERATION.scopes } },
 };
 
 export const DEFAULT_VERIFICATION: HumanVerificationSettings = {
@@ -1251,8 +1265,46 @@ function normalizeVerificationProvider(value: unknown): HumanVerificationProvide
     : DEFAULT_VERIFICATION.provider;
 }
 
+/**
+ * AI 审核设置的归一化。
+ *
+ * 旧版本用 `mode: 'suggest' | 'auto_hold'`，两者都只做标记、不自动处理；迁移时
+ * 收敛成 `auto: false`，避免升级后 AI 突然开始删评论。没有旧字段的新配置使用
+ * `auto: true`，权限跟随当前评论策略（见 `AiModerationSettings` 的注释）。
+ */
+function normalizeAiModeration(value: unknown): AiModerationSettings {
+  const raw = plainRecord(value);
+  if (!raw) {
+    return { ...DEFAULT_AI_MODERATION, scopes: { ...DEFAULT_AI_MODERATION.scopes } };
+  }
+  const scopes = plainRecord(raw.scopes);
+  const legacySuggestionMode = raw.mode === 'suggest' || raw.mode === 'auto_hold';
+  return {
+    enabled: bool(raw.enabled, DEFAULT_AI_MODERATION.enabled),
+    scopes: {
+      article: scopes ? bool(scopes.article, false) : DEFAULT_AI_MODERATION.scopes.article,
+      comment: scopes ? bool(scopes.comment, true) : DEFAULT_AI_MODERATION.scopes.comment,
+    },
+    auto:
+      typeof raw.auto === 'boolean'
+        ? raw.auto
+        : legacySuggestionMode
+          ? false
+          : DEFAULT_AI_MODERATION.auto,
+    sensitivity:
+      raw.sensitivity === 'low' ? 'low' : raw.sensitivity === 'high' ? 'high' : 'medium',
+    blocked_terms: Array.isArray(raw.blocked_terms)
+      ? raw.blocked_terms
+          .filter((term): term is string => typeof term === 'string')
+          .map((term) => term.trim().toLowerCase().slice(0, 40))
+          .filter(Boolean)
+          .slice(0, 50)
+      : [],
+  };
+}
+
 /** 把任意（可能是旧版本或导入的）配置收敛成可用的结构。 */
-export function readCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
+function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
   if (!config.customization) return DEFAULT_CUSTOMIZATION;
   // 只改读取路径：v1 的三棵树在这里折算成 v2 的展示层覆盖，保存路径仍然写原始对象，
   // 迁移结果在下一次保存（或 customizationSync 的本地缓存写回）时自然落盘。
@@ -1386,23 +1438,7 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
       enabled: bool(raw.comments?.enabled, DEFAULT_COMMENT_SETTINGS.enabled),
       require_review: bool(raw.comments?.require_review, DEFAULT_COMMENT_SETTINGS.require_review),
       notice: text(raw.comments?.notice, '', 400),
-      ai: {
-        enabled: bool(raw.comments?.ai?.enabled, false),
-        mode: raw.comments?.ai?.mode === 'auto_hold' ? 'auto_hold' : 'suggest',
-        sensitivity:
-          raw.comments?.ai?.sensitivity === 'low'
-            ? 'low'
-            : raw.comments?.ai?.sensitivity === 'high'
-              ? 'high'
-              : 'medium',
-        blocked_terms: Array.isArray(raw.comments?.ai?.blocked_terms)
-          ? raw.comments.ai.blocked_terms
-              .filter((term): term is string => typeof term === 'string')
-              .map((term) => term.trim().toLowerCase().slice(0, 40))
-              .filter(Boolean)
-              .slice(0, 50)
-          : [],
-      },
+      ai: normalizeAiModeration(raw.comments?.ai),
     },
     verification: {
       enabled: bool(raw.verification?.enabled, DEFAULT_VERIFICATION.enabled),
@@ -1448,6 +1484,21 @@ export function readCustomization(config: Pick<WebConfig, 'customization'>): Sit
     // 保证随后写回服务端的副本、导出文件与渲染都走同一份干净内容。
     custom_css: sanitizeCustomCss(raw.custom_css),
   };
+}
+
+/**
+ * 读取站点设计，并在「真实前台」主题预览里叠加被预览的主题。
+ *
+ * 预览只在 `documentPreviewTheme()` 认领到主题的那份文档里生效（见
+ * `themePreviewLive.ts`）：不改配置、不写服务端，后台窗口与页面编排预览都不受影响。
+ * 放在读取层而不是页面层，是因为主题令牌、版式变体、页面编排与首屏 CSS 变量都从
+ * 这里出发——一处覆盖，整个前台就是这套主题真实运转的样子。
+ */
+export function readCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
+  const base = normalizeCustomization(config);
+  const preview = documentPreviewTheme();
+  if (!preview) return base;
+  return { ...base, ...themeApplyPatch(base, preview).patch };
 }
 
 function isPageLike(value: unknown): value is SitePage {

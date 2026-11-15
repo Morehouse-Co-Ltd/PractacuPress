@@ -88,6 +88,26 @@ describe('主题包清单', () => {
     ] as unknown as typeof manifest.pages;
     expect(() => normalizeThemePackageManifest(manifest)).toThrow(/slug/);
   });
+
+  it('保留主题自带预览，非法字段被丢弃', () => {
+    const manifest = normalizeThemePackageManifest({
+      ...baseManifest(),
+      preview: {
+        title: '把光留在页面上',
+        blocks: [{ type: 'grid', weight: 2 }, { type: 'video' }],
+        palette: { accent: '#7AA2FF', ink: 'var(--ink)' },
+      },
+    });
+    expect(manifest.preview).toEqual({
+      title: '把光留在页面上',
+      blocks: [{ type: 'grid', weight: 2 }],
+      palette: { accent: '#7aa2ff' },
+    });
+  });
+
+  it('没有预览字段时主题包照常通过', () => {
+    expect(normalizeThemePackageManifest(baseManifest()).preview).toBeUndefined();
+  });
 });
 
 describe('主题包读取', () => {
@@ -138,6 +158,27 @@ describe('主题包读取', () => {
   it('缺少 theme.json 时拒绝', async () => {
     const blob = createZip([{ name: 'pages/home.json', data: '{}' }]);
     await expect(readThemePackage(blob)).rejects.toThrow(/主题清单/);
+  });
+
+  it('zip 往返保留主题自带预览', async () => {
+    const blob = buildThemePackage({
+      manifest: {
+        ...baseManifest(),
+        pages: undefined,
+        preview: {
+          brand: 'AURORA',
+          nav: ['首页', '文章'],
+          blocks: [{ type: 'media', weight: 2 }, { type: 'quote', text: '慢慢读完。' }],
+        },
+      },
+      files: [],
+    });
+    const parsed = await readThemePackage(blob);
+    expect(parsed.manifest.preview).toEqual({
+      brand: 'AURORA',
+      nav: ['首页', '文章'],
+      blocks: [{ type: 'media', weight: 2 }, { type: 'quote', text: '慢慢读完。' }],
+    });
   });
 });
 

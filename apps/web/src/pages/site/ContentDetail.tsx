@@ -4,7 +4,7 @@ import type { Comment, ContentKind, ReportReason, ToggleResult } from '../../typ
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useScrollProgress } from '../../lib/hooks';
-import { ApiError } from '../../lib/api';
+import { ApiError, isBackendOffline } from '../../lib/api';
 import { captchaReasonText, captchaSceneRequired } from '../../lib/captcha';
 import {
   KIND_LABEL,
@@ -660,12 +660,19 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
   if (content.error || !item) {
     const notFound = content.error instanceof ApiError && content.error.code === 'not_found';
+    const offline = isBackendOffline(content.error);
     return (
       <div className="shell">
         <div style={{ paddingTop: 64 }}>
           <EmptyState
-            icon={notFound ? 'file' : 'lock'}
-            title={notFound ? t('这篇内容不存在') : t('暂时无法打开')}
+            icon={notFound ? 'file' : offline ? 'alert' : 'lock'}
+            title={
+              notFound
+                ? t('这篇内容不存在')
+                : offline
+                  ? t('无法连接 API')
+                  : t('暂时无法打开')
+            }
             body={
               content.error instanceof ApiError
                 ? content.error.message
@@ -674,9 +681,23 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                   : t('请稍后重试。')
             }
             action={
-              <Link to={kind === 'article' ? '/articles' : '/posts'} className="btn btn-secondary btn-sm">
-                {t('返回列表')}
-              </Link>
+              <div className="row gap-8" style={{ justifyContent: 'center' }}>
+                <Link
+                  to={kind === 'article' ? '/articles' : '/posts'}
+                  className="btn btn-secondary btn-sm"
+                >
+                  {t('返回列表')}
+                </Link>
+                {content.error && !notFound ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={content.reload}
+                  >
+                    {t('重试')}
+                  </button>
+                ) : null}
+              </div>
             }
           />
         </div>

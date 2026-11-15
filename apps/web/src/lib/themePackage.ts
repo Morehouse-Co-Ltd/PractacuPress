@@ -1,9 +1,17 @@
-import type { ScreenLayout, SiteCustomization, SiteTheme, ThemeAppearance } from '../types';
+import type {
+  LayoutVariant,
+  ScreenLayout,
+  SiteCustomization,
+  SiteTheme,
+  ThemeAppearance,
+  ThemePreviewSpec,
+  ThemeSettings,
+} from '../types';
 import { normalizeScreenLayout } from './customize';
 import { normalizeThemeSettings } from './theme';
 import { normalizeThemeSettingsSchema } from './themeSettings';
+import { normalizeThemePreview } from './themePreview';
 import { normalizeAppearance, normalizeVariant } from './themes';
-import type { LayoutVariant, ThemeSettings } from '../types';
 import { createZip, readZip, safeZipName, type ZipEntry } from './zip';
 
 /**
@@ -52,6 +60,8 @@ export interface ThemePackageManifest {
   variant: LayoutVariant;
   theme: ThemeSettings;
   appearance?: ThemeAppearance;
+  /** 主题作者自己写的预览画面；缺省时由渲染器按版式生成。 */
+  preview?: ThemePreviewSpec;
   pages?: ThemePackagePage[];
   components?: { entry: string; id: string };
   backend?: {
@@ -200,6 +210,7 @@ export function normalizeThemePackageManifest(value: unknown): ThemePackageManif
   const backend = object(raw.backend);
   const admin = object(raw.admin);
   const appearance = normalizeAppearance(raw.appearance);
+  const preview = normalizeThemePreview(raw.preview);
 
   return {
     kind: 'pp-theme',
@@ -213,6 +224,7 @@ export function normalizeThemePackageManifest(value: unknown): ThemePackageManif
     variant: normalizeVariant(raw.variant),
     theme: normalizeThemeSettings(theme),
     ...(appearance ? { appearance } : {}),
+    ...(preview ? { preview } : {}),
     ...(pages.length ? { pages } : {}),
     ...(components
       ? {
@@ -370,6 +382,7 @@ export function themePackageReadme(manifest: ThemePackageManifest, docsBase = 'd
     '',
     `- 主题开发文档：${docsBase}/README.md`,
     `- 主题包格式：${docsBase}/04-package.md`,
+    `- 主题自带预览：${docsBase}/06-preview.md`,
     `- 后台侧栏与 Go 后端：${docsBase}/05-admin-and-backend.md`,
     '- 扩展与后端 ABI：docs/extensions/README.md',
     '',
@@ -396,6 +409,8 @@ export function themeManifestFromCustomization(
     author?: string;
     homepage?: string;
     appearance?: ThemeAppearance;
+    /** 主题自带的预览画面；导出时随清单一起带走。 */
+    preview?: ThemePreviewSpec;
     components?: ThemePackageManifest['components'];
     backend?: ThemePackageManifest['backend'];
     admin?: ThemePackageManifest['admin'];
@@ -448,6 +463,7 @@ export function themeManifestFromCustomization(
     variant: customization.layout.variant,
     theme: customization.theme,
     ...(options.appearance ? { appearance: options.appearance } : {}),
+    ...(options.preview ? { preview: normalizeThemePreview(options.preview) } : {}),
     ...(pages.length ? { pages } : {}),
     ...(options.components ? { components: options.components } : {}),
     ...(options.backend ? { backend: options.backend } : {}),
@@ -524,6 +540,7 @@ export function siteThemeFromPackage(
     theme: parsed.manifest.theme,
     ...(parsed.manifest.appearance ? { appearance: parsed.manifest.appearance } : {}),
     ...(settings ? { settings } : {}),
+    ...(parsed.manifest.preview ? { preview: parsed.manifest.preview } : {}),
   };
 }
 

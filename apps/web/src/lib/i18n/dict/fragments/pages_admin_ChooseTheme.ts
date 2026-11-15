@@ -73,6 +73,12 @@ const fragment: Dictionary = {
   这个主题正在使用: 'This theme is in use',
   '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，中间会出现与预览同款的编辑入口。':
     'Each theme shows a cover, title and description; click a card to read the details on the right, then apply it. Hover the cover and the same centred pill buttons as Preview appear, including Edit.',
+  '点击卡片在右侧查看详细介绍；鼠标移到封面上，才会出现预览与编辑入口，右上角还有主题设置和删除。':
+    'Click a card to read the details on the right. Preview and edit appear only when you hover the cover; theme settings and delete sit in the top-right corner.',
+  '打开「{name}」的主题设置': 'Open theme settings for “{name}”',
+  '删除「{name}」': 'Delete “{name}”',
+  内置主题不能删除: 'Built-in themes cannot be deleted',
+  自带预览: 'Custom preview',
 };
 
 export default fragment;

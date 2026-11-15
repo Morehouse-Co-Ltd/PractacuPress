@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpBackend } from './api';
+import { ApiError, HttpBackend, fallbackProblem, isBackendOffline } from './api';
 import { configurePerformance, DEFAULT_PERFORMANCE } from './performance';
 
 function jsonResponse(body: unknown): Response {
@@ -363,3 +363,14 @@ describe('HttpBackend two-factor login', () => {
   });
 });
 
+describe('isBackendOffline', () => {
+  it('recognises the status-0 wrapper used when fetch itself fails', () => {
+    expect(isBackendOffline(new ApiError(fallbackProblem(0)))).toBe(true);
+  });
+
+  it('does not treat a real HTTP error as a connection failure', () => {
+    expect(isBackendOffline(new ApiError(fallbackProblem(500)))).toBe(false);
+    expect(isBackendOffline(new Error('boom'))).toBe(false);
+    expect(isBackendOffline(null)).toBe(false);
+  });
+});

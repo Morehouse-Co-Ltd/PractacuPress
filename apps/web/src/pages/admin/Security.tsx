@@ -7,8 +7,9 @@ import { Icon, type IconName } from '../../components/Icon';
 import { ReviewPage } from './Review';
 import { ReportsPage } from './Reports';
 import { CommentsPage } from './Comments';
+import { ModerationSettingsPage } from './ModerationSettings';
 
-type SecurityTab = 'review' | 'reports' | 'comments';
+type SecurityTab = 'review' | 'comments' | 'reports' | 'settings';
 
 interface SecurityTabEntry {
   key: SecurityTab;
@@ -20,9 +21,9 @@ interface SecurityTabEntry {
 /**
  * 信息安全中心。
  *
- * 审核、举报与评论审核原本是侧栏三个入口，都在处理「内容是否该被看见」这件事；
- * 合并成一页后用三个小 tab 切换，侧栏少三行，队列之间的切换也不用重新找入口。
- * 个人博客没有「别人投稿、站长审核」的流程，审核 tab 直接不出现。
+ * 审核、评论审核、举报与审核设置都在处理「内容是否该被看见」这件事。前三个是
+ * 队列，审核设置放会改变策略的开关；拆开之后审核员处理队列时不会误触评论策略或
+ * AI 权限。个人博客没有「别人投稿、站长审核」的流程，审核 tab 直接不出现。
  */
 export function SecurityPage() {
   const t = useT();
@@ -37,8 +38,17 @@ export function SecurityPage() {
       icon: 'shield',
       allowed: can('moderate_content') && !personal,
     },
+    { key: 'comments', label: t('评论审核'), icon: 'message', allowed: can('moderate_comment') },
     { key: 'reports', label: t('举报'), icon: 'alert', allowed: can('moderate_content') },
-    { key: 'comments', label: t('评论与审核'), icon: 'message', allowed: can('moderate_comment') },
+    {
+      key: 'settings',
+      label: t('审核设置'),
+      icon: 'settings',
+      // 审核设置里既有评论策略也有文章 AI 权限：任一审核能力都值得看到，
+      // 具体开关再按能力禁用（见 ModerationSettingsPage）；能管站点的人也要能进来
+      // 调整评论策略与内容安全。
+      allowed: can('moderate_comment') || can('moderate_content') || can('manage_site'),
+    },
   ];
   const allowed = tabs.filter((tab) => tab.allowed);
 
@@ -65,7 +75,9 @@ export function SecurityPage() {
         <div>
           <h1>{t('信息安全')}</h1>
           <p>
-            {t('审核待发布内容、处理读者举报、管理评论。三种队列在这里汇合，处理动作都会写入网站日志。')}
+            {t(
+              '审核待发布内容、处理读者举报、管理评论。队列与策略分开：处理动作写入网站日志，策略开关集中在「审核设置」。',
+            )}
           </p>
         </div>
       </div>
@@ -96,10 +108,12 @@ export function SecurityPage() {
       >
         {active === 'review' ? (
           <ReviewPage embedded />
+        ) : active === 'comments' ? (
+          <CommentsPage embedded />
         ) : active === 'reports' ? (
           <ReportsPage embedded />
         ) : (
-          <CommentsPage embedded />
+          <ModerationSettingsPage embedded />
         )}
       </div>
     </>

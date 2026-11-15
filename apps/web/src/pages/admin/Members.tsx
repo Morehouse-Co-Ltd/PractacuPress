@@ -8,7 +8,7 @@ import { noteActivity } from '../../lib/activity';
 import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
 import { ROLE_HINT, ROLE_LABEL } from '../../lib/format';
 import { groupConfigLabel, groupIdForRole } from '../../lib/permissions';
-import { SITE_KIND_LABEL, siteKindOf } from '../../lib/site';
+import { siteKindOf } from '../../lib/site';
 import { usePermissions } from '../../lib/usePermissions';
 import { errorText, useT } from '../../lib/i18n';
 import { bytesToMbString, parseMediaQuotaMbInput } from '../../lib/mediaQuota';
@@ -385,7 +385,7 @@ export function MembersPage() {
           <p>
             {personal
               ? t('个人博客下所有用户都能登录后台并拥有最高权限；用户组原样保留，切回社区站点后恢复。')
-              : t('按用户组管理成员。用户组变更会写入操作日志，并立即影响服务端授权。')}
+              : t('按用户组管理成员。最高管理员的用户组固定，其余变更会写入操作日志，并立即影响服务端授权。')}
           </p>
         </div>
         <div className="admin-page-actions">
@@ -421,7 +421,7 @@ export function MembersPage() {
       ) : (
         <Callout tone="info" icon="shield" title={t('用户组边界')}>
           {t('平台管理员管理站点与全局策略；站点管理员管理本站用户与规则；编辑 / 审核员处理内容审核；')}{' '}
-          {t('成员可以发布与互动。只有平台管理员可以授予或撤销平台管理员。逐项能力见')}
+          {t('成员可以发布与互动。最高管理员固定为注册该站的账号，其他账户不能被提升为该用户组。逐项能力见')}
           <Link to="/admin/permissions" className="text-link">
             {' '}
             {t('用户组')}{' '}
@@ -502,9 +502,12 @@ export function MembersPage() {
               <tbody>
                 {filteredMembers.map((member) => {
                   const isSelf = member.user_id === me?.user.id;
-                  const platformLocked = member.role === 'platform_admin' && me?.role !== 'platform_admin';
                   const savedQuotaValue = bytesToMbString(member.media_quota_bytes);
                   const quotaValue = quotaDrafts[member.user_id] ?? savedQuotaValue;
+                  // The highest administrator is the account that registered the
+                  // site, so its group is not editable. Every other row may move
+                  // between the remaining groups only.
+                  const groupLocked = member.role === 'platform_admin';
                   return (
                     <tr key={member.user_id}>
                       <td>
@@ -575,35 +578,42 @@ export function MembersPage() {
                               })}
                             </p>
                           </div>
+                        ) : groupLocked ? (
+                          <div>
+                            <Badge tone="accent" dot>
+                              {t('最高管理员')}
+                            </Badge>
+                            <p className="tiny faint" style={{ marginTop: 4 }}>
+                              {t('注册该站的账号，用户组固定')}
+                            </p>
+                          </div>
                         ) : (
                           <Select
                             className="group-select"
                             value={memberGroupKey(member)}
-                            disabled={platformLocked || busy}
+                            disabled={busy}
                             onChange={(e) => {
                               const groupKey = e.target.value;
                               if (groupKey !== memberGroupKey(member)) setPending({ member, groupKey });
                             }}
                             aria-label={t('{name} 的用户组', { name: member.display_name })}
                           >
-                            {assignableGroups.map((item) => {
-                              const needsPlatform =
-                                item.base_role === 'platform_admin' &&
-                                me?.role !== 'platform_admin' &&
-                                member.role !== 'platform_admin';
-                              const unsupported =
-                                !backend.assignMemberGroup && !item.builtin;
-                              return (
-                                <option
-                                  key={item.key}
-                                  value={item.key}
-                                  disabled={needsPlatform || unsupported}
-                                  title={unsupported ? t('当前后端不支持自定义能力组') : undefined}
-                                >
-                                  {groupConfigLabel(item)}
-                                </option>
-                              );
-                            })}
+                            {assignableGroups
+                              .filter((item) => item.base_role !== 'platform_admin')
+                              .map((item) => {
+                                const unsupported =
+                                  !backend.assignMemberGroup && !item.builtin;
+                                return (
+                                  <option
+                                    key={item.key}
+                                    value={item.key}
+                                    disabled={unsupported}
+                                    title={unsupported ? t('当前后端不支持自定义能力组') : undefined}
+                                  >
+                                    {groupConfigLabel(item)}
+                                  </option>
+                                );
+                              })}
                           </Select>
                         )}
                       </td>
@@ -660,97 +670,6 @@ export function MembersPage() {
         )}
       </div>
 
-      <div className="dash-grid">
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>{personal ? t('个人博客的用户规则') : t('用户组能做什么')}</h3>
-            </div>
-          </div>
-          <div className="panel-body" style={{ paddingTop: 6 }}>
-            {personal ? (
-              <div className="mini-list">
-                <div className="mini-row" style={{ alignItems: 'flex-start' }}>
-                  <span className="mini-label" style={{ minWidth: 96 }}>
-                    {t('登录')}
-                  </span>
-                  <span className="mini-value" style={{ fontWeight: 400, color: 'var(--muted)', textAlign: 'left' }}>
-                    {t('所有账户都能登录，前台不再提供注册入口。新账户由站长在上方创建。')}
-                  </span>
-                </div>
-                <div className="mini-row" style={{ alignItems: 'flex-start' }}>
-                  <span className="mini-label" style={{ minWidth: 96 }}>
-                    {t('权限')}
-                  </span>
-                  <span className="mini-value" style={{ fontWeight: 400, color: 'var(--muted)', textAlign: 'left' }}>
-                    {t('统一按最高管理员处理：写稿、审核、评论管理、站点设置、外观与成员管理全部开放。')}
-                  </span>
-                </div>
-                <div className="mini-row" style={{ alignItems: 'flex-start' }}>
-                  <span className="mini-label" style={{ minWidth: 96 }}>
-                    {t('切回社区')}
-                  </span>
-                  <span className="mini-value" style={{ fontWeight: 400, color: 'var(--muted)', textAlign: 'left' }}>
-                    {t('角色记录仍然保留，切回后按成员 / 审核员 / 管理员重新生效。')}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="mini-list">
-                {assignableGroups
-                  .slice()
-                  .reverse()
-                  .map((item) => (
-                    <div className="mini-row" key={item.key} style={{ alignItems: 'flex-start' }}>
-                      <span className="mini-label" style={{ minWidth: 96 }}>
-                        {groupConfigLabel(item)}
-                      </span>
-                      <span className="mini-value" style={{ fontWeight: 400, color: 'var(--muted)', textAlign: 'left' }}>
-                        {item.builtin
-                          ? ROLE_HINT[(item.base_role ?? 'member') as Role]
-                          : t('自定义能力组，基础角色为{role}。', {
-                              role: ROLE_LABEL[(item.base_role ?? 'member') as Role],
-                            })}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>{t('新增与停用')}</h3>
-              <p>
-                {personal
-                  ? t('用户由站长创建，密码当面或通过安全渠道交付。')
-                  : t('管理员可以直接创建用户，也可以让访客自助注册。')}
-              </p>
-            </div>
-          </div>
-          <div className="panel-body">
-            <p className="small muted" style={{ lineHeight: 1.8 }}>
-              {personal
-                ? t('个人博客关闭自助注册后，创建用户是唯一入口。创建后对方用邮箱与初始密码登录，建议提醒对方尽快修改密码。')
-                : t('新访客通过注册成为普通成员；管理员也可以在「新增用户」里直接指定用户组，省去后续调整。')}
-            </p>
-            {canCreate ? (
-              <Button variant="secondary" size="sm" className="mt-12" icon="plus" onClick={() => setCreateOpen(true)}>
-                {t('新增用户')}
-              </Button>
-            ) : null}
-            <p className="tiny faint mt-12">
-              {t('当前身份：{identity}。', {
-                identity: personal ? t('最高管理员（个人博客）') : me ? labelForRole(me.role) : '—',
-              })}{' '}
-              {t('站点形态：{kind}。', { kind: SITE_KIND_LABEL[siteKindOf(config)] })}
-            </p>
-          </div>
-        </section>
-      </div>
-
       <Modal
         open={!!pending}
         title={
@@ -780,16 +699,7 @@ export function MembersPage() {
           </>
         }
       >
-        {pendingGroup?.base_role === 'platform_admin' ? (
-          <Callout tone="warn" icon="alert" title={t('平台管理员拥有全部权限')}>
-            {t('该用户组可以管理所有站点与全局安全策略。请确认这也是你想要的。')}
-          </Callout>
-        ) : (
-          <p className="small muted">{t('变更立即生效，并写入操作日志。')}</p>
-        )}
-        <p className="tiny faint mt-12">
-          <Icon name="lock" size={11} /> {t('不能撤销最后一个平台管理员。')}
-        </p>
+        <p className="small muted">{t('变更立即生效，并写入操作日志。')}</p>
       </Modal>
 
       <Modal
@@ -898,7 +808,7 @@ export function MembersPage() {
                   })}
                 </div>
                 <p className="field-hint mt-8">
-                  {t('新增用户不能直接设为最高管理员；如需平台管理员，请创建后在用户组里单独调整。')}
+                  {t('最高管理员固定为注册该站的账号；新增用户不能设为该用户组。')}
                 </p>
               </div>
             )}

@@ -27,6 +27,7 @@ import type {
   InteractionEntry,
   InteractionState,
   InteractionStates,
+  LocalCaptchaAnswer,
   LocalCaptchaChallenge,
   LocalCaptchaSolution,
   ImportConflictStrategy,
@@ -90,7 +91,7 @@ import type {
 import { mediaQuotaExceedsSafeInteger, normalizeMediaQuotaDecimal } from './mediaQuota';
 import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
 import { clientSessionId } from './analytics';
-import { readCaptchaStatus } from './captcha';
+import { readCaptchaStatus, readLocalCaptchaChallenge } from './captcha';
 import type { ContactPayload } from './contactForm';
 import { t } from './i18n';
 import { currentPerformance } from './performance';
@@ -173,6 +174,17 @@ export async function problemFromResponse(res: Response): Promise<ProblemBody> {
  */
 export function isSessionGoneError(error: unknown): boolean {
   return error instanceof ApiError && error.problem.status === 401;
+}
+
+/**
+ * 这次失败是不是「根本连不上后端」。
+ *
+ * fetch 抛错（断网、服务没启动、地址写错）统一包装成 status 0；页面据此把提示
+ * 说成连接失败，而不是登录失效或内容不存在。服务端返回的 5xx 仍然是有效响应，
+ * 不能混为一谈。
+ */
+export function isBackendOffline(error: unknown): boolean {
+  return error instanceof ApiError && error.problem.status === 0;
 }
 
 export function uuid(): string {
@@ -835,24 +847,26 @@ export class HttpBackend {
   /**
    * 本地（自托管）人机验证：取一道题。
    *
-   * 题目与答案都在本站服务端，前端只拿到题面与一次性的 challenge_id；答对后
-   * `captchaLocalVerify` 换到的 token 和第三方服务商的 token 一样提交给受保护接口。
+   * 题目与答案都在本站服务端，前端只拿到图形与几何信息与一次性的 challenge_id；
+   * 答对后 `captchaLocalVerify` 换到的 token 和第三方服务商的 token 一样提交给
+   * 受保护接口。题型（滑块 / 点击 / 选择图形）由服务端轮换。
    */
   async captchaLocalChallenge(scene: CaptchaScene): Promise<LocalCaptchaChallenge> {
     // 题目必须每次都新取：走 `request` 的 GET 缓存会复用同一个 challenge_id，
     // 而服务端一次答题就作废它。第三个参数关掉重试（公共 GET 没有 401 可重试），
     // 同时也绕过请求缓存。
-    return this.request<LocalCaptchaChallenge>(
+    const raw = await this.request<unknown>(
       `/captcha/local/challenge?scene=${encodeURIComponent(scene)}`,
       {},
       false,
     );
+    return readLocalCaptchaChallenge(raw);
   }
 
   /** 本地（自托管）人机验证：提交答案，换一次性 token。 */
   async captchaLocalVerify(input: {
     challenge_id: string;
-    answer: number;
+    answer: LocalCaptchaAnswer;
     scene: CaptchaScene;
   }): Promise<LocalCaptchaSolution> {
     return this.request<LocalCaptchaSolution>('/captcha/local/verify', {

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { playBlockAnimation } from '../lib/blockAnimations';
 import { previewNavVerdict } from '../lib/previewNav';
+import { documentPreviewToken } from '../lib/themePreviewLive';
 import { useT } from '../lib/i18n';
 
 const MIME_BLOCK = 'application/x-pp-block';
@@ -21,6 +22,8 @@ export function PreviewBridge() {
 
   useEffect(() => {
     if (window.parent === window) return;
+    // 主题「真实前台预览」是让人真正逛一圈的，不拦站内跳转。
+    if (documentPreviewToken()) return;
 
     let lastTarget: HTMLElement | null = null;
     let lastPosition: 'before' | 'after' = 'after';

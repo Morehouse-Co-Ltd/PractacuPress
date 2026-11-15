@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { AuthProviderId, MailSettings } from '../../types';
 import { useAuth } from '../../lib/session';
@@ -20,11 +20,17 @@ import { RoleGate } from '../../components/Guards';
 
 type LoginTab = 'email' | AuthProviderId;
 
+/** 登录方式的固定顺序：邮箱在前，其余按服务商目录。 */
+const LOGIN_TABS: LoginTab[] = ['email', ...AUTH_PROVIDER_IDS];
+
 /**
  * 登录设置：用顶部登录方式当分页。
  *
  * 邮箱与密码是基础方式（内含邮件通知 / 找回密码），其余登录方式各自
  * 只有自己的配置项；服务端环境变量片段在分页下方统一生成。
+ *
+ * 登录方式排成一行而不是网格：方式变多时换行会把下面的配置区顶得很远，
+ * 横向滚动 + 方向键切换能让七种方式始终保持在同一个高度。
  */
 export function LoginSettingsPage() {
   const t = useT();
@@ -34,10 +40,54 @@ export function LoginSettingsPage() {
   const [secrets, setSecrets] = useState<Partial<Record<AuthProviderId, string>>>({});
   const [mailPassword, setMailPassword] = useState('');
   const [tab, setTab] = useState<LoginTab>('email');
+  const stripRef = useRef<HTMLDivElement>(null);
   const auth = readAuthSettings(config);
   const mailSettings = readMailSettings(config);
   const policy = useAsync(async () => backend.passwordResetPolicy(), [backend]);
   useTitle(t('登录设置'));
+
+  // 选中项始终滚进可视区：窄屏或点到靠右的方式时，卡片不会被裁掉半个。
+  useEffect(() => {
+    stripRef.current
+      ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
+
+  // 鼠标滚轮竖着滚也横向翻页：一行放不下时最顺手的操作。
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const onWheel = (event: WheelEvent) => {
+      if (strip.scrollWidth <= strip.clientWidth) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      strip.scrollLeft += event.deltaY;
+    };
+    strip.addEventListener('wheel', onWheel, { passive: false });
+    return () => strip.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = LOGIN_TABS.indexOf(tab);
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (index + 1) % LOGIN_TABS.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (index - 1 + LOGIN_TABS.length) % LOGIN_TABS.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = LOGIN_TABS.length - 1;
+    }
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const next = LOGIN_TABS[nextIndex];
+    setTab(next);
+    // 焦点跟着选中项走，键盘用户可以连续按方向键。
+    requestAnimationFrame(() => {
+      stripRef.current?.querySelector<HTMLElement>(`[data-login-tab="${next}"]`)?.focus();
+    });
+  };
 
   const provider = tab === 'email' ? null : PROVIDER_BY_ID[tab];
   const secretsReady = Object.values(secrets).some((value) => !!value);
@@ -61,11 +111,22 @@ export function LoginSettingsPage() {
         </div>
       </div>
 
-      <div className="login-summary" role="tablist" aria-label={t('登录方式')}>
+      <div
+        className="login-summary"
+        role="tablist"
+        aria-label={t('登录方式')}
+        aria-orientation="horizontal"
+        ref={stripRef}
+        onKeyDown={onTabKeyDown}
+      >
         <button
           type="button"
           role="tab"
+          id="login-tab-email"
+          data-login-tab="email"
+          aria-controls="login-panel"
           aria-selected={tab === 'email'}
+          tabIndex={tab === 'email' ? 0 : -1}
           className={`login-summary-card is-on is-tab${tab === 'email' ? ' is-active' : ''}`}
           onClick={() => setTab('email')}
         >
@@ -87,7 +148,11 @@ export function LoginSettingsPage() {
               key={id}
               type="button"
               role="tab"
+              id={`login-tab-${id}`}
+              data-login-tab={id}
+              aria-controls="login-panel"
               aria-selected={tab === id}
+              tabIndex={tab === id ? 0 : -1}
               className={`login-summary-card is-tab${auth[id].enabled ? ' is-on' : ''}${
                 tab === id ? ' is-active' : ''
               }`}
@@ -107,97 +172,99 @@ export function LoginSettingsPage() {
         })}
       </div>
 
-      {tab === 'email' ? (
-        <>
-          <section className="panel mt-20">
-            <div className="panel-head">
-              <div>
-                <h3>{t('邮箱与密码')}</h3>
+      <div id="login-panel" role="tabpanel" aria-labelledby={`login-tab-${tab}`}>
+        {tab === 'email' ? (
+          <>
+            <section className="panel mt-20">
+              <div className="panel-head">
+                <div>
+                  <h3>{t('邮箱与密码')}</h3>
+                </div>
+                <Badge tone="ok" dot>
+                  Ed25519 · HttpOnly Cookie
+                </Badge>
               </div>
-              <Badge tone="ok" dot>
-                Ed25519 · HttpOnly Cookie
-              </Badge>
-            </div>
-            <div className="panel-body">
-              <div className="mini-list">
-                <div className="mini-row">
-                  <span className="mini-label">{t('登录方式')}</span>
-                  <span className="mini-value">{t('邮箱 + 密码')}</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('令牌')}</span>
-                  <span className="mini-value">Ed25519 JWT + Refresh Cookie</span>
-                </div>
-                <div className="mini-row">
-                  <span className="mini-label">{t('防跨站')}</span>
-                  <span className="mini-value">{t('CSRF 双提交')}</span>
+              <div className="panel-body">
+                <div className="mini-list">
+                  <div className="mini-row">
+                    <span className="mini-label">{t('登录方式')}</span>
+                    <span className="mini-value">{t('邮箱 + 密码')}</span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('令牌')}</span>
+                    <span className="mini-value">Ed25519 JWT + Refresh Cookie</span>
+                  </div>
+                  <div className="mini-row">
+                    <span className="mini-label">{t('防跨站')}</span>
+                    <span className="mini-value">{t('CSRF 双提交')}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
+            <section className="panel mt-20">
+              <div className="panel-head">
+                <div>
+                  <h3>{t('邮件通知')}</h3>
+                  <p>{t('找回密码靠邮件发出一次性链接；没有 SMTP 就没有找回密码。')}</p>
+                </div>
+                <Badge
+                  tone={demo ? 'accent' : policy.data?.enabled ? 'ok' : 'muted'}
+                  dot={!demo && !!policy.data?.enabled}
+                >
+                  {demo
+                    ? t('演示模式')
+                    : policy.data?.enabled
+                      ? t('服务端已连通')
+                      : t('服务端未配置')}
+                </Badge>
+              </div>
+              <div className="panel-body">
+                <MailSettingsEditor
+                  value={mailSettings}
+                  onChange={(mail: MailSettings) => updateConfig({ mail })}
+                  password={mailPassword}
+                  onPasswordChange={setMailPassword}
+                  idPrefix="login-settings-mail"
+                  demo={demo}
+                  policy={policy.data ?? null}
+                />
+                <p className="field-hint mt-12">
+                  {t('这一栏记录的是站点侧的配置意图，真正能否发信由服务端环境变量决定。')}{' '}
+                  {t('下面的片段复制到 .env 后重启 API，徽章会变成「服务端已连通」。')}
+                </p>
+              </div>
+            </section>
+          </>
+        ) : provider ? (
           <section className="panel mt-20">
             <div className="panel-head">
               <div>
-                <h3>{t('邮件通知')}</h3>
-                <p>{t('找回密码靠邮件发出一次性链接；没有 SMTP 就没有找回密码。')}</p>
+                <h3>{provider.name}</h3>
+                <p>{provider.detail}</p>
               </div>
-              <Badge
-                tone={demo ? 'accent' : policy.data?.enabled ? 'ok' : 'muted'}
-                dot={!demo && !!policy.data?.enabled}
-              >
-                {demo
-                  ? t('演示模式')
-                  : policy.data?.enabled
-                    ? t('服务端已连通')
-                    : t('服务端未配置')}
+              <Badge tone={auth[provider.id].enabled ? 'accent' : 'muted'}>
+                {auth[provider.id].enabled ? t('已启用') : t('未启用')}
               </Badge>
             </div>
             <div className="panel-body">
-              <MailSettingsEditor
-                value={mailSettings}
-                onChange={(mail: MailSettings) => updateConfig({ mail })}
-                password={mailPassword}
-                onPasswordChange={setMailPassword}
-                idPrefix="login-settings-mail"
+              <AuthProvidersEditor
+                value={auth}
+                onChange={(next) => updateConfig({ auth: next })}
+                secrets={secrets}
+                onSecretChange={(id, secret) => setSecrets((prev) => ({ ...prev, [id]: secret }))}
+                idPrefix="login-settings"
                 demo={demo}
-                policy={policy.data ?? null}
+                only={provider.id}
+                showEnv={false}
               />
-              <p className="field-hint mt-12">
-                {t('这一栏记录的是站点侧的配置意图，真正能否发信由服务端环境变量决定。')}{' '}
-                {t('下面的片段复制到 .env 后重启 API，徽章会变成「服务端已连通」。')}
-              </p>
+              <Callout tone="info" icon="info">
+                {t('登录页只显示必填项完整的方式。连接真实后端时，对应端点需要由服务端实现；演示模式可以直接模拟授权。')}
+              </Callout>
             </div>
           </section>
-        </>
-      ) : provider ? (
-        <section className="panel mt-20">
-          <div className="panel-head">
-            <div>
-              <h3>{provider.name}</h3>
-              <p>{provider.detail}</p>
-            </div>
-            <Badge tone={auth[provider.id].enabled ? 'accent' : 'muted'}>
-              {auth[provider.id].enabled ? t('已启用') : t('未启用')}
-            </Badge>
-          </div>
-          <div className="panel-body">
-            <AuthProvidersEditor
-              value={auth}
-              onChange={(next) => updateConfig({ auth: next })}
-              secrets={secrets}
-              onSecretChange={(id, secret) => setSecrets((prev) => ({ ...prev, [id]: secret }))}
-              idPrefix="login-settings"
-              demo={demo}
-              only={provider.id}
-              showEnv={false}
-            />
-            <Callout tone="info" icon="info">
-              {t('登录页只显示必填项完整的方式。连接真实后端时，对应端点需要由服务端实现；演示模式可以直接模拟授权。')}
-            </Callout>
-          </div>
-        </section>
-      ) : null}
+        ) : null}
+      </div>
 
       <section className="panel mt-20">
         <div className="panel-head">

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { AppearanceSectionId, LayoutVariant, SiteTheme } from '../../types';
 import { useCustomization } from '../../lib/customize';
 import { blockDef, defaultHomeLayout } from '../../lib/blocks';
@@ -34,51 +34,15 @@ import { useToast } from '../../lib/toast';
 import { Badge, Button, Callout, Field, Input, Modal, Textarea } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
-
-function ThemePreview({ bundle, large = false }: { bundle: SiteTheme; large?: boolean }) {
-  const bento = bundle.variant === 'bento';
-  const daylight = bundle.variant === 'daylight';
-  return (
-    <span
-      className={`theme-bundle-preview is-${bundle.variant}${large ? ' is-large' : ''}`}
-      style={{
-        background: bundle.theme.background,
-        color: bundle.theme.ink,
-      }}
-      aria-hidden
-    >
-      <span className="theme-preview-chrome" style={{ background: bundle.theme.accent }} />
-      <span className="theme-preview-body">
-        <span className="theme-preview-title" style={{ background: bundle.theme.ink }} />
-        {bento ? (
-          <span className="theme-preview-columns">
-            <i style={{ background: bundle.theme.accent }} />
-            <i style={{ background: bundle.theme.ink }} />
-          </span>
-        ) : daylight ? (
-          <span className="theme-preview-daylight">
-            <i style={{ background: bundle.theme.accent }} />
-            <i style={{ background: bundle.theme.ink }} />
-            <i style={{ background: bundle.theme.ink }} />
-          </span>
-        ) : (
-          <span className="theme-preview-lines">
-            <i style={{ background: bundle.theme.ink }} />
-            <i style={{ background: bundle.theme.ink }} />
-            <i style={{ background: bundle.theme.accent }} />
-          </span>
-        )}
-      </span>
-    </span>
-  );
-}
+import { ThemePreview } from '../../components/theme/ThemePreview';
+import { ThemeLivePreview } from '../../components/theme/ThemeLivePreview';
 
 /** 详情面板里的一枚色板：色块 + 名称 + 十六进制值。 */
 function PaletteSwatch({ label, value }: { label: string; value: string }) {
   return (
-    <span className="theme-swatch">
-      <i style={{ background: value }} aria-hidden />
-      <span>
+    <span className="theme-palette-item">
+      <i className="theme-palette-chip" style={{ background: value }} aria-hidden />
+      <span className="theme-palette-copy">
         <em>{label}</em>
         <code>{value}</code>
       </span>
@@ -286,12 +250,22 @@ export function ChooseThemePage() {
     navigate('/admin/theme');
   };
 
+  /**
+   * 卡片右上角的「主题设置」：主题设置页编辑的永远是当前主题，所以先套用再过去。
+   * 套用时沿用统一的切换提示，站长能看出来主题已经换了。
+   */
+  const openThemeSettings = (bundle: SiteTheme) => {
+    if (customization.active_theme !== bundle.id) applyBundle(bundle);
+    navigate('/admin/themes');
+  };
+
   const exportCurrent = () => {
     const { manifest, pages } = themeManifestFromCustomization(customization, {
       id: currentId,
       name: modified ? `${currentName}${t('（当前调整）')}` : currentName,
       note: applied?.note ?? '',
       appearance: { sections: selectedSections },
+      ...(applied?.preview ? { preview: applied.preview } : {}),
     });
     // 主题自带的设置字段随主题包一起导出，重新导入后还能继续使用。
     const settings = applied?.settings;
@@ -437,7 +411,7 @@ export function ChooseThemePage() {
           <h1>{t('选择主题')}</h1>
           <p>
             {t(
-              '每个主题以封面、标题与描述展示；点击卡片在右侧查看详细介绍，确认后再应用。鼠标移到封面上方，中间会出现与预览同款的编辑入口。',
+              '点击卡片在右侧查看详细介绍；鼠标移到封面上，才会出现预览与编辑入口，右上角还有主题设置和删除。',
             )}
           </p>
         </div>
@@ -461,9 +435,6 @@ export function ChooseThemePage() {
           <Button variant="secondary" size="sm" icon="download" onClick={exportCurrent}>
             {t('导出当前主题')}
           </Button>
-          <Link to="/admin/themes" className="btn btn-ghost btn-sm">
-            <Icon name="palette" size={14} /> {t('主题设置')}
-          </Link>
           <Button variant="secondary" size="sm" icon="eye" onClick={() => window.open('/', '_blank')}>
             {t('预览站点')}
           </Button>
@@ -533,6 +504,7 @@ export function ChooseThemePage() {
                           ) : (
                             <Badge tone="accent">{t('自定义')}</Badge>
                           )}
+                          {isApplied ? <Badge tone="ok">{t('使用中')}</Badge> : null}
                         </span>
                         <span className="theme-tile-note">
                           {bundle.note || t('一套自定义主题。')}
@@ -543,41 +515,61 @@ export function ChooseThemePage() {
                         </span>
                       </span>
                     </button>
-                    {/* 正在使用的主题：左上角（原编辑按钮的位置）显示「使用中」。 */}
-                    {isApplied ? (
-                      <span className="theme-tile-applied">
-                        <Icon name="check" size={12} /> {t('使用中')}
-                      </span>
-                    ) : null}
-                    {/* 悬停时封面中心浮出与「预览主题」同款的按钮。 */}
+                    {/* 悬停时右上角浮出两个图标按钮：主题设置与删除。 */}
+                    <div className="theme-tile-corner-actions">
+                      <button
+                        type="button"
+                        className="theme-tile-corner"
+                        aria-label={t('打开「{name}」的主题设置', { name: bundle.name })}
+                        title={t('主题设置')}
+                        onClick={() => openThemeSettings(bundle)}
+                      >
+                        <Icon name="settings" size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="theme-tile-corner is-danger"
+                        aria-label={t('删除「{name}」', { name: bundle.name })}
+                        title={isBuiltin ? t('内置主题不能删除') : t('删除主题')}
+                        disabled={isBuiltin}
+                        onClick={() => setDeleteTarget(bundle)}
+                      >
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </div>
+                    {/* 悬停时封面中心浮出同款胶囊按钮：预览主题 / 编辑。
+                        正在使用的主题同样可以预览：只是不再提供「切换」动作。 */}
                     <div className="theme-tile-actions">
-                      {!isApplied ? (
-                        <button
-                          type="button"
-                          className="theme-tile-action"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (previewTimer.current !== null) {
-                              window.clearTimeout(previewTimer.current);
-                              previewTimer.current = null;
-                            }
-                            // 双击预览按钮 = 直接使用该主题；单击 = 打开预览弹窗。
-                            if (event.detail >= 2) {
-                              setDetailId(bundle.id);
-                              applyBundle(bundle);
-                              return;
-                            }
-                            previewTimer.current = window.setTimeout(() => {
-                              previewTimer.current = null;
-                              setPreviewId(bundle.id);
-                            }, 220);
-                          }}
-                          aria-label={t('预览「{name}」', { name: bundle.name })}
-                          title={t('预览主题')}
-                        >
-                          <Icon name="eye" size={15} /> {t('预览主题')}
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        className="theme-tile-action"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (previewTimer.current !== null) {
+                            window.clearTimeout(previewTimer.current);
+                            previewTimer.current = null;
+                          }
+                          // 正在使用的主题没有「再套用一次」的动作：直接打开预览，不再等双击窗口。
+                          if (isApplied) {
+                            setPreviewId(bundle.id);
+                            return;
+                          }
+                          // 双击预览按钮 = 直接使用该主题；单击 = 打开预览弹窗。
+                          if (event.detail >= 2) {
+                            setDetailId(bundle.id);
+                            applyBundle(bundle);
+                            return;
+                          }
+                          previewTimer.current = window.setTimeout(() => {
+                            previewTimer.current = null;
+                            setPreviewId(bundle.id);
+                          }, 220);
+                        }}
+                        aria-label={t('预览「{name}」', { name: bundle.name })}
+                        title={t('预览主题')}
+                      >
+                        <Icon name="eye" size={15} /> {t('预览主题')}
+                      </button>
                       <button
                         type="button"
                         className="theme-tile-action"
@@ -633,6 +625,7 @@ export function ChooseThemePage() {
                     {customization.active_theme === detailTheme.id ? (
                       <Badge tone="ok">{t('使用中')}</Badge>
                     ) : null}
+                    {detailTheme.preview ? <Badge tone="muted">{t('自带预览')}</Badge> : null}
                   </div>
                 </div>
                 <p className="theme-detail-note">{detailTheme.note || t('一套自定义主题。')}</p>
@@ -741,7 +734,7 @@ export function ChooseThemePage() {
             : undefined
         }
         onClose={() => setPreviewId(null)}
-        width={780}
+        width={1040}
         footer={
           <>
             <Button variant="ghost" onClick={() => setPreviewId(null)}>
@@ -766,9 +759,8 @@ export function ChooseThemePage() {
       >
         {previewTheme ? (
           <>
-            <div className="theme-preview-modal-cover">
-              <ThemePreview bundle={previewTheme} large />
-            </div>
+            {/* 预览的是真实前台：站点现有内容 + 这套主题，关掉弹窗即还原。 */}
+            <ThemeLivePreview bundle={previewTheme} />
             <p className="theme-detail-note">
               {previewTheme.note || t('一套自定义主题。')}
             </p>

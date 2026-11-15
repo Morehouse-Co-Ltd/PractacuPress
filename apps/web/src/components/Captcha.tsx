@@ -3,7 +3,6 @@ import type {
   CaptchaScene,
   CaptchaStatus,
   HumanVerificationProvider,
-  LocalCaptchaChallenge,
 } from '../types';
 import {
   CAPTCHA_GLOBAL,
@@ -14,7 +13,8 @@ import {
 } from '../lib/captcha';
 import { useBackend } from '../lib/backend';
 import { useT } from '../lib/i18n';
-import { Button, Callout, Input } from './ui';
+import { Callout } from './ui';
+import { LocalCaptchaField } from './LocalCaptcha';
 
 /**
  * 人机验证组件。
@@ -175,7 +175,7 @@ export function CaptchaField({
   );
 
   useEffect(() => {
-    // 本地验证由 LocalChallengeField 自己的 effect 取题，这里不加载脚本。
+    // 本地验证由 LocalCaptchaField 自己的 effect 取题，这里不加载脚本。
     if (!required || !status || status.provider === 'local' || !container.current) return;
     let alive = true;
     const target = container.current;
@@ -222,7 +222,7 @@ export function CaptchaField({
 
   if (status.provider === 'local') {
     return (
-      <LocalChallengeField
+      <LocalCaptchaField
         scene={scene}
         resetKey={resetKey}
         onToken={onToken}
@@ -241,149 +241,6 @@ export function CaptchaField({
       ) : (
         <p className="field-hint">{t('受本站人机验证保护。')}</p>
       )}
-    </div>
-  );
-}
-
-/** 本地（自托管）验证：显示题目、收答案，答对后把 token 交给表单。 */
-function LocalChallengeField({
-  scene,
-  resetKey,
-  onToken,
-  onFailure,
-}: {
-  scene: CaptchaScene;
-  resetKey: number;
-  onToken: (token: string) => void;
-  onFailure?: (message: string) => void;
-}) {
-  const t = useT();
-  const backend = useBackend();
-  const [challenge, setChallenge] = useState<LocalCaptchaChallenge | null>(null);
-  const [answer, setAnswer] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [solving, setSolving] = useState(false);
-  const [solved, setSolved] = useState(false);
-  const [failure, setFailure] = useState('');
-  /** 只接受最新一次取题请求的应答，避免「换一题」被旧响应覆盖。 */
-  const generation = useRef(0);
-
-  const load = useCallback(() => {
-    const request = backend.captchaLocalChallenge;
-    if (!request) {
-      setLoading(false);
-      const message = t('本站没有启用本地人机验证。');
-      setFailure(message);
-      onFailure?.(message);
-      return;
-    }
-    const run = ++generation.current;
-    setLoading(true);
-    setSolved(false);
-    setAnswer('');
-    setFailure('');
-    onToken('');
-    request
-      .call(backend, scene)
-      .then((next) => {
-        if (run !== generation.current) return;
-        setChallenge(next);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (run !== generation.current) return;
-        setChallenge(null);
-        setLoading(false);
-        const message = t('验证题加载失败，请刷新页面后重试。');
-        setFailure(message);
-        onFailure?.(message);
-      });
-    // onToken / onFailure 由父组件传入，变化不代表题目要重取。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend, scene, t]);
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, resetKey]);
-
-  const submit = () => {
-    if (!challenge || solving || solved) return;
-    const value = Number(answer.trim());
-    if (!answer.trim() || !Number.isInteger(value)) {
-      setFailure(t('请填写整数答案。'));
-      return;
-    }
-    const request = backend.captchaLocalVerify;
-    if (!request) {
-      const message = t('本站没有启用本地人机验证。');
-      setFailure(message);
-      onFailure?.(message);
-      return;
-    }
-    setSolving(true);
-    setFailure('');
-    request
-      .call(backend, {
-        challenge_id: challenge.challenge_id,
-        answer: value,
-        scene,
-      })
-      .then((solution) => {
-        setSolved(true);
-        onToken(solution.token);
-      })
-      .catch(() => {
-        // 服务端一次失败即作废本题，自动换一题，免得用户对着作废的题反复试。
-        load();
-        setFailure(t('答案不正确或已过期，请重新作答。'));
-      })
-      .finally(() => setSolving(false));
-  };
-
-  return (
-    <div className="captcha-field" aria-live="polite">
-      {loading ? (
-        <p className="field-hint">{t('正在获取验证题…')}</p>
-      ) : challenge ? (
-        <div className="form-stack">
-          <p className="field-hint">{t('请回答下面的算术题，证明你是真人：')}</p>
-          <p className="field-hint" style={{ fontSize: '1.05rem', color: 'var(--text)' }}>
-            {challenge.question}
-          </p>
-          <div className="row gap-8" style={{ alignItems: 'center' }}>
-            <Input
-              inputMode="numeric"
-              autoComplete="off"
-              value={answer}
-              disabled={solving || solved}
-              placeholder={t('答案')}
-              aria-label={t('验证答案')}
-              style={{ maxWidth: 160 }}
-              onChange={(event) => setAnswer(event.target.value)}
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={solving}
-              disabled={solved || !answer.trim()}
-              onClick={submit}
-            >
-              {solved ? t('已验证') : t('验证')}
-            </Button>
-            <Button size="sm" variant="ghost" icon="refresh" disabled={solving} onClick={load}>
-              {t('换一题')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-      {failure ? (
-        <Callout tone="warn" icon="alert">
-          {failure}
-        </Callout>
-      ) : solved ? (
-        <p className="field-hint">{t('已完成本地人机验证。')}</p>
-      ) : null}
     </div>
   );
 }

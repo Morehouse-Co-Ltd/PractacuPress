@@ -51,6 +51,22 @@ const fragment: Dictionary = {
   退回理由: 'Reason for sending back',
   '例如：第二段的统计口径与来源不一致，请补充说明。':
     'For example: the figures in the second paragraph disagree with their source; please explain.',
+
+  // ---- AI 自动审核 ----
+  'AI 审核已开启': 'AI moderation is on',
+  'AI 只给风险分，不会自动发布稿件。':
+    'AI only scores risk; it does not publish drafts automatically.',
+  '低风险待审稿件会自动发布，中高风险留在队列里。':
+    'Low-risk pending drafts are published automatically; medium and high risk stay in the queue.',
+  '立即运行 AI 审核': 'Run AI moderation now',
+  '最近一轮：自动发布 {published} 篇，留待人工 {skipped} 篇，失败 {failed} 篇。':
+    'Last pass: {published} published, {skipped} left for a person, {failed} failed.',
+  '自动发布 {published} 篇，留待人工 {skipped} 篇，失败 {failed} 篇。':
+    'Published {published}, left {skipped} for a person, {failed} failed.',
+  'AI 审核已完成': 'AI moderation finished',
+  'AI 审核运行失败': 'AI moderation could not run',
+  'AI 风险分 {score}': 'AI risk score {score}',
+  'AI：未发现明显风险': 'AI: no obvious risk',
 };
 
 export default fragment;
