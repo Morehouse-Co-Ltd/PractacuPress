@@ -111,6 +111,38 @@ func (ContentItem) Fields() []ent.Field {
 				ContentCommentPolicyInherit, ContentCommentPolicyOpen,
 				ContentCommentPolicyDisabled, ContentCommentPolicyReview,
 			)),
+		// deleted_at is the recycle bin marker. A soft delete is the only delete this
+		// model offers: an author who removes a piece expects to get it back, and the
+		// row is also what keeps its revisions, comments and media references
+		// resolvable. Every reader filters on deleted_at IS NULL, so a trashed item
+		// disappears from listings, detail pages, search, feeds and sitemaps at once.
+		field.Time("deleted_at").Optional().Nillable(),
+		// seo_title and seo_description override the site level template for one item
+		// (C-29). Empty means "inherit": the site template still applies, so an item
+		// that never touches these fields behaves exactly as before.
+		field.String("seo_title").MaxLen(200).Default(""),
+		field.String("seo_description").MaxLen(500).Default(""),
+		// seo_keywords is a comma separated hint list. It is stored verbatim and never
+		// split server side, because nothing but a crawler reads it.
+		field.String("seo_keywords").MaxLen(500).Default(""),
+		// canonical_url overrides the derived permalink for a republished or imported
+		// item. Empty means the item's own URL is canonical.
+		field.String("canonical_url").MaxLen(500).Default(""),
+		// og_image is the social sharing card. It accepts a data URL like the cover
+		// does, which is why it is text rather than a bounded string.
+		field.Text("og_image").Default(""),
+		// robots is the per item crawler directive: empty inherits the site switch,
+		// noindex removes the item from the sitemap and marks the page noindex.
+		field.String("robots").Default("").Validate(oneOf("", "index", "noindex")),
+		// Cover fields moved from SiteCustomization into the content row. Presentation
+		// configuration keyed by content id could not survive an export, a feed or a
+		// share card, so the cover now travels with the item it belongs to.
+		field.Text("cover_url").Default(""),
+		field.String("cover_alt").MaxLen(200).Default(""),
+		field.String("cover_position").
+			Default("center").
+			Validate(oneOf("top", "center", "bottom")),
+		field.Bool("cover_hidden").Default(false),
 		createdField(),
 		updatedField(),
 	}
@@ -132,5 +164,8 @@ func (ContentItem) Indexes() []ent.Index {
 		// (site_id, status, published_at) index serves; this one supplies the counter
 		// order without a full scan of the site.
 		index.Fields("site_id", "status", "view_count"),
+		// The recycle bin lists one site's trashed rows newest first, and every other
+		// query adds "deleted_at IS NULL" to an existing predicate.
+		index.Fields("site_id", "deleted_at"),
 	}
 }

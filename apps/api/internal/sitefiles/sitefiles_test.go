@@ -15,8 +15,11 @@ import (
 func TestBuildListsPublicRoutesAndPublishedEntries(t *testing.T) {
 	updated := time.Date(2026, 11, 6, 10, 30, 0, 0, time.UTC)
 	entries := sitefiles.Build("https://press.example.com/", []sitefiles.Item{
-		{ID: "a1", Kind: content.KindArticle, UpdatedAt: updated},
-		{ID: "p1", Kind: content.KindPost, UpdatedAt: updated},
+		{ID: "a1", Slug: "hello-world", Kind: content.KindArticle, UpdatedAt: updated},
+		{ID: "p1", Slug: "release-notes", Kind: content.KindPost, UpdatedAt: updated},
+		{ID: "legacy", Kind: content.KindArticle, UpdatedAt: updated},
+		{ID: "canon", Slug: "local", Kind: content.KindArticle, CanonicalURL: "https://elsewhere.example/post", UpdatedAt: updated},
+		{ID: "unknown", Slug: "no-page", Kind: content.Kind("page"), UpdatedAt: updated},
 		{ID: "", Kind: content.KindArticle},
 	}, []sitefiles.Page{
 		{Slug: "about", Status: "published", UpdatedAt: "2026-11-01T08:00:00Z"},
@@ -29,17 +32,22 @@ func TestBuildListsPublicRoutesAndPublishedEntries(t *testing.T) {
 		locations = append(locations, entry.Loc)
 	}
 
+	// J5: the slug is the permalink, the id is only the fallback for legacy content,
+	// and an author supplied canonical URL wins over both.
 	require.Equal(t, []string{
 		"https://press.example.com/",
 		"https://press.example.com/articles",
 		"https://press.example.com/posts",
-		"https://press.example.com/a/a1",
-		"https://press.example.com/p/p1",
+		"https://press.example.com/a/hello-world",
+		"https://press.example.com/p/release-notes",
+		"https://press.example.com/a/legacy",
+		"https://elsewhere.example/post",
 		"https://press.example.com/about",
 	}, locations)
 
 	require.Equal(t, "2026-11-06", entries[3].LastModified)
-	require.Equal(t, "2026-11-01", entries[5].LastModified)
+	require.Equal(t, "2026-11-06", entries[6].LastModified)
+	require.Equal(t, "2026-11-01", entries[7].LastModified)
 }
 
 func TestBuildEscapesSlugsAndLocations(t *testing.T) {
@@ -118,7 +126,10 @@ func (f *fakeLister) ListAfterFilter(
 	f.cursors = append(f.cursors, after)
 	if f.calls == 1 {
 		return []content.Content{
-			{ID: "a1", Kind: content.KindArticle, Status: content.StatusPublished},
+			{
+				ID: "a1", Slug: "hello-world", Kind: content.KindArticle,
+				Status: content.StatusPublished, CanonicalURL: "https://elsewhere.example/a1",
+			},
 			{ID: "draft", Kind: content.KindArticle, Status: content.StatusDraft},
 		}, page.Cursor{Key: "2026-11-06T00:00:00Z", ID: "a1"}.Encode(), nil
 	}
@@ -131,6 +142,8 @@ func TestPublishedPaginatesAndKeepsOnlyPublishedItems(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 2)
 	require.Equal(t, "a1", items[0].ID)
+	require.Equal(t, "hello-world", items[0].Slug)
+	require.Equal(t, "https://elsewhere.example/a1", items[0].CanonicalURL)
 	require.Equal(t, "p1", items[1].ID)
 	require.Equal(t, 2, lister.calls)
 	require.Equal(t, "a1", lister.cursors[1].ID)

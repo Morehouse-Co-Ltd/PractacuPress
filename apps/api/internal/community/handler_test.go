@@ -247,3 +247,41 @@ func TestCommentPassesTheSolvedTokenToTheGuard(t *testing.T) {
 	require.Equal(t, "solved", guard.calls[0].Token)
 	require.Equal(t, "u1", guard.calls[0].ActorID)
 }
+
+// TestCommentRiskIsVisibleOnlyToModerators pins the two projections apart: the review
+// queue ranks by the stored score, while a reader of the thread must not receive the
+// field at all (not a zero, not an empty list).
+func TestCommentRiskIsVisibleOnlyToModerators(t *testing.T) {
+	repo := newFakeRepo()
+	author := newEngine(repo, memberActor())
+
+	created := do(author, http.MethodPost, "/comments",
+		`{"target_type":"article","target_id":"a1","body":"READ THIS http://a.example http://b.example http://c.example"}`)
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	require.NotContains(t, created.Body.String(), "risk_score",
+		"the author's create response is a reader response")
+
+	readers := do(author, http.MethodGet, "/comments?target_type=article&target_id=a1", "")
+	require.Equal(t, http.StatusOK, readers.Code, readers.Body.String())
+	require.Contains(t, readers.Body.String(), `"items"`)
+	require.NotContains(t, readers.Body.String(), "risk_score")
+	require.NotContains(t, readers.Body.String(), "risk_flags")
+
+	moderator := newEngine(repo, Actor{UserID: "m1", SiteID: "s1", Role: site.RoleEditor})
+	queue := do(moderator, http.MethodGet, "/comments?status=all", "")
+	require.Equal(t, http.StatusOK, queue.Code, queue.Body.String())
+	require.Contains(t, queue.Body.String(), `"risk_score"`, "the moderator sees the score")
+	require.Contains(t, queue.Body.String(), RiskFlagLinks)
+
+	var page struct {
+		Items []struct {
+			RiskScore *int     `json:"risk_score"`
+			RiskFlags []string `json:"risk_flags"`
+		} `json:"items"`
+	}
+	require.NoError(t, decodeJSON(queue.Body.Bytes(), &page))
+	require.Len(t, page.Items, 1)
+	require.NotNil(t, page.Items[0].RiskScore)
+	require.GreaterOrEqual(t, *page.Items[0].RiskScore, 50)
+	require.Contains(t, page.Items[0].RiskFlags, RiskFlagLinks)
+}

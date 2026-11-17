@@ -289,6 +289,32 @@ const fragment: Dictionary = {
     'The strategy name appears in scope assignments; the secret is not saved from this dialog.',
   '回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。':
     'Back to a single “Local storage” strategy (./data/media) that all four scopes use in single-strategy mode; no files are deleted and the server storage config is untouched.',
+
+  // ---- 当前生效（服务端部署快照，Beta 1.2） ----
+  '这页记录的是部署意图': 'This page records deployment intent',
+  '下面的「当前生效」才是 API 进程真正在用的值。切换储存策略要写进服务器的 .env 并重启 API；已有文件不会自动搬迁。':
+    'The “In force now” panel below is what the API process really uses. Switching storage strategies means writing the server .env and restarting the API; existing files are not moved automatically.',
+  '当前生效（只读）': 'In force now (read only)',
+  '这些值来自 API 进程启动时读到的环境变量，不是本页保存的设置。':
+    'These values come from the environment variables the API process read at startup, not from the settings saved on this page.',
+  需重启: 'Needs restart',
+  已同步: 'Up to date',
+  无法读取服务端的生效配置: 'Cannot read the effective server configuration',
+  '有设置尚未生效，需要重启 API': 'Some settings are not in force yet; restart the API',
+  'API 只在启动时读取 .env；改完设置要写进服务器的 .env 再重启，已有文件不会自动搬到新位置。':
+    'The API reads .env only at startup: write the changed settings into the server .env and restart; existing files are not moved to the new location automatically.',
+  '全局（部署默认）': 'Global (deployment default)',
+  '桶：{bucket}': 'Bucket: {bucket}',
+  桶未设置: 'Bucket not set',
+  '区域：{region}': 'Region: {region}',
+  '前缀：{prefix}': 'Prefix: {prefix}',
+  跟随服务器默认目录: 'Server default directory',
+  '采集时间：{time}': 'Captured at: {time}',
+  '生成 .env 片段（记录用）': 'Generate .env snippet (for reference)',
+  '片段只描述位置与驱动，不含任何密钥；把它写进 API 的 .env 并重启，新的上传才会写到这些位置。':
+    'The snippet describes only locations and drivers and contains no credentials; write it into the API .env and restart for new uploads to land in these locations.',
+  '当前后端没有提供生效配置，无法确认服务端在用哪套存储。':
+    'This backend does not expose the effective configuration, so which storage the server uses cannot be confirmed.',
 };
 
 export default fragment;

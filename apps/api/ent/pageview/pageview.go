@@ -25,6 +25,12 @@ const (
 	FieldSession = "session"
 	// FieldSurface holds the string denoting the surface field in the database.
 	FieldSurface = "surface"
+	// FieldReferrerHost holds the string denoting the referrer_host field in the database.
+	FieldReferrerHost = "referrer_host"
+	// FieldSource holds the string denoting the source field in the database.
+	FieldSource = "source"
+	// FieldDevice holds the string denoting the device field in the database.
+	FieldDevice = "device"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the pageview in the database.
@@ -40,6 +46,9 @@ var Columns = []string{
 	FieldReferrer,
 	FieldSession,
 	FieldSurface,
+	FieldReferrerHost,
+	FieldSource,
+	FieldDevice,
 	FieldCreatedAt,
 }
 
@@ -72,6 +81,18 @@ var (
 	DefaultSurface string
 	// SurfaceValidator is a validator for the "surface" field. It is called by the builders before save.
 	SurfaceValidator func(string) error
+	// DefaultReferrerHost holds the default value on creation for the "referrer_host" field.
+	DefaultReferrerHost string
+	// ReferrerHostValidator is a validator for the "referrer_host" field. It is called by the builders before save.
+	ReferrerHostValidator func(string) error
+	// DefaultSource holds the default value on creation for the "source" field.
+	DefaultSource string
+	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	SourceValidator func(string) error
+	// DefaultDevice holds the default value on creation for the "device" field.
+	DefaultDevice string
+	// DeviceValidator is a validator for the "device" field. It is called by the builders before save.
+	DeviceValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -116,6 +137,21 @@ func BySession(opts ...sql.OrderTermOption) OrderOption {
 // BySurface orders the results by the surface field.
 func BySurface(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSurface, opts...).ToFunc()
+}
+
+// ByReferrerHost orders the results by the referrer_host field.
+func ByReferrerHost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReferrerHost, opts...).ToFunc()
+}
+
+// BySource orders the results by the source field.
+func BySource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSource, opts...).ToFunc()
+}
+
+// ByDevice orders the results by the device field.
+func ByDevice(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDevice, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

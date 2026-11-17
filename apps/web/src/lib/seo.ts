@@ -13,12 +13,39 @@ const OG_LOCALE = { 'zh-CN': 'zh_CN', en: 'en_US' } as const;
  * 做法：每次路由渲染时把 title / description / canonical / Open Graph / Twitter /
  * JSON-LD 写进 <head>，并把上一页写入的标签清掉，避免叠加。
  *
- * 诚实的边界：搜索引擎（Google / Bing / 百度）会执行 JS，能看到这些标签；大多数
- * 社交平台的抓取器不执行 JS，分享卡片只能拿到 index.html 里的默认值。要做完整
- * 的预渲染，需要托管方支持 SSR 或构建期快照，这不在 v0.1 的范围内。
+ * 诚实的边界：搜索引擎（Google / Bing / 百度）会执行 JS，能看到这些标签；多数
+ * 社交平台的抓取器不执行 JS。Beta 1.2 起这一层由静态服务补上：`scripts/serve.mjs`
+ * 在返回 SPA 外壳前先读内容元数据，把 title / description / Open Graph / canonical
+ * 注入 `dist/index.html`，抓取器于是能拿到真实卡片（`deploy/nginx/seo-meta.conf.example`
+ * 是 nginx 部署下的等价方案）。这里仍然是「运行时的最后一道」：内容级覆盖与站点级
+ * 配置合并的规则只有一份，就在下面的 `seoPayload` 里。
+ *
+ * 内容级覆盖（Beta 1.2）：`Content` 上的 `seo_title` / `seo_description` /
+ * `seo_keywords` / `canonical_url` / `og_image` / `robots` 非空时优先于站点级配置；
+ * 留空时与「只配置了站点级 SEO」的行为完全一致。
  */
 
 const MARK = 'data-pp-seo';
+
+/**
+ * 内容级 SEO 覆盖（Beta 1.2）。
+ *
+ * 这是 `Content` 的结构子集：详情页可以把整个内容对象传进来，字段缺省时全部
+ * 走站点级配置，所以旧的后端版本（不返回这些字段）行为不变。
+ */
+export interface SeoContentOverrides {
+  seo_title?: string;
+  seo_description?: string;
+  seo_keywords?: string;
+  /** 规范链接；为空时以本站该内容的地址为准。可以指向转载来源。 */
+  canonical_url?: string;
+  /** 社交分享图；优先于 `cover_url` 与站点默认分享图。 */
+  og_image?: string;
+  /** 内容封面；没有 `og_image` 时作为分享图。 */
+  cover_url?: string;
+  /** 空表示继承站点开关；`noindex` 把这一篇排除出索引。 */
+  robots?: '' | 'index' | 'noindex';
+}
 
 export interface SeoInput {
   title?: string;
@@ -32,6 +59,8 @@ export interface SeoInput {
   author?: string;
   keywords?: string[];
   noindex?: boolean;
+  /** 详情页的内容对象；内容级覆盖优先于站点级配置。 */
+  content?: SeoContentOverrides;
   /** 额外结构化数据，会与站点级实体一起输出。 */
   jsonLd?: Record<string, unknown>[];
 }
@@ -90,6 +119,27 @@ export function composeTitle(template: string, title: string, siteName: string):
 export function robotsFor(indexable: boolean, input: SeoInput, membersOnly: boolean): string {
   if (!indexable || membersOnly || input.noindex) return 'noindex, nofollow';
   return 'index, follow, max-image-preview:large';
+}
+
+/**
+ * 内容级 `robots` 覆盖。
+ *
+ * 只允许「把这一篇排除出索引」，不允许单篇绕开站点开关：站点已经 noindex 时，
+ * 内容写 `index` 也不会重新进索引。站点级给出的是 `noindex, nofollow`（更严），
+ * 内容级只写 `noindex`——和契约里「设为 noindex 即排除收录」的字面意思一致。
+ */
+export function robotsWithOverride(base: string, robots?: '' | 'index' | 'noindex'): string {
+  if (robots !== 'noindex') return base;
+  return base.startsWith('noindex') ? base : 'noindex';
+}
+
+/** 取第一个非空字符串：内容级覆盖 → 调用方传入 → 站点默认。 */
+function firstText(...values: (string | undefined)[]): string {
+  for (const value of values) {
+    const text = (value ?? '').trim();
+    if (text) return text;
+  }
+  return '';
 }
 
 /* ------------------------------ 写入 <head> ------------------------------ */
@@ -215,20 +265,39 @@ export function seoPayload(
     feeds?: FeedLink[];
   },
 ): SeoPayload {
-  const title = input.title?.trim()
-    ? composeTitle(options.seo.title_template, input.title, options.siteName)
+  // 内容级覆盖（Beta 1.2）：非空优先，缺省时与只配置站点级 SEO 时逐字等价。
+  // 注意 `seo_title` 替换的是模板里的 {title}，站点标题模板照旧生效——站长改模板
+  // 时所有页面一起变，单篇只覆盖标题文字本身。
+  const override = input.content;
+  const ownTitle = firstText(override?.seo_title, input.title);
+  const title = ownTitle
+    ? composeTitle(options.seo.title_template, ownTitle, options.siteName)
     : options.siteName;
+  const ownDescription = override?.seo_description?.trim();
   const description = (
+    ownDescription ||
     input.description ||
     options.seo.default_description ||
     options.siteDescription ||
     ''
   ).slice(0, 300);
-  const canonical = input.path ? absoluteUrl(input.path, options.origin) : options.origin;
+  // canonical：内容级 canonical_url 非空时用它（转载、跨站原始出处），否则用本站地址。
+  const canonical = override?.canonical_url?.trim()
+    ? absoluteUrl(override.canonical_url, options.origin)
+    : input.path
+      ? absoluteUrl(input.path, options.origin)
+      : options.origin;
+  // 分享图顺序：内容 og_image → 内容封面 → 调用方给的图（正文首图）→ 站点默认分享图。
   const image = absoluteUrl(
-    input.image || options.seo.share_image,
+    firstText(override?.og_image, override?.cover_url, input.image, options.seo.share_image),
     options.origin,
   );
+  // 关键字：内容级覆盖排在最前，然后是调用方给的与站点级默认值。
+  const keywords = [
+    ...(override?.seo_keywords ? override.seo_keywords.split(/[,，]\s*/).filter(Boolean) : []),
+    ...(input.keywords ?? []),
+    ...(options.seo.keywords ? options.seo.keywords.split(/[,，]\s*/).filter(Boolean) : []),
+  ];
   const graph = [
     ...(options.siteLd ?? []),
     ...(input.jsonLd ?? []),
@@ -238,10 +307,11 @@ export function seoPayload(
     description,
     canonical,
     image,
-    robots: robotsFor(options.seo.indexable, input, options.membersOnly),
-    keywords: (input.keywords ?? []).concat(
-      options.seo.keywords ? options.seo.keywords.split(/[,，]\s*/).filter(Boolean) : [],
-    ).join(', '),
+    robots: robotsWithOverride(
+      robotsFor(options.seo.indexable, input, options.membersOnly),
+      override?.robots,
+    ),
+    keywords: keywords.join(', '),
     type: input.type ?? 'website',
     siteName: options.siteName,
     publishedAt: input.publishedAt,
@@ -322,7 +392,8 @@ export function articleJsonLd(options: {
   return {
     '@type': content.kind === 'article' ? 'Article' : 'BlogPosting',
     headline: content.title,
-    description: content.summary || undefined,
+    // 结构化数据的描述与页面上的 description 保持一致：内容级覆盖优先。
+    description: content.seo_description?.trim() || content.summary || undefined,
     datePublished: content.published_at || content.created_at,
     dateModified: content.updated_at,
     author: { '@type': 'Person', name: options.author || content.author_name || t('佚名') },

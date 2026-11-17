@@ -79,6 +79,15 @@ func WithMailer(sender mailer.Sender) ServiceOption {
 	return func(s *Service) { s.mailer = sender }
 }
 
+// WithMailLog installs the shared mail log (email_logs) writer.
+//
+// Nil keeps the old behaviour: notification email is delivered but not recorded. The
+// log is an observability add on, never a delivery precondition, so a failing write
+// is logged and the mail is still sent.
+func WithMailLog(log MailLog) ServiceOption {
+	return func(s *Service) { s.mailLog = log }
+}
+
 // WithEmailLookup installs the address resolver used for notification email.
 func WithEmailLookup(lookup EmailLookup) ServiceOption {
 	return func(s *Service) {
@@ -125,7 +134,11 @@ type Service struct {
 	publisher Publisher
 	now       func() time.Time
 
-	mailer   mailer.Sender
+	mailer mailer.Sender
+	// mailLog records every notification mail attempt in the shared email_logs
+	// table, so the dashboard's mail log covers system mail too. Nil means "do not
+	// record": delivery is unaffected.
+	mailLog  MailLog
 	emails   EmailLookup
 	profiles ProfileLookup
 	baseURL  string
@@ -185,8 +198,15 @@ func (s *Service) Notify(ctx context.Context, in NewInput) (Notification, error)
 	now := s.now()
 	if validated.DedupeKey != "" {
 		if checker, ok := s.repo.(DedupeChecker); ok {
+			// A producer supplied window wins: the message fan-out collapses a shorter
+			// burst than a like does, and hard coding one value would either lose
+			// messages or repeat them.
+			window := validated.DedupeWindow
+			if window <= 0 {
+				window = DedupeWindow
+			}
 			recent, checkErr := checker.ExistsRecent(ctx, validated.SiteID, validated.UserID,
-				validated.DedupeKey, now.Add(-DedupeWindow))
+				validated.DedupeKey, now.Add(-window))
 			if checkErr != nil {
 				// Failing open is deliberate: an index hiccup must not drop a
 				// notification the recipient never saw.
@@ -286,6 +306,10 @@ func (s *Service) loadPreferences(ctx context.Context, siteID, userID string) Pr
 
 // maybeEmail sends the notification by email when the recipient enabled it, the
 // type is eligible and the deployment has a relay.
+//
+// With a mail log wired, the attempt is recorded in email_logs: queued before the
+// relay is touched, then sent/failed, or skipped when this deployment has no SMTP
+// relay. The log is best effort; it never changes whether mail is delivered.
 func (s *Service) maybeEmail(ctx context.Context, item Notification, preferences Preferences) {
 	if !preferences.Allows(ChannelEmail, item.Type) || !emailEligible(item.Type) {
 		return
@@ -294,9 +318,9 @@ func (s *Service) maybeEmail(ctx context.Context, item Notification, preferences
 		s.logInfo("notification email skipped: no address resolver")
 		return
 	}
-	if s.mailer == nil || !s.mailer.Configured() {
-		// SMTP is optional: skip silently for the caller, but leave a trace for the
-		// operator who wonders why mail is not going out.
+	if !s.mailReady() && s.mailLog == nil {
+		// Neither a relay nor a log: nothing to attempt and nothing to record, so the
+		// legacy silent skip stays exactly as cheap as it was.
 		s.logInfo("notification email skipped: SMTP is not configured",
 			"notification_type", string(item.Type), "user_id", item.UserID)
 		return
@@ -316,7 +340,17 @@ func (s *Service) maybeEmail(ctx context.Context, item Notification, preferences
 	}
 
 	deliver := func(deliverCtx context.Context) {
-		if sendErr := s.mailer.Send(deliverCtx, message); sendErr != nil {
+		if !s.mailReady() {
+			// SMTP is optional: skip for the caller, but leave a trace for the operator
+			// who wonders why mail is not going out.
+			s.logInfo("notification email skipped: SMTP is not configured",
+				"notification_type", string(item.Type), "user_id", item.UserID)
+			s.recordSkippedSystemMail(deliverCtx, item.SiteID, MailLogTemplateNotification,
+				address, message.Subject, mailLogReasonNoRelay)
+			return
+		}
+		if sendErr := s.sendSystemMail(deliverCtx, item.SiteID,
+			MailLogTemplateNotification, message); sendErr != nil {
 			s.logError("notification email failed",
 				"error", sendErr, "notification_type", string(item.Type), "user_id", item.UserID)
 			return
@@ -451,6 +485,11 @@ func (s *Service) UpdatePreferences(
 //
 // The settings UI uses it to explain why the email switches have no effect yet.
 func (s *Service) EmailConfigured() bool {
+	return s.mailReady()
+}
+
+// mailReady reports whether a relay exists to deliver through.
+func (s *Service) mailReady() bool {
 	return s.mailer != nil && s.mailer.Configured()
 }
 
@@ -463,5 +502,13 @@ func (s *Service) logInfo(msg string, args ...any) {
 func (s *Service) logError(msg string, args ...any) {
 	if s.logger != nil {
 		s.logger.Error(msg, args...)
+	}
+}
+
+// logWarn records a degraded but non fatal condition: exactly the class of failure a
+// best-effort mail log write produces.
+func (s *Service) logWarn(msg string, args ...any) {
+	if s.logger != nil {
+		s.logger.Warn(msg, args...)
 	}
 }

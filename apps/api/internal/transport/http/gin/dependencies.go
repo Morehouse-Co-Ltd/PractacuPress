@@ -18,11 +18,14 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/messaging"
 	"github.com/practacu/practacu-press/apps/api/internal/moderation"
+	"github.com/practacu/practacu-press/apps/api/internal/newsletter"
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
+	"github.com/practacu/practacu-press/apps/api/internal/observability"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platformadmin"
 	"github.com/practacu/practacu-press/apps/api/internal/plugins"
+	"github.com/practacu/practacu-press/apps/api/internal/redirect"
 	"github.com/practacu/practacu-press/apps/api/internal/safety"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/system"
@@ -128,6 +131,26 @@ type Dependencies struct {
 	// System mounts the optional resource panel (host and per-process metrics) when
 	// non nil. Nil leaves the whole module — route and sampler — out of the process.
 	System *system.Handler
+	// SiteCORSOrigins resolves the per-site allowed origins recorded in site
+	// configuration. It is a function rather than a list because the answer belongs to
+	// the resolved site, which only exists after middleware.ResolveSite ran. Nil keeps
+	// the site level CORS layer out of the process, leaving the deployment wide policy
+	// in charge exactly as before Beta 1.2.
+	SiteCORSOrigins func(ctx context.Context, siteID string) ([]string, error)
+	// Redirect mounts the public path resolver and the site level redirect rules.
+	// Nil keeps both out of the process, which is what the contract tests without a
+	// database rely on.
+	Redirect *redirect.Handler
+	// RequestLog is the bounded request metadata ring buffer behind the operator
+	// console. Nil disables both the recorder middleware and the log endpoint.
+	RequestLog *observability.Recorder
+	// Ops mounts the request log, queue view and manual retry endpoints.
+	Ops *system.OpsHandler
+	// BackupSchedule mounts the automatic backup status endpoint.
+	BackupSchedule *backup.ScheduleHandler
+	// Newsletter mounts the public subscription endpoints, the account preference and
+	// the site level subscriber, template, log and send endpoints.
+	Newsletter *newsletter.Handler
 }
 
 // FeedDependencies is what the syndication feeds need.

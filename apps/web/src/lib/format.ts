@@ -193,6 +193,9 @@ export const ACTION_LABEL = labelMap<ContentAction>({
   archive: '归档',
   restore: '恢复',
   'security-retry': '重试安全检查',
+  undelete: '从回收站恢复',
+  purge: '彻底删除',
+  unpublish: '撤销发布',
 });
 
 export const ROLE_RANK: Record<Role, number> = {

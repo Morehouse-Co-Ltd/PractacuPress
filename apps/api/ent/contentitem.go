@@ -61,6 +61,28 @@ type ContentItem struct {
 	ViewCount int `json:"view_count,omitempty"`
 	// CommentPolicy holds the value of the "comment_policy" field.
 	CommentPolicy string `json:"comment_policy,omitempty"`
+	// DeletedAt holds the value of the "deleted_at" field.
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	// SeoTitle holds the value of the "seo_title" field.
+	SeoTitle string `json:"seo_title,omitempty"`
+	// SeoDescription holds the value of the "seo_description" field.
+	SeoDescription string `json:"seo_description,omitempty"`
+	// SeoKeywords holds the value of the "seo_keywords" field.
+	SeoKeywords string `json:"seo_keywords,omitempty"`
+	// CanonicalURL holds the value of the "canonical_url" field.
+	CanonicalURL string `json:"canonical_url,omitempty"`
+	// OgImage holds the value of the "og_image" field.
+	OgImage string `json:"og_image,omitempty"`
+	// Robots holds the value of the "robots" field.
+	Robots string `json:"robots,omitempty"`
+	// CoverURL holds the value of the "cover_url" field.
+	CoverURL string `json:"cover_url,omitempty"`
+	// CoverAlt holds the value of the "cover_alt" field.
+	CoverAlt string `json:"cover_alt,omitempty"`
+	// CoverPosition holds the value of the "cover_position" field.
+	CoverPosition string `json:"cover_position,omitempty"`
+	// CoverHidden holds the value of the "cover_hidden" field.
+	CoverHidden bool `json:"cover_hidden,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -73,11 +95,13 @@ func (*ContentItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case contentitem.FieldCoverHidden:
+			values[i] = new(sql.NullBool)
 		case contentitem.FieldRevision, contentitem.FieldPublishAttempts, contentitem.FieldViewCount:
 			values[i] = new(sql.NullInt64)
-		case contentitem.FieldID, contentitem.FieldSiteID, contentitem.FieldAuthorID, contentitem.FieldKind, contentitem.FieldStatus, contentitem.FieldTitle, contentitem.FieldSlug, contentitem.FieldSummary, contentitem.FieldSourceFormat, contentitem.FieldSourceBody, contentitem.FieldRenderedHTML, contentitem.FieldPolicyVersion, contentitem.FieldCategoryID, contentitem.FieldTags, contentitem.FieldAccessMode, contentitem.FieldAccessPasswordHash, contentitem.FieldCommentPolicy:
+		case contentitem.FieldID, contentitem.FieldSiteID, contentitem.FieldAuthorID, contentitem.FieldKind, contentitem.FieldStatus, contentitem.FieldTitle, contentitem.FieldSlug, contentitem.FieldSummary, contentitem.FieldSourceFormat, contentitem.FieldSourceBody, contentitem.FieldRenderedHTML, contentitem.FieldPolicyVersion, contentitem.FieldCategoryID, contentitem.FieldTags, contentitem.FieldAccessMode, contentitem.FieldAccessPasswordHash, contentitem.FieldCommentPolicy, contentitem.FieldSeoTitle, contentitem.FieldSeoDescription, contentitem.FieldSeoKeywords, contentitem.FieldCanonicalURL, contentitem.FieldOgImage, contentitem.FieldRobots, contentitem.FieldCoverURL, contentitem.FieldCoverAlt, contentitem.FieldCoverPosition:
 			values[i] = new(sql.NullString)
-		case contentitem.FieldPublishedAt, contentitem.FieldArchivedAt, contentitem.FieldPublishAt, contentitem.FieldCreatedAt, contentitem.FieldUpdatedAt:
+		case contentitem.FieldPublishedAt, contentitem.FieldArchivedAt, contentitem.FieldPublishAt, contentitem.FieldDeletedAt, contentitem.FieldCreatedAt, contentitem.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -237,6 +261,73 @@ func (_m *ContentItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CommentPolicy = value.String
 			}
+		case contentitem.FieldDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
+			} else if value.Valid {
+				_m.DeletedAt = new(time.Time)
+				*_m.DeletedAt = value.Time
+			}
+		case contentitem.FieldSeoTitle:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field seo_title", values[i])
+			} else if value.Valid {
+				_m.SeoTitle = value.String
+			}
+		case contentitem.FieldSeoDescription:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field seo_description", values[i])
+			} else if value.Valid {
+				_m.SeoDescription = value.String
+			}
+		case contentitem.FieldSeoKeywords:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field seo_keywords", values[i])
+			} else if value.Valid {
+				_m.SeoKeywords = value.String
+			}
+		case contentitem.FieldCanonicalURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field canonical_url", values[i])
+			} else if value.Valid {
+				_m.CanonicalURL = value.String
+			}
+		case contentitem.FieldOgImage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field og_image", values[i])
+			} else if value.Valid {
+				_m.OgImage = value.String
+			}
+		case contentitem.FieldRobots:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field robots", values[i])
+			} else if value.Valid {
+				_m.Robots = value.String
+			}
+		case contentitem.FieldCoverURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cover_url", values[i])
+			} else if value.Valid {
+				_m.CoverURL = value.String
+			}
+		case contentitem.FieldCoverAlt:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cover_alt", values[i])
+			} else if value.Valid {
+				_m.CoverAlt = value.String
+			}
+		case contentitem.FieldCoverPosition:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cover_position", values[i])
+			} else if value.Valid {
+				_m.CoverPosition = value.String
+			}
+		case contentitem.FieldCoverHidden:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field cover_hidden", values[i])
+			} else if value.Valid {
+				_m.CoverHidden = value.Bool
+			}
 		case contentitem.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -360,6 +451,41 @@ func (_m *ContentItem) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("comment_policy=")
 	builder.WriteString(_m.CommentPolicy)
+	builder.WriteString(", ")
+	if v := _m.DeletedAt; v != nil {
+		builder.WriteString("deleted_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("seo_title=")
+	builder.WriteString(_m.SeoTitle)
+	builder.WriteString(", ")
+	builder.WriteString("seo_description=")
+	builder.WriteString(_m.SeoDescription)
+	builder.WriteString(", ")
+	builder.WriteString("seo_keywords=")
+	builder.WriteString(_m.SeoKeywords)
+	builder.WriteString(", ")
+	builder.WriteString("canonical_url=")
+	builder.WriteString(_m.CanonicalURL)
+	builder.WriteString(", ")
+	builder.WriteString("og_image=")
+	builder.WriteString(_m.OgImage)
+	builder.WriteString(", ")
+	builder.WriteString("robots=")
+	builder.WriteString(_m.Robots)
+	builder.WriteString(", ")
+	builder.WriteString("cover_url=")
+	builder.WriteString(_m.CoverURL)
+	builder.WriteString(", ")
+	builder.WriteString("cover_alt=")
+	builder.WriteString(_m.CoverAlt)
+	builder.WriteString(", ")
+	builder.WriteString("cover_position=")
+	builder.WriteString(_m.CoverPosition)
+	builder.WriteString(", ")
+	builder.WriteString("cover_hidden=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CoverHidden))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

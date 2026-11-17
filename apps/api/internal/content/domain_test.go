@@ -178,7 +178,9 @@ func TestAvailableActionsMatchesNext(t *testing.T) {
 	require.ElementsMatch(t, []Action{ActionPublish, ActionReject}, reviewByEditor)
 
 	publishedByAuthor := policy.AvailableActions(article(StatusPublished, "author"), actor("author", site.RoleMember))
-	require.Equal(t, []Action{ActionArchive}, publishedByAuthor)
+	// Beta 1.2 contract I: withdrawing a live item is an author action, so unpublish
+	// is offered next to archive.
+	require.ElementsMatch(t, []Action{ActionUnpublish, ActionArchive}, publishedByAuthor)
 }
 
 func TestValidateDraft(t *testing.T) {

@@ -242,6 +242,21 @@ type Config struct {
 	// unconfigured gateway disables phone login instead of accepting codes nobody
 	// can receive.
 	AuthSMS SMSConfig
+
+	// SMSProvider selects the phone login gateway (contract A): off, log or http.
+	// It is a separate knob from AuthSMS above on purpose: the contract fixes the
+	// SMS_* names, and mixing the two families would leave one half of a deployment
+	// configured.
+	SMSProvider string
+	// SMSHTTPURL is the webhook the http provider posts to.
+	SMSHTTPURL string
+	// SMSHTTPToken is the optional bearer credential of that webhook.
+	SMSHTTPToken string
+	// SMSDevMode returns the verification code in the API response. It exists for
+	// development installs only and is refused in production.
+	SMSDevMode bool
+	// SMSCodeTTL is how long a requested code stays valid.
+	SMSCodeTTL time.Duration
 }
 
 // OAuthProviderConfig is one provider's OAuth client registration.
@@ -264,14 +279,21 @@ func (c OAuthProviderConfig) Configured() bool {
 	return c.ClientID != "" && c.ClientSecret != ""
 }
 
-// SMS gateway provider names accepted by AUTH_SMS_PROVIDER.
+// SMS gateway provider names accepted by AUTH_SMS_PROVIDER and SMS_PROVIDER.
 const (
+	// SMSProviderOff disables phone login. It is the contract A default.
+	SMSProviderOff = "off"
 	// SMSProviderLog writes the code to the process log. It is development only:
 	// a production install must configure a real gateway.
 	SMSProviderLog = "log"
-	// SMSProviderHTTP posts the code to a generic JSON gateway (AUTH_SMS_ENDPOINT).
+	// SMSProviderHTTP posts the code to a generic JSON gateway (AUTH_SMS_ENDPOINT or
+	// SMS_HTTP_URL).
 	SMSProviderHTTP = "http"
 )
+
+// DefaultSMSCodeTTL is how long a requested code stays valid when the operator does
+// not override it (contract A: SMS_CODE_TTL_SECONDS, default 300).
+const DefaultSMSCodeTTL = 300 * time.Second
 
 // SMSConfig is the short message gateway configuration.
 type SMSConfig struct {
@@ -686,6 +708,10 @@ func Load() (Config, error) {
 	if err := loadMail(&cfg); err != nil {
 		return Config{}, err
 	}
+
+	if err := loadSMS(&cfg); err != nil {
+		return Config{}, err
+	}
 	cfg.PublicBaseURL = strings.TrimRight(env("PUBLIC_BASE_URL"), "/")
 	if cfg.PublicBaseURL != "" {
 		parsed, err := url.Parse(cfg.PublicBaseURL)
@@ -996,6 +1022,87 @@ func loadMail(cfg *Config) error {
 	if cfg.SMTPFromName == "" {
 		cfg.SMTPFromName = "Practacu Press"
 	}
+	return nil
+}
+
+// loadSMS reads and validates the phone login gateway (contract A).
+//
+// The default is off: phone login is an optional capability, and an install that
+// has not configured a gateway must report itself as unavailable instead of
+// accepting verification codes nobody can receive. The http provider needs a URL,
+// and the bearer token stays optional because plenty of internal webhooks sit
+// behind a network boundary rather than a header.
+//
+// SMS_DEV_MODE returns the code in the API response, so it is refused in
+// production: an unauthenticated endpoint that hands out the login code is a full
+// account takeover primitive, not a debugging aid.
+func loadSMS(cfg *Config) error {
+	provider := strings.ToLower(strings.TrimSpace(env("SMS_PROVIDER")))
+	if provider == "" {
+		provider = SMSProviderOff
+	}
+	switch provider {
+	case SMSProviderOff, SMSProviderLog, SMSProviderHTTP:
+	default:
+		return &Error{
+			Code:   "invalid_sms_provider",
+			Detail: "SMS_PROVIDER must be one of off, log, http",
+		}
+	}
+	cfg.SMSProvider = provider
+
+	cfg.SMSHTTPURL = strings.TrimSpace(env("SMS_HTTP_URL"))
+	cfg.SMSHTTPToken = env("SMS_HTTP_TOKEN")
+
+	cfg.SMSDevMode = envBool("SMS_DEV_MODE")
+	if cfg.SMSDevMode && cfg.AppEnv == EnvProduction {
+		return &Error{
+			Code:   "invalid_sms_dev_mode",
+			Detail: "SMS_DEV_MODE cannot be enabled when APP_ENV=production: it returns login codes in API responses",
+		}
+	}
+
+	if provider == SMSProviderHTTP {
+		if cfg.SMSHTTPURL == "" {
+			return &Error{
+				Code:   "missing_sms_http_url",
+				Detail: "SMS_HTTP_URL is required when SMS_PROVIDER=http",
+			}
+		}
+		parsed, err := url.Parse(cfg.SMSHTTPURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return &Error{
+				Code:   "invalid_sms_http_url",
+				Detail: "SMS_HTTP_URL must be an absolute http or https URL",
+			}
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return &Error{
+				Code:   "invalid_sms_http_url",
+				Detail: "SMS_HTTP_URL must use http or https",
+			}
+		}
+		if parsed.Scheme != "https" && !isLoopback(parsed.Hostname()) {
+			// The body carries the login code and possibly a bearer token; plaintext
+			// to a remote host hands both to anyone on the path.
+			return &Error{
+				Code:   "insecure_sms_http_url",
+				Detail: "SMS_HTTP_URL must use https unless the gateway is on localhost",
+			}
+		}
+	}
+
+	ttl, err := envInt("SMS_CODE_TTL_SECONDS", int(DefaultSMSCodeTTL/time.Second))
+	if err != nil {
+		return err
+	}
+	if ttl < 30 || ttl > 3600 {
+		return &Error{
+			Code:   "invalid_sms_code_ttl_seconds",
+			Detail: "SMS_CODE_TTL_SECONDS must be between 30 and 3600",
+		}
+	}
+	cfg.SMSCodeTTL = time.Duration(ttl) * time.Second
 	return nil
 }
 

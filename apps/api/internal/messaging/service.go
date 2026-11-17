@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -61,6 +62,11 @@ type Service struct {
 	// members is nil when the deployment did not wire the membership check; in that
 	// case conversation creation trusts the supplied user ids.
 	members MembershipChecker
+	// notifier produces the inbox notification contract B requires after a message is
+	// stored. Nil means notifications are not wired: the message still sends.
+	notifier Notifier
+	// logger records best effort fan-out failures. Nil discards them.
+	logger *slog.Logger
 }
 
 // NewService builds a Service.
@@ -208,6 +214,13 @@ func (s *Service) Send(
 		actor.UserID, created.ID); markErr != nil {
 		return Message{}, markErr
 	}
+
+	// Contract B: the inbox fan-out happens inside this service call, not in the
+	// transport. A handler level copy would be skipped by every other caller of Send
+	// (imports, plugins, tests), which is exactly how a producer requirement rots.
+	// It runs after the message and the read cursor are committed, because a
+	// notification failure must never claim the message failed.
+	s.notifyMessage(ctx, conversation, created)
 	return created, nil
 }
 

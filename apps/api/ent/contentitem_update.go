@@ -345,6 +345,166 @@ func (_u *ContentItemUpdate) SetNillableCommentPolicy(v *string) *ContentItemUpd
 	return _u
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *ContentItemUpdate) SetDeletedAt(v time.Time) *ContentItemUpdate {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableDeletedAt(v *time.Time) *ContentItemUpdate {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *ContentItemUpdate) ClearDeletedAt() *ContentItemUpdate {
+	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
+// SetSeoTitle sets the "seo_title" field.
+func (_u *ContentItemUpdate) SetSeoTitle(v string) *ContentItemUpdate {
+	_u.mutation.SetSeoTitle(v)
+	return _u
+}
+
+// SetNillableSeoTitle sets the "seo_title" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableSeoTitle(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetSeoTitle(*v)
+	}
+	return _u
+}
+
+// SetSeoDescription sets the "seo_description" field.
+func (_u *ContentItemUpdate) SetSeoDescription(v string) *ContentItemUpdate {
+	_u.mutation.SetSeoDescription(v)
+	return _u
+}
+
+// SetNillableSeoDescription sets the "seo_description" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableSeoDescription(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetSeoDescription(*v)
+	}
+	return _u
+}
+
+// SetSeoKeywords sets the "seo_keywords" field.
+func (_u *ContentItemUpdate) SetSeoKeywords(v string) *ContentItemUpdate {
+	_u.mutation.SetSeoKeywords(v)
+	return _u
+}
+
+// SetNillableSeoKeywords sets the "seo_keywords" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableSeoKeywords(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetSeoKeywords(*v)
+	}
+	return _u
+}
+
+// SetCanonicalURL sets the "canonical_url" field.
+func (_u *ContentItemUpdate) SetCanonicalURL(v string) *ContentItemUpdate {
+	_u.mutation.SetCanonicalURL(v)
+	return _u
+}
+
+// SetNillableCanonicalURL sets the "canonical_url" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableCanonicalURL(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetCanonicalURL(*v)
+	}
+	return _u
+}
+
+// SetOgImage sets the "og_image" field.
+func (_u *ContentItemUpdate) SetOgImage(v string) *ContentItemUpdate {
+	_u.mutation.SetOgImage(v)
+	return _u
+}
+
+// SetNillableOgImage sets the "og_image" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableOgImage(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetOgImage(*v)
+	}
+	return _u
+}
+
+// SetRobots sets the "robots" field.
+func (_u *ContentItemUpdate) SetRobots(v string) *ContentItemUpdate {
+	_u.mutation.SetRobots(v)
+	return _u
+}
+
+// SetNillableRobots sets the "robots" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableRobots(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetRobots(*v)
+	}
+	return _u
+}
+
+// SetCoverURL sets the "cover_url" field.
+func (_u *ContentItemUpdate) SetCoverURL(v string) *ContentItemUpdate {
+	_u.mutation.SetCoverURL(v)
+	return _u
+}
+
+// SetNillableCoverURL sets the "cover_url" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableCoverURL(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetCoverURL(*v)
+	}
+	return _u
+}
+
+// SetCoverAlt sets the "cover_alt" field.
+func (_u *ContentItemUpdate) SetCoverAlt(v string) *ContentItemUpdate {
+	_u.mutation.SetCoverAlt(v)
+	return _u
+}
+
+// SetNillableCoverAlt sets the "cover_alt" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableCoverAlt(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetCoverAlt(*v)
+	}
+	return _u
+}
+
+// SetCoverPosition sets the "cover_position" field.
+func (_u *ContentItemUpdate) SetCoverPosition(v string) *ContentItemUpdate {
+	_u.mutation.SetCoverPosition(v)
+	return _u
+}
+
+// SetNillableCoverPosition sets the "cover_position" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableCoverPosition(v *string) *ContentItemUpdate {
+	if v != nil {
+		_u.SetCoverPosition(*v)
+	}
+	return _u
+}
+
+// SetCoverHidden sets the "cover_hidden" field.
+func (_u *ContentItemUpdate) SetCoverHidden(v bool) *ContentItemUpdate {
+	_u.mutation.SetCoverHidden(v)
+	return _u
+}
+
+// SetNillableCoverHidden sets the "cover_hidden" field if the given value is not nil.
+func (_u *ContentItemUpdate) SetNillableCoverHidden(v *bool) *ContentItemUpdate {
+	if v != nil {
+		_u.SetCoverHidden(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ContentItemUpdate) SetUpdatedAt(v time.Time) *ContentItemUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -459,6 +619,41 @@ func (_u *ContentItemUpdate) check() error {
 			return &ValidationError{Name: "comment_policy", err: fmt.Errorf(`ent: validator failed for field "ContentItem.comment_policy": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SeoTitle(); ok {
+		if err := contentitem.SeoTitleValidator(v); err != nil {
+			return &ValidationError{Name: "seo_title", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_title": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SeoDescription(); ok {
+		if err := contentitem.SeoDescriptionValidator(v); err != nil {
+			return &ValidationError{Name: "seo_description", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_description": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SeoKeywords(); ok {
+		if err := contentitem.SeoKeywordsValidator(v); err != nil {
+			return &ValidationError{Name: "seo_keywords", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_keywords": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CanonicalURL(); ok {
+		if err := contentitem.CanonicalURLValidator(v); err != nil {
+			return &ValidationError{Name: "canonical_url", err: fmt.Errorf(`ent: validator failed for field "ContentItem.canonical_url": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Robots(); ok {
+		if err := contentitem.RobotsValidator(v); err != nil {
+			return &ValidationError{Name: "robots", err: fmt.Errorf(`ent: validator failed for field "ContentItem.robots": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CoverAlt(); ok {
+		if err := contentitem.CoverAltValidator(v); err != nil {
+			return &ValidationError{Name: "cover_alt", err: fmt.Errorf(`ent: validator failed for field "ContentItem.cover_alt": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CoverPosition(); ok {
+		if err := contentitem.CoverPositionValidator(v); err != nil {
+			return &ValidationError{Name: "cover_position", err: fmt.Errorf(`ent: validator failed for field "ContentItem.cover_position": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -554,6 +749,42 @@ func (_u *ContentItemUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.CommentPolicy(); ok {
 		_spec.SetField(contentitem.FieldCommentPolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(contentitem.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(contentitem.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SeoTitle(); ok {
+		_spec.SetField(contentitem.FieldSeoTitle, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SeoDescription(); ok {
+		_spec.SetField(contentitem.FieldSeoDescription, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SeoKeywords(); ok {
+		_spec.SetField(contentitem.FieldSeoKeywords, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CanonicalURL(); ok {
+		_spec.SetField(contentitem.FieldCanonicalURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OgImage(); ok {
+		_spec.SetField(contentitem.FieldOgImage, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Robots(); ok {
+		_spec.SetField(contentitem.FieldRobots, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverURL(); ok {
+		_spec.SetField(contentitem.FieldCoverURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverAlt(); ok {
+		_spec.SetField(contentitem.FieldCoverAlt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverPosition(); ok {
+		_spec.SetField(contentitem.FieldCoverPosition, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverHidden(); ok {
+		_spec.SetField(contentitem.FieldCoverHidden, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(contentitem.FieldUpdatedAt, field.TypeTime, value)
@@ -895,6 +1126,166 @@ func (_u *ContentItemUpdateOne) SetNillableCommentPolicy(v *string) *ContentItem
 	return _u
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *ContentItemUpdateOne) SetDeletedAt(v time.Time) *ContentItemUpdateOne {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableDeletedAt(v *time.Time) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *ContentItemUpdateOne) ClearDeletedAt() *ContentItemUpdateOne {
+	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
+// SetSeoTitle sets the "seo_title" field.
+func (_u *ContentItemUpdateOne) SetSeoTitle(v string) *ContentItemUpdateOne {
+	_u.mutation.SetSeoTitle(v)
+	return _u
+}
+
+// SetNillableSeoTitle sets the "seo_title" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableSeoTitle(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetSeoTitle(*v)
+	}
+	return _u
+}
+
+// SetSeoDescription sets the "seo_description" field.
+func (_u *ContentItemUpdateOne) SetSeoDescription(v string) *ContentItemUpdateOne {
+	_u.mutation.SetSeoDescription(v)
+	return _u
+}
+
+// SetNillableSeoDescription sets the "seo_description" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableSeoDescription(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetSeoDescription(*v)
+	}
+	return _u
+}
+
+// SetSeoKeywords sets the "seo_keywords" field.
+func (_u *ContentItemUpdateOne) SetSeoKeywords(v string) *ContentItemUpdateOne {
+	_u.mutation.SetSeoKeywords(v)
+	return _u
+}
+
+// SetNillableSeoKeywords sets the "seo_keywords" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableSeoKeywords(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetSeoKeywords(*v)
+	}
+	return _u
+}
+
+// SetCanonicalURL sets the "canonical_url" field.
+func (_u *ContentItemUpdateOne) SetCanonicalURL(v string) *ContentItemUpdateOne {
+	_u.mutation.SetCanonicalURL(v)
+	return _u
+}
+
+// SetNillableCanonicalURL sets the "canonical_url" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableCanonicalURL(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetCanonicalURL(*v)
+	}
+	return _u
+}
+
+// SetOgImage sets the "og_image" field.
+func (_u *ContentItemUpdateOne) SetOgImage(v string) *ContentItemUpdateOne {
+	_u.mutation.SetOgImage(v)
+	return _u
+}
+
+// SetNillableOgImage sets the "og_image" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableOgImage(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetOgImage(*v)
+	}
+	return _u
+}
+
+// SetRobots sets the "robots" field.
+func (_u *ContentItemUpdateOne) SetRobots(v string) *ContentItemUpdateOne {
+	_u.mutation.SetRobots(v)
+	return _u
+}
+
+// SetNillableRobots sets the "robots" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableRobots(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetRobots(*v)
+	}
+	return _u
+}
+
+// SetCoverURL sets the "cover_url" field.
+func (_u *ContentItemUpdateOne) SetCoverURL(v string) *ContentItemUpdateOne {
+	_u.mutation.SetCoverURL(v)
+	return _u
+}
+
+// SetNillableCoverURL sets the "cover_url" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableCoverURL(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetCoverURL(*v)
+	}
+	return _u
+}
+
+// SetCoverAlt sets the "cover_alt" field.
+func (_u *ContentItemUpdateOne) SetCoverAlt(v string) *ContentItemUpdateOne {
+	_u.mutation.SetCoverAlt(v)
+	return _u
+}
+
+// SetNillableCoverAlt sets the "cover_alt" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableCoverAlt(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetCoverAlt(*v)
+	}
+	return _u
+}
+
+// SetCoverPosition sets the "cover_position" field.
+func (_u *ContentItemUpdateOne) SetCoverPosition(v string) *ContentItemUpdateOne {
+	_u.mutation.SetCoverPosition(v)
+	return _u
+}
+
+// SetNillableCoverPosition sets the "cover_position" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableCoverPosition(v *string) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetCoverPosition(*v)
+	}
+	return _u
+}
+
+// SetCoverHidden sets the "cover_hidden" field.
+func (_u *ContentItemUpdateOne) SetCoverHidden(v bool) *ContentItemUpdateOne {
+	_u.mutation.SetCoverHidden(v)
+	return _u
+}
+
+// SetNillableCoverHidden sets the "cover_hidden" field if the given value is not nil.
+func (_u *ContentItemUpdateOne) SetNillableCoverHidden(v *bool) *ContentItemUpdateOne {
+	if v != nil {
+		_u.SetCoverHidden(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ContentItemUpdateOne) SetUpdatedAt(v time.Time) *ContentItemUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -1022,6 +1413,41 @@ func (_u *ContentItemUpdateOne) check() error {
 			return &ValidationError{Name: "comment_policy", err: fmt.Errorf(`ent: validator failed for field "ContentItem.comment_policy": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SeoTitle(); ok {
+		if err := contentitem.SeoTitleValidator(v); err != nil {
+			return &ValidationError{Name: "seo_title", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_title": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SeoDescription(); ok {
+		if err := contentitem.SeoDescriptionValidator(v); err != nil {
+			return &ValidationError{Name: "seo_description", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_description": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SeoKeywords(); ok {
+		if err := contentitem.SeoKeywordsValidator(v); err != nil {
+			return &ValidationError{Name: "seo_keywords", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_keywords": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CanonicalURL(); ok {
+		if err := contentitem.CanonicalURLValidator(v); err != nil {
+			return &ValidationError{Name: "canonical_url", err: fmt.Errorf(`ent: validator failed for field "ContentItem.canonical_url": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Robots(); ok {
+		if err := contentitem.RobotsValidator(v); err != nil {
+			return &ValidationError{Name: "robots", err: fmt.Errorf(`ent: validator failed for field "ContentItem.robots": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CoverAlt(); ok {
+		if err := contentitem.CoverAltValidator(v); err != nil {
+			return &ValidationError{Name: "cover_alt", err: fmt.Errorf(`ent: validator failed for field "ContentItem.cover_alt": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CoverPosition(); ok {
+		if err := contentitem.CoverPositionValidator(v); err != nil {
+			return &ValidationError{Name: "cover_position", err: fmt.Errorf(`ent: validator failed for field "ContentItem.cover_position": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1134,6 +1560,42 @@ func (_u *ContentItemUpdateOne) sqlSave(ctx context.Context) (_node *ContentItem
 	}
 	if value, ok := _u.mutation.CommentPolicy(); ok {
 		_spec.SetField(contentitem.FieldCommentPolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(contentitem.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(contentitem.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SeoTitle(); ok {
+		_spec.SetField(contentitem.FieldSeoTitle, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SeoDescription(); ok {
+		_spec.SetField(contentitem.FieldSeoDescription, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SeoKeywords(); ok {
+		_spec.SetField(contentitem.FieldSeoKeywords, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CanonicalURL(); ok {
+		_spec.SetField(contentitem.FieldCanonicalURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OgImage(); ok {
+		_spec.SetField(contentitem.FieldOgImage, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Robots(); ok {
+		_spec.SetField(contentitem.FieldRobots, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverURL(); ok {
+		_spec.SetField(contentitem.FieldCoverURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverAlt(); ok {
+		_spec.SetField(contentitem.FieldCoverAlt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverPosition(); ok {
+		_spec.SetField(contentitem.FieldCoverPosition, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CoverHidden(); ok {
+		_spec.SetField(contentitem.FieldCoverHidden, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(contentitem.FieldUpdatedAt, field.TypeTime, value)

@@ -47,6 +47,19 @@ type DesignReferenceChecker interface {
 	DesignAssetReference(ctx context.Context, siteID, assetID string) (bool, error)
 }
 
+// AssetUsageChecker reports whether any content item still references an asset,
+// published or not.
+//
+// The read path only asks about published items, because that is what makes an image
+// public. A delete has to ask about every item: an image embedded in a draft is just as
+// load bearing as one in a published article, and removing it there is a silent
+// breakage - nothing errors, the author only finds out when the draft goes live.
+type AssetUsageChecker interface {
+	// AssetInUse reports whether a content item of siteID mentions the asset id or its
+	// storage key.
+	AssetInUse(ctx context.Context, siteID, assetID, storageKey string) (bool, error)
+}
+
 // Repository is the persistence contract for media.
 type Repository interface {
 	InsertUpload(ctx context.Context, upload Upload) (Upload, error)
@@ -84,6 +97,9 @@ type Service struct {
 	references    PublishedReferenceChecker
 	design        DesignReferenceChecker
 	now           func() time.Time
+	// usage is the delete guard. It answers "does any content item still point at this
+	// asset", which the read-path checkers cannot: they only look at published items.
+	usage AssetUsageChecker
 	// derivativeLocks serialises variant generation per object key. It is a map rather
 	// than a single lock so two different images do not wait for each other, and it is
 	// keyed by the derived key because that is the object being written.
@@ -114,6 +130,10 @@ type ServiceConfig struct {
 	QuotaDefaults  QuotaDefaults
 	QuotaOverrides QuotaOverrideReader
 	Now            func() time.Time
+	// Usage guards a delete: content that still mentions the asset keeps it alive. Nil
+	// falls back to the repository when that can answer the question, and otherwise
+	// leaves deletion unrestricted, which is the behaviour before the guard existed.
+	Usage AssetUsageChecker
 }
 
 // NewService builds a Service.
@@ -149,6 +169,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		storages:        storages,
 		references:      cfg.References,
 		design:          cfg.Design,
+		usage:           usageChecker(cfg),
 		now:             cfg.Now,
 		derivativeSlots: make(chan struct{}, derivativeConcurrency),
 	}
@@ -156,6 +177,20 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		service.now = func() time.Time { return time.Now().UTC() }
 	}
 	return service, nil
+}
+
+// usageChecker picks the delete guard.
+//
+// A repository that can answer the question is used without extra wiring: the shipped
+// Ent store owns the content query, and leaving deletes unprotected because a
+// deployment missed one configuration line is the worse failure. An explicit cfg.Usage
+// still wins, so a store that cannot answer can be wired deliberately.
+func usageChecker(cfg ServiceConfig) AssetUsageChecker {
+	if cfg.Usage != nil {
+		return cfg.Usage
+	}
+	fromRepository, _ := cfg.Repository.(AssetUsageChecker)
+	return fromRepository
 }
 
 // storageFor returns the adapter responsible for a purpose.
@@ -308,6 +343,7 @@ func (s *Service) CompleteUpload(ctx context.Context, actor Actor, uploadID stri
 	asset := Asset{
 		SiteID:     upload.SiteID,
 		OwnerID:    upload.OwnerID,
+		FileName:   upload.FileName,
 		StorageKey: upload.StorageKey,
 		MIME:       upload.DeclaredMIME,
 		Size:       upload.Size,
@@ -505,13 +541,21 @@ func (s *Service) ListAssets(
 // value: an avatar and an article image may live in different directories or buckets,
 // and deleting with the wrong adapter would either miss the object or hit an unrelated
 // key. Storage deletes are idempotent, so a missing object still removes the record.
+//
+// Two guards run before a byte is removed. The caller has to be allowed to dispose of
+// the asset (see canDeleteAsset), and content must no longer point at it: an image that
+// a published article, a draft or the site design still embeds would break silently,
+// because nothing reports a missing media object to the author.
 func (s *Service) DeleteAsset(ctx context.Context, actor Actor, assetID string) error {
 	asset, err := s.repo.FindAsset(ctx, actor.SiteID, assetID)
 	if err != nil {
 		return err
 	}
-	if asset.OwnerID != actor.UserID {
+	if !actor.canDeleteAsset(asset) {
 		return ErrPermissionDenied
+	}
+	if err := s.ensureUnused(ctx, asset); err != nil {
+		return err
 	}
 
 	storage := s.storageFor(asset.Purpose)
@@ -528,6 +572,53 @@ func (s *Service) DeleteAsset(ctx context.Context, actor Actor, assetID string) 
 		return err
 	}
 	return s.repo.DeleteAsset(ctx, actor.SiteID, assetID)
+}
+
+// canDeleteAsset reports whether actor may remove asset.
+//
+// The uploader can always withdraw what they uploaded - that is their own object, and
+// no workflow decision needs to be involved. Disposing of somebody else's upload is a
+// different act: the media library is shared, so it takes write_content (the caller is
+// trusted with the site's content) and manage_site (they administer the site the object
+// belongs to). The two are read from the live capability matrix where the transport
+// supplies it, so a group with manage_site revoked cannot do this by holding a role.
+func (a Actor) canDeleteAsset(asset Asset) bool {
+	if asset.OwnerID != "" && asset.OwnerID == a.UserID {
+		return true
+	}
+	return a.Allows(site.CapabilityWriteContent) && a.Allows(site.CapabilityManageSite)
+}
+
+// ensureUnused refuses to delete an object that content or the site design still
+// references.
+//
+// Both checkers are optional and a deployment without them keeps the old behaviour
+// rather than turning every delete into an outage; the shipped wiring provides both.
+// A checker error is returned as is: "I could not tell" must not become "go ahead".
+func (s *Service) ensureUnused(ctx context.Context, asset Asset) error {
+	if s.usage != nil {
+		inUse, err := s.usage.AssetInUse(ctx, asset.SiteID, asset.ID, asset.StorageKey)
+		if err != nil {
+			return err
+		}
+		if inUse {
+			return ErrAssetInUse
+		}
+	}
+	if s.design != nil {
+		// This is the second opinion, not the primary one: the design document is served
+		// from a short lived cache, so a delete that races a just saved design may still
+		// slip through. The content query above is the exact check, and it covers the
+		// case that breaks pages.
+		referenced, err := s.design.DesignAssetReference(ctx, asset.SiteID, asset.ID)
+		if err != nil {
+			return err
+		}
+		if referenced {
+			return ErrAssetInUse
+		}
+	}
+	return nil
 }
 
 // Referenceable reports whether an asset may be linked from content.

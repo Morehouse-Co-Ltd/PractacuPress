@@ -29,6 +29,10 @@ const (
 	FieldBody = "body"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldRiskScore holds the string denoting the risk_score field in the database.
+	FieldRiskScore = "risk_score"
+	// FieldRiskFlags holds the string denoting the risk_flags field in the database.
+	FieldRiskFlags = "risk_flags"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -48,6 +52,8 @@ var Columns = []string{
 	FieldDepth,
 	FieldBody,
 	FieldStatus,
+	FieldRiskScore,
+	FieldRiskFlags,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -81,6 +87,12 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultRiskScore holds the default value on creation for the "risk_score" field.
+	DefaultRiskScore int
+	// RiskScoreValidator is a validator for the "risk_score" field. It is called by the builders before save.
+	RiskScoreValidator func(int) error
+	// DefaultRiskFlags holds the default value on creation for the "risk_flags" field.
+	DefaultRiskFlags string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -139,6 +151,16 @@ func ByBody(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByRiskScore orders the results by the risk_score field.
+func ByRiskScore(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRiskScore, opts...).ToFunc()
+}
+
+// ByRiskFlags orders the results by the risk_flags field.
+func ByRiskFlags(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRiskFlags, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

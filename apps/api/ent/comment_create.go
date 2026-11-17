@@ -95,6 +95,34 @@ func (_c *CommentCreate) SetNillableStatus(v *string) *CommentCreate {
 	return _c
 }
 
+// SetRiskScore sets the "risk_score" field.
+func (_c *CommentCreate) SetRiskScore(v int) *CommentCreate {
+	_c.mutation.SetRiskScore(v)
+	return _c
+}
+
+// SetNillableRiskScore sets the "risk_score" field if the given value is not nil.
+func (_c *CommentCreate) SetNillableRiskScore(v *int) *CommentCreate {
+	if v != nil {
+		_c.SetRiskScore(*v)
+	}
+	return _c
+}
+
+// SetRiskFlags sets the "risk_flags" field.
+func (_c *CommentCreate) SetRiskFlags(v string) *CommentCreate {
+	_c.mutation.SetRiskFlags(v)
+	return _c
+}
+
+// SetNillableRiskFlags sets the "risk_flags" field if the given value is not nil.
+func (_c *CommentCreate) SetNillableRiskFlags(v *string) *CommentCreate {
+	if v != nil {
+		_c.SetRiskFlags(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *CommentCreate) SetCreatedAt(v time.Time) *CommentCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -180,6 +208,14 @@ func (_c *CommentCreate) defaults() {
 		v := comment.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.RiskScore(); !ok {
+		v := comment.DefaultRiskScore
+		_c.mutation.SetRiskScore(v)
+	}
+	if _, ok := _c.mutation.RiskFlags(); !ok {
+		v := comment.DefaultRiskFlags
+		_c.mutation.SetRiskFlags(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := comment.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -251,6 +287,17 @@ func (_c *CommentCreate) check() error {
 		if err := comment.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Comment.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RiskScore(); !ok {
+		return &ValidationError{Name: "risk_score", err: errors.New(`ent: missing required field "Comment.risk_score"`)}
+	}
+	if v, ok := _c.mutation.RiskScore(); ok {
+		if err := comment.RiskScoreValidator(v); err != nil {
+			return &ValidationError{Name: "risk_score", err: fmt.Errorf(`ent: validator failed for field "Comment.risk_score": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RiskFlags(); !ok {
+		return &ValidationError{Name: "risk_flags", err: errors.New(`ent: missing required field "Comment.risk_flags"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Comment.created_at"`)}
@@ -330,6 +377,14 @@ func (_c *CommentCreate) createSpec() (*Comment, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(comment.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.RiskScore(); ok {
+		_spec.SetField(comment.FieldRiskScore, field.TypeInt, value)
+		_node.RiskScore = value
+	}
+	if value, ok := _c.mutation.RiskFlags(); ok {
+		_spec.SetField(comment.FieldRiskFlags, field.TypeString, value)
+		_node.RiskFlags = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(comment.FieldCreatedAt, field.TypeTime, value)
@@ -412,6 +467,36 @@ func (u *CommentUpsert) SetStatus(v string) *CommentUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *CommentUpsert) UpdateStatus() *CommentUpsert {
 	u.SetExcluded(comment.FieldStatus)
+	return u
+}
+
+// SetRiskScore sets the "risk_score" field.
+func (u *CommentUpsert) SetRiskScore(v int) *CommentUpsert {
+	u.Set(comment.FieldRiskScore, v)
+	return u
+}
+
+// UpdateRiskScore sets the "risk_score" field to the value that was provided on create.
+func (u *CommentUpsert) UpdateRiskScore() *CommentUpsert {
+	u.SetExcluded(comment.FieldRiskScore)
+	return u
+}
+
+// AddRiskScore adds v to the "risk_score" field.
+func (u *CommentUpsert) AddRiskScore(v int) *CommentUpsert {
+	u.Add(comment.FieldRiskScore, v)
+	return u
+}
+
+// SetRiskFlags sets the "risk_flags" field.
+func (u *CommentUpsert) SetRiskFlags(v string) *CommentUpsert {
+	u.Set(comment.FieldRiskFlags, v)
+	return u
+}
+
+// UpdateRiskFlags sets the "risk_flags" field to the value that was provided on create.
+func (u *CommentUpsert) UpdateRiskFlags() *CommentUpsert {
+	u.SetExcluded(comment.FieldRiskFlags)
 	return u
 }
 
@@ -521,6 +606,41 @@ func (u *CommentUpsertOne) SetStatus(v string) *CommentUpsertOne {
 func (u *CommentUpsertOne) UpdateStatus() *CommentUpsertOne {
 	return u.Update(func(s *CommentUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRiskScore sets the "risk_score" field.
+func (u *CommentUpsertOne) SetRiskScore(v int) *CommentUpsertOne {
+	return u.Update(func(s *CommentUpsert) {
+		s.SetRiskScore(v)
+	})
+}
+
+// AddRiskScore adds v to the "risk_score" field.
+func (u *CommentUpsertOne) AddRiskScore(v int) *CommentUpsertOne {
+	return u.Update(func(s *CommentUpsert) {
+		s.AddRiskScore(v)
+	})
+}
+
+// UpdateRiskScore sets the "risk_score" field to the value that was provided on create.
+func (u *CommentUpsertOne) UpdateRiskScore() *CommentUpsertOne {
+	return u.Update(func(s *CommentUpsert) {
+		s.UpdateRiskScore()
+	})
+}
+
+// SetRiskFlags sets the "risk_flags" field.
+func (u *CommentUpsertOne) SetRiskFlags(v string) *CommentUpsertOne {
+	return u.Update(func(s *CommentUpsert) {
+		s.SetRiskFlags(v)
+	})
+}
+
+// UpdateRiskFlags sets the "risk_flags" field to the value that was provided on create.
+func (u *CommentUpsertOne) UpdateRiskFlags() *CommentUpsertOne {
+	return u.Update(func(s *CommentUpsert) {
+		s.UpdateRiskFlags()
 	})
 }
 
@@ -799,6 +919,41 @@ func (u *CommentUpsertBulk) SetStatus(v string) *CommentUpsertBulk {
 func (u *CommentUpsertBulk) UpdateStatus() *CommentUpsertBulk {
 	return u.Update(func(s *CommentUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRiskScore sets the "risk_score" field.
+func (u *CommentUpsertBulk) SetRiskScore(v int) *CommentUpsertBulk {
+	return u.Update(func(s *CommentUpsert) {
+		s.SetRiskScore(v)
+	})
+}
+
+// AddRiskScore adds v to the "risk_score" field.
+func (u *CommentUpsertBulk) AddRiskScore(v int) *CommentUpsertBulk {
+	return u.Update(func(s *CommentUpsert) {
+		s.AddRiskScore(v)
+	})
+}
+
+// UpdateRiskScore sets the "risk_score" field to the value that was provided on create.
+func (u *CommentUpsertBulk) UpdateRiskScore() *CommentUpsertBulk {
+	return u.Update(func(s *CommentUpsert) {
+		s.UpdateRiskScore()
+	})
+}
+
+// SetRiskFlags sets the "risk_flags" field.
+func (u *CommentUpsertBulk) SetRiskFlags(v string) *CommentUpsertBulk {
+	return u.Update(func(s *CommentUpsert) {
+		s.SetRiskFlags(v)
+	})
+}
+
+// UpdateRiskFlags sets the "risk_flags" field to the value that was provided on create.
+func (u *CommentUpsertBulk) UpdateRiskFlags() *CommentUpsertBulk {
+	return u.Update(func(s *CommentUpsert) {
+		s.UpdateRiskFlags()
 	})
 }
 

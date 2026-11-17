@@ -117,6 +117,20 @@ func (_u *MediaAssetUpdate) ClearScanReason() *MediaAssetUpdate {
 	return _u
 }
 
+// SetFileName sets the "file_name" field.
+func (_u *MediaAssetUpdate) SetFileName(v string) *MediaAssetUpdate {
+	_u.mutation.SetFileName(v)
+	return _u
+}
+
+// SetNillableFileName sets the "file_name" field if the given value is not nil.
+func (_u *MediaAssetUpdate) SetNillableFileName(v *string) *MediaAssetUpdate {
+	if v != nil {
+		_u.SetFileName(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *MediaAssetUpdate) SetUpdatedAt(v time.Time) *MediaAssetUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -191,6 +205,11 @@ func (_u *MediaAssetUpdate) check() error {
 			return &ValidationError{Name: "scan_reason", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.scan_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.FileName(); ok {
+		if err := mediaasset.FileNameValidator(v); err != nil {
+			return &ValidationError{Name: "file_name", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.file_name": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -229,6 +248,9 @@ func (_u *MediaAssetUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if _u.mutation.ScanReasonCleared() {
 		_spec.ClearField(mediaasset.FieldScanReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.FileName(); ok {
+		_spec.SetField(mediaasset.FieldFileName, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mediaasset.FieldUpdatedAt, field.TypeTime, value)
@@ -342,6 +364,20 @@ func (_u *MediaAssetUpdateOne) ClearScanReason() *MediaAssetUpdateOne {
 	return _u
 }
 
+// SetFileName sets the "file_name" field.
+func (_u *MediaAssetUpdateOne) SetFileName(v string) *MediaAssetUpdateOne {
+	_u.mutation.SetFileName(v)
+	return _u
+}
+
+// SetNillableFileName sets the "file_name" field if the given value is not nil.
+func (_u *MediaAssetUpdateOne) SetNillableFileName(v *string) *MediaAssetUpdateOne {
+	if v != nil {
+		_u.SetFileName(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *MediaAssetUpdateOne) SetUpdatedAt(v time.Time) *MediaAssetUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -429,6 +465,11 @@ func (_u *MediaAssetUpdateOne) check() error {
 			return &ValidationError{Name: "scan_reason", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.scan_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.FileName(); ok {
+		if err := mediaasset.FileNameValidator(v); err != nil {
+			return &ValidationError{Name: "file_name", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.file_name": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -484,6 +525,9 @@ func (_u *MediaAssetUpdateOne) sqlSave(ctx context.Context) (_node *MediaAsset, 
 	}
 	if _u.mutation.ScanReasonCleared() {
 		_spec.ClearField(mediaasset.FieldScanReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.FileName(); ok {
+		_spec.SetField(mediaasset.FieldFileName, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mediaasset.FieldUpdatedAt, field.TypeTime, value)

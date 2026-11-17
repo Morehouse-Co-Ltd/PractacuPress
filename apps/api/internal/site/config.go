@@ -191,6 +191,62 @@ func (s *Service) SiteConfig(ctx context.Context, siteID string) (SiteConfig, er
 	return s.repo.SiteConfig(ctx, siteID)
 }
 
+// SiteCORSOrigins returns the origins a site allowed for cross origin readers.
+//
+// It is the read path for `domains.cors_origins`: the per-site CORS middleware runs
+// after host resolution, so it needs the list that belongs to the hostname the request
+// arrived on, and this package is the only place that knows the stored document shape.
+// Keeping the decoding here is what stops a second copy of the JSON tags (and with it a
+// second, quietly diverging notion of the setting) from appearing in the transport layer.
+//
+// The document was validated on write, so this only normalises: surrounding whitespace
+// is trimmed and empty or duplicate entries are dropped (compared case insensitively,
+// because hostnames are). A document that is not a JSON object yields no origins
+// instead of an error, so a hand edited row degrades to "no site level CORS" rather
+// than failing every cross origin request of that site.
+func SiteCORSOrigins(document []byte) []string {
+	trimmed := bytes.TrimSpace(document)
+	if len(trimmed) == 0 {
+		return nil
+	}
+	var doc siteConfigDocument
+	if err := json.Unmarshal(trimmed, &doc); err != nil {
+		return nil
+	}
+	if doc.Domains == nil || len(doc.Domains.CORSOrigins) == 0 {
+		return nil
+	}
+
+	origins := make([]string, 0, len(doc.Domains.CORSOrigins))
+	seen := make(map[string]struct{}, len(doc.Domains.CORSOrigins))
+	for _, entry := range doc.Domains.CORSOrigins {
+		origin := strings.TrimSpace(entry)
+		if origin == "" {
+			continue
+		}
+		key := strings.ToLower(origin)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		origins = append(origins, origin)
+	}
+	return origins
+}
+
+// SiteCORSOrigins returns the cross origin origins stored for one site.
+//
+// The transport layer wraps this in per-site caching: a cross origin request is the
+// only thing that pays for the read, but that read must not hit the database twice for
+// one browser action.
+func (s *Service) SiteCORSOrigins(ctx context.Context, siteID string) ([]string, error) {
+	stored, err := s.SiteConfig(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	return SiteCORSOrigins(stored.Document), nil
+}
+
 // SaveSiteConfig validates and stores a site's runtime configuration.
 //
 // The document is stored byte for byte after validation. The audit entry records the

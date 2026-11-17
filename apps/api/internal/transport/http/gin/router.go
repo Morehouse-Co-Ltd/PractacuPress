@@ -13,6 +13,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/backup"
 	"github.com/practacu/practacu-press/apps/api/internal/feed"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
+	"github.com/practacu/practacu-press/apps/api/internal/observability"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/plugins"
@@ -38,6 +39,10 @@ func New(deps Dependencies) *gin.Engine {
 
 	r.Use(
 		middleware.RequestID(),
+		// The request log sits directly after the id and before the error translator:
+		// it reads the final status after c.Next() returns, which is only final once
+		// every inner middleware, including the error handler, has run.
+		requestLogMiddleware(deps.RequestLog),
 		middleware.Recovery(deps.Logger),
 		middleware.ErrorHandler(deps.Logger),
 		// Browser security headers run before any handler so aborted and error
@@ -163,8 +168,27 @@ func New(deps Dependencies) *gin.Engine {
 	if siteIPGuard != nil {
 		v1.Use(siteIPGuard)
 	}
+	// Site level CORS sits after host resolution because the allowed origin list belongs
+	// to the site the hostname selected. The deployment wide CORS middleware cannot do
+	// this job: it is mounted on the engine, before any site exists, so a site owner
+	// editing the list in the dashboard was changing a value nothing applied.
+	if deps.SiteCORSOrigins != nil {
+		v1.Use(middleware.SiteCORS(func(c *gin.Context) []string {
+			resolved, ok := middleware.SiteFrom(c)
+			if !ok {
+				return nil
+			}
+			origins, err := deps.SiteCORSOrigins(c.Request.Context(), resolved.ID)
+			if err != nil {
+				// A failed lookup must not widen access: no site level origins means the
+				// deployment policy alone decides, which is the pre Beta 1.2 behaviour.
+				return nil
+			}
+			return origins
+		}))
+	}
 
-	if deps.Auth != nil || deps.Sites != nil || deps.Platform != nil || deps.Content != nil || deps.Community != nil || deps.Reports != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil || deps.Audit != nil || deps.Safety != nil || deps.Backups != nil || deps.Captcha != nil || deps.System != nil || deps.Extensions != nil {
+	if deps.Auth != nil || deps.Sites != nil || deps.Platform != nil || deps.Content != nil || deps.Community != nil || deps.Reports != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil || deps.Audit != nil || deps.Safety != nil || deps.Backups != nil || deps.Captcha != nil || deps.System != nil || deps.Extensions != nil || deps.Redirect != nil || deps.Ops != nil || deps.BackupSchedule != nil || deps.Newsletter != nil {
 		var guard, optionalAuth gin.HandlerFunc
 		if deps.AccessTokens != nil {
 			// The guard binds the token to the resolved site: a token minted on site A
@@ -193,6 +217,9 @@ func New(deps Dependencies) *gin.Engine {
 		stepUpGuard := StepUpGuard(deps.StepUp.Enforcer)
 		if deps.Auth != nil {
 			deps.Auth.Routes(v1, guard, stepUpGuard)
+			// Beta 1.2 phone sign-in. Mounted separately so a deployment that never
+			// configures an SMS gateway keeps its previous route table byte for byte.
+			deps.Auth.PhoneRoutes(v1)
 		}
 		if deps.Captcha != nil {
 			// Public on purpose: a visitor's login form has to know whether a
@@ -249,6 +276,29 @@ func New(deps Dependencies) *gin.Engine {
 			// Deployment wide resource panel; the handler itself requires a platform
 			// administrator seat, because the payload names host paths and processes.
 			deps.System.Routes(v1, guard)
+			// Beta 1.2: what the process actually loaded, as opposed to what the storage
+			// and access pages recorded. Mounted separately so the resource panel can be
+			// switched off without taking this away.
+			deps.System.RoutesEffectiveConfig(v1, guard)
+		}
+		if deps.Redirect != nil {
+			// /resolve is public: the page server calls it before rendering, and a
+			// crawler reaches it without a session. The redirect rules themselves sit
+			// behind the same guard as every other site administration route.
+			deps.Redirect.Routes(v1, guard)
+		}
+		if deps.Ops != nil {
+			// Request log, queue status and the manual retry action.
+			deps.Ops.Routes(v1, guard)
+		}
+		if deps.BackupSchedule != nil {
+			// The schedule the process actually runs with, plus its artifacts.
+			deps.BackupSchedule.Routes(v1, guard)
+		}
+		if deps.Newsletter != nil {
+			// Public subscription endpoints, the account preference, and the site
+			// administration surface for subscribers, templates, logs and sending.
+			deps.Newsletter.Routes(v1, guard)
 		}
 		if deps.Extensions != nil {
 			// Extension administration is deployment scoped for the same reason: a
@@ -313,6 +363,18 @@ func New(deps Dependencies) *gin.Engine {
 //
 // With no configured proxy every forwarding header is ignored and ClientIP falls
 // back to the socket address, which is the only safe default.
+// requestLogMiddleware enables the operator request log when a recorder is wired.
+//
+// A nil recorder yields a pass through handler rather than a nil entry in r.Use,
+// which gin would panic on. Tests that build a router without a recorder therefore
+// keep working unchanged.
+func requestLogMiddleware(recorder *observability.Recorder) gin.HandlerFunc {
+	if recorder == nil {
+		return func(c *gin.Context) { c.Next() }
+	}
+	return recorder.Middleware()
+}
+
 func configureTrustedProxies(r *gin.Engine, trusted []string) {
 	if len(trusted) == 0 {
 		_ = r.SetTrustedProxies(nil)

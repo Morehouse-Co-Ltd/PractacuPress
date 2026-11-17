@@ -26,6 +26,10 @@ type Tx struct {
 	Conversation *ConversationClient
 	// ConversationMember is the client for interacting with the ConversationMember builders.
 	ConversationMember *ConversationMemberClient
+	// EmailLog is the client for interacting with the EmailLog builders.
+	EmailLog *EmailLogClient
+	// EmailTemplate is the client for interacting with the EmailTemplate builders.
+	EmailTemplate *EmailTemplateClient
 	// Follow is the client for interacting with the Follow builders.
 	Follow *FollowClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
@@ -50,12 +54,16 @@ type Tx struct {
 	PageView *PageViewClient
 	// PermissionGroup is the client for interacting with the PermissionGroup builders.
 	PermissionGroup *PermissionGroupClient
+	// PhoneCode is the client for interacting with the PhoneCode builders.
+	PhoneCode *PhoneCodeClient
 	// Reaction is the client for interacting with the Reaction builders.
 	Reaction *ReactionClient
 	// ReadingHistory is the client for interacting with the ReadingHistory builders.
 	ReadingHistory *ReadingHistoryClient
 	// RecoveryCode is the client for interacting with the RecoveryCode builders.
 	RecoveryCode *RecoveryCodeClient
+	// Redirect is the client for interacting with the Redirect builders.
+	Redirect *RedirectClient
 	// SensitiveWord is the client for interacting with the SensitiveWord builders.
 	SensitiveWord *SensitiveWordClient
 	// Session is the client for interacting with the Session builders.
@@ -72,6 +80,8 @@ type Tx struct {
 	SiteMember *SiteMemberClient
 	// SiteSafetySetting is the client for interacting with the SiteSafetySetting builders.
 	SiteSafetySetting *SiteSafetySettingClient
+	// Subscriber is the client for interacting with the Subscriber builders.
+	Subscriber *SubscriberClient
 	// TaxonomyTerm is the client for interacting with the TaxonomyTerm builders.
 	TaxonomyTerm *TaxonomyTermClient
 	// TwoFactor is the client for interacting with the TwoFactor builders.
@@ -220,6 +230,8 @@ func (tx *Tx) init() {
 	tx.ContentRevision = NewContentRevisionClient(tx.config)
 	tx.Conversation = NewConversationClient(tx.config)
 	tx.ConversationMember = NewConversationMemberClient(tx.config)
+	tx.EmailLog = NewEmailLogClient(tx.config)
+	tx.EmailTemplate = NewEmailTemplateClient(tx.config)
 	tx.Follow = NewFollowClient(tx.config)
 	tx.IdempotencyKey = NewIdempotencyKeyClient(tx.config)
 	tx.MediaAsset = NewMediaAssetClient(tx.config)
@@ -232,9 +244,11 @@ func (tx *Tx) init() {
 	tx.OutboxEvent = NewOutboxEventClient(tx.config)
 	tx.PageView = NewPageViewClient(tx.config)
 	tx.PermissionGroup = NewPermissionGroupClient(tx.config)
+	tx.PhoneCode = NewPhoneCodeClient(tx.config)
 	tx.Reaction = NewReactionClient(tx.config)
 	tx.ReadingHistory = NewReadingHistoryClient(tx.config)
 	tx.RecoveryCode = NewRecoveryCodeClient(tx.config)
+	tx.Redirect = NewRedirectClient(tx.config)
 	tx.SensitiveWord = NewSensitiveWordClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.Site = NewSiteClient(tx.config)
@@ -243,6 +257,7 @@ func (tx *Tx) init() {
 	tx.SiteIPRule = NewSiteIPRuleClient(tx.config)
 	tx.SiteMember = NewSiteMemberClient(tx.config)
 	tx.SiteSafetySetting = NewSiteSafetySettingClient(tx.config)
+	tx.Subscriber = NewSubscriberClient(tx.config)
 	tx.TaxonomyTerm = NewTaxonomyTermClient(tx.config)
 	tx.TwoFactor = NewTwoFactorClient(tx.config)
 	tx.User = NewUserClient(tx.config)

@@ -205,6 +205,43 @@ func unixNano(at time.Time) int64 {
 	return at.UTC().UnixNano()
 }
 
+// removeIndexedContent deletes the index rows of one content item.
+//
+// It is the exact counterpart of indexContent, including the timing: the caller runs
+// it after the item transaction commits, because the index is written through the raw
+// pool and Ent's transaction does not expose its driver. Both index flavours are
+// cleared, since a stale row would either resurrect a purged item (SQLite joins the
+// FTS table) or keep it matchable.
+func (s *Store) removeIndexedContent(ctx context.Context, contentID string) {
+	if s.searchDB == nil || contentID == "" {
+		return
+	}
+	// Finish the cleanup even if the request that triggered it is canceled.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+
+	if !s.ensureSearch(writeCtx) {
+		return
+	}
+
+	if _, err := s.searchDB.ExecContext(writeCtx,
+		"DELETE FROM content_search WHERE content_id = ?", contentID,
+	); err != nil {
+		s.disableSearch(fmt.Errorf("contentstore: clear search index %s: %w", contentID, err))
+		return
+	}
+	if s.searchDialect() != searchSQLite {
+		return
+	}
+	// The FTS5 table is keyed by rowid, so it is cleared by content id rather than by
+	// the base row that no longer exists.
+	if _, err := s.searchDB.ExecContext(writeCtx,
+		"DELETE FROM content_search_fts WHERE content_id = ?", contentID,
+	); err != nil {
+		s.disableSearch(fmt.Errorf("contentstore: clear search index %s: %w", contentID, err))
+	}
+}
+
 // Search returns one relevance ordered page of published public items.
 func (s *Store) Search(ctx context.Context, filter content.SearchFilter) (content.SearchPage, error) {
 	if filter.Limit <= 0 {
@@ -329,7 +366,13 @@ func (s *Store) contentBySearchHits(
 		ids = append(ids, hit.id)
 	}
 	rows, err := s.client.ContentItem.Query().
-		Where(contentitem.IDIn(ids...), contentitem.SiteIDEQ(siteID)).
+		Where(
+			contentitem.IDIn(ids...),
+			contentitem.SiteIDEQ(siteID),
+			// An item trashed between the index read and this reload is dropped here,
+			// which closes the window the derived index cannot close.
+			contentitem.DeletedAtIsNil(),
+		).
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -377,7 +420,9 @@ func (s *Store) indexedSearchSQL(builder *searchArgs, filter content.SearchFilte
 			"access_mode = " + builder.add(string(content.AccessPublic)),
 			// The index is derived data: a row whose content item was removed out
 			// of band must not be counted or returned even before the next rebuild.
-			"EXISTS (SELECT 1 FROM content_items ci WHERE ci.id = content_search.content_id)",
+			// The same join carries the recycle bin rule, so trashing an item removes
+			// it from search without touching the index and a restore puts it back.
+			"EXISTS (SELECT 1 FROM content_items ci WHERE ci.id = content_search.content_id AND ci.deleted_at IS NULL)",
 		}
 		clauses = append(clauses, indexedFilterClauses(builder, "", filter)...)
 		return "SELECT content_id, MATCH(search_title, search_summary, search_body) AGAINST (" +
@@ -393,7 +438,7 @@ func (s *Store) indexedSearchSQL(builder *searchArgs, filter content.SearchFilte
 			"site_id = " + builder.add(filter.SiteID),
 			"status = " + builder.add(string(content.StatusPublished)),
 			"access_mode = " + builder.add(string(content.AccessPublic)),
-			"EXISTS (SELECT 1 FROM content_items ci WHERE ci.id = content_search.content_id)",
+			"EXISTS (SELECT 1 FROM content_items ci WHERE ci.id = content_search.content_id AND ci.deleted_at IS NULL)",
 		}
 		clauses = append(clauses, indexedFilterClauses(builder, "", filter)...)
 		return "SELECT content_id, ts_rank_cd(search_vector, to_tsquery('simple', " + score +
@@ -406,7 +451,7 @@ func (s *Store) indexedSearchSQL(builder *searchArgs, filter content.SearchFilte
 			"c.site_id = " + builder.add(filter.SiteID),
 			"c.status = " + builder.add(string(content.StatusPublished)),
 			"c.access_mode = " + builder.add(string(content.AccessPublic)),
-			"EXISTS (SELECT 1 FROM content_items ci WHERE ci.id = c.content_id)",
+			"EXISTS (SELECT 1 FROM content_items ci WHERE ci.id = c.content_id AND ci.deleted_at IS NULL)",
 		}
 		clauses = append(clauses, indexedFilterClauses(builder, "c.", filter)...)
 		return "SELECT c.content_id AS content_id, -bm25(content_search_fts, 6.0, 3.0, 1.0) AS search_score" +
@@ -510,6 +555,9 @@ func (s *Store) searchLike(ctx context.Context, filter content.SearchFilter) (co
 		contentitem.SiteIDEQ(filter.SiteID),
 		contentitem.StatusEQ(string(content.StatusPublished)),
 		contentitem.AccessModeEQ(string(content.AccessPublic)),
+		// Search is a public reader surface, so a trashed item must be invisible even
+		// though its status still says published.
+		contentitem.DeletedAtIsNil(),
 	)
 	if filter.Kind != "" {
 		query = query.Where(contentitem.KindEQ(string(filter.Kind)))
@@ -626,6 +674,10 @@ func (s *Store) SearchIndexStatus(ctx context.Context) (SearchIndexStatus, error
 		Where(
 			contentitem.StatusEQ(string(content.StatusPublished)),
 			contentitem.AccessModeEQ(string(content.AccessPublic)),
+			// Trashed rows stay indexed on purpose (a restore makes them matchable
+			// again), but they are not searchable, so they must not be counted as
+			// expected index rows here either.
+			contentitem.DeletedAtIsNil(),
 		).
 		Count(ctx)
 	if err != nil {
@@ -636,6 +688,7 @@ func (s *Store) SearchIndexStatus(ctx context.Context) (SearchIndexStatus, error
 	missing, err := scalarInt(ctx, s.searchDB,
 		`SELECT COUNT(*) FROM content_items ci
 		 WHERE ci.status = 'published' AND ci.access_mode = 'public'
+		 AND ci.deleted_at IS NULL
 		 AND NOT EXISTS (SELECT 1 FROM content_search cs WHERE cs.content_id = ci.id)`)
 	if err != nil {
 		return status, err

@@ -33,6 +33,8 @@ type MediaAsset struct {
 	ScanStatus string `json:"scan_status,omitempty"`
 	// ScanReason holds the value of the "scan_reason" field.
 	ScanReason *string `json:"scan_reason,omitempty"`
+	// FileName holds the value of the "file_name" field.
+	FileName string `json:"file_name,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -47,7 +49,7 @@ func (*MediaAsset) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case mediaasset.FieldSize:
 			values[i] = new(sql.NullInt64)
-		case mediaasset.FieldID, mediaasset.FieldSiteID, mediaasset.FieldOwnerID, mediaasset.FieldStorageKey, mediaasset.FieldMimeType, mediaasset.FieldPurpose, mediaasset.FieldScanStatus, mediaasset.FieldScanReason:
+		case mediaasset.FieldID, mediaasset.FieldSiteID, mediaasset.FieldOwnerID, mediaasset.FieldStorageKey, mediaasset.FieldMimeType, mediaasset.FieldPurpose, mediaasset.FieldScanStatus, mediaasset.FieldScanReason, mediaasset.FieldFileName:
 			values[i] = new(sql.NullString)
 		case mediaasset.FieldCreatedAt, mediaasset.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -121,6 +123,12 @@ func (_m *MediaAsset) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ScanReason = new(string)
 				*_m.ScanReason = value.String
+			}
+		case mediaasset.FieldFileName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field file_name", values[i])
+			} else if value.Valid {
+				_m.FileName = value.String
 			}
 		case mediaasset.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -197,6 +205,9 @@ func (_m *MediaAsset) String() string {
 		builder.WriteString("scan_reason=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("file_name=")
+	builder.WriteString(_m.FileName)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

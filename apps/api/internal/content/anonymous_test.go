@@ -27,11 +27,30 @@ func (s *stubRepo) Insert(context.Context, content.Content, site.AuditEntry) (co
 	return content.Content{}, content.ErrInvalidInput
 }
 
-func (s *stubRepo) SaveDraft(context.Context, content.Content, site.AuditEntry) (content.Content, error) {
-	return content.Content{}, content.ErrInvalidInput
+// SaveDraft mirrors the store's update so the write endpoints can be exercised without
+// a database; a test that needs a conflict writes its own repository.
+func (s *stubRepo) SaveDraft(_ context.Context, item content.Content, _ site.AuditEntry) (content.Content, error) {
+	for index, stored := range s.items {
+		if stored.ID == item.ID && stored.SiteID == item.SiteID {
+			s.items[index] = item
+			return item, nil
+		}
+	}
+	return content.Content{}, content.ErrNotFound
 }
 
+// FindByID mirrors the store: a trashed item is not found on any read path.
 func (s *stubRepo) FindByID(_ context.Context, siteID, contentID string) (content.Content, error) {
+	for _, item := range s.items {
+		if item.ID == contentID && item.SiteID == siteID && item.DeletedAt == nil {
+			return item, nil
+		}
+	}
+	return content.Content{}, content.ErrNotFound
+}
+
+// FindByIDIncludingTrashed is the recycle bin lookup the lifecycle actions use.
+func (s *stubRepo) FindByIDIncludingTrashed(_ context.Context, siteID, contentID string) (content.Content, error) {
 	for _, item := range s.items {
 		if item.ID == contentID && item.SiteID == siteID {
 			return item, nil
@@ -44,6 +63,10 @@ func (s *stubRepo) List(_ context.Context, filter content.ListFilter) ([]content
 	out := make([]content.Content, 0, len(s.items))
 	for _, item := range s.items {
 		if item.SiteID != filter.SiteID {
+			continue
+		}
+		// The bin listing and the ordinary listing are mutually exclusive.
+		if filter.Trashed != (item.DeletedAt != nil) {
 			continue
 		}
 		if filter.Kind != "" && item.Kind != filter.Kind {
@@ -87,6 +110,9 @@ func (s *stubRepo) Search(_ context.Context, filter content.SearchFilter) (conte
 	out := make([]content.Content, 0)
 	for _, item := range s.items {
 		if item.SiteID != filter.SiteID || item.Status != content.StatusPublished {
+			continue
+		}
+		if item.DeletedAt != nil {
 			continue
 		}
 		if item.AccessMode != "" && item.AccessMode != content.AccessPublic {
@@ -178,6 +204,57 @@ func (s *stubRepo) Popular(_ context.Context, filter content.PopularFilter) ([]c
 		out = out[:filter.Limit]
 	}
 	return out, nil
+}
+
+// Trash marks one item as deleted, mirroring the store's idempotent stamp.
+func (s *stubRepo) Trash(_ context.Context, item content.Content, _ site.AuditEntry) (content.Content, error) {
+	for index, stored := range s.items {
+		if stored.ID == item.ID && stored.SiteID == item.SiteID {
+			if stored.DeletedAt == nil {
+				s.items[index].DeletedAt = item.DeletedAt
+			}
+			return s.items[index], nil
+		}
+	}
+	return content.Content{}, content.ErrNotFound
+}
+
+func (s *stubRepo) Undelete(_ context.Context, item content.Content, _ site.AuditEntry) (content.Content, error) {
+	for index, stored := range s.items {
+		if stored.ID == item.ID && stored.SiteID == item.SiteID {
+			s.items[index].DeletedAt = nil
+			return s.items[index], nil
+		}
+	}
+	return content.Content{}, content.ErrNotFound
+}
+
+func (s *stubRepo) Purge(_ context.Context, siteID, contentID string, _ site.AuditEntry) error {
+	for index, stored := range s.items {
+		if stored.ID != contentID || stored.SiteID != siteID {
+			continue
+		}
+		if stored.DeletedAt == nil {
+			return content.ErrInvalidTransition
+		}
+		s.items = append(s.items[:index], s.items[index+1:]...)
+		return nil
+	}
+	return content.ErrNotFound
+}
+
+func (s *stubRepo) PurgeExpired(_ context.Context, before time.Time, limit int) (int, error) {
+	kept := make([]content.Content, 0, len(s.items))
+	removed := 0
+	for _, item := range s.items {
+		if item.DeletedAt != nil && !item.DeletedAt.After(before) && removed < limit {
+			removed++
+			continue
+		}
+		kept = append(kept, item)
+	}
+	s.items = kept
+	return removed, nil
 }
 
 type acceptingSanitizer struct{}

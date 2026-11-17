@@ -87,6 +87,8 @@ var (
 		{Name: "depth", Type: field.TypeInt, Default: 0},
 		{Name: "body", Type: field.TypeString, Size: 2147483647},
 		{Name: "status", Type: field.TypeString, Default: "visible"},
+		{Name: "risk_score", Type: field.TypeInt, Default: 0},
+		{Name: "risk_flags", Type: field.TypeString, Size: 2147483647, Default: "[]"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -99,7 +101,7 @@ var (
 			{
 				Name:    "comment_site_id_target_type_target_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{CommentsColumns[1], CommentsColumns[3], CommentsColumns[4], CommentsColumns[9]},
+				Columns: []*schema.Column{CommentsColumns[1], CommentsColumns[3], CommentsColumns[4], CommentsColumns[11]},
 			},
 			{
 				Name:    "comment_site_id_status",
@@ -138,6 +140,17 @@ var (
 		{Name: "access_password_hash", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "view_count", Type: field.TypeInt, Default: 0},
 		{Name: "comment_policy", Type: field.TypeString, Default: "inherit"},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "seo_title", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "seo_description", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "seo_keywords", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "canonical_url", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "og_image", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "robots", Type: field.TypeString, Default: ""},
+		{Name: "cover_url", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "cover_alt", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "cover_position", Type: field.TypeString, Default: "center"},
+		{Name: "cover_hidden", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -171,6 +184,11 @@ var (
 				Name:    "contentitem_site_id_status_view_count",
 				Unique:  false,
 				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[4], ContentItemsColumns[21]},
+			},
+			{
+				Name:    "contentitem_site_id_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{ContentItemsColumns[1], ContentItemsColumns[23]},
 			},
 		},
 	}
@@ -262,6 +280,65 @@ var (
 			},
 		},
 	}
+	// EmailLogsColumns holds the columns for the "email_logs" table.
+	EmailLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "to_email", Type: field.TypeString, Size: 320},
+		{Name: "kind", Type: field.TypeString, Default: "system"},
+		{Name: "template_key", Type: field.TypeString, Size: 80, Default: ""},
+		{Name: "subject", Type: field.TypeString, Size: 300, Default: ""},
+		{Name: "status", Type: field.TypeString, Default: "queued"},
+		{Name: "error", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "provider_message_id", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "subscriber_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "sent_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EmailLogsTable holds the schema information for the "email_logs" table.
+	EmailLogsTable = &schema.Table{
+		Name:       "email_logs",
+		Columns:    EmailLogsColumns,
+		PrimaryKey: []*schema.Column{EmailLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "emaillog_site_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{EmailLogsColumns[1], EmailLogsColumns[11]},
+			},
+			{
+				Name:    "emaillog_site_id_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{EmailLogsColumns[1], EmailLogsColumns[6], EmailLogsColumns[11]},
+			},
+		},
+	}
+	// EmailTemplatesColumns holds the columns for the "email_templates" table.
+	EmailTemplatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "key", Type: field.TypeString, Size: 80},
+		{Name: "name", Type: field.TypeString, Size: 120, Default: ""},
+		{Name: "subject", Type: field.TypeString, Size: 300, Default: ""},
+		{Name: "body_html", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "body_text", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EmailTemplatesTable holds the schema information for the "email_templates" table.
+	EmailTemplatesTable = &schema.Table{
+		Name:       "email_templates",
+		Columns:    EmailTemplatesColumns,
+		PrimaryKey: []*schema.Column{EmailTemplatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "emailtemplate_site_id_key",
+				Unique:  true,
+				Columns: []*schema.Column{EmailTemplatesColumns[1], EmailTemplatesColumns[2]},
+			},
+		},
+	}
 	// FollowsColumns holds the columns for the "follows" table.
 	FollowsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -329,6 +406,7 @@ var (
 		{Name: "purpose", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "scan_status", Type: field.TypeString, Default: "pending"},
 		{Name: "scan_reason", Type: field.TypeString, Nullable: true, Size: 120},
+		{Name: "file_name", Type: field.TypeString, Size: 200, Default: ""},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -599,6 +677,9 @@ var (
 		{Name: "referrer", Type: field.TypeString, Size: 2048, Default: ""},
 		{Name: "session", Type: field.TypeString, Size: 64},
 		{Name: "surface", Type: field.TypeString, Default: "site"},
+		{Name: "referrer_host", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "source", Type: field.TypeString, Default: "unknown"},
+		{Name: "device", Type: field.TypeString, Default: "unknown"},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// PageViewsTable holds the schema information for the "page_views" table.
@@ -610,12 +691,22 @@ var (
 			{
 				Name:    "pageview_site_id_surface_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[6], PageViewsColumns[7]},
+				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[6], PageViewsColumns[10]},
 			},
 			{
 				Name:    "pageview_site_id_session_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[5], PageViewsColumns[7]},
+				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[5], PageViewsColumns[10]},
+			},
+			{
+				Name:    "pageview_site_id_source_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[8], PageViewsColumns[10]},
+			},
+			{
+				Name:    "pageview_site_id_device_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PageViewsColumns[1], PageViewsColumns[9], PageViewsColumns[10]},
 			},
 		},
 	}
@@ -647,6 +738,43 @@ var (
 				Name:    "permissiongroup_site_id",
 				Unique:  false,
 				Columns: []*schema.Column{PermissionGroupsColumns[1]},
+			},
+		},
+	}
+	// PhoneCodesColumns holds the columns for the "phone_codes" table.
+	PhoneCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "phone_hash", Type: field.TypeString, Size: 64},
+		{Name: "phone_masked", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "purpose", Type: field.TypeString, Default: "login"},
+		{Name: "code_hash", Type: field.TypeString, Size: 64},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "request_ip_hash", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "consumed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// PhoneCodesTable holds the schema information for the "phone_codes" table.
+	PhoneCodesTable = &schema.Table{
+		Name:       "phone_codes",
+		Columns:    PhoneCodesColumns,
+		PrimaryKey: []*schema.Column{PhoneCodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "phonecode_site_id_phone_hash_purpose_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PhoneCodesColumns[1], PhoneCodesColumns[2], PhoneCodesColumns[4], PhoneCodesColumns[10]},
+			},
+			{
+				Name:    "phonecode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{PhoneCodesColumns[8]},
+			},
+			{
+				Name:    "phonecode_site_id_request_ip_hash_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PhoneCodesColumns[1], PhoneCodesColumns[7], PhoneCodesColumns[10]},
 			},
 		},
 	}
@@ -730,6 +858,36 @@ var (
 				Name:    "recoverycode_user_id_used_at",
 				Unique:  false,
 				Columns: []*schema.Column{RecoveryCodesColumns[1], RecoveryCodesColumns[3]},
+			},
+		},
+	}
+	// RedirectsColumns holds the columns for the "redirects" table.
+	RedirectsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "from_path", Type: field.TypeString, Size: 512},
+		{Name: "to_path", Type: field.TypeString, Size: 512},
+		{Name: "status_code", Type: field.TypeInt, Default: 301},
+		{Name: "source", Type: field.TypeString, Default: "manual"},
+		{Name: "hit_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RedirectsTable holds the schema information for the "redirects" table.
+	RedirectsTable = &schema.Table{
+		Name:       "redirects",
+		Columns:    RedirectsColumns,
+		PrimaryKey: []*schema.Column{RedirectsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "redirect_site_id_from_path",
+				Unique:  true,
+				Columns: []*schema.Column{RedirectsColumns[1], RedirectsColumns[2]},
+			},
+			{
+				Name:    "redirect_site_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{RedirectsColumns[1], RedirectsColumns[7]},
 			},
 		},
 	}
@@ -963,6 +1121,44 @@ var (
 			},
 		},
 	}
+	// SubscribersColumns holds the columns for the "subscribers" table.
+	SubscribersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
+		{Name: "site_id", Type: field.TypeString, Size: 36},
+		{Name: "email", Type: field.TypeString, Size: 320},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "token_hash", Type: field.TypeString, Size: 64},
+		{Name: "source", Type: field.TypeString, Size: 40, Default: "site"},
+		{Name: "user_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "confirmed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "unsubscribed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_sent_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SubscribersTable holds the schema information for the "subscribers" table.
+	SubscribersTable = &schema.Table{
+		Name:       "subscribers",
+		Columns:    SubscribersColumns,
+		PrimaryKey: []*schema.Column{SubscribersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "subscriber_site_id_email",
+				Unique:  true,
+				Columns: []*schema.Column{SubscribersColumns[1], SubscribersColumns[2]},
+			},
+			{
+				Name:    "subscriber_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{SubscribersColumns[4]},
+			},
+			{
+				Name:    "subscriber_site_id_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SubscribersColumns[1], SubscribersColumns[3], SubscribersColumns[10]},
+			},
+		},
+	}
 	// TaxonomyTermsColumns holds the columns for the "taxonomy_terms" table.
 	TaxonomyTermsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 36},
@@ -1131,6 +1327,8 @@ var (
 		ContentRevisionsTable,
 		ConversationsTable,
 		ConversationMembersTable,
+		EmailLogsTable,
+		EmailTemplatesTable,
 		FollowsTable,
 		IdempotencyKeysTable,
 		MediaAssetsTable,
@@ -1143,9 +1341,11 @@ var (
 		OutboxEventsTable,
 		PageViewsTable,
 		PermissionGroupsTable,
+		PhoneCodesTable,
 		ReactionsTable,
 		ReadingHistoriesTable,
 		RecoveryCodesTable,
+		RedirectsTable,
 		SensitiveWordsTable,
 		SessionsTable,
 		SitesTable,
@@ -1154,6 +1354,7 @@ var (
 		SiteIPRulesTable,
 		SiteMembersTable,
 		SiteSafetySettingsTable,
+		SubscribersTable,
 		TaxonomyTermsTable,
 		TwoFactorsTable,
 		UsersTable,

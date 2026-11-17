@@ -17,11 +17,18 @@ type Type string
 
 // Supported notification types.
 const (
-	TypeComment    Type = "comment.created"
-	TypeReaction   Type = "reaction.created"
-	TypeFollow     Type = "follow.created"
-	TypeMessage    Type = "message.created"
-	TypeModeration Type = "moderation.updated"
+	TypeComment  Type = "comment.created"
+	TypeReaction Type = "reaction.created"
+	TypeFollow   Type = "follow.created"
+	TypeMessage  Type = "message.created"
+	// TypeMessageDirect is the direct message inbox row contract B asks for.
+	//
+	// The wire value is "message.created", the same string the live push event uses:
+	// the dashboard already has a renderer for it, and two spellings of the same event
+	// would show an unrendered row to the recipient. The row lives in the notification
+	// table, the push event lives in the outbox, so sharing the type name is safe.
+	TypeMessageDirect Type = "message.created"
+	TypeModeration    Type = "moderation.updated"
 	// TypeContact is the public contact form: an anonymous visitor's message to the
 	// site administrators. It has no actor and no subject row.
 	TypeContact Type = "contact.created"
@@ -92,6 +99,10 @@ type NewInput struct {
 	// DedupeWindow. Producers use it for toggleable interactions (a like, a
 	// follow); a comment leaves it empty because every comment is a new event.
 	DedupeKey string
+	// DedupeWindow overrides the package DedupeWindow for this producer. Zero means
+	// the default. The message fan-out uses a 10 minute window (contract B), because
+	// a conversation becomes a new event again after a longer pause.
+	DedupeWindow time.Duration
 }
 
 // Validate checks a create request.
@@ -117,6 +128,9 @@ func Validate(in NewInput) (NewInput, error) {
 	}
 	if len(in.DedupeKey) > MaxDedupeKeyLength {
 		return NewInput{}, fmt.Errorf("%w: dedupe key is too long", ErrInvalidInput)
+	}
+	if in.DedupeWindow < 0 {
+		return NewInput{}, fmt.Errorf("%w: dedupe window must not be negative", ErrInvalidInput)
 	}
 	for key, value := range in.Payload {
 		if len(key) > 40 {

@@ -327,6 +327,8 @@ export function AdminShell() {
         ] as NavItem[])
       : []),
     ...(can('write_content') ? ([{ to: '/admin/media', label: t('媒体库'), icon: 'image' }] as NavItem[]) : []),
+    // Beta 1.2：内容地址改为以 slug 为主，旧路径靠重定向表兜底，入口紧跟内容库。
+    ...(can('manage_site') ? ([{ to: '/admin/redirects', label: t('永久链接'), icon: 'link' }] as NavItem[]) : []),
   ];
 
   const userItems: NavItem[] = [
@@ -341,6 +343,13 @@ export function AdminShell() {
   const systemItems: NavItem[] = [
     ...(me?.role === 'platform_admin' && config.mode !== 'demo'
       ? ([{ to: '/admin/platform', label: t('站点平台'), icon: 'server' }] as NavItem[])
+      : []),
+    // Beta 1.2：来源/留存/设备与运行观察（请求日志、队列、自动备份）是运维面。
+    ...(can('view_log') ? ([{ to: '/admin/insights', label: t('访问洞察'), icon: 'chart' }] as NavItem[]) : []),
+    // 邮件订阅：名单、模板、投递日志与群发。
+    ...(can('manage_site') ? ([{ to: '/admin/newsletter', label: t('邮件订阅'), icon: 'mail' }] as NavItem[]) : []),
+    ...(can('manage_site')
+      ? ([{ to: '/admin/observability', label: t('运行观察'), icon: 'activity' }] as NavItem[])
       : []),
     ...(can('manage_site')
       ? ([{ to: '/admin/docs', label: t('调用接口'), icon: 'code' }] as NavItem[])
@@ -415,6 +424,9 @@ export function AdminShell() {
     { match: /^\/admin\/login-settings/, title: t('登录设置') },
     { match: /^\/admin\/media/, title: t('媒体库') },
     { match: /^\/admin\/activity/, title: t('网站日志') },
+    { match: /^\/admin\/redirects/, title: t('永久链接') },
+    { match: /^\/admin\/insights/, title: t('访问洞察') },
+    { match: /^\/admin\/observability/, title: t('运行观察') },
     { match: /^\/admin\/docs/, title: t('调用接口') },
     { match: /^\/admin$/, title: t('仪表盘') },
   ];

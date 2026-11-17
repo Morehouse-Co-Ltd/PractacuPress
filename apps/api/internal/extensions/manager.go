@@ -13,6 +13,7 @@
 package extensions
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/practacu/practacu-press/apps/api/internal/audit"
 	"github.com/practacu/practacu-press/apps/api/internal/plugins"
 )
 
@@ -73,6 +75,13 @@ type Options struct {
 	MaxUnpackedBytes int64
 	// MaxFiles overrides DefaultMaxFiles.
 	MaxFiles int
+	// Audit receives the integrity failures detected while loading a package at
+	// boot. Optional: nil records nothing, which is the right default for a
+	// manager built outside the server (tests, tooling).
+	Audit audit.Recorder
+	// Now is the clock used for the manifest sidecar's verified_at timestamp. Nil
+	// uses the wall clock.
+	Now func() time.Time
 }
 
 // Extension is the administrator projection of one package. The JSON field names
@@ -95,6 +104,15 @@ type Extension struct {
 	LastError   string             `json:"last_error,omitempty"`
 	InstalledAt string             `json:"installed_at,omitempty"`
 	EnabledAt   string             `json:"enabled_at,omitempty"`
+	// ManifestHash is the SHA-256 recorded when the package was installed. For an
+	// unsigned package (no sidecar) it falls back to the digest of the manifest on
+	// disk, so an operator always has something to compare (Beta 1.2 contract D).
+	ManifestHash string `json:"manifest_hash,omitempty"`
+	// Integrity is verified, unsigned or mismatch. Always set when the package
+	// directory could be read.
+	Integrity string `json:"integrity,omitempty"`
+	// VerifiedAt is when the recorded digest was written (install time).
+	VerifiedAt string `json:"verified_at,omitempty"`
 }
 
 // ExtensionFrontend is the browser half of a package. Entry is the absolute
@@ -145,6 +163,8 @@ type Manager struct {
 	host   *plugins.Host
 	root   string
 	logger *slog.Logger
+	audit  audit.Recorder
+	now    func() time.Time
 
 	maxPackage  int64
 	maxUnpacked int64
@@ -180,12 +200,17 @@ func NewManager(options Options) (*Manager, error) {
 		host:        options.Host,
 		root:        root,
 		logger:      logger,
+		audit:       options.Audit,
+		now:         options.Now,
 		maxPackage:  options.MaxPackageBytes,
 		maxUnpacked: options.MaxUnpackedBytes,
 		maxFiles:    options.MaxFiles,
 		state:       make(map[string]stateEntry),
 		manifests:   make(map[string]plugins.Manifest),
 		dirs:        make(map[string]string),
+	}
+	if manager.now == nil {
+		manager.now = func() time.Time { return time.Now().UTC() }
 	}
 	if manager.maxPackage <= 0 {
 		manager.maxPackage = DefaultMaxPackageBytes
@@ -260,7 +285,7 @@ func (m *Manager) List() ([]Extension, error) {
 		if _, ok := seen[manifest.ID]; ok {
 			continue
 		}
-		out = append(out, Extension{
+		failed := Extension{
 			ID:          manifest.ID,
 			Name:        manifest.Name,
 			Version:     manifest.Version,
@@ -272,7 +297,11 @@ func (m *Manager) List() ([]Extension, error) {
 			Runtime:     manifest.Runtime,
 			Permissions: plugins.SortedPermissionList(manifest.Permissions),
 			LastError:   "the package is present on disk but could not be loaded",
-		})
+		}
+		// The package never reached the host, but its integrity still matters to
+		// the operator: show whether a broken package was also tampered with.
+		m.applyIntegrityLocked(&failed, dir)
+		out = append(out, failed)
 	}
 	return out, nil
 }
@@ -293,6 +322,13 @@ func (m *Manager) SetEnabled(id string, enabled bool) (Extension, error) {
 		status, err = m.host.Disable(id)
 	}
 	if err != nil {
+		if errors.Is(err, plugins.ErrIntegrityMismatch) {
+			// The host refused to enable a modified package. Persist the refusal: a
+			// restart must not retry the enable and the operator must see the package
+			// as off until it is reinstalled.
+			m.state[id] = stateEntry{Enabled: false}
+			m.persistLocked()
+		}
 		return Extension{}, fmt.Errorf("extensions: %s: %w", id, err)
 	}
 	m.state[id] = stateEntry{Enabled: enabled}
@@ -351,21 +387,71 @@ func (m *Manager) extensionDir(id string) (string, error) {
 // extensionForStatusLocked projects one host status. The manifest comes from the
 // in-memory catalogue, falling back to the directory the host installed from.
 func (m *Manager) extensionForStatusLocked(status plugins.Status) Extension {
+	dir := m.dirs[status.ID]
+	if dir == "" {
+		dir = filepath.Join(m.root, status.ID)
+	}
 	manifest, ok := m.manifests[status.ID]
 	if !ok {
-		dir := m.dirs[status.ID]
-		if dir == "" {
-			dir = filepath.Join(m.root, status.ID)
-		}
 		loaded, err := plugins.LoadManifest(dir)
 		if err != nil {
 			m.logger.Warn("read extension manifest failed",
 				"extension", status.ID, "error", err)
-			return extensionFromStatus(status)
+			extension := extensionFromStatus(status)
+			m.applyIntegrityLocked(&extension, dir)
+			return extension
 		}
 		manifest = loaded
 	}
-	return extensionFromManifest(manifest, status)
+	extension := extensionFromManifest(manifest, status)
+	m.applyIntegrityLocked(&extension, dir)
+	return extension
+}
+
+// applyIntegrityLocked fills the Beta 1.2 integrity projection from disk.
+//
+// It re-reads the manifest instead of trusting the host status on purpose: the
+// management page must show the state of the files right now, including a change
+// made after the package was installed and enabled. A failure to read the
+// manifest leaves the fields empty rather than pretending a state.
+func (m *Manager) applyIntegrityLocked(extension *Extension, dir string) {
+	if dir == "" {
+		return
+	}
+	verification, err := plugins.VerifyManifest(dir)
+	if err != nil {
+		m.logger.Warn("verify extension integrity failed",
+			"extension", extension.ID, "error", err)
+		return
+	}
+	extension.ManifestHash = verification.RecordedSHA256
+	if extension.ManifestHash == "" {
+		// Unsigned package: there is no recorded digest, so the hash of the current
+		// manifest is still useful to an operator comparing two installations.
+		extension.ManifestHash = verification.SHA256
+	}
+	extension.Integrity = string(verification.Integrity)
+	if !verification.VerifiedAt.IsZero() {
+		extension.VerifiedAt = formatTime(verification.VerifiedAt)
+	}
+}
+
+// recordAudit writes one audit row without letting a logging failure fail the
+// operation it describes. The timeout keeps a wedged database from blocking boot.
+func (m *Manager) recordAudit(entry audit.Entry) {
+	if m.audit == nil {
+		return
+	}
+	entry.TargetType = "extension"
+	if entry.At.IsZero() {
+		entry.At = m.now()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := m.audit.Record(ctx, entry); err != nil {
+		m.logger.Warn("record extension audit entry failed",
+			"action", entry.Action, "extension", entry.TargetID, "error", err)
+	}
 }
 
 // extensionFromManifest builds the frontend DTO for one loaded package.
@@ -561,6 +647,21 @@ func (m *Manager) scan() {
 		if enabled {
 			if _, err := m.host.Enable(manifest.ID); err != nil {
 				m.logger.Warn("enabling extension failed", "extension", manifest.ID, "error", err)
+				if errors.Is(err, plugins.ErrIntegrityMismatch) {
+					// Loading is where an operator expects tampering to surface: the
+					// package cannot be turned on, and the row says why.
+					enabled = false
+					m.recordAudit(audit.Entry{
+						Action:  "extension.integrity_failed",
+						Outcome: "failure",
+						TargetID: manifest.ID,
+						Detail: map[string]any{
+							"reason":   "manifest_integrity_mismatch",
+							"version":  manifest.Version,
+							"last_error": plugins.ErrIntegrityMismatch.Error(),
+						},
+					})
+				}
 			}
 		} else if _, err := m.host.Disable(manifest.ID); err != nil {
 			m.logger.Warn("disabling extension failed", "extension", manifest.ID, "error", err)

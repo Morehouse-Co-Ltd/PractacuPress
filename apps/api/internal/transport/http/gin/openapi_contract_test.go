@@ -30,6 +30,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/extensions"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/messaging"
+	"github.com/practacu/practacu-press/apps/api/internal/newsletter"
+	"github.com/practacu/practacu-press/apps/api/internal/redirect"
 	"github.com/practacu/practacu-press/apps/api/internal/moderation"
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
@@ -168,6 +170,12 @@ func buildRouter() *gin.Engine {
 			Customization: contractCustomization{},
 			Content:       contractContentLister{},
 		},
+		// Beta 1.2 modules. Each is mounted with an inert service: registering the
+		// routes is the whole point here, and no request reaches a handler.
+		Redirect:       redirect.NewHandler(nil, redirect.HandlerConfig{}),
+		Ops:            system.NewOpsHandler(nil, nil, system.OpsHandlerConfig{}),
+		BackupSchedule: backup.NewScheduleHandler(nil, backup.ScheduleHandlerConfig{}),
+		Newsletter:     newsletter.NewHandler(nil, newsletter.HandlerConfig{}),
 	})
 }
 

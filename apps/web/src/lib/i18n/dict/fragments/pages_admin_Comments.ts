@@ -171,27 +171,41 @@ const fragment: Dictionary = {
   '用逗号分隔；命中一次加 5 分。':
     'Separate with commas; each hit adds 5 points.',
   '例如：竞品名、引流词': 'e.g. a competitor name or a spam term',
-  'AI：高风险': 'AI: high risk',
-  'AI：需留意': 'AI: needs a look',
+
+  // ---- 服务端风险分（Beta 1.2）：评分在服务端写入时算好，界面只读 ----
+  '风险分 {score}': 'Risk score {score}',
+  '风险分 {score}，建议先看这条再通过或删除。':
+    'Risk score {score}. Read this one before you approve or delete it.',
+  '风险分优先': 'Risk score first',
+  '按时间排序': 'Sort by time',
+  '含多个链接': 'Multiple links',
+  '内容过短': 'Too short',
+  '内容过长': 'Too long',
+  '重复字符过多': 'Run of repeated characters',
+  '大量大写字母': 'Mostly upper case',
+  '几乎没有文字': 'Almost no words',
+  '重复文本堆砌': 'Repeated text',
 
   // ---- 拆分评论审核 / 审核设置后的队列页 ----
   评论审核: 'Comment review',
-  '处理待审评论、隐藏不合适的发言；评论策略与 AI 权限在「审核设置」中调整。':
-    'Approve pending comments, hide what does not belong, and adjust comment policy and AI permissions under Moderation settings.',
-  'AI 审核已开启': 'AI moderation is on',
-  'AI 只打风险分，不会代替审核员处理。':
-    'AI only scores risk; it does not act on your behalf.',
-  '先审后发已开启：AI 会自动通过低风险的待审评论，中高风险留给人工。':
-    'Review before publishing is on: AI approves low-risk pending comments and leaves medium and high risk to a person.',
-  '先审后发未开启：AI 会自动删除高风险的公开评论，其余保持不变。':
-    'Review before publishing is off: AI deletes high-risk public comments and leaves the rest untouched.',
+  '处理待审评论、隐藏不合适的发言；评论策略与自动处理权限在「审核设置」中调整。':
+    'Work through pending comments, hide what does not belong, and adjust comment policy and automatic processing under Moderation settings.',
+  '服务端风险分已开启': 'Server risk scores are on',
+  '风险分由服务端在评论写入时计算并落库，这里只显示结果，不代替审核员处理。':
+    'The server scores each comment as it is written and stores the score; this page only shows the result and never acts on your behalf.',
+  '先审后发已开启：风险分不高于 {threshold} 的待审评论自动通过，其余留给人工。':
+    'Review before publishing is on: pending comments scoring {threshold} or less are approved automatically; the rest wait for a person.',
+  '先审后发未开启：风险分达到 {threshold} 的公开评论自动删除，其余保持不变。':
+    'Review before publishing is off: public comments scoring {threshold} or more are deleted automatically; the rest stay as they are.',
   立即运行: 'Run now',
   '最近一轮：通过 {approved} 条，删除 {deleted} 条，失败 {failed} 条。':
     'Last pass: {approved} approved, {deleted} deleted, {failed} failed.',
-  'AI 审核已完成': 'AI moderation finished',
+  '自动审核已完成': 'Automatic moderation finished',
   '自动通过 {approved} 条，自动删除 {deleted} 条。':
     'Automatically approved {approved} and deleted {deleted}.',
-  'AI 审核运行失败': 'AI moderation could not run',
+  '自动审核运行失败': 'Automatic moderation could not run',
+  // 活动日志的动作名（`noteActivity` 的第三个参数），由活动页经 t() 翻译。
+  自动审核: 'Automatic moderation',
 };
 
 export default fragment;

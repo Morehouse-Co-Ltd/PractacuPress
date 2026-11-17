@@ -164,6 +164,21 @@ export function safeHref(input: string): string {
 
 export type NavHrefKind = 'internal' | 'external' | 'plain';
 
+/**
+ * 内容详情页的规范地址。
+ *
+ * 服务端 `/a/:key` 与 `/p/:key` 同时接受 id 与 slug（契约 J1），但**规范链接优先
+ * slug**：id 形式只在旧数据没有 slug 时兜底，服务端也会把 id 形式 301 到 slug 形式。
+ * 所以所有「生成内容详情链接」的地方都该走这里，不要各自拼 `/${kind}/${id}`。
+ *
+ * `kind` 缺省按文章处理；`slug` 为空串 / 全空白时回退 id。
+ */
+export function contentPath(item: { id: string; kind?: string; slug?: string }): string {
+  const prefix = item.kind === 'post' ? 'p' : 'a';
+  const slug = typeof item.slug === 'string' ? item.slug.trim() : '';
+  return `/${prefix}/${slug || item.id}`;
+}
+
 export function navHrefKind(href: string): NavHrefKind {
   const value = safeHref(href);
   if (!value) return 'plain';

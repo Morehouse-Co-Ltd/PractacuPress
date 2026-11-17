@@ -158,6 +158,10 @@ type commentResponse struct {
 	AuthorID   string    `json:"author_id,omitempty"`
 	AuthorName string    `json:"author_name,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+	// RiskScore and RiskFlags are moderator only and stay nil for every other caller,
+	// so the public thread cannot receive them at all rather than receiving a zero.
+	RiskScore *int     `json:"risk_score,omitempty"`
+	RiskFlags []string `json:"risk_flags,omitempty"`
 }
 
 // ListComments returns a page of comments for a target or for the moderation queue.
@@ -197,8 +201,11 @@ func (h *Handler) ListComments(c *gin.Context) {
 	}
 
 	response := make([]commentResponse, 0, len(items))
+	// A moderator reading the queue needs the score to triage; a reader of the thread
+	// must not see it, so one projection is used with the flag off.
+	moderator := CanModerate(actor)
 	for _, item := range items {
-		response = append(response, toCommentResponse(item))
+		response = append(response, toCommentResponse(item, moderator))
 	}
 	c.JSON(http.StatusOK, commentListResponse{
 		Items:      response,
@@ -237,7 +244,7 @@ func (h *Handler) CreateComment(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, toCommentResponse(comment))
+	c.JSON(http.StatusCreated, toCommentResponse(comment, CanModerate(actor)))
 }
 
 // EditComment changes the body of a comment the caller wrote, or its visibility when
@@ -261,7 +268,7 @@ func (h *Handler) EditComment(c *gin.Context) {
 			_ = c.Error(mapError(err))
 			return
 		}
-		c.JSON(http.StatusOK, toCommentResponse(comment))
+		c.JSON(http.StatusOK, toCommentResponse(comment, CanModerate(actor)))
 		return
 	}
 
@@ -270,7 +277,7 @@ func (h *Handler) EditComment(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, toCommentResponse(comment))
+	c.JSON(http.StatusOK, toCommentResponse(comment, CanModerate(actor)))
 }
 
 // ApproveComment publishes a comment awaiting review.
@@ -303,7 +310,7 @@ func (h *Handler) reviewComment(c *gin.Context, approve bool) {
 		_ = c.Error(mapError(err))
 		return
 	}
-	c.JSON(http.StatusOK, toCommentResponse(comment))
+	c.JSON(http.StatusOK, toCommentResponse(comment, CanModerate(actor)))
 }
 
 // DeleteComment soft deletes a comment.
@@ -784,8 +791,14 @@ func (h *Handler) writeError(c *gin.Context, err error) {
 	_ = c.Error(mapError(err))
 }
 
-func toCommentResponse(comment Comment) commentResponse {
-	return commentResponse{
+// toCommentResponse projects a comment for the wire.
+//
+// includeRisk is true only for a caller with moderation rights. The score is a work
+// aid for the review queue, not reader information: publishing it would tell a spammer
+// which signal fired (and therefore what to dodge), and it means nothing to somebody
+// reading the thread.
+func toCommentResponse(comment Comment, includeRisk bool) commentResponse {
+	view := commentResponse{
 		ID:         comment.ID,
 		TargetType: string(comment.TargetType),
 		TargetID:   comment.TargetID,
@@ -797,6 +810,12 @@ func toCommentResponse(comment Comment) commentResponse {
 		AuthorName: comment.AuthorName,
 		CreatedAt:  comment.CreatedAt,
 	}
+	if includeRisk {
+		score := comment.RiskScore
+		view.RiskScore = &score
+		view.RiskFlags = comment.RiskFlags
+	}
+	return view
 }
 
 // mapError translates community failures into the API error model.

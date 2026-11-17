@@ -14,6 +14,8 @@ const fragment: Dictionary = {
   '搜索内容': 'Search content',
   '全部类型': 'All types',
   '{count} 条': { one: '1 item', other: '{count} items' },
+  视图: 'View',
+  回收站: 'Recycle bin',
 
   // ---- 载入失败与空状态 ----
   '无法读取内容': 'Could not load content',
@@ -26,6 +28,9 @@ const fragment: Dictionary = {
     'Create the first draft, or wait for a member to submit one for review.',
   '创建第一篇草稿。': 'Create the first draft.',
   '新建草稿': 'New draft',
+  '回收站是空的': 'The recycle bin is empty',
+  '被删除的内容会保留在这里，直到你恢复或彻底删除它们。':
+    'Deleted content stays here until you restore it or delete it permanently.',
 
   // ---- 表格表头 ----
   '标题': 'Title',
@@ -64,23 +69,66 @@ const fragment: Dictionary = {
   '《{title}》现在是「{status}」': '“{title}” is now “{status}”',
   '去审核': 'Go to review',
 
+  // ---- 回收站 ----
+  '已删除于 {time}': 'Deleted {time}',
+  只读: 'Read only',
+  '已移入回收站': 'Moved to the recycle bin',
+  '《{title}》可以在回收站里恢复。': '“{title}” can be restored from the recycle bin.',
+  '删除失败': 'Delete failed',
+  '已彻底删除': 'Permanently deleted',
+  '《{title}》不会再出现在任何列表里。': '“{title}” will not appear in any list again.',
+  '彻底删除失败': 'The permanent delete failed',
+
   // ---- 底部状态说明 ----
   '列表最多载入每种类型 100 条，状态筛选在浏览器内完成。站点管理员权限：{status}。':
     'Up to 100 items of each type are loaded, and status filtering happens in the browser. Site admin permission: {status}.',
   '已具备': 'Granted',
   '不具备（不影响内容操作）': 'Not granted (content actions are unaffected)',
 
-  // ---- 归档 / 恢复确认 ----
+  // ---- 归档 / 恢复 / 删除确认 ----
   '{action}《{title}》？': '{action} “{title}”?',
   '归档后内容会从公开列表移出，但已有链接仍然有效。':
     'Archiving removes the content from public lists, but existing links keep working.',
   '恢复后内容会重新进入公开列表。': 'Restoring puts the content back into public lists.',
+  '内容会回到删除前的状态，可以继续编辑或发布。':
+    'The content returns to the state it had before deletion and can be edited or published again.',
+  '内容会移入回收站，之后仍然可以恢复。':
+    'The content moves to the recycle bin and can still be restored later.',
+  '彻底删除不可恢复：正文与版本历史都会一起删除。':
+    'Permanent deletion cannot be undone: the body and version history are deleted with it.',
   '确认{action}': 'Confirm {action}',
 
   // ---- 预约与访问状态 ----
   '预约 {time}': 'Scheduled {time}',
   密码访问: 'Password',
   仅登录读者: 'Members only',
+
+  // ---- 多选与批量操作（契约 G）----
+  选择全部: 'Select all',
+  '选择《{title}》': 'Select “{title}”',
+  '已选择 {count} 项': 'Selected {count} items',
+  清除选择: 'Clear selection',
+  批量操作: 'Bulk actions',
+  移入回收站: 'Move to recycle bin',
+  批量操作完成: 'Bulk action finished',
+  批量操作失败: 'Bulk action failed',
+  '成功 {succeeded} 项，失败 {failed} 项。': '{succeeded} succeeded, {failed} failed.',
+  '批量操作：{action}': 'Bulk action: {action}',
+  '失败的条目（id · 错误码）：': 'Failed items (id · error code):',
+  '{id} · {code}': '{id} · {code}',
+  '对选中的 {count} 项执行「{action}」？': 'Run “{action}” on the {count} selected items?',
+  '归档后选中的内容会从公开列表移出，但已有链接仍然有效。':
+    'Archiving removes the selected content from public lists, but existing links keep working.',
+  '撤销后选中的内容会回到草稿，公开链接将不再可访问。':
+    'Unpublishing returns the selected content to draft and the public links stop working.',
+  '选中的内容会移入回收站，之后仍然可以恢复。':
+    'The selected content moves to the recycle bin and can still be restored later.',
+  '选中的内容会从回收站恢复到删除前的状态。':
+    'The selected content is restored from the recycle bin to the state it had before deletion.',
+
+  // ---- 撤销发布（契约 I）----
+  '撤销后内容会回到草稿，公开链接将不再可访问；之后可以再次发布。':
+    'Unpublishing returns the content to draft and the public link stops working; you can publish it again later.',
 };
 
 export default fragment;

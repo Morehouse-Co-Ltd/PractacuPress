@@ -46,6 +46,9 @@ const lib: Dictionary = {
   归档: 'Archive',
   恢复: 'Restore',
   重试安全检查: 'Retry security check',
+  从回收站恢复: 'Restore from trash',
+  彻底删除: 'Delete permanently',
+  撤销发布: 'Unpublish',
 
   // ---- 相对时间 ----
   刚刚: 'just now',

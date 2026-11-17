@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DomainSettings, SiteDomainVerification } from '../../types';
+import type { DomainSettings, EffectiveConfig, SiteDomainVerification } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import {
@@ -22,7 +22,8 @@ import {
   buildGatewaySnippet,
   buildTlsSetupSnippet,
 } from '../../lib/serverConfig';
-import { useTitle } from '../../lib/hooks';
+import { useAsync, useTitle } from '../../lib/hooks';
+import { formatDateTime } from '../../lib/format';
 import { useT } from '../../lib/i18n';
 import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { noteActivity } from '../../lib/activity';
@@ -34,6 +35,7 @@ import {
   CopyButton,
   Field,
   Input,
+  Skeleton,
   Textarea,
   Toggle,
 } from '../../components/ui';
@@ -87,6 +89,18 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
   const backend = useBackend();
   const toast = useToast();
   const saveSiteConfig = useSaveSiteConfig();
+
+  /**
+   * 服务端真正生效的跨域与域名设置。
+   *
+   * 本页保存的值只进入生成的 .env，API 进程读的是它启动时的环境变量；把「记录值」
+   * 和「生效值」并排展示，才不会让用户以为改完开关就已生效。旧后端没有这个端点时
+   * 返回 null，页面其余部分照旧可用。
+   */
+  const effective = useAsync<EffectiveConfig | null>(async () => {
+    if (typeof backend.effectiveConfig !== 'function') return null;
+    return backend.effectiveConfig();
+  }, [backend]);
   const saved = useMemo(() => readDomains(config), [config]);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState<DomainSettings>(() => saved);
@@ -664,6 +678,104 @@ export function DomainsPage({ embedded = false }: { embedded?: boolean }) {
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{t('当前生效（只读）')}</h3>
+                <p>{t('这些值由 API 在启动时从环境变量读取；上面保存的设置要写进 .env 并重启 API 才会生效。')}</p>
+              </div>
+              <div className="row gap-8">
+                {effective.data?.restart_required ? <Badge tone="warn">{t('需重启')}</Badge> : null}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="refresh"
+                  loading={effective.loading}
+                  onClick={effective.reload}
+                >
+                  {t('刷新')}
+                </Button>
+              </div>
+            </div>
+            <div className="panel-body">
+              {effective.loading && !effective.data ? (
+                <Skeleton lines={6} />
+              ) : effective.error ? (
+                <Callout tone="danger" icon="alert" title={t('无法读取服务端的生效配置')}>
+                  {effective.error instanceof Error ? effective.error.message : t('请求失败。')}
+                </Callout>
+              ) : effective.data ? (
+                <div className="form-stack">
+                  {effective.data.restart_required ? (
+                    <Callout tone="warn" icon="alert" title={t('有设置尚未生效，需要重启 API')}>
+                      {t(
+                        'API 只在启动时读取 .env；改完这些设置要写进服务器的 .env 再重启，正在运行的进程不会热加载。',
+                      )}
+                    </Callout>
+                  ) : null}
+                  <div className="mini-list">
+                    <div className="mini-row">
+                      <span className="mini-label">{t('允许的浏览器来源（CORS）')}</span>
+                      <span className="mini-value mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
+                        {effective.data.cors.allowed_origins.length
+                          ? effective.data.cors.allowed_origins.join(' · ')
+                          : t('未开放跨域请求')}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('允许携带凭证')}</span>
+                      <span className="mini-value">
+                        {effective.data.cors.allow_credentials ? t('是') : t('否')}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('强制 HTTPS')}</span>
+                      <span className="mini-value">
+                        {effective.data.domains.https_only ? t('是') : t('否')}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('公开访问地址')}</span>
+                      <span className="mini-value mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
+                        {effective.data.domains.public_base_url || t('未设置：按请求来源推导')}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('受信代理')}</span>
+                      <span className="mini-value mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
+                        {effective.data.domains.trusted_proxies.length
+                          ? effective.data.domains.trusted_proxies.join(' · ')
+                          : t('未配置：忽略转发头')}
+                      </span>
+                    </div>
+                    <div className="mini-row">
+                      <span className="mini-label">{t('发信')}</span>
+                      <span className="mini-value">
+                        {effective.data.mail.configured
+                          ? effective.data.mail.from
+                            ? t('已配置发信（{from}）', { from: effective.data.mail.from })
+                            : t('已配置发信')
+                          : t('未配置发信')}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="tiny faint">
+                    {t('采集时间：{time}', {
+                      time: formatDateTime(effective.data.captured_at),
+                    })}
+                  </p>
+                  <p className="tiny faint">
+                    {t('API 本身不强制 HTTPS：TLS 由前面的网关终止，这一项反映的是进程自己的配置。')}
+                  </p>
+                </div>
+              ) : (
+                <p className="small muted">
+                  {t('当前后端没有提供生效配置，无法确认服务端实际启用了哪些设置。')}
+                </p>
+              )}
             </div>
           </section>
 

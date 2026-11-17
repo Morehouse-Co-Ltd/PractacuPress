@@ -151,6 +151,11 @@ func (s *Store) InsertComment(
 		SetDepth(item.Depth).
 		SetBody(item.Body).
 		SetStatus(item.Status).
+		// The risk assessment is computed by the domain when the comment is written;
+		// storing it here is what lets the review queue rank by risk and stay
+		// auditable instead of recomputing a score per browser.
+		SetRiskScore(item.RiskScore).
+		SetRiskFlags(community.EncodeRiskFlags(item.RiskFlags)).
 		SetCreatedAt(item.CreatedAt).
 		SetUpdatedAt(item.UpdatedAt)
 	if item.ParentID != "" {
@@ -209,6 +214,11 @@ func (s *Store) UpdateComment(ctx context.Context, item community.Comment, audit
 		Where(comment.IDEQ(item.ID), comment.SiteIDEQ(item.SiteID)).
 		SetBody(item.Body).
 		SetStatus(item.Status).
+		// The body change carries a new assessment with it (an edited body is a new
+		// submission), so the queue never ranks a comment by the score of the text it
+		// used to have.
+		SetRiskScore(item.RiskScore).
+		SetRiskFlags(community.EncodeRiskFlags(item.RiskFlags)).
 		SetUpdatedAt(item.UpdatedAt).
 		Save(ctx)
 	if err != nil {
@@ -937,8 +947,12 @@ func toComment(row *entgen.Comment) community.Comment {
 		Depth:      row.Depth,
 		Body:       row.Body,
 		Status:     row.Status,
-		CreatedAt:  row.CreatedAt,
-		UpdatedAt:  row.UpdatedAt,
+		RiskScore:  row.RiskScore,
+		// The column holds JSON text; an unreadable value decodes to no flags rather
+		// than failing the read, because the column is derived data.
+		RiskFlags: community.DecodeRiskFlags(row.RiskFlags),
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}
 	if row.ParentID != nil {
 		item.ParentID = *row.ParentID

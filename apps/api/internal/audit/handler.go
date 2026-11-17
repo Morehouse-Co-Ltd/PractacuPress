@@ -41,6 +41,10 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/sites", requireAuth)
 	group.GET("/:siteID/audit-logs", h.List)
+	// Beta 1.2 contract C: the dashboard's "recent operations" feed. It is mounted
+	// on the same registrar so the panel and the audit page always share one read
+	// path and one authorisation model.
+	group.GET("/:siteID/activity", h.Activity)
 }
 
 type logResponse struct {
@@ -102,6 +106,67 @@ func (h *Handler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, listResponse{Items: items, NextCursor: result.NextCursor})
+}
+
+// activityResponse is the dashboard feed envelope. It has no cursor: the panel
+// shows one short window, not a browsable list.
+type activityResponse struct {
+	Items []activityItem `json:"items"`
+}
+
+// activityItem is one SiteActivityItem of the OpenAPI contract.
+type activityItem struct {
+	ID         string    `json:"id"`
+	Action     string    `json:"action"`
+	ActorID    string    `json:"actor_id,omitempty"`
+	ActorName  string    `json:"actor_name,omitempty"`
+	TargetType string    `json:"target_type,omitempty"`
+	TargetID   string    `json:"target_id,omitempty"`
+	Outcome    string    `json:"outcome"`
+	Detail     string    `json:"detail,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Activity returns the newest operations of one site for the dashboard panel.
+func (h *Handler) Activity(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
+		return
+	}
+
+	limit := ActivityDefaultLimit
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 || parsed > MaxLimit {
+			_ = c.Error(apperr.Validation("limit must be between 1 and 100").
+				WithDetail("field", "limit"))
+			return
+		}
+		limit = parsed
+	}
+
+	entries, err := h.service.Activity(c.Request.Context(), actor, c.Param("siteID"), limit)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+
+	items := make([]activityItem, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, activityItem{
+			ID:         entry.ID,
+			Action:     entry.Action,
+			ActorID:    entry.ActorID,
+			ActorName:  entry.ActorName,
+			TargetType: entry.TargetType,
+			TargetID:   entry.TargetID,
+			Outcome:    entry.Outcome,
+			Detail:     activityDetail(entry.Detail),
+			CreatedAt:  entry.CreatedAt.UTC(),
+		})
+	}
+	c.JSON(http.StatusOK, activityResponse{Items: items})
 }
 
 // parseQuery reads and validates the filter parameters.

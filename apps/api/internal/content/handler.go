@@ -12,6 +12,7 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/page"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/textrisk"
 	"github.com/practacu/practacu-press/apps/api/internal/safety"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
@@ -93,20 +94,39 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFun
 		// Reads are open to anonymous visitors on a public site; the handler decides
 		// per request using the resolved site's visibility mode.
 		r.GET(base, optionalAuth, func(c *gin.Context) { h.list(c, contentKind) })
-		r.GET(base+"/:contentID", optionalAuth, h.get)
-		// History is author/editor only, but it still uses optional auth so an
-		// anonymous caller gets the same 401 as every other read.
-		r.GET(base+"/:contentID/revisions", optionalAuth, h.listRevisions)
-		r.GET(base+"/:contentID/revisions/:revisionID", optionalAuth, h.getRevision)
+		r.GET(base+"/:contentID", optionalAuth, func(c *gin.Context) { h.get(c, contentKind) })
+		// The version diff is part of the history surface: author/editor only, but the
+		// route still uses optional auth so an anonymous caller gets the same 401 as
+		// every other content read.
+		r.GET(base+"/:contentID/diff", optionalAuth, func(c *gin.Context) { h.diff(c, contentKind) })
+		r.GET(base+"/:contentID/revisions", optionalAuth, func(c *gin.Context) {
+			h.listRevisions(c, contentKind)
+		})
+		r.GET(base+"/:contentID/revisions/:revisionID", optionalAuth, func(c *gin.Context) {
+			h.getRevision(c, contentKind)
+		})
 		// The workflow action route also serves the password unlock action. It uses
 		// optional auth so an anonymous reader can unlock a password protected item;
 		// every other action still calls requireActor before touching the service.
-		r.POST(base+"/:contentID/:action", optionalAuth, h.action)
+		r.POST(base+"/:contentID/:action", optionalAuth, func(c *gin.Context) {
+			h.action(c, contentKind)
+		})
 
 		writes := r.Group(base, requireAuth)
 		writes.POST("", func(c *gin.Context) { h.create(c, contentKind) })
-		writes.PATCH("/:contentID", h.update)
-		writes.POST("/:contentID/revisions/:revisionID/restore", h.restoreRevision)
+		// The batch endpoint is mounted before the wildcard routes only for readability
+		// of this block; the router matches the static segment first regardless.
+		writes.POST("/bulk", func(c *gin.Context) { h.bulk(c, contentKind) })
+		writes.PATCH("/:contentID", func(c *gin.Context) { h.update(c, contentKind) })
+		// Minting a preview link is an authoring action, not a workflow move, so it is
+		// spelled as its own sub-resource first.
+		writes.POST("/:contentID/preview", func(c *gin.Context) { h.preview(c, contentKind) })
+		// Deleting is a lifecycle move, not a workflow action, so it is spelled as the
+		// HTTP method it is rather than as another entry in the action route.
+		writes.DELETE("/:contentID", func(c *gin.Context) { h.trash(c, contentKind) })
+		writes.POST("/:contentID/revisions/:revisionID/restore", func(c *gin.Context) {
+			h.restoreRevision(c, contentKind)
+		})
 	}
 
 	// Search spans both kinds, so it lives outside the per kind groups.
@@ -133,8 +153,14 @@ type contentResponse struct {
 	// SourceBody is the author's original text. It is returned only to the item's
 	// author and to editors: rendering it directly would bypass the sanitizer that
 	// produced RenderedHTML, so anonymous readers never receive it.
-	SourceBody    string     `json:"source_body,omitempty"`
-	RenderedHTML  string     `json:"rendered_html"`
+	SourceBody   string `json:"source_body,omitempty"`
+	RenderedHTML string `json:"rendered_html"`
+	// RiskScore and RiskFlags are the rule based review signals the dashboard queue
+	// ranks by (Beta 1.2). They are optional and usually absent: they exist only on
+	// the moderation path, never on a reader surface. See withReviewRisk for the exact
+	// conditions, and textrisk.Assess for the rules behind them.
+	RiskScore     *int       `json:"risk_score,omitempty"`
+	RiskFlags     []string   `json:"risk_flags,omitempty"`
 	PolicyVersion string     `json:"policy_version"`
 	CategoryID    string     `json:"category_id"`
 	Tags          []string   `json:"tags"`
@@ -155,6 +181,21 @@ type contentResponse struct {
 	// Revision is the current version number, used by the editor to address the
 	// history entries this state belongs to.
 	Revision int `json:"revision"`
+	// DeletedAt marks an item in the recycle bin. It is present only for a trashed
+	// item, so a client can render the bin from the same view it uses everywhere else.
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	// The SEO and cover overrides. An empty value means "inherit the site template",
+	// which is what an item that never touched them reports.
+	SeoTitle       string `json:"seo_title"`
+	SeoDescription string `json:"seo_description"`
+	SeoKeywords    string `json:"seo_keywords"`
+	CanonicalURL   string `json:"canonical_url"`
+	OgImage        string `json:"og_image"`
+	Robots         string `json:"robots"`
+	CoverURL       string `json:"cover_url"`
+	CoverAlt       string `json:"cover_alt"`
+	CoverPosition  string `json:"cover_position"`
+	CoverHidden    bool   `json:"cover_hidden"`
 }
 
 // revisionSummary is the list projection of a history entry. The source body is
@@ -200,6 +241,23 @@ type draftRequest struct {
 	// AccessPassword is write only: an empty value keeps the stored hash.
 	AccessPassword string `json:"access_password"`
 	CommentPolicy  string `json:"comment_policy"`
+	// The SEO and cover overrides use replace semantics: the client sends the whole
+	// table on every save, and an empty value clears the override so the site
+	// template applies again.
+	SeoTitle       string `json:"seo_title"`
+	SeoDescription string `json:"seo_description"`
+	SeoKeywords    string `json:"seo_keywords"`
+	CanonicalURL   string `json:"canonical_url"`
+	OgImage        string `json:"og_image"`
+	Robots         string `json:"robots"`
+	CoverURL       string `json:"cover_url"`
+	CoverAlt       string `json:"cover_alt"`
+	CoverPosition  string `json:"cover_position"`
+	CoverHidden    bool   `json:"cover_hidden"`
+	// Revision is the optional optimistic concurrency token (contract F). Omitted
+	// keeps last-write-wins; a stale value is answered with 409
+	// content_version_conflict and details.current_revision.
+	Revision *int `json:"revision"`
 }
 
 type unlockRequest struct {
@@ -412,6 +470,17 @@ func parseListFilter(c *gin.Context) (ListFilter, error) {
 	}
 	filter.Sort = sort
 
+	if raw := strings.TrimSpace(c.Query("trashed")); raw != "" {
+		// Parsed strictly: a typo must be a 400 like every other narrowing value. A
+		// silently ignored value here would answer the live listing to a client that
+		// asked for the recycle bin.
+		trashed, convErr := strconv.ParseBool(raw)
+		if convErr != nil {
+			return ListFilter{}, ErrInvalidInput
+		}
+		filter.Trashed = trashed
+	}
+
 	return filter, nil
 }
 
@@ -456,7 +525,10 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 
 	views := make([]contentResponse, 0, len(items))
 	for _, item := range items {
-		views = append(views, h.view(item, actor))
+		// The listing is the queue's read path, so it is one of the two places that
+		// may carry the review risk fields; reviewView leaves them out for every row
+		// the caller may not moderate or that is not waiting for review.
+		views = append(views, h.reviewView(item, actor))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -466,19 +538,60 @@ func (h *Handler) list(c *gin.Context, kind Kind) {
 	})
 }
 
-func (h *Handler) get(c *gin.Context) {
+// resolveContentID maps the route's {contentID} parameter to the stored id.
+//
+// The contract (J1) allows a slug wherever an id was accepted before, so the value a
+// route hands the service is always an id. A key that resolves to nothing is answered
+// as a missing resource, never as a permission error, so a client cannot probe what
+// exists on the site.
+//
+// includeTrashed is set by the endpoints whose key may legitimately address the
+// recycle bin (DELETE is idempotent and undelete/purge operate on the bin).
+func (h *Handler) resolveContentID(c *gin.Context, actor Actor, kind Kind, includeTrashed bool) (string, bool) {
+	key := c.Param("contentID")
+	var (
+		contentID string
+		err       error
+	)
+	if includeTrashed {
+		contentID, err = h.service.ResolveActionContentID(c.Request.Context(), actor.SiteID, kind, key)
+	} else {
+		contentID, err = h.service.ResolveContentID(c.Request.Context(), actor.SiteID, kind, key)
+	}
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return "", false
+	}
+	return contentID, true
+}
+
+func (h *Handler) get(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
 	if !ok {
 		return
 	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
+	if !ok {
+		return
+	}
 
-	contentID := c.Param("contentID")
-	item, err := h.service.Read(c.Request.Context(), actor, contentID, h.unlocked(c, actor, contentID))
+	// A valid preview token lets its holder read an unpublished draft; an invalid or
+	// expired one is not an error, the request simply falls back to the ordinary read
+	// and an unpublished item therefore answers 404.
+	item, err := h.service.ReadWithPreview(
+		c.Request.Context(),
+		actor,
+		contentID,
+		strings.TrimSpace(c.Query("preview_token")),
+		h.unlocked(c, actor, contentID),
+	)
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
 	}
-	c.JSON(http.StatusOK, h.view(item, actor))
+	// A moderator opening one item is the other half of the queue path, so the same
+	// review-only fields are offered here; readers and authors never receive them.
+	c.JSON(http.StatusOK, h.reviewView(item, actor))
 
 	// Counting runs after the body has been rendered: the response is already the
 	// complete read, and a counter that fails must not turn it into an error. This
@@ -603,10 +716,14 @@ func (h *Handler) unlocked(c *gin.Context, actor Actor, contentID string) bool {
 }
 
 // unlock verifies the item password and stores the session grant in a cookie.
-func (h *Handler) unlock(c *gin.Context) {
+func (h *Handler) unlock(c *gin.Context, kind Kind) {
 	actor, ok := h.actor(c)
 	if !ok {
 		h.unauthenticated(c)
+		return
+	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
+	if !ok {
 		return
 	}
 
@@ -616,7 +733,6 @@ func (h *Handler) unlock(c *gin.Context) {
 		return
 	}
 
-	contentID := c.Param("contentID")
 	grant, err := h.service.Unlock(
 		c.Request.Context(), actor, contentID, req.Password, c.ClientIP(),
 	)
@@ -651,8 +767,37 @@ func unlockCookieName(contentID string) string {
 	return "pp_unlock_" + contentID
 }
 
-func (h *Handler) update(c *gin.Context) {
+// trash moves an item into the recycle bin.
+//
+// The response carries the stored item rather than an empty body, so the client can
+// switch the row straight to its trashed state (deleted_at plus the two lifecycle
+// actions) without a second read.
+func (h *Handler) trash(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+	// Trashing is idempotent, so a key that addresses an already trashed item still
+	// resolves here.
+	contentID, ok := h.resolveContentID(c, actor, kind, true)
+	if !ok {
+		return
+	}
+
+	item, err := h.service.Trash(c.Request.Context(), actor, contentID)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, h.view(item, actor))
+}
+
+func (h *Handler) update(c *gin.Context, kind Kind) {
+	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
 	if !ok {
 		return
 	}
@@ -668,7 +813,7 @@ func (h *Handler) update(c *gin.Context) {
 		return
 	}
 
-	item, err := h.service.UpdateDraft(c.Request.Context(), actor, c.Param("contentID"), input)
+	item, err := h.service.UpdateDraft(c.Request.Context(), actor, contentID, input)
 	if err != nil && !errors.Is(err, ErrSecurityUnavailable) {
 		_ = c.Error(mapError(err))
 		return
@@ -681,12 +826,12 @@ func (h *Handler) update(c *gin.Context) {
 	c.JSON(status, h.view(item, actor))
 }
 
-func (h *Handler) action(c *gin.Context) {
+func (h *Handler) action(c *gin.Context, kind Kind) {
 	raw := c.Param("action")
 	// Unlock is the one action an anonymous reader may perform: it turns the access
 	// password into a session grant for a password protected item.
 	if raw == "unlock" {
-		h.unlock(c)
+		h.unlock(c, kind)
 		return
 	}
 
@@ -694,9 +839,13 @@ func (h *Handler) action(c *gin.Context) {
 	if !ok {
 		return
 	}
+	contentID, ok := h.resolveContentID(c, actor, kind, true)
+	if !ok {
+		return
+	}
 
 	if raw == "security-retry" {
-		item, err := h.service.RetrySecurityCheck(c.Request.Context(), actor, c.Param("contentID"))
+		item, err := h.service.RetrySecurityCheck(c.Request.Context(), actor, contentID)
 		if err != nil {
 			_ = c.Error(mapError(err))
 			return
@@ -705,11 +854,32 @@ func (h *Handler) action(c *gin.Context) {
 		return
 	}
 
+	switch Action(raw) {
+	case ActionUndelete:
+		item, err := h.service.Undelete(c.Request.Context(), actor, contentID)
+		if err != nil {
+			_ = c.Error(mapError(err))
+			return
+		}
+		c.JSON(http.StatusOK, h.view(item, actor))
+		return
+
+	case ActionPurge:
+		if err := h.service.Purge(c.Request.Context(), actor, contentID); err != nil {
+			_ = c.Error(mapError(err))
+			return
+		}
+		// Nothing of the item is left to describe, so the response says exactly that:
+		// a body here would have to be invented from data the caller just destroyed.
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	var req actionRequest
 	// The body is optional: a publish without a reason is valid.
 	_ = c.ShouldBindJSON(&req)
 
-	item, err := h.service.Apply(c.Request.Context(), actor, c.Param("contentID"), Action(raw), req.Reason)
+	item, err := h.service.Apply(c.Request.Context(), actor, contentID, Action(raw), req.Reason)
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
@@ -750,6 +920,17 @@ func (h *Handler) view(item Content, actor Actor) contentResponse {
 		UpdatedAt:         item.UpdatedAt,
 		Actions:           actions,
 		Revision:          item.Revision,
+		DeletedAt:         item.DeletedAt,
+		SeoTitle:          item.SeoTitle,
+		SeoDescription:    item.SeoDescription,
+		SeoKeywords:       item.SeoKeywords,
+		CanonicalURL:      item.CanonicalURL,
+		OgImage:           item.OgImage,
+		Robots:            string(item.Robots),
+		CoverURL:          item.CoverURL,
+		CoverAlt:          item.CoverAlt,
+		CoverPosition:     string(item.CoverPosition),
+		CoverHidden:       item.CoverHidden,
 	}
 	// The raw source is an editing aid, not public content. A published item is
 	// readable anonymously, so the field is gated on write access rather than on
@@ -760,14 +941,78 @@ func (h *Handler) view(item Content, actor Actor) contentResponse {
 	return response
 }
 
+// reviewView renders an item for the moderation queue: the shared projection plus the
+// two review-only risk fields, when this caller is allowed to see them.
+func (h *Handler) reviewView(item Content, actor Actor) contentResponse {
+	return withReviewRisk(item, actor, h.view(item, actor))
+}
+
+// withReviewRisk fills risk_score and risk_flags for a response, and is the only place
+// that writes them.
+//
+// It is deliberately not part of view(): view() projects every read path - the public
+// article page, the archive listing, search, the leaderboard - and an article body is
+// up to MaxSourceLength characters. Scoring each row there would slow down readers for
+// a number no reader may see. Only the two call sites a moderator actually reads opt
+// in (list and get), and even there both fields appear only when all three conditions
+// hold:
+//
+//   - the caller can moderate, the same authority that approves a pending item
+//     (authorizeAction) and that unlocks the raw source next to these fields;
+//   - the item is still waiting for review, i.e. pending_review or
+//     pending_security_check - a published item is no longer the queue's business,
+//     and scoring the published archive is exactly the cost this design avoids;
+//   - the source body is available to score, which is the body the author wrote.
+//
+// Every other response keeps both fields absent (omitempty on a nil pointer and a nil
+// slice), so a public reader, the author of the item and every published listing see
+// byte for byte the payload they saw before. The score is computed here rather than
+// stored: an article is edited far more often than it is reviewed, and a derived value
+// that is only ever read on one screen does not need a column, a migration and a
+// backfill to rot in.
+func withReviewRisk(item Content, actor Actor, response contentResponse) contentResponse {
+	if !canModerateContent(actor) || !awaitingReview(item.Status) || item.SourceBody == "" {
+		return response
+	}
+	score, flags := textrisk.Assess(item.SourceBody)
+	response.RiskScore = &score
+	response.RiskFlags = flags
+	return response
+}
+
+// canModerateContent reports whether the actor holds the moderation authority the
+// review queue requires.
+//
+// It reads the same two sources the rest of the package does: the role gate that
+// authorizeAction and the source body projection use, and the capability matrix that
+// the transport guard enforces on every moderation endpoint. The built-in editor group
+// is exactly the group that carries moderate_content, so the two answers agree today
+// and stay in agreement if the default matrix is ever re-tuned.
+func canModerateContent(actor Actor) bool {
+	if actor.Role.AtLeast(site.RoleEditor) {
+		return true
+	}
+	return site.DefaultCapabilities(actor.Role).Allows(site.CapabilityModerateContent)
+}
+
+// awaitingReview reports whether the item is waiting for a moderation decision, which
+// is the only kind of state the queue scores.
+func awaitingReview(status Status) bool {
+	return status == StatusPendingReview || status == StatusPendingSecurityCheck
+}
+
 // listRevisions returns the bounded history of one item.
-func (h *Handler) listRevisions(c *gin.Context) {
+func (h *Handler) listRevisions(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
 	if !ok {
 		return
 	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
+	if !ok {
+		return
+	}
 
-	revisions, err := h.service.ListRevisions(c.Request.Context(), actor, c.Param("contentID"))
+	revisions, err := h.service.ListRevisions(c.Request.Context(), actor, contentID)
 	if err != nil {
 		_ = c.Error(mapError(err))
 		return
@@ -781,14 +1026,18 @@ func (h *Handler) listRevisions(c *gin.Context) {
 }
 
 // getRevision returns one history entry including its raw source.
-func (h *Handler) getRevision(c *gin.Context) {
+func (h *Handler) getRevision(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
 	if !ok {
 		return
 	}
 
 	revision, err := h.service.GetRevision(
-		c.Request.Context(), actor, c.Param("contentID"), c.Param("revisionID"),
+		c.Request.Context(), actor, contentID, c.Param("revisionID"),
 	)
 	if err != nil {
 		_ = c.Error(mapError(err))
@@ -798,14 +1047,18 @@ func (h *Handler) getRevision(c *gin.Context) {
 }
 
 // restoreRevision rolls the item back to a history entry.
-func (h *Handler) restoreRevision(c *gin.Context) {
+func (h *Handler) restoreRevision(c *gin.Context, kind Kind) {
 	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
 	if !ok {
 		return
 	}
 
 	item, err := h.service.RestoreRevision(
-		c.Request.Context(), actor, c.Param("contentID"), c.Param("revisionID"),
+		c.Request.Context(), actor, contentID, c.Param("revisionID"),
 	)
 	if err != nil && !errors.Is(err, ErrSecurityUnavailable) {
 		_ = c.Error(mapError(err))
@@ -819,6 +1072,76 @@ func (h *Handler) restoreRevision(c *gin.Context) {
 		status = http.StatusServiceUnavailable
 	}
 	c.JSON(status, h.view(item, actor))
+}
+
+// diff returns the line diff between two versions of one item (contract E).
+func (h *Handler) diff(c *gin.Context, kind Kind) {
+	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
+	if !ok {
+		return
+	}
+
+	result, err := h.service.Diff(
+		c.Request.Context(), actor, contentID, c.Query("from"), c.Query("to"),
+	)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// bulkRequest is the batch action payload (contract G).
+type bulkRequest struct {
+	IDs    []string `json:"ids"`
+	Action string   `json:"action"`
+}
+
+// bulk applies one action to many items and reports the outcome of each.
+//
+// A request that is malformed as a whole is a 400; a batch where some items were
+// refused is still a 200 with the per item failures inside, which is the contract.
+func (h *Handler) bulk(c *gin.Context, kind Kind) {
+	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+
+	var req bulkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		_ = c.Error(apperr.Validation("malformed json body"))
+		return
+	}
+
+	result, err := h.service.Bulk(c.Request.Context(), actor, kind, req.IDs, req.Action)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// preview mints a draft preview link for one item (contract H).
+func (h *Handler) preview(c *gin.Context, kind Kind) {
+	actor, ok := h.requireActor(c)
+	if !ok {
+		return
+	}
+	contentID, ok := h.resolveContentID(c, actor, kind, false)
+	if !ok {
+		return
+	}
+
+	grant, err := h.service.IssuePreview(c.Request.Context(), actor, contentID)
+	if err != nil {
+		_ = c.Error(mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, grant)
 }
 
 func toRevisionSummary(revision Revision) revisionSummary {
@@ -869,6 +1192,18 @@ func toDraftInput(req draftRequest) (DraftInput, error) {
 		AccessMode:     AccessMode(strings.TrimSpace(req.AccessMode)),
 		AccessPassword: req.AccessPassword,
 		CommentPolicy:  CommentPolicy(strings.TrimSpace(req.CommentPolicy)),
+		SeoTitle:       req.SeoTitle,
+		SeoDescription: req.SeoDescription,
+		SeoKeywords:    req.SeoKeywords,
+		CanonicalURL:   req.CanonicalURL,
+		OgImage:        req.OgImage,
+		Robots:         Robots(strings.TrimSpace(req.Robots)),
+		CoverURL:       req.CoverURL,
+		CoverAlt:       req.CoverAlt,
+		CoverPosition:  CoverPosition(strings.TrimSpace(req.CoverPosition)),
+		CoverHidden:    req.CoverHidden,
+		// The concurrency token travels with the request, not the form body.
+		Revision: req.Revision,
 	}
 	if raw := strings.TrimSpace(req.PublishAt); raw != "" {
 		parsed, err := time.Parse(time.RFC3339, raw)
@@ -892,10 +1227,16 @@ func nonNilTags(tags []string) []string {
 // mapError translates content failures into the API error model.
 func mapError(err error) *apperr.Problem {
 	var fieldErr *apperr.FieldError
+	var versionConflict *VersionConflictError
 
 	switch {
 	case err == nil:
 		return nil
+
+	case errors.As(err, &versionConflict):
+		// A stale revision token is the one conflict the client can resolve on its
+		// own: it reloads the item and retries with the current revision.
+		return versionConflictProblem(versionConflict.Current)
 
 	case errors.As(err, &fieldErr):
 		// The input failed a known rule: the client gets the stable field/rule pair and
@@ -947,6 +1288,12 @@ func mapError(err error) *apperr.Problem {
 	case errors.Is(err, ErrSecurityUnavailable):
 		return apperr.New(apperr.CodeSecurityUnavailable)
 
+	case errors.Is(err, ErrPreviewUnavailable):
+		// Preview signing was not wired into this deployment. That is an operational
+		// gap, not a client error, so it is reported as temporarily unavailable.
+		return apperr.New(apperr.CodeSecurityUnavailable).
+			WithMessage("草稿预览暂不可用，请稍后重试")
+
 	case errors.Is(err, ErrQuotaExceeded):
 		return quotaExceededProblem()
 
@@ -969,4 +1316,14 @@ func mapError(err error) *apperr.Problem {
 // every other API error.
 func quotaExceededProblem() *apperr.Problem {
 	return apperr.New(apperr.CodeQuotaExceeded).WithMessage("草稿数量或草稿容量已达上限")
+}
+
+// versionConflictProblem renders the contract F 409 body.
+//
+// The code is registered in platform/errors, so the status, title and message all
+// come from the one shared table instead of being restated here; only the current
+// revision travels as a detail.
+func versionConflictProblem(current int) *apperr.Problem {
+	return apperr.New(apperr.CodeContentVersionConflict).
+		WithDetail("current_revision", current)
 }

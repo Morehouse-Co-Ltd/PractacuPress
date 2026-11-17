@@ -8,13 +8,17 @@ import {
 } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type {
+  ArticleCover,
   Content,
   ContentAccessMode,
   ContentAction,
   ContentCommentPolicy,
+  ContentDiff,
   ContentKind,
   ContentRevision,
+  DraftInput,
 } from '../../types';
+import { ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { adminEditorPath, writingPath } from '../../lib/adminAccess';
@@ -83,7 +87,34 @@ interface FormState {
   /** 只写字段：留空保持已有密码。 */
   access_password: string;
   comment_policy: ContentCommentPolicy;
+  /**
+   * 单篇 SEO 覆盖（Beta 1.2）。
+   *
+   * 全部按字符串维护：空串的语义是「继承站点设置」，必须原样提交给服务端，
+   * 省略字段（undefined）在 PATCH 里表示「不修改」，清不掉旧值。
+   */
+  seo_title: string;
+  seo_description: string;
+  seo_keywords: string;
+  canonical_url: string;
+  og_image: string;
+  robots: RobotsDirective;
+  /**
+   * 封面（Beta 1.2 起属于内容模型，不再是站点外观配置）。
+   *
+   * 这些值随 `DraftInput` 一起提交，所以导出、订阅源与分享卡都能拿到封面。
+   */
+  cover_url: string;
+  cover_alt: string;
+  cover_position: CoverPosition;
+  cover_hidden: boolean;
 }
+
+/** 单篇 robots 指令：空串表示继承站点开关。 */
+type RobotsDirective = '' | 'index' | 'noindex';
+
+/** 封面焦点：与内容字段 `cover_position` 同一套取值。 */
+type CoverPosition = 'top' | 'center' | 'bottom';
 
 type SaveStatus = 'draft' | 'pending_review' | 'published';
 
@@ -95,6 +126,28 @@ type SaveStatus = 'draft' | 'pending_review' | 'published';
  *   Markdown（HTML 源码会先转成 Markdown 再提交），因此公开页始终走服务端清洗。
  */
 type EditorMode = 'rich' | 'html' | 'markdown';
+
+/**
+ * 这次保存失败是不是「有人抢先改了同一篇」。
+ *
+ * 契约 F 用 `409 + code=content_version_conflict` 表示版本冲突，服务端当前版本号
+ * 在 `details.current_revision`。判断优先用 `ApiError.code`（最稳）；同时兜住
+ * message 里带错误码的实现，避免把冲突当成普通网络错误静默吞掉。
+ */
+function contentVersionConflict(err: unknown): { matched: boolean; currentRevision?: number } {
+  const candidate = err as {
+    code?: unknown;
+    problem?: { code?: unknown; details?: { current_revision?: unknown } };
+  } | null;
+  const code = candidate?.code ?? candidate?.problem?.code;
+  const matched =
+    code === 'content_version_conflict' ||
+    (err instanceof ApiError && err.code === 'content_version_conflict') ||
+    (err instanceof Error && err.message.includes('content_version_conflict'));
+  if (!matched) return { matched: false };
+  const current = candidate?.problem?.details?.current_revision;
+  return typeof current === 'number' ? { matched, currentRevision: current } : { matched };
+}
 
 /** 服务端 ISO 时间转成 datetime-local 需要的本地值。 */
 function toDateTimeLocal(iso?: string): string {
@@ -126,6 +179,19 @@ const EMPTY: FormState = {
   access_mode: 'public',
   access_password: '',
   comment_policy: 'inherit',
+  // 空串 = 继承站点；与 `toDateTimeLocal` 那层一样，空值一律收敛成空串，
+  // 表单控件永远是受控的字符串。
+  seo_title: '',
+  seo_description: '',
+  seo_keywords: '',
+  canonical_url: '',
+  og_image: '',
+  robots: '',
+  // 空地址表示使用程序化封面，`cover_hidden` 才决定要不要整块隐藏。
+  cover_url: '',
+  cover_alt: '',
+  cover_position: 'center',
+  cover_hidden: false,
 };
 
 export function EditorPage() {
@@ -190,8 +256,21 @@ function EditorWorkspace() {
 
   const content = useAsync(async () => (isNew ? null : backend.getContent(kind, id!)), [backend, kind, id, isNew]);
   const item = content.data;
-  // 顶部元信息条的封面缩略图：有自定义图片就显示图片，否则显示程序化封面。
-  const cover = coverFor(customization, item?.id);
+  /**
+   * 顶部元信息条的封面缩略图：直接看表单里的封面字段。
+   *
+   * 旧内容的封面在载入表单时已经从站点外观配置读穿过来（见 `loadContentIntoForm`），
+   * 所以这里只认表单，编辑过程中缩略图也能立刻跟着变。
+   */
+  const cover: ArticleCover | undefined = form.cover_url
+    ? {
+        id: item?.id ?? 'draft',
+        url: form.cover_url,
+        ...(form.cover_alt.trim() ? { alt: form.cover_alt.trim() } : {}),
+        position: form.cover_position,
+        hidden: form.cover_hidden,
+      }
+    : undefined;
   const coverSrc = useMediaSrc(cover?.url ?? '');
   useTitle(isNew ? t('新建{kind}', { kind: KIND_LABEL[kind] }) : item?.title ?? t('编辑内容'));
 
@@ -204,10 +283,38 @@ function EditorWorkspace() {
   const [revisionBusy, setRevisionBusy] = useState('');
   const [restoreTarget, setRestoreTarget] = useState<ContentRevision | null>(null);
 
+  // ---- 并发冲突（契约 F）：保存带 revision，409 时进入冲突态而不是静默失败 ----
+  const [conflict, setConflict] = useState<{
+    nextStatus: SaveStatus;
+    currentRevision?: number;
+  } | null>(null);
+  const [loadLatestOpen, setLoadLatestOpen] = useState(false);
+
+  // ---- 版本 diff（契约 E）：把一个历史版本与当前版本或另一个版本做行级比较 ----
+  const [diffFrom, setDiffFrom] = useState<number | null>(null);
+  const [diffTo, setDiffTo] = useState<number | 'current'>('current');
+  const [diff, setDiff] = useState<ContentDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState('');
+
+  // ---- 草稿预览（契约 H）与撤销发布（契约 I）----
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [unpublishOpen, setUnpublishOpen] = useState(false);
+
   const mountSurface = useCallback((html: string) => {
     revisionRef.current += 1;
     setSurface({ html, revision: `r${revisionRef.current}` });
   }, []);
+
+  /**
+   * 封面读穿只发生在载入稿件的那一刻。
+   *
+   * 用 ref 取最新配置而不是把 `customization` 放进 `loadContentIntoForm` 的依赖：
+   * 那个回调的依赖一变，下面的挂载 effect 就会重跑——新建页面的分支会重新
+   * `mountSurface('')`，把正在写的正文清空。
+   */
+  const customizationRef = useRef(customization);
+  customizationRef.current = customization;
 
   /** 把服务端返回的稿件灌进表单；seed 是新建后跳转时带过来的源文。 */
   const loadContentIntoForm = useCallback(
@@ -228,7 +335,32 @@ function EditorWorkspace() {
         access_mode: current.access_mode ?? 'public',
         access_password: '',
         comment_policy: current.comment_policy ?? 'inherit',
+        // 服务端没给的值就是「继承站点」，统一收敛成空串。
+        seo_title: current.seo_title ?? '',
+        seo_description: current.seo_description ?? '',
+        seo_keywords: current.seo_keywords ?? '',
+        canonical_url: current.canonical_url ?? '',
+        og_image: current.og_image ?? '',
+        robots: current.robots ?? '',
+        cover_url: current.cover_url ?? '',
+        cover_alt: current.cover_alt ?? '',
+        cover_position: current.cover_position ?? 'center',
+        cover_hidden: !!current.cover_hidden,
       };
+      // ---- 一次性读穿迁移（Beta 1.2）----
+      // 封面以前挂在站点外观配置里（`SiteCustomization.covers`，按内容 id 索引），
+      // 导出 / feed / 分享卡都读不到。内容字段为空的旧稿件在这里把旧配置读进表单：
+      // 作者下次保存就写进内容字段，之后只认内容字段；站点配置不会被删除，作为
+      // 旧前端的兜底，也不会反过来覆盖已经写进内容的封面。
+      if (!next.cover_url) {
+        const legacy = coverFor(customizationRef.current, current.id);
+        if (legacy) {
+          next.cover_url = legacy.url;
+          next.cover_alt = legacy.alt ?? '';
+          next.cover_position = legacy.position ?? 'center';
+          next.cover_hidden = !!legacy.hidden;
+        }
+      }
       setForm(next);
       setInitial(next);
       setLoadedId(current.id);
@@ -301,7 +433,7 @@ function EditorWorkspace() {
   });
 
   const restoreDraft = (draft: EditorDraftRecord) => {
-    // 旧版本地草稿没有访问/预约字段，用编辑器默认值补齐。
+    // 旧版本地草稿没有访问/预约/SEO/封面字段，用编辑器默认值补齐。
     const payload = draft.payload as Partial<FormState>;
     setForm({
       ...draft.payload,
@@ -309,6 +441,16 @@ function EditorWorkspace() {
       access_mode: payload.access_mode ?? 'public',
       access_password: '',
       comment_policy: payload.comment_policy ?? 'inherit',
+      seo_title: payload.seo_title ?? '',
+      seo_description: payload.seo_description ?? '',
+      seo_keywords: payload.seo_keywords ?? '',
+      canonical_url: payload.canonical_url ?? '',
+      og_image: payload.og_image ?? '',
+      robots: payload.robots ?? '',
+      cover_url: payload.cover_url ?? '',
+      cover_alt: payload.cover_alt ?? '',
+      cover_position: payload.cover_position ?? 'center',
+      cover_hidden: payload.cover_hidden ?? false,
     });
     setRestoredSavedAt(draft.saved_at);
     // 正文要从草稿的 Markdown 重新渲染，不能只替换表单字段。
@@ -557,12 +699,20 @@ function EditorWorkspace() {
    *
    * 新建内容一定先落成草稿，再按右上角按钮的意图提交或发布：
    * 「发布」= createDraft → publish，「提交审核」= createDraft → submit。
+   *
+   * 被驳回（rejected）的内容**不能**先 `restore`：服务端状态机的 restore 只有
+   * `archived → draft` 这一条边，被驳回的内容没有回到 draft 的 restore 边，调用它
+   * 一定失败——保存其实成功了，用户却看到「状态切换失败」的报错。被驳回的出口是
+   * `submit`（`rejected → pending_review`）：
+   * - 目标「提交审核」→ submit 就够了；
+   * - 目标「发布」→ 先 submit 再 publish（publish 从 pending_review 进入已发布）；
+   * - 目标「存草稿」→ 不切状态，只保存正文，稿件继续停在已退回，等作者改完再提交。
    */
   const applyTargetStatus = async (current: Content, nextStatus: SaveStatus): Promise<Content> => {
     let latest = current;
     let status = current.status;
     if (status === 'rejected' && nextStatus !== 'draft') {
-      latest = await backend.contentAction(kind, current.id, 'restore');
+      latest = await backend.contentAction(kind, current.id, 'submit');
       status = latest.status;
     }
     if (nextStatus === 'pending_review' && status === 'draft') {
@@ -575,8 +725,15 @@ function EditorWorkspace() {
     return latest;
   };
 
-  /** 右上角两个按钮共用：nextStatus 决定这一下是存草稿、提交审核还是直接发布。 */
-  const save = async (nextStatus: SaveStatus = 'draft'): Promise<Content | null> => {
+  /**
+   * 右上角两个按钮共用：nextStatus 决定这一下是存草稿、提交审核还是直接发布。
+   *
+   * `options.force` 只由冲突横幅的「覆盖保存」使用：跳过 `revision`，退回后写覆盖。
+   */
+  const save = async (
+    nextStatus: SaveStatus = 'draft',
+    options: { force?: boolean } = {},
+  ): Promise<Content | null> => {
     const message = validate();
     if (message) {
       setError(message);
@@ -586,7 +743,7 @@ function EditorWorkspace() {
     setBusy(true);
     setSaveBusy(nextStatus);
     try {
-      const payload = {
+      const payload: DraftInput = {
         title: form.title.trim(),
         slug: form.slug || undefined,
         summary: form.summary.trim() || undefined,
@@ -599,8 +756,22 @@ function EditorWorkspace() {
         // 空串表示保持已有密码；服务端只在密码模式下读取它。
         access_password: form.access_mode === 'password' ? form.access_password || undefined : undefined,
         comment_policy: form.comment_policy,
+        // 单篇 SEO 覆盖：空串表示「继承站点设置」，因此必须显式提交空串而不是省略
+        // 字段——PATCH 里省略等于「不修改」，清不掉之前填过的值。
+        seo_title: form.seo_title.trim(),
+        seo_description: form.seo_description.trim(),
+        seo_keywords: form.seo_keywords.trim(),
+        canonical_url: form.canonical_url.trim(),
+        og_image: form.og_image.trim(),
+        robots: form.robots,
+        // 封面随内容保存（Beta 1.2）：导出、订阅源与分享卡都从这里读。
+        cover_url: form.cover_url,
+        cover_alt: form.cover_alt.trim(),
+        cover_position: form.cover_position,
+        cover_hidden: form.cover_hidden,
       };
       if (isNew) {
+        // 新建没有「上次读到的版本」，不带 revision。
         const created = await backend.createDraft(kind, payload);
         noteActivity(backend, me?.user.display_name ?? '作者', '创建草稿', created.title, KIND_LABEL[kind]);
         let final = created;
@@ -614,6 +785,7 @@ function EditorWorkspace() {
         setPendingDraft(null);
         setDraftDeferred(false);
         setRestoredSavedAt(null);
+        setConflict(null);
         toast.push(
           'ok',
           t('内容已保存'),
@@ -625,7 +797,12 @@ function EditorWorkspace() {
         });
         return final;
       }
-      const updated = await backend.updateDraft(kind, item!.id, payload);
+      // 契约 F 的乐观并发：编辑时带上最后读到的 revision；服务端只在它等于当前版本
+      // 时才接受，否则回 409 content_version_conflict。「覆盖保存」才显式去掉它。
+      const input: DraftInput = options.force
+        ? payload
+        : { ...payload, revision: item?.revision };
+      const updated = await backend.updateDraft(kind, item!.id, input);
       noteActivity(backend, me?.user.display_name ?? '作者', '更新草稿', updated.title, KIND_LABEL[kind]);
       let final = updated;
       try {
@@ -637,6 +814,7 @@ function EditorWorkspace() {
       setPendingDraft(null);
       setDraftDeferred(false);
       setRestoredSavedAt(null);
+      setConflict(null);
       setInitial(form);
       content.reload();
       history.reload();
@@ -644,6 +822,19 @@ function EditorWorkspace() {
       toast.push('ok', t('已保存'), t('当前状态：{status}', { status: STATUS_LABEL[final.status] }));
       return final;
     } catch (err) {
+      // 冲突不是普通失败：保留编辑区内容，用醒目横幅让作者选择载入最新版本或覆盖保存。
+      const conflictInfo = contentVersionConflict(err);
+      if (conflictInfo.matched) {
+        setConflict({
+          nextStatus,
+          ...(conflictInfo.currentRevision !== undefined
+            ? { currentRevision: conflictInfo.currentRevision }
+            : {}),
+        });
+        setError('');
+        toast.push('error', t('保存冲突'), t('可以选择载入最新版本，或覆盖保存。'));
+        return null;
+      }
       const text = err instanceof Error ? err.message : t('保存失败。');
       setError(text);
       toast.push('error', t('保存失败'), text);
@@ -770,6 +961,93 @@ function EditorWorkspace() {
     }
   };
 
+  /** 打开版本对比：默认拿选中的历史版本与当前版本比。 */
+  const openDiff = (revision: ContentRevision) => {
+    setDiffFrom(revision.version);
+    setDiffTo('current');
+    setDiff(null);
+    setDiffError('');
+  };
+
+  /**
+   * 对比请求。
+   *
+   * `diffFrom` 为 null 表示弹窗关闭；只有真正打开时才请求，选择另一侧版本后重新拉取。
+   * 结果按契约 E 直接渲染 hunk，不再在前端二次计算差异。
+   */
+  useEffect(() => {
+    if (diffFrom === null || !item) return;
+    let alive = true;
+    setDiffLoading(true);
+    setDiffError('');
+    backend
+      .contentDiff(kind, item.id, diffFrom, diffTo)
+      .then((result) => {
+        if (alive) setDiff(result);
+      })
+      .catch((err) => {
+        if (alive) setDiffError(err instanceof Error ? err.message : t('无法比较这两个版本'));
+      })
+      .finally(() => {
+        if (alive) setDiffLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+    // 只按内容 id + 两侧版本号重算；item 对象在保存后刷新不应重复请求同一组 diff。
+  }, [backend, kind, item?.id, diffFrom, diffTo, t]);
+
+  /**
+   * 冲突横幅的「载入最新版本」：放弃本地改动，重新读取服务端当前版本。
+   *
+   * 它是破坏性操作（编辑区里未保存的内容会被丢弃），所以按钮先弹二次确认。
+   */
+  const loadLatestVersion = async () => {
+    if (!item) return;
+    setBusy(true);
+    try {
+      const latest = await backend.getContent(kind, item.id);
+      loadContentIntoForm(latest);
+      // 冲突时本地自动保存的内容已经落后于服务端，继续留着会在下次打开时再次提示恢复。
+      autosave.clear();
+      removeEditorDraft(draftScope);
+      setPendingDraft(null);
+      setDraftDeferred(false);
+      setRestoredSavedAt(null);
+      setConflict(null);
+      setLoadLatestOpen(false);
+      setError('');
+      content.reload();
+      history.reload();
+      toast.push('ok', t('已载入最新版本'), t('你的本地改动已被丢弃。'));
+    } catch (err) {
+      toast.push('error', t('载入最新版本失败'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 草稿预览（契约 H）：签发一次性令牌，用返回的站点内路径打开新标签页。 */
+  const openPreview = async () => {
+    if (!item) return;
+    setPreviewBusy(true);
+    try {
+      const grant = await backend.issueContentPreview(kind, item.id);
+      window.open(grant.path, '_blank', 'noopener');
+    } catch (err) {
+      toast.push('error', t('无法生成预览链接'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
+  /** 撤销发布（契约 I）：published → draft，成功后刷新稿件与版本历史。 */
+  const runUnpublish = async () => {
+    await runAction('unpublish');
+    setUnpublishOpen(false);
+    history.reload();
+  };
+
   // 服务端返回当前版本号；演示数据的旧快照可能没有该字段，退化为“列表第一条是当前版本”。
   const isCurrentVersion = (revision: ContentRevision): boolean =>
     item?.revision !== undefined
@@ -830,6 +1108,18 @@ function EditorWorkspace() {
           </p>
         </div>
         <div className="admin-page-actions">
+          {item ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="eye"
+              loading={previewBusy}
+              disabled={busy}
+              onClick={() => void openPreview()}
+            >
+              {t('预览')}
+            </Button>
+          ) : null}
           {item?.status === 'published' ? (
             <Link to={`/${kind === 'article' ? 'a' : 'p'}/${item.id}`} className="btn btn-secondary btn-sm">
               <Icon name="eye" size={14} /> {t('查看页面')}
@@ -889,6 +1179,46 @@ function EditorWorkspace() {
           ) : null}
         </div>
       </div>
+
+      {/* 并发冲突横幅（契约 F）：有人先保存过同一篇时，保存不会被静默丢弃。 */}
+      {conflict ? (
+        <div className="mt-20">
+          <Callout
+            tone="danger"
+            icon="alert"
+            title={t('这篇内容已被他人修改，你的改动尚未保存。')}
+          >
+            <p className="small muted" style={{ margin: 0 }}>
+              {t('载入最新版本会丢弃你的改动；覆盖保存会用当前编辑区的内容替换服务器上的版本。')}
+            </p>
+            {conflict.currentRevision !== undefined ? (
+              <p className="tiny faint" style={{ margin: '6px 0 0' }}>
+                {t('服务器上的最新版本号：{revision}', { revision: conflict.currentRevision })}
+              </p>
+            ) : null}
+            <div className="row gap-8 mt-8">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="refresh"
+                disabled={busy}
+                onClick={() => setLoadLatestOpen(true)}
+              >
+                {t('载入最新版本')}
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                icon="upload"
+                loading={busy}
+                onClick={() => void save(conflict.nextStatus, { force: true })}
+              >
+                {t('覆盖保存')}
+              </Button>
+            </div>
+          </Callout>
+        </div>
+      ) : null}
 
       <div className="editor-grid">
           <div className="editor-main">
@@ -1011,6 +1341,124 @@ function EditorWorkspace() {
                                       <option value="review">{t('先审后发')}</option>
                                     </Select>
                                   </Field>
+                </div>
+              </div>
+            </details>
+
+            {/* 搜索与分享：单篇 SEO 覆盖，留空即继承「设置 → SEO」里的站点模板。 */}
+            <details className="editor-publish-fold">
+              <summary className="editor-publish-summary">
+                <span className="editor-publish-summary-main">
+                  <Icon name="search" size={14} />
+                  <strong>{t('搜索与分享')}</strong>
+                  <span className="tiny faint">
+                    {t('标题、描述、关键词、规范链接、分享图与收录指令。')}
+                  </span>
+                </span>
+                <span className="editor-publish-summary-meta">
+                  {form.robots === 'noindex'
+                    ? t('禁止收录')
+                    : form.robots === 'index'
+                      ? t('允许收录')
+                      : t('继承站点')}
+                  <Icon name="chevron-down" size={14} />
+                </span>
+              </summary>
+              <div className="editor-publish-body">
+                <div className="editor-publish-grid">
+                  <Field
+                    label={t('SEO 标题')}
+                    htmlFor="editor-seo-title"
+                    aside={`${form.seo_title.length}/200`}
+                    hint={t('搜索引擎结果里显示的标题，建议 60 个字符以内。')}
+                  >
+                    <Input
+                      id="editor-seo-title"
+                      value={form.seo_title}
+                      maxLength={200}
+                      disabled={!editable}
+                      placeholder={t('留空则使用站点标题模板')}
+                      onChange={(event) => update({ seo_title: event.target.value })}
+                    />
+                  </Field>
+
+                  <Field
+                    label={t('搜索与分享描述')}
+                    htmlFor="editor-seo-description"
+                    aside={`${form.seo_description.length}/160`}
+                    hint={t('搜索结果通常只显示前 160 个字符左右，更长的部分会被截断。')}
+                  >
+                    <Textarea
+                      id="editor-seo-description"
+                      value={form.seo_description}
+                      maxLength={500}
+                      style={{ minHeight: 70 }}
+                      disabled={!editable}
+                      placeholder={t('用一两句话说明这篇内容讲什么，留空则使用摘要。')}
+                      onChange={(event) => update({ seo_description: event.target.value })}
+                    />
+                  </Field>
+
+                  <Field
+                    label={t('关键词')}
+                    htmlFor="editor-seo-keywords"
+                    hint={t('用逗号分隔；留空则继承站点关键词。')}
+                  >
+                    <Input
+                      id="editor-seo-keywords"
+                      value={form.seo_keywords}
+                      maxLength={500}
+                      disabled={!editable}
+                      placeholder={t('独立出版, 写作, 社区')}
+                      onChange={(event) => update({ seo_keywords: event.target.value })}
+                    />
+                  </Field>
+
+                  <Field
+                    label={t('规范链接（canonical）')}
+                    htmlFor="editor-seo-canonical"
+                    hint={t('同一篇内容另有首发地址时填写；留空则以本站地址为准。')}
+                  >
+                    <Input
+                      id="editor-seo-canonical"
+                      value={form.canonical_url}
+                      maxLength={500}
+                      disabled={!editable}
+                      placeholder="https://press.example.com/a/…"
+                      onChange={(event) => update({ canonical_url: event.target.value })}
+                    />
+                  </Field>
+
+                  <Field
+                    label={t('社交分享图')}
+                    htmlFor="editor-seo-og-image"
+                    hint={t('分享卡片使用的图片地址；留空则回退到封面或站点分享图。')}
+                  >
+                    <Input
+                      id="editor-seo-og-image"
+                      value={form.og_image}
+                      disabled={!editable}
+                      placeholder={t('/assets/share.png 或 https://...')}
+                      onChange={(event) => update({ og_image: event.target.value })}
+                    />
+                  </Field>
+
+                  <Field
+                    label={t('收录指令')}
+                    htmlFor="editor-seo-robots"
+                    hint={t('继承站点时跟随「设置 → SEO」的收录开关；禁止收录会把本页移出站点地图。')}
+                  >
+                    <Select
+                      id="editor-seo-robots"
+                      value={form.robots}
+                      disabled={!editable}
+                      onChange={(event) => update({ robots: event.target.value as RobotsDirective })}
+                    >
+                      <option value="">{t('继承站点')}</option>
+                      <option value="index">{t('允许收录')}</option>
+                      <option value="noindex">{t('禁止收录')}</option>
+                    </Select>
+                  </Field>
                 </div>
               </div>
             </details>
@@ -1336,7 +1784,10 @@ function EditorWorkspace() {
                             <br />
                             <span className="tiny faint">{formatDateTime(revision.created_at)}</span>
                           </span>
-                          <span className="mini-value" style={{ display: 'flex', gap: 6 }}>
+                          <span
+                            className="mini-value"
+                            style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}
+                          >
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1344,6 +1795,9 @@ function EditorWorkspace() {
                               onClick={() => void openRevision(revision)}
                             >
                               {t('查看')}
+                            </Button>
+                            <Button variant="ghost" size="sm" icon="columns" onClick={() => openDiff(revision)}>
+                              {t('对比')}
                             </Button>
                             {!isCurrentVersion(revision) ? (
                               <Button
@@ -1397,6 +1851,20 @@ function EditorWorkspace() {
                           </Button>
                         );
                       }
+                      if (action === 'unpublish') {
+                        // 契约 I：published → draft，会立刻让公开链接失效，先确认再执行。
+                        return (
+                          <Button
+                            key={action}
+                            variant="danger"
+                            icon="x-circle"
+                            loading={actionBusy === action}
+                            onClick={() => setUnpublishOpen(true)}
+                          >
+                            {ACTION_LABEL[action]}
+                          </Button>
+                        );
+                      }
                       return (
                         <Button
                           key={action}
@@ -1432,12 +1900,22 @@ function EditorWorkspace() {
       <Modal
         open={coverOpen}
         title={t('设置封面')}
-        description={t('列表、首页卡片与详情页优先显示这里的图片；也可以在这里隐藏封面。')}
+        description={t('封面随内容保存：列表、首页卡片、订阅源与分享卡都会使用它；也可以在这里隐藏封面。')}
         onClose={() => setCoverOpen(false)}
         width={720}
         footer={<Button onClick={() => setCoverOpen(false)}>{t('完成')}</Button>}
       >
-        <ArticleCoverPanel contentId={item?.id} title={form.title} />
+        <ArticleCoverPanel
+          contentId={item?.id}
+          title={form.title}
+          value={{
+            cover_url: form.cover_url,
+            cover_alt: form.cover_alt,
+            cover_position: form.cover_position,
+            cover_hidden: form.cover_hidden,
+          }}
+          onChange={(patch) => update(patch)}
+        />
       </Modal>
 
       <Modal
@@ -1686,6 +2164,176 @@ function EditorWorkspace() {
             : ''}
         </p>
       </Modal>
+
+      {/* 版本对比（契约 E）：行级 diff，insert 绿色 / delete 红色 / equal 常规。 */}
+      <Modal
+        open={diffFrom !== null}
+        title={t('版本对比')}
+        description={t('逐行比较两个版本的正文；插入为绿色，删除为红色。')}
+        onClose={() => setDiffFrom(null)}
+        width={860}
+        footer={<Button onClick={() => setDiffFrom(null)}>{t('关闭')}</Button>}
+      >
+        <div className="row gap-8" style={{ flexWrap: 'wrap' }}>
+          <Field label={t('起始版本')} htmlFor="editor-diff-from">
+            <Select
+              id="editor-diff-from"
+              value={diffFrom === null ? '' : String(diffFrom)}
+              disabled={diffLoading}
+              onChange={(event) => setDiffFrom(Number(event.target.value))}
+            >
+              {(history.data?.items ?? []).map((revision) => (
+                <option key={revision.id} value={revision.version}>
+                  v{revision.version} · {revisionActionLabel(revision.action)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t('目标版本')} htmlFor="editor-diff-to">
+            <Select
+              id="editor-diff-to"
+              value={String(diffTo)}
+              disabled={diffLoading}
+              onChange={(event) =>
+                setDiffTo(event.target.value === 'current' ? 'current' : Number(event.target.value))
+              }
+            >
+              <option value="current">{t('当前版本')}</option>
+              {(history.data?.items ?? []).map((revision) => (
+                <option key={revision.id} value={revision.version}>
+                  v{revision.version} · {revisionActionLabel(revision.action)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        {diffError ? (
+          <div className="mt-12">
+            <Callout tone="danger" icon="alert">
+              {diffError}
+            </Callout>
+          </div>
+        ) : null}
+        {diffLoading ? <p className="tiny faint mt-12">{t('正在比较版本')}</p> : null}
+
+        {!diffLoading && diff ? (
+          <>
+            <div className="row gap-8 mt-12" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge tone="ok">{`+${diff.stats.added}`}</Badge>
+              <Badge tone="danger">{`-${diff.stats.removed}`}</Badge>
+              <span className="tiny faint">
+                {t('v{from} → v{to}', { from: diff.from_version, to: diff.to_version })}
+              </span>
+            </div>
+            {diff.truncated ? (
+              <div className="mt-12">
+                <Callout tone="warn" icon="alert">
+                  {t('正文超过 20000 行，只比较了前 20000 行；其余部分没有显示。')}
+                </Callout>
+              </div>
+            ) : null}
+            {diff.hunks.length === 0 ? (
+              <p className="tiny faint mt-12">{t('这两个版本没有正文差异。')}</p>
+            ) : (
+              <div
+                className="mt-12"
+                style={{
+                  maxHeight: 420,
+                  overflow: 'auto',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)',
+                }}
+              >
+                {diff.hunks.map((hunk, index) => {
+                  const background =
+                    hunk.op === 'insert'
+                      ? 'var(--ok-soft)'
+                      : hunk.op === 'delete'
+                        ? 'var(--danger-soft)'
+                        : undefined;
+                  const color =
+                    hunk.op === 'insert'
+                      ? 'var(--ok)'
+                      : hunk.op === 'delete'
+                        ? 'var(--danger)'
+                        : 'var(--ink-soft)';
+                  const marker = hunk.op === 'insert' ? '+' : hunk.op === 'delete' ? '-' : ' ';
+                  return (
+                    <div
+                      key={`${hunk.op}-${hunk.from_line}-${hunk.to_line}-${index}`}
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        padding: '1px 8px',
+                        background,
+                        fontFamily: 'var(--mono)',
+                        fontSize: 12,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <span
+                        className="tiny faint"
+                        style={{ width: 34, flex: 'none', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {hunk.from_line || ''}
+                      </span>
+                      <span
+                        className="tiny faint"
+                        style={{ width: 34, flex: 'none', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {hunk.to_line || ''}
+                      </span>
+                      <span style={{ color, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {`${marker} ${hunk.text || ''}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : null}
+      </Modal>
+
+      {/* 冲突里的「载入最新版本」是破坏性的：先确认再丢弃本地改动。 */}
+      <Modal
+        open={loadLatestOpen}
+        title={t('载入最新版本？')}
+        description={t('载入最新版本会丢弃你尚未保存的改动；服务器上的内容不会被改动。')}
+        onClose={() => setLoadLatestOpen(false)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setLoadLatestOpen(false)}>
+              {t('取消')}
+            </Button>
+            <Button variant="danger" loading={busy} onClick={() => void loadLatestVersion()}>
+              {t('确认载入')}
+            </Button>
+          </>
+        }
+      />
+
+      <Modal
+        open={unpublishOpen}
+        title={t('撤销发布？')}
+        description={t('撤销后内容会回到草稿，公开链接将不再可访问；之后可以再次发布。')}
+        onClose={() => setUnpublishOpen(false)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setUnpublishOpen(false)}>
+              {t('取消')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={actionBusy === 'unpublish'}
+              onClick={() => void runUnpublish()}
+            >
+              {t('确认撤销发布')}
+            </Button>
+          </>
+        }
+      />
 
       <Modal
         open={!!pendingDraft && !draftDeferred}

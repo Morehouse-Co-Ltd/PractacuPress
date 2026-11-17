@@ -77,6 +77,25 @@ const fragment: Dictionary = {
   无法打开这个主页: 'Cannot open this profile',
   '这位成员不在当前站点里，或主页还没有公开。':
     'This member is not on this site, or the profile is not public yet.',
+
+  // ---- 邮件订阅（/me/newsletter） ----
+  邮件订阅: 'Email newsletter',
+  '订阅后，本站发布新内容时会通过邮件通知你，可以随时退订。':
+    'Once subscribed, new posts on this site arrive by email; you can unsubscribe at any time.',
+  '暂时读不到订阅状态，请稍后刷新。':
+    'The subscription state cannot be loaded right now; refresh to try again.',
+  '这个账户还没有可用的邮箱，暂时无法订阅邮件。':
+    'This account has no usable email address yet, so it cannot subscribe to the newsletter.',
+  接收本站邮件: 'Send me this site’s email',
+  '新内容发布时会发到账户邮箱；随时可以退订。':
+    'New posts are mailed to the account address; unsubscribe at any time.',
+  '请到邮箱点击确认链接': 'Please click the confirmation link in your email',
+  '确认之后才会收到本刊邮件。': 'You will only receive the newsletter after confirming.',
+  已退订: 'Unsubscribed',
+  已订阅: 'Subscribed',
+  '这个邮箱不会再收到本站的邮件。':
+    'This address will no longer receive email from this site.',
+  '新的发布内容会通过邮件通知你。': 'New posts will be emailed to you.',
 };
 
 export default fragment;

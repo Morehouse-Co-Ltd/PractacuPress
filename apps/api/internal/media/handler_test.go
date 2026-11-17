@@ -137,7 +137,10 @@ func TestCompleteUploadReturnsCleanAsset(t *testing.T) {
 	w := do(r, http.MethodPost, "/media/uploads/"+id+"/complete", "")
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	require.Equal(t, "clean", decodeBody(t, w)["scan_status"])
+	payload := decodeBody(t, w)
+	require.Equal(t, "clean", payload["scan_status"])
+	require.Equal(t, "photo.png", payload["file_name"],
+		"the detail response carries the declared display name")
 }
 
 func TestCompleteUploadFailsClosedWhenScannerDown(t *testing.T) {

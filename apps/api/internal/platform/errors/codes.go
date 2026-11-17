@@ -24,6 +24,10 @@ const (
 	CodeSiteNotFound          Code = "site_not_found"
 	CodeSiteDomainUnverified  Code = "site_domain_unverified"
 	CodeContentStateInvalid   Code = "content_state_invalid"
+	// CodeContentVersionConflict answers a stale optimistic concurrency token on a
+	// content edit (contract F): the caller's revision no longer matches the stored
+	// one, so the write would silently overwrite someone else's work.
+	CodeContentVersionConflict Code = "content_version_conflict"
 	CodeSecurityUnavailable   Code = "security_unavailable"
 	CodeProviderNotConfigured Code = "provider_not_configured"
 	CodeInvalidDatabaseDriver Code = "invalid_database_driver"
@@ -104,6 +108,11 @@ var specs = map[Code]spec{
 		status:  http.StatusConflict,
 		title:   "Invalid content state",
 		message: "当前内容状态不允许该操作",
+	},
+	CodeContentVersionConflict: {
+		status:  http.StatusConflict,
+		title:   "Content version conflict",
+		message: "内容已被其他编辑更新，请刷新后重试",
 	},
 	CodeSecurityUnavailable: {
 		status:  http.StatusServiceUnavailable,

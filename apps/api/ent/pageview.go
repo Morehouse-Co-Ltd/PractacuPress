@@ -29,6 +29,12 @@ type PageView struct {
 	Session string `json:"session,omitempty"`
 	// Surface holds the value of the "surface" field.
 	Surface string `json:"surface,omitempty"`
+	// ReferrerHost holds the value of the "referrer_host" field.
+	ReferrerHost string `json:"referrer_host,omitempty"`
+	// Source holds the value of the "source" field.
+	Source string `json:"source,omitempty"`
+	// Device holds the value of the "device" field.
+	Device string `json:"device,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -39,7 +45,7 @@ func (*PageView) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case pageview.FieldID, pageview.FieldSiteID, pageview.FieldPath, pageview.FieldTitle, pageview.FieldReferrer, pageview.FieldSession, pageview.FieldSurface:
+		case pageview.FieldID, pageview.FieldSiteID, pageview.FieldPath, pageview.FieldTitle, pageview.FieldReferrer, pageview.FieldSession, pageview.FieldSurface, pageview.FieldReferrerHost, pageview.FieldSource, pageview.FieldDevice:
 			values[i] = new(sql.NullString)
 		case pageview.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -100,6 +106,24 @@ func (_m *PageView) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Surface = value.String
 			}
+		case pageview.FieldReferrerHost:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field referrer_host", values[i])
+			} else if value.Valid {
+				_m.ReferrerHost = value.String
+			}
+		case pageview.FieldSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field source", values[i])
+			} else if value.Valid {
+				_m.Source = value.String
+			}
+		case pageview.FieldDevice:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field device", values[i])
+			} else if value.Valid {
+				_m.Device = value.String
+			}
 		case pageview.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -159,6 +183,15 @@ func (_m *PageView) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("surface=")
 	builder.WriteString(_m.Surface)
+	builder.WriteString(", ")
+	builder.WriteString("referrer_host=")
+	builder.WriteString(_m.ReferrerHost)
+	builder.WriteString(", ")
+	builder.WriteString("source=")
+	builder.WriteString(_m.Source)
+	builder.WriteString(", ")
+	builder.WriteString("device=")
+	builder.WriteString(_m.Device)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

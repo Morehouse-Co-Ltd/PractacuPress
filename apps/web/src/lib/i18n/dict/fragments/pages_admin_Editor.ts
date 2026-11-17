@@ -237,8 +237,8 @@ const fragment: Dictionary = {
 
   // ---- 标题上方的元信息条 ----
   设置封面: 'Set cover',
-  '列表、首页卡片与详情页优先显示这里的图片；也可以在这里隐藏封面。':
-    'This image is preferred in listings, home cards and the detail page; the cover can also be hidden here.',
+  '封面随内容保存：列表、首页卡片、订阅源与分享卡都会使用它；也可以在这里隐藏封面。':
+    'The cover is saved with the content and used by the list, home page cards, feeds, and share cards; it can also be hidden here.',
   分类与标签: 'Category and tags',
   '分类用于归档，标签用于跨分类关联主题；最多 12 个标签。':
     'Categories archive content; tags connect topics across categories. Up to 12 tags.',
@@ -246,6 +246,78 @@ const fragment: Dictionary = {
   '还没有标签。': 'No tags yet.',
   '更新于 {date}': 'Updated {date}',
   '保存后会生成一份内容。': 'Saving creates a piece of content.',
+
+  // ---- 搜索与分享（单篇 SEO 覆盖，Beta 1.2）----
+  搜索与分享: 'Search and sharing',
+  '标题、描述、关键词、规范链接、分享图与收录指令。':
+    'Title, description, keywords, canonical link, share image, and indexing directive.',
+  'SEO 标题': 'SEO title',
+  '搜索引擎结果里显示的标题，建议 60 个字符以内。':
+    'The title shown in search results; 60 characters or fewer is recommended.',
+  '留空则使用站点标题模板': 'Leave empty to use the site title template.',
+  '搜索与分享描述': 'Search and share description',
+  '搜索结果通常只显示前 160 个字符左右，更长的部分会被截断。':
+    'Search results usually show only the first 160 characters or so; anything longer is truncated.',
+  '用一两句话说明这篇内容讲什么，留空则使用摘要。':
+    'Describe this content in a sentence or two; the summary is used when it is empty.',
+  关键词: 'Keywords',
+  '用逗号分隔；留空则继承站点关键词。':
+    'Separate keywords with commas; leave empty to inherit the site keywords.',
+  '规范链接（canonical）': 'Canonical link',
+  '同一篇内容另有首发地址时填写；留空则以本站地址为准。':
+    'Fill this in when the content was first published elsewhere; leave empty to use this site address.',
+  社交分享图: 'Social share image',
+  '分享卡片使用的图片地址；留空则回退到封面或站点分享图。':
+    'Image URL used by share cards; leave empty to fall back to the cover or the site share image.',
+  收录指令: 'Indexing directive',
+  '继承站点时跟随「设置 → SEO」的收录开关；禁止收录会把本页移出站点地图。':
+    'Inheriting follows the indexing switch in Settings → SEO; noindex removes this page from the sitemap.',
+  继承站点: 'Inherit site setting',
+  允许收录: 'Allow indexing',
+  禁止收录: 'Exclude from search',
+
+  // ---- 并发冲突（契约 F，保存带 revision）----
+  保存冲突: 'Save conflict',
+  '可以选择载入最新版本，或覆盖保存。':
+    'You can load the latest version, or overwrite it with your changes.',
+  '这篇内容已被他人修改，你的改动尚未保存。':
+    'Someone else changed this content; your changes are not saved.',
+  '载入最新版本会丢弃你的改动；覆盖保存会用当前编辑区的内容替换服务器上的版本。':
+    'Loading the latest version discards your changes; overwriting replaces the server version with what is in the editor now.',
+  '服务器上的最新版本号：{revision}': 'Latest server revision: {revision}',
+  载入最新版本: 'Load latest version',
+  覆盖保存: 'Overwrite',
+  '载入最新版本？': 'Load the latest version?',
+  '载入最新版本会丢弃你尚未保存的改动；服务器上的内容不会被改动。':
+    'Loading the latest version discards your unsaved changes; the server content is not modified.',
+  确认载入: 'Load it',
+  已载入最新版本: 'Latest version loaded',
+  '你的本地改动已被丢弃。': 'Your local changes were discarded.',
+  载入最新版本失败: 'Loading the latest version failed',
+
+  // ---- 版本对比（契约 E，行级 diff）----
+  对比: 'Compare',
+  版本对比: 'Version comparison',
+  '逐行比较两个版本的正文；插入为绿色，删除为红色。':
+    'Compare the body of two versions line by line; insertions are green and deletions are red.',
+  起始版本: 'From version',
+  目标版本: 'To version',
+  当前版本: 'Current version',
+  正在比较版本: 'Comparing versions',
+  'v{from} → v{to}': 'v{from} → v{to}',
+  '正文超过 20000 行，只比较了前 20000 行；其余部分没有显示。':
+    'The body has more than 20000 lines, so only the first 20000 lines were compared; the rest is not shown.',
+  '这两个版本没有正文差异。': 'These two versions have no body differences.',
+  无法比较这两个版本: 'These two versions cannot be compared',
+
+  // ---- 草稿预览（契约 H）----
+  无法生成预览链接: 'Could not create a preview link',
+
+  // ---- 撤销发布（契约 I）----
+  '撤销发布？': 'Unpublish this content?',
+  '撤销后内容会回到草稿，公开链接将不再可访问；之后可以再次发布。':
+    'Unpublishing returns the content to draft and the public link stops working; you can publish it again later.',
+  确认撤销发布: 'Unpublish it',
 };
 
 export default fragment;

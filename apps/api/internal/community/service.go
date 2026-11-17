@@ -288,6 +288,10 @@ func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInpu
 	}
 
 	now := s.now()
+	// The score is computed from the body that will be stored: the safety guard may
+	// have rewritten it, and a moderator reviews what was published, not what was
+	// submitted.
+	riskScore, riskFlags := AssessRisk(validated.Body)
 	comment := Comment{
 		SiteID:     actor.SiteID,
 		AuthorID:   actor.UserID,
@@ -297,6 +301,8 @@ func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInpu
 		Depth:      depth,
 		Body:       validated.Body,
 		Status:     status,
+		RiskScore:  riskScore,
+		RiskFlags:  riskFlags,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -304,6 +310,12 @@ func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInpu
 	detail := map[string]any{"target_type": string(validated.TargetType)}
 	if safetyVerdict.Hit() {
 		detail["content_safety"] = safetyDetail(safetyVerdict.Matched, safetyVerdict.Mode)
+	}
+	// The assessment is audited with the write, so a later re-tuning of the weights
+	// cannot rewrite why this comment was ranked when it arrived.
+	if riskScore > 0 {
+		detail["risk_score"] = riskScore
+		detail["risk_flags"] = riskFlags
 	}
 
 	// A pending comment is not public yet, so the target author is not notified until
@@ -478,6 +490,20 @@ func (s *Service) EditComment(ctx context.Context, actor Actor, commentID, body 
 		if verdict.RequireReview {
 			comment.Status = CommentStatusPending
 		}
+	}
+
+	// An edit is a new submission of text, so it is scored again for the same reason it
+	// goes through the word filter: publishing a clean comment and rewriting it into
+	// spam afterwards must not leave the queue looking at a zero risk score.
+	riskScore, riskFlags := AssessRisk(updated.Body)
+	comment.RiskScore = riskScore
+	comment.RiskFlags = riskFlags
+	if riskScore > 0 {
+		if detail == nil {
+			detail = map[string]any{}
+		}
+		detail["risk_score"] = riskScore
+		detail["risk_flags"] = riskFlags
 	}
 
 	comment.Body = updated.Body

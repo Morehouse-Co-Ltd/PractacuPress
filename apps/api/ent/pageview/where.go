@@ -94,6 +94,21 @@ func Surface(v string) predicate.PageView {
 	return predicate.PageView(sql.FieldEQ(FieldSurface, v))
 }
 
+// ReferrerHost applies equality check predicate on the "referrer_host" field. It's identical to ReferrerHostEQ.
+func ReferrerHost(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEQ(FieldReferrerHost, v))
+}
+
+// Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
+func Source(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEQ(FieldSource, v))
+}
+
+// Device applies equality check predicate on the "device" field. It's identical to DeviceEQ.
+func Device(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEQ(FieldDevice, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.PageView {
 	return predicate.PageView(sql.FieldEQ(FieldCreatedAt, v))
@@ -487,6 +502,201 @@ func SurfaceEqualFold(v string) predicate.PageView {
 // SurfaceContainsFold applies the ContainsFold predicate on the "surface" field.
 func SurfaceContainsFold(v string) predicate.PageView {
 	return predicate.PageView(sql.FieldContainsFold(FieldSurface, v))
+}
+
+// ReferrerHostEQ applies the EQ predicate on the "referrer_host" field.
+func ReferrerHostEQ(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEQ(FieldReferrerHost, v))
+}
+
+// ReferrerHostNEQ applies the NEQ predicate on the "referrer_host" field.
+func ReferrerHostNEQ(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldNEQ(FieldReferrerHost, v))
+}
+
+// ReferrerHostIn applies the In predicate on the "referrer_host" field.
+func ReferrerHostIn(vs ...string) predicate.PageView {
+	return predicate.PageView(sql.FieldIn(FieldReferrerHost, vs...))
+}
+
+// ReferrerHostNotIn applies the NotIn predicate on the "referrer_host" field.
+func ReferrerHostNotIn(vs ...string) predicate.PageView {
+	return predicate.PageView(sql.FieldNotIn(FieldReferrerHost, vs...))
+}
+
+// ReferrerHostGT applies the GT predicate on the "referrer_host" field.
+func ReferrerHostGT(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldGT(FieldReferrerHost, v))
+}
+
+// ReferrerHostGTE applies the GTE predicate on the "referrer_host" field.
+func ReferrerHostGTE(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldGTE(FieldReferrerHost, v))
+}
+
+// ReferrerHostLT applies the LT predicate on the "referrer_host" field.
+func ReferrerHostLT(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldLT(FieldReferrerHost, v))
+}
+
+// ReferrerHostLTE applies the LTE predicate on the "referrer_host" field.
+func ReferrerHostLTE(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldLTE(FieldReferrerHost, v))
+}
+
+// ReferrerHostContains applies the Contains predicate on the "referrer_host" field.
+func ReferrerHostContains(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldContains(FieldReferrerHost, v))
+}
+
+// ReferrerHostHasPrefix applies the HasPrefix predicate on the "referrer_host" field.
+func ReferrerHostHasPrefix(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldHasPrefix(FieldReferrerHost, v))
+}
+
+// ReferrerHostHasSuffix applies the HasSuffix predicate on the "referrer_host" field.
+func ReferrerHostHasSuffix(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldHasSuffix(FieldReferrerHost, v))
+}
+
+// ReferrerHostEqualFold applies the EqualFold predicate on the "referrer_host" field.
+func ReferrerHostEqualFold(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEqualFold(FieldReferrerHost, v))
+}
+
+// ReferrerHostContainsFold applies the ContainsFold predicate on the "referrer_host" field.
+func ReferrerHostContainsFold(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldContainsFold(FieldReferrerHost, v))
+}
+
+// SourceEQ applies the EQ predicate on the "source" field.
+func SourceEQ(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceNEQ applies the NEQ predicate on the "source" field.
+func SourceNEQ(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldNEQ(FieldSource, v))
+}
+
+// SourceIn applies the In predicate on the "source" field.
+func SourceIn(vs ...string) predicate.PageView {
+	return predicate.PageView(sql.FieldIn(FieldSource, vs...))
+}
+
+// SourceNotIn applies the NotIn predicate on the "source" field.
+func SourceNotIn(vs ...string) predicate.PageView {
+	return predicate.PageView(sql.FieldNotIn(FieldSource, vs...))
+}
+
+// SourceGT applies the GT predicate on the "source" field.
+func SourceGT(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldGT(FieldSource, v))
+}
+
+// SourceGTE applies the GTE predicate on the "source" field.
+func SourceGTE(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldGTE(FieldSource, v))
+}
+
+// SourceLT applies the LT predicate on the "source" field.
+func SourceLT(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldLT(FieldSource, v))
+}
+
+// SourceLTE applies the LTE predicate on the "source" field.
+func SourceLTE(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldLTE(FieldSource, v))
+}
+
+// SourceContains applies the Contains predicate on the "source" field.
+func SourceContains(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldContains(FieldSource, v))
+}
+
+// SourceHasPrefix applies the HasPrefix predicate on the "source" field.
+func SourceHasPrefix(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldHasPrefix(FieldSource, v))
+}
+
+// SourceHasSuffix applies the HasSuffix predicate on the "source" field.
+func SourceHasSuffix(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldHasSuffix(FieldSource, v))
+}
+
+// SourceEqualFold applies the EqualFold predicate on the "source" field.
+func SourceEqualFold(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEqualFold(FieldSource, v))
+}
+
+// SourceContainsFold applies the ContainsFold predicate on the "source" field.
+func SourceContainsFold(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldContainsFold(FieldSource, v))
+}
+
+// DeviceEQ applies the EQ predicate on the "device" field.
+func DeviceEQ(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEQ(FieldDevice, v))
+}
+
+// DeviceNEQ applies the NEQ predicate on the "device" field.
+func DeviceNEQ(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldNEQ(FieldDevice, v))
+}
+
+// DeviceIn applies the In predicate on the "device" field.
+func DeviceIn(vs ...string) predicate.PageView {
+	return predicate.PageView(sql.FieldIn(FieldDevice, vs...))
+}
+
+// DeviceNotIn applies the NotIn predicate on the "device" field.
+func DeviceNotIn(vs ...string) predicate.PageView {
+	return predicate.PageView(sql.FieldNotIn(FieldDevice, vs...))
+}
+
+// DeviceGT applies the GT predicate on the "device" field.
+func DeviceGT(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldGT(FieldDevice, v))
+}
+
+// DeviceGTE applies the GTE predicate on the "device" field.
+func DeviceGTE(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldGTE(FieldDevice, v))
+}
+
+// DeviceLT applies the LT predicate on the "device" field.
+func DeviceLT(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldLT(FieldDevice, v))
+}
+
+// DeviceLTE applies the LTE predicate on the "device" field.
+func DeviceLTE(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldLTE(FieldDevice, v))
+}
+
+// DeviceContains applies the Contains predicate on the "device" field.
+func DeviceContains(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldContains(FieldDevice, v))
+}
+
+// DeviceHasPrefix applies the HasPrefix predicate on the "device" field.
+func DeviceHasPrefix(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldHasPrefix(FieldDevice, v))
+}
+
+// DeviceHasSuffix applies the HasSuffix predicate on the "device" field.
+func DeviceHasSuffix(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldHasSuffix(FieldDevice, v))
+}
+
+// DeviceEqualFold applies the EqualFold predicate on the "device" field.
+func DeviceEqualFold(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldEqualFold(FieldDevice, v))
+}
+
+// DeviceContainsFold applies the ContainsFold predicate on the "device" field.
+func DeviceContainsFold(v string) predicate.PageView {
+	return predicate.PageView(sql.FieldContainsFold(FieldDevice, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

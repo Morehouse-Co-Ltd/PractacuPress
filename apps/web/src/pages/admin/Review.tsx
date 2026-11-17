@@ -2,15 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { Content, ContentAction } from '../../types';
 import { useAuth } from '../../lib/session';
-import { useBackend } from '../../lib/backend';
+import { isDemo, useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { useCustomization } from '../../lib/customize';
-import {
-  aiArticleDecision,
-  aiAutoEnabled,
-  aiRiskReasonText,
-  assessArticleRisk,
-} from '../../lib/aiModeration';
 import { noteActivity } from '../../lib/activity';
 import { ACTION_LABEL, PUBLISH_LABEL, excerpt, formatDateTime } from '../../lib/format';
 import { useT } from '../../lib/i18n';
@@ -30,6 +24,39 @@ import { RoleGate } from '../../components/Guards';
 import { usePermissions } from '../../lib/usePermissions';
 import { useToast } from '../../lib/toast';
 
+/**
+ * 服务端风险分的告警阈值（0–100，越大越可疑）。
+ *
+ * 与评论审核页用同一个阈值：达到这条线的稿件在队列里标红并挂上「高风险」徽标，
+ * 审核员的注意力先给它们。
+ */
+const RISK_ALERT_THRESHOLD = 60;
+
+/** 不高于这个分数算低风险：开启自动发布权限时，这类待审稿件才会被自动发布。 */
+const RISK_LOW_MAX = 30;
+
+/**
+ * 队列读到的服务端风险字段。
+ *
+ * `Content`（`types.ts`）还没有这两个可选字段，契约由主控统一补；在那之前这里用
+ * 局部类型读取，不去改共享类型。字段缺失（演示数据、旧后端、公开读者侧接口）时
+ * 按 0 / 空数组处理，绝不回退到浏览器内的启发式评分。
+ */
+type RiskScored = Content & { risk_score?: number; risk_flags?: string[] };
+
+/** 读服务端风险分；缺失或非法一律按 0，界面不会因此崩，也不会凭空报风险。 */
+function riskScoreOf(item: Content): number {
+  const score = (item as RiskScored).risk_score;
+  return typeof score === 'number' && Number.isFinite(score) ? Math.max(0, score) : 0;
+}
+
+/** 读服务端风险标识；缺失按空数组，未知标识由渲染层原样显示英文。 */
+function riskFlagsOf(item: Content): string[] {
+  const flags = (item as RiskScored).risk_flags;
+  if (!Array.isArray(flags)) return [];
+  return flags.filter((flag): flag is string => typeof flag === 'string' && flag !== '');
+}
+
 export function ReviewPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
   const { personal } = usePermissions();
@@ -47,21 +74,37 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   const { me, site } = useAuth();
   const backend = useBackend();
+  const demo = isDemo(backend);
   const toast = useToast();
   const [busyId, setBusyId] = useState('');
   const [rejecting, setRejecting] = useState<Content | null>(null);
   const [reason, setReason] = useState('');
   const { customization } = useCustomization();
-  const ai = customization.comments.ai;
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiReport, setAiReport] = useState<{
+  /**
+   * 自动处理权限（原「AI 审核」设置里的三个开关）。
+   *
+   * 评分已经搬到服务端，这三个开关只决定「允不允许按服务端风险分自动发布」；关掉
+   * 时页面只展示分数，不替审核员做任何动作。
+   */
+  const autoPolicy = customization.comments.ai;
+  const canAutoPublish = autoPolicy.enabled && autoPolicy.auto && autoPolicy.scopes.article === true;
+  /**
+   * 自动发布只有在服务端真的给了分数时才运行。
+   *
+   * 演示数据的 `Content` 没有风险字段，按约定一律视为 0 分；如果照这个 0 分去执行
+   * 「低风险自动发布」，就会把整队待审稿件一次放行。所以缺分数的模式只展示队列，
+   * 不替审核员做决定。
+   */
+  const autoPublishReady = canAutoPublish && !demo;
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoReport, setAutoReport] = useState<{
     published: number;
     skipped: number;
     failed: number;
   } | null>(null);
   /** 每次进入页面只自动跑一轮；手动按钮不受这个标记限制。 */
-  const aiAutoRunRef = useRef(false);
-  const aiRunningRef = useRef(false);
+  const autoRunRef = useRef(false);
+  const autoRunningRef = useRef(false);
 
   const data = useAsync(async () => {
     const [articles, posts] = await Promise.all([
@@ -71,8 +114,17 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
     return [...articles.items, ...posts.items].sort((a, b) => a.updated_at.localeCompare(b.updated_at));
   }, [backend]);
 
+  /**
+   * 待审稿件按服务端风险分降序。
+   *
+   * 分数由服务端用同一套规则算好，所以换设备、刷新页面、关掉脚本都不改变队列顺序；
+   * 分数相同按提交时间从早到晚，先来的先审。
+   */
   const pending = useMemo(
-    () => (data.data ?? []).filter((item) => item.status === 'pending_review'),
+    () =>
+      (data.data ?? [])
+        .filter((item) => item.status === 'pending_review')
+        .sort((a, b) => riskScoreOf(b) - riskScoreOf(a) || a.updated_at.localeCompare(b.updated_at)),
     [data.data],
   );
   const security = useMemo(
@@ -113,28 +165,16 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
-  /** 待审稿件的 AI 风险分：标题、摘要与正文一起看，正文先转纯文本。 */
-  const riskOf = (item: Content) =>
-    assessArticleRisk(
-      {
-        title: item.title,
-        summary: item.summary,
-        rendered_html: item.rendered_html,
-        source_body: item.source_body,
-      },
-      ai,
-    );
-
   /**
-   * 按 AI 权限处理一轮待审稿件。
+   * 按服务端风险分跑一轮自动发布。
    *
-   * 只自动发布低风险且当前账户确实有「发布」动作的稿件；中高风险、作者自己的
-   * 稿件（服务端不给 publish 动作）都留给人工。单轮最多扫描 100 篇。
+   * 只自动发布风险分不高于 RISK_LOW_MAX 且当前账户确实有「发布」动作的稿件；中高风险、
+   * 作者自己的稿件（服务端不给 publish 动作）都留给人工。单轮最多扫描 100 篇。
    */
-  const runAiPass = useCallback(async () => {
-    if (aiRunningRef.current || !aiAutoEnabled(ai, 'article')) return;
-    aiRunningRef.current = true;
-    setAiBusy(true);
+  const runRiskPass = useCallback(async () => {
+    if (autoRunningRef.current || !autoPublishReady) return;
+    autoRunningRef.current = true;
+    setAutoBusy(true);
     let published = 0;
     let skipped = 0;
     let failed = 0;
@@ -147,8 +187,8 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
         (item) => item.status === 'pending_review' && item.actions.includes('publish'),
       );
       for (const item of candidates) {
-        const risk = riskOf(item);
-        if (aiArticleDecision(ai, risk) !== 'publish') continue;
+        const score = riskScoreOf(item);
+        if (score > RISK_LOW_MAX) continue;
         try {
           const updated = await backend.contentAction(item.kind, item.id, 'publish');
           if (updated.status === 'published') {
@@ -156,32 +196,32 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
             noteActivity(
               backend,
               me?.user.display_name ?? '编辑',
-              'AI 发布',
+              '自动发布',
               item.title,
-              `风险分 ${risk.score}（${risk.level}）`,
+              `风险分 ${score}`,
             );
           } else {
-            // 服务端可能把稿件转去安全检查；这不是 AI 的发布，不能算成功。
+            // 服务端可能把稿件转去安全检查；这不是自动发布，不能算成功。
             skipped += 1;
           }
         } catch {
           failed += 1;
         }
       }
-      setAiReport({ published, skipped, failed });
+      setAutoReport({ published, skipped, failed });
       if (published || skipped || failed) {
         if (me) {
           noteActivity(
             backend,
             me.user.display_name,
-            'AI 审核',
+            '自动发布',
             `发布 ${published} 篇`,
             skipped || failed ? `留待人工 ${skipped} · 失败 ${failed}` : undefined,
           );
         }
         toast.push(
           failed ? 'info' : 'ok',
-          t('AI 审核已完成'),
+          t('自动发布已完成'),
           t('自动发布 {published} 篇，留待人工 {skipped} 篇，失败 {failed} 篇。', {
             published,
             skipped,
@@ -191,23 +231,41 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
         data.reload();
       }
     } catch (err) {
-      toast.push('error', t('AI 审核运行失败'), err instanceof Error ? err.message : undefined);
+      toast.push('error', t('自动发布运行失败'), err instanceof Error ? err.message : undefined);
     } finally {
-      aiRunningRef.current = false;
-      setAiBusy(false);
+      autoRunningRef.current = false;
+      setAutoBusy(false);
     }
     // data.reload 是 useAsync 里稳定的 useCallback；不把整个 data 放进依赖，
     // 否则每次渲染都会换一个新的回调。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ai, backend, me, t, toast, data.reload]);
+  }, [autoPublishReady, backend, me, t, toast, data.reload]);
 
-  // 进入队列并载入完成后自动跑一轮；aiAutoRunRef 保证同一页面生命周期内只跑一次。
+  // 进入队列并载入完成后自动跑一轮；autoRunRef 保证同一页面生命周期内只跑一次。
   useEffect(() => {
-    if (data.loading || aiAutoRunRef.current) return;
-    if (!aiAutoEnabled(ai, 'article')) return;
-    aiAutoRunRef.current = true;
-    void runAiPass();
-  }, [ai, data.loading, runAiPass]);
+    if (data.loading || autoRunRef.current) return;
+    if (!autoPublishReady) return;
+    autoRunRef.current = true;
+    void runRiskPass();
+  }, [autoPublishReady, data.loading, runRiskPass]);
+
+  /**
+   * 服务端风险标识 → 本站语言的提示语。
+   *
+   * 标识是稳定的英文常量（服务端 `platform/textrisk`），文案归审核界面所有；这里
+   * 每次渲染按当前语言取值，切换语言时立刻生效。未收录的标识原样显示英文——服务端
+   * 上线新规则时旧前端不会崩，也不会显示空白。写法与评论审核页一致，两个队列说
+   * 同一种话。
+   */
+  const riskFlagLabel: Record<string, string> = {
+    links: t('含多个链接'),
+    very_short: t('内容过短'),
+    very_long: t('内容过长'),
+    repeated_chars: t('重复字符过多'),
+    shouty: t('大量大写字母'),
+    no_letters: t('几乎没有文字'),
+    repeated_text: t('重复文本堆砌'),
+  };
 
   return (
     <>
@@ -239,39 +297,48 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
         </div>
       ) : null}
 
-      {ai.enabled && ai.scopes.article ? (
-        <div className="mb-16">
-          <Callout tone="info" icon="sparkle" title={t('AI 审核已开启')}>
-            <p>
-              {!ai.auto
-                ? t('AI 只给风险分，不会自动发布稿件。')
-                : t('低风险待审稿件会自动发布，中高风险留在队列里。')}
-            </p>
-            {ai.auto ? (
+      <div className="mb-16">
+        <Callout tone="info" icon="shield" title={t('服务端规则评分')}>
+          <p>
+            {t(
+              '风险分由服务端按规则算好：外链、篇幅、重复字符、大小写与标点，权重固定、可复核。这是规则评分，不是模型推理；页面只读结果，不在浏览器重算。',
+            )}
+          </p>
+          {demo ? (
+            <p>{t('演示模式没有服务端评分，待审稿件按 0 分显示，自动发布不会运行。')}</p>
+          ) : null}
+          {autoPublishReady ? (
+            <>
+              <p>
+                {t(
+                  '自动发布权限已开启：风险分不高于 {threshold} 的待审稿件会自动发布，中高风险留在队列里。',
+                  { threshold: RISK_LOW_MAX },
+                )}
+              </p>
               <div className="row gap-8 mt-10" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <Button
                   size="sm"
                   variant="secondary"
-                  icon="sparkle"
-                  loading={aiBusy}
-                  onClick={() => void runAiPass()}
+                  icon="refresh"
+                  loading={autoBusy}
+                  onClick={() => void runRiskPass()}
                 >
-                  {t('立即运行 AI 审核')}
+                  {t('立即运行一轮自动发布')}
                 </Button>
-                {aiReport ? (
+                {autoReport ? (
                   <span className="tiny faint">
                     {t('最近一轮：自动发布 {published} 篇，留待人工 {skipped} 篇，失败 {failed} 篇。', {
-                      published: aiReport.published,
-                      skipped: aiReport.skipped,
-                      failed: aiReport.failed,
+                      published: autoReport.published,
+                      skipped: autoReport.skipped,
+                      failed: autoReport.failed,
                     })}
                   </span>
                 ) : null}
               </div>
-            ) : null}
-          </Callout>
-        </div>
-      ) : null}
+            </>
+          ) : null}
+        </Callout>
+      </div>
 
       {data.error ? (
         <Callout tone="danger" icon="alert" title={t('无法读取队列')}>
@@ -301,7 +368,10 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
           ) : (
             pending.map((item) => {
               const canAct = item.actions.includes('publish') || item.actions.includes('reject');
-              const aiRisk = ai.enabled && ai.scopes.article ? riskOf(item) : null;
+              // 风险分与风险标识都来自服务端：这里只读，不重算。
+              const score = riskScoreOf(item);
+              const flags = riskFlagsOf(item);
+              const risky = score >= RISK_ALERT_THRESHOLD;
               return (
                 <article className="review-card" key={item.id}>
                   <div className="review-card-head">
@@ -309,19 +379,12 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
                       <div className="row gap-8 mb-8">
                         <Badge tone="muted">{item.kind === 'article' ? t('文章') : t('帖子')}</Badge>
                         <StatusBadge status={item.status} />
-                        {aiRisk ? (
-                          <Badge
-                            tone={
-                              aiRisk.level === 'high'
-                                ? 'danger'
-                                : aiRisk.level === 'medium'
-                                  ? 'warn'
-                                  : 'ok'
-                            }
-                          >
-                            {t('AI 风险分 {score}', { score: aiRisk.score })}
+                        {score > 0 ? (
+                          <Badge tone={risky ? 'danger' : 'warn'} dot={risky}>
+                            {t('风险分 {score}', { score })}
                           </Badge>
                         ) : null}
+                        {risky ? <Badge tone="danger">{t('高风险')}</Badge> : null}
                       </div>
                       <h3>
                         <Link to={`/admin/content/${item.kind}/${item.id}`}>{item.title}</Link>
@@ -340,13 +403,17 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
                   </div>
 
                   <p className="review-excerpt">{excerpt(item.rendered_html, 240)}</p>
-                  {aiRisk ? (
-                    <p className="tiny faint mt-6">
-                      {aiRisk.reasons.length
-                        ? aiRisk.reasons.map((reason) => aiRiskReasonText(reason)).join(' · ')
-                        : t('AI：未发现明显风险')}
-                    </p>
-                  ) : null}
+                  {flags.length ? (
+                    <div className="row gap-4 mt-6" style={{ flexWrap: 'wrap' }}>
+                      {flags.map((flag) => (
+                        <Badge key={flag} tone="muted">
+                          {riskFlagLabel[flag] ?? flag}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : demo ? null : (
+                    <p className="tiny faint mt-6">{t('规则评分未发现明显风险信号。')}</p>
+                  )}
 
                   <div className="review-actions">
                     {canAct ? (
@@ -380,37 +447,48 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
                 <h2 style={{ fontSize: 22 }}>{t('等待安全检查')}</h2>
                 <span className="tiny faint">{t('安全检查通过前不会公开')}</span>
               </div>
-              {security.map((item) => (
-                <div className="review-card" key={item.id}>
-                  <div className="review-card-head">
-                    <div>
-                      <h3>
-                        <Link to={`/admin/content/${item.kind}/${item.id}`}>{item.title}</Link>
-                      </h3>
-                      <p className="review-meta">
-                        {item.author_name ?? t('作者')} · {formatDateTime(item.updated_at)}
-                      </p>
+              {security.map((item) => {
+                // 安全检查未通过的稿件同样在待审状态里，服务端也给了分数；这里照同一
+                // 口径显示，方便判断是重试还是直接退回。
+                const score = riskScoreOf(item);
+                const risky = score >= RISK_ALERT_THRESHOLD;
+                return (
+                  <div className="review-card" key={item.id}>
+                    <div className="review-card-head">
+                      <div>
+                        <h3>
+                          <Link to={`/admin/content/${item.kind}/${item.id}`}>{item.title}</Link>
+                        </h3>
+                        <p className="review-meta">
+                          {item.author_name ?? t('作者')} · {formatDateTime(item.updated_at)}
+                        </p>
+                      </div>
+                      <div className="row gap-8">
+                        <StatusBadge status={item.status} />
+                        {score > 0 ? (
+                          <Badge tone={risky ? 'danger' : 'warn'} dot={risky}>
+                            {t('风险分 {score}', { score })}
+                          </Badge>
+                        ) : null}
+                        {item.actions.includes('security-retry') ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            icon="refresh"
+                            loading={busyId === item.id}
+                            onClick={() => void act(item, 'security-retry')}
+                          >
+                            {t('重试安全检查')}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="row gap-8">
-                      <StatusBadge status={item.status} />
-                      {item.actions.includes('security-retry') ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          icon="refresh"
-                          loading={busyId === item.id}
-                          onClick={() => void act(item, 'security-retry')}
-                        >
-                          {t('重试安全检查')}
-                        </Button>
-                      ) : null}
-                    </div>
+                    <p className="review-excerpt">
+                      {t('内容已保留，但安全服务在写入时不可用。服务恢复后重试，或让作者重新提交。')}
+                    </p>
                   </div>
-                  <p className="review-excerpt">
-                    {t('内容已保留，但安全服务在写入时不可用。服务恢复后重试，或让作者重新提交。')}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </section>
           ) : null}
         </>

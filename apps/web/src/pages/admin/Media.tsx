@@ -6,15 +6,18 @@ import { useMediaSrc } from '../../lib/assetUrl';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { useT } from '../../lib/i18n';
+import { usePermissions } from '../../lib/usePermissions';
 import {
   Badge,
   Button,
   Callout,
   CopyButton,
   EmptyState,
+  Modal,
   PageLoading,
   Progress,
   Select,
+  Skeleton,
 } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { useToast } from '../../lib/toast';
@@ -32,20 +35,63 @@ const MIME_LABEL: Record<string, string> = {
 };
 
 /**
+ * 素材的展示名。
+ *
+ * 服务端从 Beta 1.2 起会返回 `file_name`，但旧数据、外部导入或只有存储键的素材仍然
+ * 可能没有名字：此时退回存储键的最后一段，再不行用素材 id，绝不显示空白。
+ */
+function assetName(asset: Asset): string {
+  const named = asset.file_name?.trim();
+  if (named) return named;
+  const key = (asset.storage_key ?? '').split('/').filter(Boolean).pop()?.trim();
+  return key || (asset.storage_key ?? '').trim() || asset.id;
+}
+
+/** 引用片段里的替代文字：去掉会在 Markdown 里破句的方括号。 */
+function markdownAlt(asset: Asset): string {
+  return assetName(asset).replace(/[[\]]/g, ' ').trim() || 'image';
+}
+
+/**
  * 媒体缩略图。
  *
  * 站内媒体读取对 content 素材要鉴权，而 `<img src>` 带不上 Authorization，所以
  * 统一交给 useMediaSrc 换成 blob: 地址；取不到时退回图标，不留空白框。
  */
 function MediaThumb({ asset, src }: { asset: Asset; src: string }) {
-  const t = useT();
   const { src: resolved, failed } = useMediaSrc(src);
   if (failed) {
     return <Icon name={asset.mime_type === 'application/pdf' ? 'file' : 'code'} size={26} />;
   }
   return resolved ? (
-    <img src={resolved} alt={asset.file_name ?? t('媒体')} loading="lazy" />
+    <img src={resolved} alt={assetName(asset)} loading="lazy" />
   ) : null;
+}
+
+/**
+ * 预览弹层里的媒体本体。
+ *
+ * 和缩略图一样走 useMediaSrc：真实后端的媒体端点要鉴权，直接把地址交给 `<img>`
+ * 只会拿到 404。取不到字节时给一句可操作的说明，而不是留一块空白。
+ */
+function MediaPreviewBody({ asset, src }: { asset: Asset; src: string }) {
+  const t = useT();
+  const { src: resolved, failed } = useMediaSrc(src);
+  if (failed) {
+    return (
+      <p className="small muted">
+        {t('浏览器无法直接预览这个文件，可以复制「引用」里的地址打开。')}
+      </p>
+    );
+  }
+  if (!resolved) return <Skeleton lines={3} />;
+  return (
+    <img
+      src={resolved}
+      alt={assetName(asset)}
+      style={{ display: 'block', maxWidth: '100%', height: 'auto', margin: '0 auto', borderRadius: 10 }}
+    />
+  );
 }
 
 export function MediaPage() {
@@ -54,6 +100,12 @@ export function MediaPage() {
   const { site } = useAuth();
   const demo = isDemo(backend);
   const toast = useToast();
+  const { can } = usePermissions();
+  /**
+   * 删除是不可撤销的站点级操作：能力 id 与储存策略、访问与域名页一致，普通成员
+   * 即使能进后台也看不到删除入口。
+   */
+  const canDelete = can('manage_site');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [purpose, setPurpose] = useState<'content' | 'avatar' | 'attachment'>('content');
   /** 服务端列表一次取 100 条，状态筛选在浏览器内完成，不再打接口。 */
@@ -62,6 +114,12 @@ export function MediaPage() {
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const [error, setError] = useState('');
+  /** 待二次确认删除的素材；null 表示确认弹窗关闭。 */
+  const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  /** 预览（详情）弹层里的素材；删除成功后如果指向同一份素材要一并关闭。 */
+  const [preview, setPreview] = useState<Asset | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   useTitle(t('媒体库'));
 
@@ -170,6 +228,54 @@ export function MediaPage() {
       setBusy(false);
       setProgress(0);
       if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  /** 引用片段：图片用 `![]()`，其它类型用普通链接。 */
+  const markdownOf = (asset: Asset): string => {
+    const src = srcOf(asset);
+    return asset.mime_type.startsWith('image/')
+      ? `![${markdownAlt(asset)}](${src})`
+      : `[${markdownAlt(asset)}](${src})`;
+  };
+
+  /** 打开删除确认层；预览层先留着，删除成功时一并关掉。 */
+  const askDelete = (asset: Asset) => {
+    setDeleteError('');
+    setDeleteTarget(asset);
+  };
+
+  const closeDelete = () => {
+    if (deleting) return;
+    setDeleteTarget(null);
+    setDeleteError('');
+  };
+
+  /**
+   * 删除一份素材。
+   *
+   * 服务端返回 204；素材仍被文章、页面或头像引用时抛 ApiError，message 就是原因
+   * （例如「仍被引用」），这里原样展示，不吞成一句笼统的「删除失败」。
+   */
+  const confirmDelete = async () => {
+    const target = deleteTarget;
+    if (!target || deleting) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await backend.deleteAsset(target.id);
+      // 列表是唯一数据源：本地移除即可，不必再拉一次接口。
+      setAssets((prev) => prev.filter((asset) => asset.id !== target.id));
+      // 预览层还指着这份素材时一起关掉，别留下一个打不开的地址。
+      setPreview((current) => (current?.id === target.id ? null : current));
+      setDeleteTarget(null);
+      toast.push('ok', t('已删除素材'), assetName(target));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('删除失败。');
+      setDeleteError(message);
+      toast.push('error', t('删除失败'), message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -327,13 +433,32 @@ export function MediaPage() {
               <div className="media-card" key={asset.id}>
                 <div className="media-thumb">
                   {isImage ? (
-                    <MediaThumb asset={asset} src={src} />
+                    <button
+                      type="button"
+                      onClick={() => setPreview(asset)}
+                      aria-label={t('预览「{name}」', { name: assetName(asset) })}
+                      title={t('预览')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '100%',
+                        height: '100%',
+                        padding: 0,
+                        border: 0,
+                        background: 'transparent',
+                        color: 'inherit',
+                        cursor: 'zoom-in',
+                      }}
+                    >
+                      <MediaThumb asset={asset} src={src} />
+                    </button>
                   ) : (
                     <Icon name={asset.mime_type === 'application/pdf' ? 'file' : 'code'} size={26} />
                   )}
                 </div>
                 <div className="media-meta">
-                  <strong>{asset.file_name ?? asset.storage_key.split('/').pop()}</strong>
+                  <strong title={assetName(asset)}>{assetName(asset)}</strong>
                   <span>
                     {formatBytes(asset.size)} · {mimeLabel(asset.mime_type)}
                     {asset.purpose ? ` · ${purposeLabel(asset.purpose)}` : ''}
@@ -342,10 +467,19 @@ export function MediaPage() {
                     <Badge tone={asset.scan_status === 'clean' ? 'ok' : asset.scan_status === 'rejected' ? 'danger' : 'warn'}>
                       {scanLabel(asset.scan_status)}
                     </Badge>
-                    <CopyButton
-                      value={isImage ? `![${asset.file_name ?? 'image'}](${src})` : `[${asset.file_name ?? 'file'}](${src})`}
-                      label={t('引用')}
-                    />
+                    <div className="row gap-6">
+                      <CopyButton value={markdownOf(asset)} label={t('引用')} />
+                      {canDelete ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="trash"
+                          title={t('删除素材')}
+                          aria-label={t('删除素材「{name}」', { name: assetName(asset) })}
+                          onClick={() => askDelete(asset)}
+                        />
+                      ) : null}
+                    </div>
                   </div>
                   <span className="tiny faint" style={{ marginTop: 8 }}>
                     {asset.id}
@@ -457,6 +591,75 @@ export function MediaPage() {
           </div>
         </section>
       </div>
+
+      {/* 预览（详情）层：删除成功且指向同一份素材时会一起关闭。 */}
+      <Modal
+        open={!!preview}
+        title={preview ? assetName(preview) : t('预览素材')}
+        description={
+          preview
+            ? `${formatBytes(preview.size)} · ${mimeLabel(preview.mime_type)}${
+                preview.purpose ? ` · ${purposeLabel(preview.purpose)}` : ''
+              }`
+            : undefined
+        }
+        onClose={() => setPreview(null)}
+        width={720}
+        footer={
+          preview ? (
+            <>
+              <Button variant="ghost" onClick={() => setPreview(null)}>
+                {t('关闭')}
+              </Button>
+              <CopyButton value={markdownOf(preview)} label={t('引用')} />
+              {canDelete ? (
+                <Button variant="danger" icon="trash" onClick={() => askDelete(preview)}>
+                  {t('删除素材')}
+                </Button>
+              ) : null}
+            </>
+          ) : undefined
+        }
+      >
+        {preview ? (
+          <div className="form-stack">
+            <MediaPreviewBody asset={preview} src={srcOf(preview)} />
+            <p className="tiny faint mono">{preview.id}</p>
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* 二次确认：删除不可撤销，被引用的素材会被服务端拒绝。 */}
+      <Modal
+        open={!!deleteTarget}
+        title={t('删除素材')}
+        description={deleteTarget ? assetName(deleteTarget) : undefined}
+        onClose={closeDelete}
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeDelete} disabled={deleting}>
+              {t('取消')}
+            </Button>
+            <Button variant="danger" icon="trash" loading={deleting} onClick={() => void confirmDelete()}>
+              {t('删除')}
+            </Button>
+          </>
+        }
+      >
+        {deleteTarget ? (
+          <div className="form-stack">
+            <Callout tone="warn" icon="alert" title={t('删除后不可恢复')}>
+              {t('被内容引用的素材不能删除；先解除引用再试。')}
+            </Callout>
+            <p className="tiny faint">{t('删除会同时清掉所有尺寸变体，无法撤销。')}</p>
+            {deleteError ? (
+              <Callout tone="danger" icon="alert" title={t('删除失败')}>
+                {deleteError}
+              </Callout>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 }

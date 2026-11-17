@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
 	apperr "github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
 
@@ -16,23 +17,33 @@ type PrincipalFunc func(*gin.Context) (role string, ok bool)
 type HandlerConfig struct {
 	// Principal resolves the caller. Nil rejects every request.
 	Principal PrincipalFunc
+	// Deployment returns the process configuration this binary loaded at startup.
+	//
+	// It is the source of the effective-configuration endpoint. Nil leaves that
+	// endpoint failing closed with 500 while the resource panel keeps working, which
+	// is the right trade for a composition root that was not updated.
+	Deployment func() config.Config
 }
 
 // Handler serves the resource snapshot of this installation.
 type Handler struct {
-	latest    func() Snapshot
-	principal PrincipalFunc
+	latest     func() Snapshot
+	deployment func() config.Config
+	principal  PrincipalFunc
 }
 
-// NewHandler builds a Handler over a snapshot source. A nil source answers 503, which
-// is what a deployment that disabled the module should never hit (the route is not
-// mounted at all) but still fails closed if something wires it wrong.
+// NewHandler builds a Handler over a snapshot source.
+//
+// A nil source means the deployment turned the resource panel off: the metrics route is
+// then not registered at all (see Routes) instead of answering a promise it cannot keep.
+// The deployment configuration endpoint does not need the sampler, so a Handler built
+// with a nil source still serves it.
 func NewHandler(latest func() Snapshot, cfg HandlerConfig) *Handler {
 	principal := cfg.Principal
 	if principal == nil {
 		principal = func(*gin.Context) (string, bool) { return "", false }
 	}
-	return &Handler{latest: latest, principal: principal}
+	return &Handler{latest: latest, deployment: cfg.Deployment, principal: principal}
 }
 
 // Routes mounts the system endpoints under /api/v1.
@@ -40,9 +51,15 @@ func NewHandler(latest func() Snapshot, cfg HandlerConfig) *Handler {
 // The route sits behind the normal authentication guard; the platform administrator
 // check happens in the handler because the guard is site scoped and this payload is
 // deployment scoped.
+//
+// The resource panel is optional, the deployment configuration surface is not: a Handler
+// without a snapshot source registers no metrics route, which is how the panel module is
+// removed without changing the contract.
 func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/system", requireAuth)
-	group.GET("/metrics", h.Metrics)
+	if h.latest != nil {
+		group.GET("/metrics", h.Metrics)
+	}
 }
 
 // Metrics returns the latest cached resource snapshot.

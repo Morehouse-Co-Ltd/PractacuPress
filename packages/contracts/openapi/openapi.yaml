@@ -2939,6 +2939,7 @@ paths:
         - $ref: '#/components/parameters/Tag'
         - $ref: '#/components/parameters/Since'
         - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Trashed'
       responses:
         '200':
           description: One page of articles
@@ -3087,6 +3088,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ContentID'
         - $ref: '#/components/parameters/VisitSession'
+        - name: preview_token
+          in: query
+          required: false
+          description: |
+            Beta 1.2. Draft preview grant minted by the preview endpoint. A valid token
+            lets a caller without a session read this unpublished item; an invalid or
+            expired one is answered exactly like a missing item.
+          schema: { type: string }
       responses:
         '200':
           description: The article
@@ -3129,6 +3138,29 @@ paths:
           $ref: '#/components/responses/ContentStateInvalid'
         '503':
           $ref: '#/components/responses/SecurityUnavailable'
+    delete:
+      tags: [content]
+      summary: Move an article to the trash
+      description: |
+        Soft delete (Beta 1.2). The row, its revisions and everything pointing at it
+        stay, so the item is restorable losslessly with the `undelete` action. While it
+        is trashed it is absent from every listing, search result, feed and sitemap and
+        a reader gets the ordinary 404. Only the author or an editor may trash an item.
+        Trashing an already trashed item succeeds without changing `deleted_at`.
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      responses:
+        '200':
+          description: The trashed article, with `deleted_at` set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /articles/{contentID}/{action}:
     post:
@@ -3150,7 +3182,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [submit, publish, reject, archive, restore, security-retry, unlock]
+            enum: [submit, publish, reject, archive, restore, security-retry, unlock, undelete, purge]
       requestBody:
         required: false
         content:
@@ -3166,13 +3198,20 @@ paths:
                   maxLength: 128
       responses:
         '200':
-          description: New state of the item, or the unlock grant for the `unlock` action
+          description: |
+            New state of the item, or the unlock grant for the `unlock` action. A
+            trashed item answers with just its `undelete` and `purge` actions; the
+            `undelete` action returns the restored item in this same shape.
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/Content'
                   - $ref: '#/components/schemas/ContentUnlockResult'
+        '204':
+          description: |
+            Beta 1.2. `purge` only: the item and its revisions are gone for good and
+            there is no representation left to return.
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -3267,6 +3306,7 @@ paths:
         - $ref: '#/components/parameters/Tag'
         - $ref: '#/components/parameters/Since'
         - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Trashed'
       responses:
         '200':
           description: One page of posts
@@ -3309,6 +3349,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ContentID'
         - $ref: '#/components/parameters/VisitSession'
+        - name: preview_token
+          in: query
+          required: false
+          description: |
+            Beta 1.2. Draft preview grant minted by the preview endpoint. A valid token
+            lets a caller without a session read this unpublished item; an invalid or
+            expired one is answered exactly like a missing item.
+          schema: { type: string }
       responses:
         '200':
           description: The post
@@ -3339,6 +3387,27 @@ paths:
           $ref: '#/components/responses/ContentStateInvalid'
         '503':
           $ref: '#/components/responses/SecurityUnavailable'
+    delete:
+      tags: [content]
+      summary: Move a post to the trash
+      description: |
+        Soft delete (Beta 1.2), identical in behaviour to the article variant: the item
+        stays restorable with `undelete` until it is purged, and is invisible to readers
+        meanwhile.
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      responses:
+        '200':
+          description: The trashed post, with `deleted_at` set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Content' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /posts/{contentID}/{action}:
     post:
@@ -3354,7 +3423,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [submit, publish, reject, archive, restore, security-retry, unlock]
+            enum: [submit, publish, reject, archive, restore, security-retry, unlock, undelete, purge]
       requestBody:
         required: false
         content:
@@ -3366,13 +3435,20 @@ paths:
                 password: { type: string, format: password, maxLength: 128 }
       responses:
         '200':
-          description: New state of the item, or the unlock grant for the `unlock` action
+          description: |
+            New state of the item, or the unlock grant for the `unlock` action. A
+            trashed item answers with just its `undelete` and `purge` actions; the
+            `undelete` action returns the restored item in this same shape.
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/Content'
                   - $ref: '#/components/schemas/ContentUnlockResult'
+        '204':
+          description: |
+            Beta 1.2. `purge` only: the item and its revisions are gone for good and
+            there is no representation left to return.
         '403':
           $ref: '#/components/responses/PermissionDenied'
         '409':
@@ -4269,6 +4345,30 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [media]
+      summary: Delete an asset
+      description: |
+        Beta 1.2. Removes the stored object, every resized variant and the database row.
+        Only the uploader, or a site administrator, may delete an asset. An asset that
+        is still referenced by content is refused with 409 so a published page cannot
+        lose its images behind the author's back.
+      parameters:
+        - name: assetID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /media/uploads/{uploadID}/content:
     post:
       tags: [media]
@@ -4837,6 +4937,33 @@ paths:
         '403':
           $ref: '#/components/responses/PermissionDenied'
 
+  /system/effective-config:
+    get:
+      tags: [system]
+      summary: Read the deployment configuration this process is actually running with
+      description: |
+        Beta 1.2. The storage strategy and the access/domain panels in the dashboard
+        record deployment *intent*; this endpoint reports the values the running process
+        actually read from its environment, so an operator can tell whether a change has
+        taken effect. It is aimed at a site administrator rather than a platform
+        administrator, because these are the settings a site owner edits. No secret is
+        ever included: S3 keys and SMTP passwords are absent by construction.
+      responses:
+        '200':
+          description: The effective configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EffectiveConfig' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          description: |
+            The handler was mounted without a deployment configuration source. This
+            fails closed instead of reporting an empty snapshot that would look like
+            "nothing is configured".
+
   /extensions:
     get:
       tags: [extensions]
@@ -4957,6 +5084,764 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # ---------------------------------------------------------------------------
+  # Beta 1.2 extension set. Grouped at the end of the path map on purpose: these
+  # operations were added in one batch across several modules, and keeping them
+  # together makes the contract review of that batch a single contiguous read.
+  # ---------------------------------------------------------------------------
+
+  /auth/phone/policy:
+    get:
+      tags: [auth]
+      summary: Report whether phone sign-in is available
+      description: |
+        Public on purpose: a visitor's sign-in page must know whether to show the
+        phone tab before it has a session. The payload carries booleans only.
+      security: []
+      responses:
+        '200':
+          description: Phone sign-in availability
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhonePolicy' }
+
+  /auth/phone/codes:
+    post:
+      tags: [auth]
+      summary: Request a short lived SMS sign-in code
+      description: |
+        The number is normalised, hashed and never stored in the clear. Rate limits are
+        per number (5 per hour) and per source address (20 per hour); the address is
+        hashed too. When SMS_DEV_MODE is on the response repeats the code, which is the
+        only way a self-hosted installer without an SMS vendor can sign in at all.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, purpose]
+              properties:
+                phone: { type: string, maxLength: 32 }
+                purpose: { type: string, enum: [login, register], default: login }
+      responses:
+        '202':
+          description: Code sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhoneCodeResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: No SMS sender is configured for this deployment
+
+  /auth/phone/login:
+    post:
+      tags: [auth]
+      summary: Sign in with an SMS code
+      description: |
+        Returns the same session payload as the password endpoint: the code is only a
+        different way of proving the same account. An unknown number creates a member
+        account when the site keeps self service sign-ups open, and is refused with
+        `registration_closed` when it does not.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string, maxLength: 32 }
+                code: { type: string, minLength: 4, maxLength: 8 }
+                display_name: { type: string, maxLength: 120 }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /sites/{siteID}/activity:
+    get:
+      tags: [sites]
+      summary: Recent operations on one site
+      description: |
+        The dashboard's activity feed. It is a thin projection of the audit ledger, so
+        the panel and the audit page can never disagree about what happened.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Newest operations first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SiteActivityItem' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /articles/{contentID}/diff:
+    get:
+      tags: [content]
+      summary: Line diff between two revisions of an article
+      description: |
+        `from` and `to` accept a version number or `current`. Author and editors only,
+        with the same non disclosure rule as the revision endpoints.
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+        - name: from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, default: current }
+      responses:
+        '200':
+          description: The diff
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentDiff' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /posts/{contentID}/diff:
+    get:
+      tags: [content]
+      summary: Line diff between two revisions of a post
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+        - name: from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, default: current }
+      responses:
+        '200':
+          description: The diff
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentDiff' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /articles/bulk:
+    post:
+      tags: [content]
+      summary: Apply one workflow action to many articles
+      description: |
+        Each id is authorised and validated on its own, so a batch is a sequence of
+        independent decisions rather than one transaction: a draft the caller may not
+        publish does not roll back the ones that succeeded. At most 100 ids per call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkActionRequest' }
+      responses:
+        '200':
+          description: Per item outcome
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkActionResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /posts/bulk:
+    post:
+      tags: [content]
+      summary: Apply one workflow action to many posts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkActionRequest' }
+      responses:
+        '200':
+          description: Per item outcome
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkActionResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /articles/{contentID}/preview:
+    post:
+      tags: [content]
+      summary: Mint a draft preview link for an article
+      description: |
+        The token is an HMAC over the content id and an expiry, so a preview link can be
+        handed to a reviewer without giving them a session. It is scoped to one item and
+        expires in 30 minutes.
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      responses:
+        '200':
+          description: Preview grant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreviewGrant' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /posts/{contentID}/preview:
+    post:
+      tags: [content]
+      summary: Mint a draft preview link for a post
+      parameters:
+        - $ref: '#/components/parameters/ContentID'
+      responses:
+        '200':
+          description: Preview grant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreviewGrant' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /resolve:
+    get:
+      tags: [sites]
+      summary: Resolve a public path to its canonical URL
+      description: |
+        The static server calls this before serving a page: an id style URL is answered
+        with its slug form and a 301 so the canonical URL wins, a hit in the redirect
+        table answers with the rule, and an unknown path answers 404. It is public and
+        cached for a minute, because it sits in front of every page view.
+      security: []
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string, maxLength: 512 }
+      responses:
+        '200':
+          description: Resolution result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PathResolution' }
+
+  /sites/{siteID}/redirects:
+    get:
+      tags: [sites]
+      summary: List URL redirect rules
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: One page of rules
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor, has_more]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RedirectRule' }
+                  next_cursor: { type: string }
+                  has_more: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+    post:
+      tags: [sites]
+      summary: Create a redirect rule
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RedirectRuleInput' }
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedirectRule' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /sites/{siteID}/redirects/{redirectID}:
+    patch:
+      tags: [sites]
+      summary: Update a redirect rule
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: redirectID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RedirectRuleInput' }
+      responses:
+        '200':
+          description: Updated rule
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedirectRule' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [sites]
+      summary: Delete a redirect rule
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: redirectID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /system/logs:
+    get:
+      tags: [system]
+      summary: Read the recent request log
+      description: |
+        A bounded in process ring buffer (500 entries) of request metadata. Bodies,
+        headers, cookies and query strings are never recorded, so the panel is safe to
+        expose to a site administrator.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: path
+          in: query
+          required: false
+          schema: { type: string }
+        - name: method
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Newest entries first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SystemLogEntry' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /system/queue:
+    get:
+      tags: [system]
+      summary: Inspect the asynchronous queues
+      description: |
+        Outbox and mail backlog in one payload: an operator needs to see whether the
+        worker is behind before deciding to retry anything.
+      responses:
+        '200':
+          description: Queue status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueStatus' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /system/queue/retry:
+    post:
+      tags: [system]
+      summary: Requeue failed outbox events
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event_ids:
+                  type: array
+                  description: Empty means the most recent 50 failed events.
+                  items: { type: string }
+      responses:
+        '200':
+          description: Retry accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retried]
+                properties:
+                  retried: { type: integer }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /system/backup-schedule:
+    get:
+      tags: [system]
+      summary: Read the automatic backup schedule
+      description: |
+        Reports the schedule the process is actually running with, plus the artifacts it
+        has produced. The schedule itself comes from the environment, like storage and
+        mail, so this endpoint is read only by design.
+      responses:
+        '200':
+          description: Schedule and recent artifacts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupSchedule' }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /newsletter/subscribe:
+    post:
+      tags: [newsletter]
+      summary: Subscribe an address to the newsletter
+      description: |
+        Double opt in: the address only becomes a subscriber after the link in the
+        confirmation mail is opened. A repeat call for a confirmed address is a no-op
+        and does not mail again.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+                source: { type: string, maxLength: 40 }
+      responses:
+        '202':
+          description: Confirmation mail queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewsletterSubscribeResult' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /newsletter/confirm:
+    get:
+      tags: [newsletter]
+      summary: Confirm a subscription
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [confirmed] }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /newsletter/unsubscribe:
+    get:
+      tags: [newsletter]
+      summary: Unsubscribe
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Unsubscribed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [unsubscribed] }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /me/newsletter:
+    get:
+      tags: [newsletter]
+      summary: Read the signed in account's newsletter preference
+      responses:
+        '200':
+          description: Preference
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyNewsletterPreference' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    put:
+      tags: [newsletter]
+      summary: Change the signed in account's newsletter preference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: Preference after the change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyNewsletterPreference' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /sites/{siteID}/subscribers:
+    get:
+      tags: [newsletter]
+      summary: List newsletter subscribers
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [pending, confirmed, unsubscribed, bounced] }
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: One page of subscribers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor, has_more]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Subscriber' }
+                  next_cursor: { type: string }
+                  has_more: { type: boolean }
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+  /sites/{siteID}/subscribers/{subscriberID}:
+    delete:
+      tags: [newsletter]
+      summary: Remove a subscriber
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: subscriberID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Removed }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteID}/newsletter-stats:
+    get:
+      tags: [newsletter]
+      summary: Newsletter counts for the dashboard
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewsletterStats' }
+
+  /sites/{siteID}/email-templates:
+    get:
+      tags: [newsletter]
+      summary: List mail templates
+      description: |
+        The response merges the built in defaults with the site's overrides, so the
+        editor always has something to show and never has to guess a key.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      responses:
+        '200':
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmailTemplate' }
+
+  /sites/{siteID}/email-templates/{key}:
+    put:
+      tags: [newsletter]
+      summary: Save a mail template override
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailTemplateInput' }
+      responses:
+        '200':
+          description: Saved template
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailTemplate' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+    delete:
+      tags: [newsletter]
+      summary: Drop an override and fall back to the built in default
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Override removed }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteID}/email-logs:
+    get:
+      tags: [newsletter]
+      summary: List outbound mail
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [queued, sent, failed, skipped] }
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [system, newsletter] }
+      responses:
+        '200':
+          description: One page of deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor, has_more]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmailLog' }
+                  next_cursor: { type: string }
+                  has_more: { type: boolean }
+
+  /sites/{siteID}/newsletters:
+    post:
+      tags: [newsletter]
+      summary: Mail a newsletter to every confirmed subscriber
+      description: |
+        Queues one delivery per confirmed subscriber and returns immediately; the
+        background sender drains the queue. Nothing is sent when no SMTP relay is
+        configured: the rows are recorded as skipped so the operator can see why.
+      parameters:
+        - $ref: '#/components/parameters/SiteID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject]
+              properties:
+                subject: { type: string, maxLength: 300 }
+                body_html: { type: string }
+                body_text: { type: string }
+                content_id:
+                  type: string
+                  description: When set, the item's title, summary and link are rendered into the body.
+      responses:
+        '200':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queued]
+                properties:
+                  queued: { type: integer }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4999,6 +5884,10 @@ components:
       name: contentID
       in: path
       required: true
+      description: |
+        Beta 1.2: the identifier may be the item's id or its slug. A slug is resolved
+        inside the site, so `/a/my-first-post` and `/a/<uuid>` address the same item and
+        the canonical form is the slug.
       schema: { type: string }
     ExtensionID:
       name: extensionID
@@ -5097,6 +5986,16 @@ components:
       required: false
       description: Ordering. `newest` (default) or `oldest`.
       schema: { type: string, enum: [newest, oldest] }
+    Trashed:
+      name: trashed
+      in: query
+      required: false
+      description: |
+        Beta 1.2. `true` lists only the recycle bin (items whose `deleted_at` is set);
+        omitted or `false` excludes trashed items, which is the behaviour every reader
+        surface relies on. The trashed view requires `write_content`: a caller without
+        it receives the same page it would get on a site with no trashed content.
+      schema: { type: boolean }
     Purpose:
       name: purpose
       in: query
@@ -5185,6 +6084,7 @@ components:
             - site_not_found
             - site_domain_unverified
             - content_state_invalid
+            - content_version_conflict
             - security_unavailable
             - provider_not_configured
             - invalid_database_driver
@@ -6087,6 +6987,35 @@ components:
             Per item override of the site comment switches (C-19). `inherit` follows
             the site, `open` allows comments, `disabled` closes the thread and `review`
             sends new comments to the moderation queue.
+        seo_title:
+          type: string
+          maxLength: 200
+          description: Beta 1.2. Per item title override; empty inherits the site template.
+        seo_description: { type: string, maxLength: 500 }
+        seo_keywords: { type: string, maxLength: 500 }
+        canonical_url: { type: string, maxLength: 500 }
+        og_image:
+          type: string
+          description: Social share card image; accepts a data URL.
+        robots:
+          type: string
+          enum: ['', index, noindex]
+          default: ''
+          description: Empty inherits the site switch; `noindex` drops the item from the sitemap.
+        cover_url:
+          type: string
+          description: Cover image; accepts a data URL, same rules as the appearance panel used.
+        cover_alt: { type: string, maxLength: 200 }
+        cover_position: { type: string, enum: [top, center, bottom], default: center }
+        cover_hidden: { type: boolean, default: false }
+        revision:
+          type: integer
+          description: |
+            Beta 1.2. Optimistic concurrency token. When supplied it must match the
+            stored revision of the item, otherwise the request is refused with 409
+            content_version_conflict. Omit it to keep the previous last write wins
+            behaviour.
+
 
     Content:
       type: object
@@ -6154,10 +7083,73 @@ components:
             before the read that requested it.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        deleted_at:
+          type: string
+          format: date-time
+          description: |
+            Beta 1.2. Set while the item sits in the recycle bin. An item with a value
+            here is invisible to readers everywhere (listings, search, feeds, sitemaps)
+            and can be brought back with the `undelete` action or destroyed with
+            `purge`.
+        seo_title:
+          type: string
+          maxLength: 200
+          description: |
+            Beta 1.2. Per item override of the site title template. Empty inherits the
+            template, which is what every item did before this field existed.
+        seo_description: { type: string, maxLength: 500 }
+        seo_keywords:
+          type: string
+          maxLength: 500
+          description: Comma separated hint list, stored verbatim and never split server side.
+        canonical_url:
+          type: string
+          maxLength: 500
+          description: Overrides the derived permalink; empty means the item's own URL is canonical.
+        og_image:
+          type: string
+          description: |
+            Social share card image. Accepts a data URL, which is why it is unbounded.
+            Falls back to `cover_url` and then to the site share image.
+        robots:
+          type: string
+          enum: ['', index, noindex]
+          description: |
+            Beta 1.2. Empty inherits the site indexing switch. `noindex` removes the item
+            from the sitemap and marks the page noindex.
+        cover_url:
+          type: string
+          description: |
+            Beta 1.2. The cover moved from the site appearance configuration into the
+            content row, so it survives export, feeds and share cards. Accepts a data URL.
+        cover_alt: { type: string, maxLength: 200 }
+        cover_position: { type: string, enum: [top, center, bottom] }
+        cover_hidden: { type: boolean }
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            Beta 1.2. Moderator-only and review-only. Rule based score computed on demand
+            when a caller with moderation authority reads a pending item
+            (`pending_review` or `pending_security_check`) whose `source_body` is
+            available. It is never stored, and it is absent for published content, for
+            readers and for the item's own author, so a client must treat it as optional.
+        risk_flags:
+          type: array
+          description: |
+            Beta 1.2. Moderator-only and review-only. Stable english identifiers behind the
+            score (`links`, `very_short`, `very_long`, `repeated_chars`, `shouty`,
+            `no_letters`, `repeated_text`); an empty array means "scored, nothing
+            flagged". The client owns their presentation.
+          items: { type: string }
         actions:
           type: array
-          description: Workflow actions this caller may take right now.
-          items: { type: string, enum: [submit, publish, reject, archive, restore] }
+          description: |
+            Workflow actions this caller may take right now. A trashed item reports
+            `undelete` and `purge` and nothing else, because every other transition
+            needs a live item.
+          items: { type: string, enum: [submit, publish, reject, archive, restore, unpublish, security-retry, undelete, purge] }
 
     ContentUnlockResult:
       type: object
@@ -6256,6 +7248,21 @@ components:
           description: Read only. Display name of the author, joined for listing.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            Beta 1.2. Moderator-only. Rule based score computed on the server when the
+            comment is written, so the queue ranks the same way on every device and the
+            value is auditable. Public comment listings never include it.
+        risk_flags:
+          type: array
+          description: |
+            Beta 1.2. Moderator-only. Stable english identifiers behind the score
+            (`links`, `very_long`, `repeated_chars`, `shouty`, `no_letters`,
+            `repeated_text`); the client owns their presentation.
+          items: { type: string }
 
     CommentPage:
       type: object
@@ -6325,6 +7332,12 @@ components:
         url:
           type: string
           description: Download path of this asset, for example /api/v1/media/{id}.
+        file_name:
+          type: string
+          description: |
+            Beta 1.2. The name the uploader used, captured when the upload session was
+            opened. Empty on rows written before the column existed. It is display only:
+            the storage key stays server derived and never takes user input.
 
     MediaAssetPage:
       type: object
@@ -6450,6 +7463,47 @@ components:
       properties:
         range: { type: string, enum: [24h, 7d, 30d] }
         totals: { $ref: '#/components/schemas/AnalyticsTotals' }
+        sources:
+          type: array
+          description: Beta 1.2. Visits grouped by the traffic source derived on write.
+          items:
+            type: object
+            required: [source, visits, sessions]
+            properties:
+              source: { type: string, enum: [direct, search, social, referral, internal, unknown] }
+              visits: { type: integer }
+              sessions: { type: integer }
+        devices:
+          type: array
+          description: Beta 1.2. Visits grouped by the coarse device class derived on write.
+          items:
+            type: object
+            required: [device, visits, sessions]
+            properties:
+              device: { type: string, enum: [desktop, mobile, tablet, bot, unknown] }
+              visits: { type: integer }
+              sessions: { type: integer }
+        top_referrers:
+          type: array
+          description: Beta 1.2. External hosts that sent the most visits.
+          items:
+            type: object
+            required: [host, visits]
+            properties:
+              host: { type: string }
+              visits: { type: integer }
+        retention:
+          type: array
+          description: |
+            Beta 1.2. Per day new versus returning sessions. A session is new on the day
+            it first appears and returning on every later day it is seen again.
+          items:
+            type: object
+            required: [date, new_sessions, returning_sessions]
+            properties:
+              date: { type: string }
+              new_sessions: { type: integer }
+              returning_sessions: { type: integer }
         series:
           type: array
           description: 24 hourly buckets for 24h, 7 or 30 daily buckets otherwise, aligned to tz_offset.
@@ -6749,6 +7803,59 @@ components:
           type: array
           items: { type: string }
 
+    EffectiveConfig:
+      type: object
+      description: |
+        Beta 1.2. What the running process is actually using, as opposed to what the
+        dashboard has recorded. Secrets are never part of this payload.
+      required: [storage, cors, domains, mail, restart_required, captured_at]
+      properties:
+        storage:
+          type: array
+          description: |
+            One entry per storage scope, already resolved: a scope that inherits the
+            global setting reports the inherited driver and root, not an empty value.
+          items:
+            type: object
+            required: [scope, driver]
+            properties:
+              scope: { type: string, enum: [global, content, site, avatar, attachment] }
+              driver: { type: string, enum: [local, s3] }
+              local_dir: { type: string, description: Only for driver=local. }
+              s3_bucket: { type: string, description: Only for driver=s3. }
+              s3_region: { type: string }
+              s3_prefix: { type: string }
+        cors:
+          type: object
+          required: [allowed_origins, allow_credentials]
+          properties:
+            allowed_origins:
+              type: array
+              items: { type: string }
+            allow_credentials: { type: boolean }
+        domains:
+          type: object
+          required: [https_only, public_base_url, trusted_proxies]
+          properties:
+            https_only: { type: boolean }
+            public_base_url: { type: string }
+            trusted_proxies:
+              type: array
+              items: { type: string }
+        mail:
+          type: object
+          required: [configured]
+          properties:
+            configured: { type: boolean }
+            encryption: { type: string }
+            from: { type: string, description: Envelope sender only; the password is never returned. }
+        restart_required:
+          type: boolean
+          description: |
+            True when the recorded intent differs from what the process loaded, which is
+            the cue for the dashboard to say "write the .env and restart the API".
+        captured_at: { type: string, format: date-time }
+
     SystemMetrics:
       type: object
       description: |
@@ -6885,6 +7992,17 @@ components:
         last_error: { type: string }
         installed_at: { type: string, format: date-time }
         enabled_at: { type: string, format: date-time }
+        manifest_hash:
+          type: string
+          description: Beta 1.2. SHA-256 of the manifest the package was installed with.
+        integrity:
+          type: string
+          enum: [verified, unsigned, mismatch]
+          description: |
+            Beta 1.2. verified means the package still matches the hash recorded at
+            install time; unsigned means it predates integrity tracking; mismatch means a
+            file changed after install and the package is refused.
+        verified_at: { type: string, format: date-time }
 
     ExtensionFrontend:
       type: object
@@ -6942,3 +8060,305 @@ components:
         auth:
           type: string
           enum: [public, member, admin]
+
+    # -------------------------------------------------------------------------
+    # Beta 1.2 extension schemas.
+    # -------------------------------------------------------------------------
+
+    PhonePolicy:
+      type: object
+      description: Whether the phone sign-in tab should be offered at all.
+      required: [enabled, provider, registration_open]
+      properties:
+        enabled: { type: boolean }
+        provider: { type: string, enum: [off, log, http] }
+        registration_open: { type: boolean }
+
+    PhoneCodeResult:
+      type: object
+      required: [expires_at, resend_after_seconds]
+      properties:
+        expires_at: { type: string, format: date-time }
+        resend_after_seconds: { type: integer }
+        dev_code:
+          type: string
+          description: |
+            Only present when SMS_DEV_MODE is on. A deployment without an SMS vendor can
+            still sign in locally, and the value is never returned in production.
+
+    SiteActivityItem:
+      type: object
+      required: [id, action, outcome, created_at]
+      properties:
+        id: { type: string }
+        action: { type: string, description: Dotted audit action, for example content.publish. }
+        actor_id: { type: string }
+        actor_name: { type: string, description: Resolved display name, empty when the account is gone. }
+        target_type: { type: string }
+        target_id: { type: string }
+        outcome: { type: string, enum: [success, failure] }
+        detail: { type: string }
+        created_at: { type: string, format: date-time }
+
+    DiffHunk:
+      type: object
+      description: |
+        One line level hunk. `from_line` and `to_line` are 1 based positions in the two
+        versions; the line that does not exist in one side reports 0.
+      required: [op, text]
+      properties:
+        op: { type: string, enum: [equal, insert, delete] }
+        from_line: { type: integer }
+        to_line: { type: integer }
+        text: { type: string }
+
+    ContentDiff:
+      type: object
+      required: [from_version, to_version, stats, hunks]
+      properties:
+        from_version: { type: integer }
+        to_version: { type: integer }
+        truncated:
+          type: boolean
+          description: True when the texts were longer than the diff budget and only the head was compared.
+        stats:
+          type: object
+          required: [added, removed]
+          properties:
+            added: { type: integer }
+            removed: { type: integer }
+        hunks:
+          type: array
+          items: { $ref: '#/components/schemas/DiffHunk' }
+
+    BulkActionRequest:
+      type: object
+      required: [ids, action]
+      properties:
+        ids:
+          type: array
+          maxItems: 100
+          items: { type: string }
+        action:
+          type: string
+          enum: [submit, publish, archive, unpublish, trash, undelete, purge]
+
+    BulkItemResult:
+      type: object
+      required: [id, ok]
+      properties:
+        id: { type: string }
+        ok: { type: boolean }
+        error:
+          type: string
+          description: Stable error code when ok is false; empty otherwise.
+
+    BulkActionResult:
+      type: object
+      required: [results, succeeded, failed]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/BulkItemResult' }
+        succeeded: { type: integer }
+        failed: { type: integer }
+
+    PreviewGrant:
+      type: object
+      required: [token, expires_at, path]
+      properties:
+        token: { type: string }
+        expires_at: { type: string, format: date-time }
+        path:
+          type: string
+          description: Site relative path of the preview, token already attached.
+
+    PathResolution:
+      type: object
+      required: [kind, status]
+      properties:
+        kind: { type: string, enum: [content, redirect, missing] }
+        status:
+          type: integer
+          description: HTTP status the page server should answer with (200, 301, 302, 308 or 404).
+        canonical_path: { type: string }
+        content_id: { type: string }
+        slug: { type: string }
+        title: { type: string }
+
+    RedirectRule:
+      type: object
+      required: [id, from_path, to_path, status_code, source, hit_count, created_at, updated_at]
+      properties:
+        id: { type: string }
+        from_path: { type: string }
+        to_path: { type: string }
+        status_code: { type: integer, enum: [301, 302, 308] }
+        source: { type: string, enum: [manual, slug_change, import] }
+        hit_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    RedirectRuleInput:
+      type: object
+      required: [from_path, to_path]
+      properties:
+        from_path: { type: string, maxLength: 512 }
+        to_path: { type: string, maxLength: 512 }
+        status_code: { type: integer, enum: [301, 302, 308], default: 301 }
+
+    SystemLogEntry:
+      type: object
+      description: |
+        Request metadata only. Bodies, headers, cookies and query strings are never
+        recorded, which is what makes the panel safe to show to a site administrator.
+      required: [time, request_id, method, path, status, duration_ms]
+      properties:
+        time: { type: string, format: date-time }
+        request_id: { type: string }
+        method: { type: string }
+        path: { type: string }
+        status: { type: integer }
+        duration_ms: { type: integer }
+        site_id: { type: string }
+        user_id: { type: string }
+
+    QueueEvent:
+      type: object
+      required: [event_id, event_type, status, attempts, occurred_at]
+      properties:
+        event_id: { type: string }
+        event_type: { type: string }
+        status: { type: string, enum: [pending, published, failed] }
+        attempts: { type: integer }
+        last_error: { type: string }
+        occurred_at: { type: string, format: date-time }
+
+    QueueStatus:
+      type: object
+      required: [outbox, recent, mail]
+      properties:
+        outbox:
+          type: object
+          required: [pending, failed, oldest_age_seconds]
+          properties:
+            pending: { type: integer }
+            failed: { type: integer }
+            oldest_age_seconds: { type: integer }
+        recent:
+          type: array
+          items: { $ref: '#/components/schemas/QueueEvent' }
+        mail:
+          type: object
+          required: [queued, failed]
+          properties:
+            queued: { type: integer }
+            failed: { type: integer }
+
+    BackupScheduleArtifact:
+      type: object
+      required: [name, size, created_at]
+      properties:
+        name: { type: string }
+        size: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+
+    BackupSchedule:
+      type: object
+      description: |
+        The schedule the process is actually running with. It comes from the
+        environment, so the dashboard shows it read only.
+      required: [enabled, hour, keep, artifacts]
+      properties:
+        enabled: { type: boolean }
+        hour: { type: integer, minimum: 0, maximum: 23 }
+        keep: { type: integer }
+        last_run_at: { type: string, format: date-time }
+        last_status: { type: string, enum: ['', ok, failed] }
+        last_error: { type: string }
+        next_run_at: { type: string, format: date-time }
+        artifacts:
+          type: array
+          items: { $ref: '#/components/schemas/BackupScheduleArtifact' }
+
+    NewsletterSubscribeResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, confirmed]
+          description: |
+            pending means a confirmation mail was queued; confirmed means the address was
+            already subscribed and nothing was sent.
+
+    MyNewsletterPreference:
+      type: object
+      required: [subscribed]
+      properties:
+        subscribed: { type: boolean }
+        email: { type: string }
+        status: { type: string, enum: [pending, confirmed, unsubscribed, bounced, ''] }
+
+    Subscriber:
+      type: object
+      required: [id, email, status, source, created_at]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [pending, confirmed, unsubscribed, bounced] }
+        source: { type: string }
+        user_id: { type: string }
+        confirmed_at: { type: string, format: date-time }
+        unsubscribed_at: { type: string, format: date-time }
+        last_sent_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    NewsletterStats:
+      type: object
+      required: [confirmed, pending, unsubscribed, sent_7d, failed_7d]
+      properties:
+        confirmed: { type: integer }
+        pending: { type: integer }
+        unsubscribed: { type: integer }
+        sent_7d: { type: integer }
+        failed_7d: { type: integer }
+
+    EmailTemplate:
+      type: object
+      required: [key, name, subject, body_html, body_text, enabled, builtin]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        subject: { type: string }
+        body_html: { type: string }
+        body_text: { type: string }
+        enabled: { type: boolean }
+        builtin:
+          type: boolean
+          description: True when no override exists and the shipped default is being shown.
+        updated_at: { type: string, format: date-time }
+
+    EmailTemplateInput:
+      type: object
+      required: [subject, body_html, body_text]
+      properties:
+        name: { type: string, maxLength: 120 }
+        subject: { type: string, maxLength: 300 }
+        body_html: { type: string }
+        body_text: { type: string }
+        enabled: { type: boolean, default: true }
+
+    EmailLog:
+      type: object
+      required: [id, to_email, kind, subject, status, created_at]
+      properties:
+        id: { type: string }
+        to_email: { type: string }
+        kind: { type: string, enum: [system, newsletter] }
+        template_key: { type: string }
+        subject: { type: string }
+        status: { type: string, enum: [queued, sent, failed, skipped] }
+        error: { type: string }
+        sent_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }

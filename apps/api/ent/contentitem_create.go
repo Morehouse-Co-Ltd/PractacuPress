@@ -291,6 +291,160 @@ func (_c *ContentItemCreate) SetNillableCommentPolicy(v *string) *ContentItemCre
 	return _c
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_c *ContentItemCreate) SetDeletedAt(v time.Time) *ContentItemCreate {
+	_c.mutation.SetDeletedAt(v)
+	return _c
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableDeletedAt(v *time.Time) *ContentItemCreate {
+	if v != nil {
+		_c.SetDeletedAt(*v)
+	}
+	return _c
+}
+
+// SetSeoTitle sets the "seo_title" field.
+func (_c *ContentItemCreate) SetSeoTitle(v string) *ContentItemCreate {
+	_c.mutation.SetSeoTitle(v)
+	return _c
+}
+
+// SetNillableSeoTitle sets the "seo_title" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableSeoTitle(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetSeoTitle(*v)
+	}
+	return _c
+}
+
+// SetSeoDescription sets the "seo_description" field.
+func (_c *ContentItemCreate) SetSeoDescription(v string) *ContentItemCreate {
+	_c.mutation.SetSeoDescription(v)
+	return _c
+}
+
+// SetNillableSeoDescription sets the "seo_description" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableSeoDescription(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetSeoDescription(*v)
+	}
+	return _c
+}
+
+// SetSeoKeywords sets the "seo_keywords" field.
+func (_c *ContentItemCreate) SetSeoKeywords(v string) *ContentItemCreate {
+	_c.mutation.SetSeoKeywords(v)
+	return _c
+}
+
+// SetNillableSeoKeywords sets the "seo_keywords" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableSeoKeywords(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetSeoKeywords(*v)
+	}
+	return _c
+}
+
+// SetCanonicalURL sets the "canonical_url" field.
+func (_c *ContentItemCreate) SetCanonicalURL(v string) *ContentItemCreate {
+	_c.mutation.SetCanonicalURL(v)
+	return _c
+}
+
+// SetNillableCanonicalURL sets the "canonical_url" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableCanonicalURL(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetCanonicalURL(*v)
+	}
+	return _c
+}
+
+// SetOgImage sets the "og_image" field.
+func (_c *ContentItemCreate) SetOgImage(v string) *ContentItemCreate {
+	_c.mutation.SetOgImage(v)
+	return _c
+}
+
+// SetNillableOgImage sets the "og_image" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableOgImage(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetOgImage(*v)
+	}
+	return _c
+}
+
+// SetRobots sets the "robots" field.
+func (_c *ContentItemCreate) SetRobots(v string) *ContentItemCreate {
+	_c.mutation.SetRobots(v)
+	return _c
+}
+
+// SetNillableRobots sets the "robots" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableRobots(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetRobots(*v)
+	}
+	return _c
+}
+
+// SetCoverURL sets the "cover_url" field.
+func (_c *ContentItemCreate) SetCoverURL(v string) *ContentItemCreate {
+	_c.mutation.SetCoverURL(v)
+	return _c
+}
+
+// SetNillableCoverURL sets the "cover_url" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableCoverURL(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetCoverURL(*v)
+	}
+	return _c
+}
+
+// SetCoverAlt sets the "cover_alt" field.
+func (_c *ContentItemCreate) SetCoverAlt(v string) *ContentItemCreate {
+	_c.mutation.SetCoverAlt(v)
+	return _c
+}
+
+// SetNillableCoverAlt sets the "cover_alt" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableCoverAlt(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetCoverAlt(*v)
+	}
+	return _c
+}
+
+// SetCoverPosition sets the "cover_position" field.
+func (_c *ContentItemCreate) SetCoverPosition(v string) *ContentItemCreate {
+	_c.mutation.SetCoverPosition(v)
+	return _c
+}
+
+// SetNillableCoverPosition sets the "cover_position" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableCoverPosition(v *string) *ContentItemCreate {
+	if v != nil {
+		_c.SetCoverPosition(*v)
+	}
+	return _c
+}
+
+// SetCoverHidden sets the "cover_hidden" field.
+func (_c *ContentItemCreate) SetCoverHidden(v bool) *ContentItemCreate {
+	_c.mutation.SetCoverHidden(v)
+	return _c
+}
+
+// SetNillableCoverHidden sets the "cover_hidden" field if the given value is not nil.
+func (_c *ContentItemCreate) SetNillableCoverHidden(v *bool) *ContentItemCreate {
+	if v != nil {
+		_c.SetCoverHidden(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ContentItemCreate) SetCreatedAt(v time.Time) *ContentItemCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -415,6 +569,46 @@ func (_c *ContentItemCreate) defaults() {
 	if _, ok := _c.mutation.CommentPolicy(); !ok {
 		v := contentitem.DefaultCommentPolicy
 		_c.mutation.SetCommentPolicy(v)
+	}
+	if _, ok := _c.mutation.SeoTitle(); !ok {
+		v := contentitem.DefaultSeoTitle
+		_c.mutation.SetSeoTitle(v)
+	}
+	if _, ok := _c.mutation.SeoDescription(); !ok {
+		v := contentitem.DefaultSeoDescription
+		_c.mutation.SetSeoDescription(v)
+	}
+	if _, ok := _c.mutation.SeoKeywords(); !ok {
+		v := contentitem.DefaultSeoKeywords
+		_c.mutation.SetSeoKeywords(v)
+	}
+	if _, ok := _c.mutation.CanonicalURL(); !ok {
+		v := contentitem.DefaultCanonicalURL
+		_c.mutation.SetCanonicalURL(v)
+	}
+	if _, ok := _c.mutation.OgImage(); !ok {
+		v := contentitem.DefaultOgImage
+		_c.mutation.SetOgImage(v)
+	}
+	if _, ok := _c.mutation.Robots(); !ok {
+		v := contentitem.DefaultRobots
+		_c.mutation.SetRobots(v)
+	}
+	if _, ok := _c.mutation.CoverURL(); !ok {
+		v := contentitem.DefaultCoverURL
+		_c.mutation.SetCoverURL(v)
+	}
+	if _, ok := _c.mutation.CoverAlt(); !ok {
+		v := contentitem.DefaultCoverAlt
+		_c.mutation.SetCoverAlt(v)
+	}
+	if _, ok := _c.mutation.CoverPosition(); !ok {
+		v := contentitem.DefaultCoverPosition
+		_c.mutation.SetCoverPosition(v)
+	}
+	if _, ok := _c.mutation.CoverHidden(); !ok {
+		v := contentitem.DefaultCoverHidden
+		_c.mutation.SetCoverHidden(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := contentitem.DefaultCreatedAt()
@@ -563,6 +757,71 @@ func (_c *ContentItemCreate) check() error {
 			return &ValidationError{Name: "comment_policy", err: fmt.Errorf(`ent: validator failed for field "ContentItem.comment_policy": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.SeoTitle(); !ok {
+		return &ValidationError{Name: "seo_title", err: errors.New(`ent: missing required field "ContentItem.seo_title"`)}
+	}
+	if v, ok := _c.mutation.SeoTitle(); ok {
+		if err := contentitem.SeoTitleValidator(v); err != nil {
+			return &ValidationError{Name: "seo_title", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_title": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SeoDescription(); !ok {
+		return &ValidationError{Name: "seo_description", err: errors.New(`ent: missing required field "ContentItem.seo_description"`)}
+	}
+	if v, ok := _c.mutation.SeoDescription(); ok {
+		if err := contentitem.SeoDescriptionValidator(v); err != nil {
+			return &ValidationError{Name: "seo_description", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_description": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SeoKeywords(); !ok {
+		return &ValidationError{Name: "seo_keywords", err: errors.New(`ent: missing required field "ContentItem.seo_keywords"`)}
+	}
+	if v, ok := _c.mutation.SeoKeywords(); ok {
+		if err := contentitem.SeoKeywordsValidator(v); err != nil {
+			return &ValidationError{Name: "seo_keywords", err: fmt.Errorf(`ent: validator failed for field "ContentItem.seo_keywords": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CanonicalURL(); !ok {
+		return &ValidationError{Name: "canonical_url", err: errors.New(`ent: missing required field "ContentItem.canonical_url"`)}
+	}
+	if v, ok := _c.mutation.CanonicalURL(); ok {
+		if err := contentitem.CanonicalURLValidator(v); err != nil {
+			return &ValidationError{Name: "canonical_url", err: fmt.Errorf(`ent: validator failed for field "ContentItem.canonical_url": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.OgImage(); !ok {
+		return &ValidationError{Name: "og_image", err: errors.New(`ent: missing required field "ContentItem.og_image"`)}
+	}
+	if _, ok := _c.mutation.Robots(); !ok {
+		return &ValidationError{Name: "robots", err: errors.New(`ent: missing required field "ContentItem.robots"`)}
+	}
+	if v, ok := _c.mutation.Robots(); ok {
+		if err := contentitem.RobotsValidator(v); err != nil {
+			return &ValidationError{Name: "robots", err: fmt.Errorf(`ent: validator failed for field "ContentItem.robots": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CoverURL(); !ok {
+		return &ValidationError{Name: "cover_url", err: errors.New(`ent: missing required field "ContentItem.cover_url"`)}
+	}
+	if _, ok := _c.mutation.CoverAlt(); !ok {
+		return &ValidationError{Name: "cover_alt", err: errors.New(`ent: missing required field "ContentItem.cover_alt"`)}
+	}
+	if v, ok := _c.mutation.CoverAlt(); ok {
+		if err := contentitem.CoverAltValidator(v); err != nil {
+			return &ValidationError{Name: "cover_alt", err: fmt.Errorf(`ent: validator failed for field "ContentItem.cover_alt": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CoverPosition(); !ok {
+		return &ValidationError{Name: "cover_position", err: errors.New(`ent: missing required field "ContentItem.cover_position"`)}
+	}
+	if v, ok := _c.mutation.CoverPosition(); ok {
+		if err := contentitem.CoverPositionValidator(v); err != nil {
+			return &ValidationError{Name: "cover_position", err: fmt.Errorf(`ent: validator failed for field "ContentItem.cover_position": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CoverHidden(); !ok {
+		return &ValidationError{Name: "cover_hidden", err: errors.New(`ent: missing required field "ContentItem.cover_hidden"`)}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ContentItem.created_at"`)}
 	}
@@ -697,6 +956,50 @@ func (_c *ContentItemCreate) createSpec() (*ContentItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CommentPolicy(); ok {
 		_spec.SetField(contentitem.FieldCommentPolicy, field.TypeString, value)
 		_node.CommentPolicy = value
+	}
+	if value, ok := _c.mutation.DeletedAt(); ok {
+		_spec.SetField(contentitem.FieldDeletedAt, field.TypeTime, value)
+		_node.DeletedAt = &value
+	}
+	if value, ok := _c.mutation.SeoTitle(); ok {
+		_spec.SetField(contentitem.FieldSeoTitle, field.TypeString, value)
+		_node.SeoTitle = value
+	}
+	if value, ok := _c.mutation.SeoDescription(); ok {
+		_spec.SetField(contentitem.FieldSeoDescription, field.TypeString, value)
+		_node.SeoDescription = value
+	}
+	if value, ok := _c.mutation.SeoKeywords(); ok {
+		_spec.SetField(contentitem.FieldSeoKeywords, field.TypeString, value)
+		_node.SeoKeywords = value
+	}
+	if value, ok := _c.mutation.CanonicalURL(); ok {
+		_spec.SetField(contentitem.FieldCanonicalURL, field.TypeString, value)
+		_node.CanonicalURL = value
+	}
+	if value, ok := _c.mutation.OgImage(); ok {
+		_spec.SetField(contentitem.FieldOgImage, field.TypeString, value)
+		_node.OgImage = value
+	}
+	if value, ok := _c.mutation.Robots(); ok {
+		_spec.SetField(contentitem.FieldRobots, field.TypeString, value)
+		_node.Robots = value
+	}
+	if value, ok := _c.mutation.CoverURL(); ok {
+		_spec.SetField(contentitem.FieldCoverURL, field.TypeString, value)
+		_node.CoverURL = value
+	}
+	if value, ok := _c.mutation.CoverAlt(); ok {
+		_spec.SetField(contentitem.FieldCoverAlt, field.TypeString, value)
+		_node.CoverAlt = value
+	}
+	if value, ok := _c.mutation.CoverPosition(); ok {
+		_spec.SetField(contentitem.FieldCoverPosition, field.TypeString, value)
+		_node.CoverPosition = value
+	}
+	if value, ok := _c.mutation.CoverHidden(); ok {
+		_spec.SetField(contentitem.FieldCoverHidden, field.TypeBool, value)
+		_node.CoverHidden = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(contentitem.FieldCreatedAt, field.TypeTime, value)
@@ -1031,6 +1334,144 @@ func (u *ContentItemUpsert) SetCommentPolicy(v string) *ContentItemUpsert {
 // UpdateCommentPolicy sets the "comment_policy" field to the value that was provided on create.
 func (u *ContentItemUpsert) UpdateCommentPolicy() *ContentItemUpsert {
 	u.SetExcluded(contentitem.FieldCommentPolicy)
+	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *ContentItemUpsert) SetDeletedAt(v time.Time) *ContentItemUpsert {
+	u.Set(contentitem.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateDeletedAt() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *ContentItemUpsert) ClearDeletedAt() *ContentItemUpsert {
+	u.SetNull(contentitem.FieldDeletedAt)
+	return u
+}
+
+// SetSeoTitle sets the "seo_title" field.
+func (u *ContentItemUpsert) SetSeoTitle(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldSeoTitle, v)
+	return u
+}
+
+// UpdateSeoTitle sets the "seo_title" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateSeoTitle() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldSeoTitle)
+	return u
+}
+
+// SetSeoDescription sets the "seo_description" field.
+func (u *ContentItemUpsert) SetSeoDescription(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldSeoDescription, v)
+	return u
+}
+
+// UpdateSeoDescription sets the "seo_description" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateSeoDescription() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldSeoDescription)
+	return u
+}
+
+// SetSeoKeywords sets the "seo_keywords" field.
+func (u *ContentItemUpsert) SetSeoKeywords(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldSeoKeywords, v)
+	return u
+}
+
+// UpdateSeoKeywords sets the "seo_keywords" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateSeoKeywords() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldSeoKeywords)
+	return u
+}
+
+// SetCanonicalURL sets the "canonical_url" field.
+func (u *ContentItemUpsert) SetCanonicalURL(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldCanonicalURL, v)
+	return u
+}
+
+// UpdateCanonicalURL sets the "canonical_url" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateCanonicalURL() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldCanonicalURL)
+	return u
+}
+
+// SetOgImage sets the "og_image" field.
+func (u *ContentItemUpsert) SetOgImage(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldOgImage, v)
+	return u
+}
+
+// UpdateOgImage sets the "og_image" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateOgImage() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldOgImage)
+	return u
+}
+
+// SetRobots sets the "robots" field.
+func (u *ContentItemUpsert) SetRobots(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldRobots, v)
+	return u
+}
+
+// UpdateRobots sets the "robots" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateRobots() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldRobots)
+	return u
+}
+
+// SetCoverURL sets the "cover_url" field.
+func (u *ContentItemUpsert) SetCoverURL(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldCoverURL, v)
+	return u
+}
+
+// UpdateCoverURL sets the "cover_url" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateCoverURL() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldCoverURL)
+	return u
+}
+
+// SetCoverAlt sets the "cover_alt" field.
+func (u *ContentItemUpsert) SetCoverAlt(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldCoverAlt, v)
+	return u
+}
+
+// UpdateCoverAlt sets the "cover_alt" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateCoverAlt() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldCoverAlt)
+	return u
+}
+
+// SetCoverPosition sets the "cover_position" field.
+func (u *ContentItemUpsert) SetCoverPosition(v string) *ContentItemUpsert {
+	u.Set(contentitem.FieldCoverPosition, v)
+	return u
+}
+
+// UpdateCoverPosition sets the "cover_position" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateCoverPosition() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldCoverPosition)
+	return u
+}
+
+// SetCoverHidden sets the "cover_hidden" field.
+func (u *ContentItemUpsert) SetCoverHidden(v bool) *ContentItemUpsert {
+	u.Set(contentitem.FieldCoverHidden, v)
+	return u
+}
+
+// UpdateCoverHidden sets the "cover_hidden" field to the value that was provided on create.
+func (u *ContentItemUpsert) UpdateCoverHidden() *ContentItemUpsert {
+	u.SetExcluded(contentitem.FieldCoverHidden)
 	return u
 }
 
@@ -1425,6 +1866,167 @@ func (u *ContentItemUpsertOne) SetCommentPolicy(v string) *ContentItemUpsertOne 
 func (u *ContentItemUpsertOne) UpdateCommentPolicy() *ContentItemUpsertOne {
 	return u.Update(func(s *ContentItemUpsert) {
 		s.UpdateCommentPolicy()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *ContentItemUpsertOne) SetDeletedAt(v time.Time) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateDeletedAt() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *ContentItemUpsertOne) ClearDeletedAt() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// SetSeoTitle sets the "seo_title" field.
+func (u *ContentItemUpsertOne) SetSeoTitle(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetSeoTitle(v)
+	})
+}
+
+// UpdateSeoTitle sets the "seo_title" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateSeoTitle() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateSeoTitle()
+	})
+}
+
+// SetSeoDescription sets the "seo_description" field.
+func (u *ContentItemUpsertOne) SetSeoDescription(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetSeoDescription(v)
+	})
+}
+
+// UpdateSeoDescription sets the "seo_description" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateSeoDescription() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateSeoDescription()
+	})
+}
+
+// SetSeoKeywords sets the "seo_keywords" field.
+func (u *ContentItemUpsertOne) SetSeoKeywords(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetSeoKeywords(v)
+	})
+}
+
+// UpdateSeoKeywords sets the "seo_keywords" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateSeoKeywords() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateSeoKeywords()
+	})
+}
+
+// SetCanonicalURL sets the "canonical_url" field.
+func (u *ContentItemUpsertOne) SetCanonicalURL(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCanonicalURL(v)
+	})
+}
+
+// UpdateCanonicalURL sets the "canonical_url" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateCanonicalURL() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCanonicalURL()
+	})
+}
+
+// SetOgImage sets the "og_image" field.
+func (u *ContentItemUpsertOne) SetOgImage(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetOgImage(v)
+	})
+}
+
+// UpdateOgImage sets the "og_image" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateOgImage() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateOgImage()
+	})
+}
+
+// SetRobots sets the "robots" field.
+func (u *ContentItemUpsertOne) SetRobots(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetRobots(v)
+	})
+}
+
+// UpdateRobots sets the "robots" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateRobots() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateRobots()
+	})
+}
+
+// SetCoverURL sets the "cover_url" field.
+func (u *ContentItemUpsertOne) SetCoverURL(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverURL(v)
+	})
+}
+
+// UpdateCoverURL sets the "cover_url" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateCoverURL() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverURL()
+	})
+}
+
+// SetCoverAlt sets the "cover_alt" field.
+func (u *ContentItemUpsertOne) SetCoverAlt(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverAlt(v)
+	})
+}
+
+// UpdateCoverAlt sets the "cover_alt" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateCoverAlt() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverAlt()
+	})
+}
+
+// SetCoverPosition sets the "cover_position" field.
+func (u *ContentItemUpsertOne) SetCoverPosition(v string) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverPosition(v)
+	})
+}
+
+// UpdateCoverPosition sets the "cover_position" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateCoverPosition() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverPosition()
+	})
+}
+
+// SetCoverHidden sets the "cover_hidden" field.
+func (u *ContentItemUpsertOne) SetCoverHidden(v bool) *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverHidden(v)
+	})
+}
+
+// UpdateCoverHidden sets the "cover_hidden" field to the value that was provided on create.
+func (u *ContentItemUpsertOne) UpdateCoverHidden() *ContentItemUpsertOne {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverHidden()
 	})
 }
 
@@ -1988,6 +2590,167 @@ func (u *ContentItemUpsertBulk) SetCommentPolicy(v string) *ContentItemUpsertBul
 func (u *ContentItemUpsertBulk) UpdateCommentPolicy() *ContentItemUpsertBulk {
 	return u.Update(func(s *ContentItemUpsert) {
 		s.UpdateCommentPolicy()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *ContentItemUpsertBulk) SetDeletedAt(v time.Time) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateDeletedAt() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *ContentItemUpsertBulk) ClearDeletedAt() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// SetSeoTitle sets the "seo_title" field.
+func (u *ContentItemUpsertBulk) SetSeoTitle(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetSeoTitle(v)
+	})
+}
+
+// UpdateSeoTitle sets the "seo_title" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateSeoTitle() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateSeoTitle()
+	})
+}
+
+// SetSeoDescription sets the "seo_description" field.
+func (u *ContentItemUpsertBulk) SetSeoDescription(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetSeoDescription(v)
+	})
+}
+
+// UpdateSeoDescription sets the "seo_description" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateSeoDescription() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateSeoDescription()
+	})
+}
+
+// SetSeoKeywords sets the "seo_keywords" field.
+func (u *ContentItemUpsertBulk) SetSeoKeywords(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetSeoKeywords(v)
+	})
+}
+
+// UpdateSeoKeywords sets the "seo_keywords" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateSeoKeywords() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateSeoKeywords()
+	})
+}
+
+// SetCanonicalURL sets the "canonical_url" field.
+func (u *ContentItemUpsertBulk) SetCanonicalURL(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCanonicalURL(v)
+	})
+}
+
+// UpdateCanonicalURL sets the "canonical_url" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateCanonicalURL() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCanonicalURL()
+	})
+}
+
+// SetOgImage sets the "og_image" field.
+func (u *ContentItemUpsertBulk) SetOgImage(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetOgImage(v)
+	})
+}
+
+// UpdateOgImage sets the "og_image" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateOgImage() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateOgImage()
+	})
+}
+
+// SetRobots sets the "robots" field.
+func (u *ContentItemUpsertBulk) SetRobots(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetRobots(v)
+	})
+}
+
+// UpdateRobots sets the "robots" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateRobots() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateRobots()
+	})
+}
+
+// SetCoverURL sets the "cover_url" field.
+func (u *ContentItemUpsertBulk) SetCoverURL(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverURL(v)
+	})
+}
+
+// UpdateCoverURL sets the "cover_url" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateCoverURL() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverURL()
+	})
+}
+
+// SetCoverAlt sets the "cover_alt" field.
+func (u *ContentItemUpsertBulk) SetCoverAlt(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverAlt(v)
+	})
+}
+
+// UpdateCoverAlt sets the "cover_alt" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateCoverAlt() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverAlt()
+	})
+}
+
+// SetCoverPosition sets the "cover_position" field.
+func (u *ContentItemUpsertBulk) SetCoverPosition(v string) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverPosition(v)
+	})
+}
+
+// UpdateCoverPosition sets the "cover_position" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateCoverPosition() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverPosition()
+	})
+}
+
+// SetCoverHidden sets the "cover_hidden" field.
+func (u *ContentItemUpsertBulk) SetCoverHidden(v bool) *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.SetCoverHidden(v)
+	})
+}
+
+// UpdateCoverHidden sets the "cover_hidden" field to the value that was provided on create.
+func (u *ContentItemUpsertBulk) UpdateCoverHidden() *ContentItemUpsertBulk {
+	return u.Update(func(s *ContentItemUpsert) {
+		s.UpdateCoverHidden()
 	})
 }
 

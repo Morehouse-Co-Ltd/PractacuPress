@@ -53,6 +53,12 @@ func (m *Manager) ImportZip(reader io.Reader, maxBytes int64) (Extension, error)
 	if err != nil {
 		return Extension{}, err
 	}
+	// Beta 1.2 contract D: record the digest of the manifest exactly as unpacked,
+	// inside the package directory and before it becomes visible. The installer is
+	// the only writer, so "verified" means "this server unpacked these bytes".
+	if _, err := plugins.WriteManifestSidecar(staging, m.now()); err != nil {
+		return Extension{}, fmt.Errorf("extensions: record manifest integrity: %w", err)
+	}
 	destination, err := m.extensionDir(manifest.ID)
 	if err != nil {
 		return Extension{}, fmt.Errorf("%w: id %q", ErrInvalidPackage, manifest.ID)
@@ -127,7 +133,9 @@ func (m *Manager) ImportZip(reader io.Reader, maxBytes int64) (Extension, error)
 	m.dirs[manifest.ID] = destination
 	m.state[manifest.ID] = stateEntry{Enabled: enabled}
 	m.persistLocked()
-	return extensionFromManifest(manifest, status), nil
+	extension := extensionFromManifest(manifest, status)
+	m.applyIntegrityLocked(&extension, destination)
+	return extension, nil
 }
 
 // moveAside renames an existing package directory to a dot-prefixed backup so the

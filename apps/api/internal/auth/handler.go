@@ -871,6 +871,14 @@ func mapError(err error) *apperr.Problem {
 		return apperr.Validation("email_verification_token_invalid").
 			WithMessage("验证链接无效或已过期，请重新获取。")
 
+	// Phone login (contract A). Both are phone only; a password path never produces
+	// them, so the shared table can carry them without changing existing responses.
+	case errors.Is(err, ErrInvalidCode):
+		return invalidCodeProblem()
+
+	case errors.Is(err, ErrSMSNotConfigured):
+		return smsNotConfiguredProblem()
+
 	case errors.Is(err, ErrCurrentPasswordInvalid):
 		return apperr.ValidationField("current password is incorrect", "current_password", "invalid").
 			WithMessage("当前密码不正确。")

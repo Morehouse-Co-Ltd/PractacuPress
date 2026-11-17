@@ -62,12 +62,89 @@ func (f *fakeRepo) SaveDraft(_ context.Context, item Content, audit site.AuditEn
 	return item, nil
 }
 
+// FindByID mirrors the store: a trashed item is invisible to every read path.
 func (f *fakeRepo) FindByID(_ context.Context, siteID, contentID string) (Content, error) {
+	item, ok := f.items[contentID]
+	if !ok || item.SiteID != siteID || item.IsTrashed() {
+		return Content{}, ErrNotFound
+	}
+	return item, nil
+}
+
+// FindByIDIncludingTrashed is the recycle bin lookup the lifecycle actions use.
+func (f *fakeRepo) FindByIDIncludingTrashed(_ context.Context, siteID, contentID string) (Content, error) {
 	item, ok := f.items[contentID]
 	if !ok || item.SiteID != siteID {
 		return Content{}, ErrNotFound
 	}
 	return item, nil
+}
+
+// Trash stamps the marker once, like the conditional store update: a repeated delete
+// must not refresh deleted_at.
+func (f *fakeRepo) Trash(_ context.Context, item Content, audit site.AuditEntry) (Content, error) {
+	stored, ok := f.items[item.ID]
+	if !ok || stored.SiteID != item.SiteID {
+		return Content{}, ErrNotFound
+	}
+	if !stored.IsTrashed() {
+		stored.DeletedAt = item.DeletedAt
+		stored.UpdatedAt = item.UpdatedAt
+		f.items[item.ID] = stored
+		f.audits = append(f.audits, audit)
+	}
+	return stored, nil
+}
+
+func (f *fakeRepo) Undelete(_ context.Context, item Content, audit site.AuditEntry) (Content, error) {
+	stored, ok := f.items[item.ID]
+	if !ok || stored.SiteID != item.SiteID {
+		return Content{}, ErrNotFound
+	}
+	if stored.IsTrashed() {
+		stored.DeletedAt = nil
+		stored.UpdatedAt = item.UpdatedAt
+		f.items[item.ID] = stored
+		f.audits = append(f.audits, audit)
+	}
+	return stored, nil
+}
+
+// Purge removes the item and its history in one step, like the store transaction.
+func (f *fakeRepo) Purge(_ context.Context, siteID, contentID string, audit site.AuditEntry) error {
+	stored, ok := f.items[contentID]
+	if !ok || stored.SiteID != siteID {
+		return ErrNotFound
+	}
+	if !stored.IsTrashed() {
+		return ErrInvalidTransition
+	}
+	delete(f.items, contentID)
+	kept := make([]Revision, 0, len(f.revisions))
+	for _, revision := range f.revisions {
+		if revision.ContentID != contentID {
+			kept = append(kept, revision)
+		}
+	}
+	f.revisions = kept
+	f.audits = append(f.audits, audit)
+	return nil
+}
+
+// PurgeExpired mirrors the retention sweep: only rows trashed before the cutoff go.
+func (f *fakeRepo) PurgeExpired(_ context.Context, before time.Time, limit int) (int, error) {
+	removed := 0
+	for id, item := range f.items {
+		if limit > 0 && removed >= limit {
+			break
+		}
+		if item.DeletedAt == nil || item.DeletedAt.After(before) {
+			continue
+		}
+		delete(f.items, id)
+		removed++
+	}
+	return removed, nil
 }
 
 func (f *fakeRepo) Transition(_ context.Context, item Content, from Status, audit site.AuditEntry) (Content, error) {
@@ -136,6 +213,10 @@ func (f *fakeRepo) List(_ context.Context, filter ListFilter) ([]Content, error)
 		if item.SiteID != filter.SiteID {
 			continue
 		}
+		// The bin listing and the ordinary listing never overlap.
+		if filter.Trashed != item.IsTrashed() {
+			continue
+		}
 		if filter.Kind != "" && item.Kind != filter.Kind {
 			continue
 		}
@@ -186,6 +267,9 @@ func (f *fakeRepo) Search(_ context.Context, filter SearchFilter) (SearchPage, e
 		if item.SiteID != filter.SiteID || item.Status != StatusPublished {
 			continue
 		}
+		if item.IsTrashed() {
+			continue
+		}
 		if item.AccessMode != "" && item.AccessMode != AccessPublic {
 			continue
 		}
@@ -218,6 +302,9 @@ func (f *fakeRepo) DueSchedules(_ context.Context, now time.Time, limit int) ([]
 		if item.Status != StatusDraft || item.PublishAt == nil || item.PublishAt.After(now) {
 			continue
 		}
+		if item.IsTrashed() {
+			continue
+		}
 		out = append(out, item)
 	}
 	return out, nil
@@ -248,7 +335,7 @@ func (f *fakeRepo) RecordScheduleFailure(
 // published item of the same site is counted.
 func (f *fakeRepo) IncrementViewCount(_ context.Context, siteID, contentID string) error {
 	item, ok := f.items[contentID]
-	if !ok || item.SiteID != siteID || item.Status != StatusPublished {
+	if !ok || item.SiteID != siteID || item.Status != StatusPublished || item.IsTrashed() {
 		return nil
 	}
 	item.ViewCount++
@@ -263,6 +350,9 @@ func (f *fakeRepo) Popular(_ context.Context, filter PopularFilter) ([]Content, 
 	out := make([]Content, 0, len(f.items))
 	for _, item := range f.items {
 		if item.SiteID != filter.SiteID || item.Status != StatusPublished {
+			continue
+		}
+		if item.IsTrashed() {
 			continue
 		}
 		mode := item.AccessMode

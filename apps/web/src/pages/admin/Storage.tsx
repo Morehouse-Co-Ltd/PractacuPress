@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
+  EffectiveConfig,
+  EffectiveStorageScope,
   StorageScope,
   StorageScopeAllocation,
   StorageSettings,
@@ -15,6 +17,7 @@ import {
   MAX_STRATEGIES,
   MAX_STRATEGY_NAME,
   STORAGE_SCOPES,
+  buildStorageEnvSnippet,
   createStrategyId,
   defaultStorage,
   emptyStrategy,
@@ -31,7 +34,8 @@ import {
   strategyLocation,
   usedStrategies,
 } from '../../lib/storage';
-import { useTitle } from '../../lib/hooks';
+import { formatDateTime } from '../../lib/format';
+import { useAsync, useTitle } from '../../lib/hooks';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
 import { useT } from '../../lib/i18n';
@@ -39,10 +43,12 @@ import {
   Badge,
   Button,
   Callout,
+  CopyButton,
   Field,
   Input,
   Modal,
   Select,
+  Skeleton,
   Tabs,
   cx,
 } from '../../components/ui';
@@ -112,6 +118,33 @@ function strategyOptionLabel(strategy: StorageStrategy): string {
     : strategyName(strategy);
 }
 
+/**
+ * 生效快照里的用途键。
+ *
+ * 服务端在「用途」之外还多一行 `global`（部署默认，其余用途没覆盖时继承它），
+ * 它不在 `STORAGE_SCOPES` 里，所以这里单独给一个名字。
+ */
+function effectiveScopeLabel(scope: string, t: ReturnType<typeof useT>): string {
+  if (scope === 'global') return t('全局（部署默认）');
+  const known = STORAGE_SCOPES.find((item) => item === scope);
+  return known ? scopeLabel(known) : scope;
+}
+
+/** 生效快照里一行的位置：本地给目录，云存储给桶 / 区域 / 前缀。 */
+function effectiveLocation(row: EffectiveStorageScope, t: ReturnType<typeof useT>): string {
+  if (row.driver === 's3') {
+    const parts = [
+      row.s3_bucket?.trim()
+        ? t('桶：{bucket}', { bucket: row.s3_bucket.trim() })
+        : t('桶未设置'),
+    ];
+    if (row.s3_region?.trim()) parts.push(t('区域：{region}', { region: row.s3_region.trim() }));
+    if (row.s3_prefix?.trim()) parts.push(t('前缀：{prefix}', { prefix: row.s3_prefix.trim() }));
+    return parts.join(' · ');
+  }
+  return row.local_dir?.trim() || t('跟随服务器默认目录');
+}
+
 export function StoragePage() {
   const t = useT();
   useTitle(t('储存策略'));
@@ -143,6 +176,21 @@ export function StoragePage() {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   /** 上一次同步过的服务端签名；挂载时只记下，不同步也不保存。 */
   const syncedKey = useRef(savedKey);
+
+  /**
+   * 服务端真正生效的部署配置。
+   *
+   * 本页保存的策略只写这台电脑的安装配置，API 进程读的是它自己的环境变量；这块
+   * 只读面板才是「服务器现在真的在用哪套存储」。旧后端没有这个端点，拿不到就返回
+   * null，页面其余部分照常可用。
+   */
+  const effective = useAsync<EffectiveConfig | null>(async () => {
+    if (typeof backend.effectiveConfig !== 'function') return null;
+    return backend.effectiveConfig();
+  }, [backend]);
+
+  /** `.env` 片段反映本页草稿：与生效值并排，方便看出还差哪几步。 */
+  const envSnippet = buildStorageEnvSnippet(draft);
 
   const driverItems = [
     { key: 'local' as const, label: t('本地储存') },
@@ -564,6 +612,99 @@ export function StoragePage() {
           </Link>
         </div>
       </div>
+
+      <Callout tone="warn" icon="alert" title={t('这页记录的是部署意图')}>
+        {t(
+          '下面的「当前生效」才是 API 进程真正在用的值。切换储存策略要写进服务器的 .env 并重启 API；已有文件不会自动搬迁。',
+        )}
+      </Callout>
+
+      <section className="panel mt-20">
+        <div className="panel-head">
+          <div>
+            <h3>{t('当前生效（只读）')}</h3>
+            <p>{t('这些值来自 API 进程启动时读到的环境变量，不是本页保存的设置。')}</p>
+          </div>
+          <div className="storage-panel-actions">
+            {effective.data ? (
+              <Badge tone={effective.data.restart_required ? 'warn' : 'ok'}>
+                {effective.data.restart_required ? t('需重启') : t('已同步')}
+              </Badge>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="refresh"
+              loading={effective.loading}
+              onClick={effective.reload}
+            >
+              {t('刷新')}
+            </Button>
+          </div>
+        </div>
+        <div className="panel-body">
+          {effective.loading && !effective.data ? (
+            <Skeleton lines={6} />
+          ) : effective.error ? (
+            <Callout tone="danger" icon="alert" title={t('无法读取服务端的生效配置')}>
+              {effective.error instanceof Error ? effective.error.message : t('请求失败。')}
+            </Callout>
+          ) : effective.data ? (
+            <>
+              {effective.data.restart_required ? (
+                <Callout tone="warn" icon="alert" title={t('有设置尚未生效，需要重启 API')}>
+                  {t(
+                    'API 只在启动时读取 .env；改完设置要写进服务器的 .env 再重启，已有文件不会自动搬到新位置。',
+                  )}
+                </Callout>
+              ) : null}
+              <div className="mini-list mt-12">
+                {effective.data.storage.map((row) => (
+                  <div className="mini-row" key={row.scope}>
+                    <span className="mini-label">{effectiveScopeLabel(row.scope, t)}</span>
+                    <span
+                      className="mini-value"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                      }}
+                    >
+                      <Badge tone={row.driver === 's3' ? 'accent' : 'neutral'}>
+                        {storageDriverLabel(row.driver === 's3' ? 's3' : 'local')}
+                      </Badge>
+                      <span className="mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
+                        {effectiveLocation(row, t)}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="tiny faint mt-12">
+                {t('采集时间：{time}', {
+                  time: formatDateTime(effective.data.captured_at),
+                })}
+              </p>
+              <details className="mt-12">
+                <summary className="link-btn">{t('生成 .env 片段（记录用）')}</summary>
+                <p className="tiny faint">
+                  {t(
+                    '片段只描述位置与驱动，不含任何密钥；把它写进 API 的 .env 并重启，新的上传才会写到这些位置。',
+                  )}
+                </p>
+                <pre className="auth-env-code">{envSnippet}</pre>
+                <CopyButton value={envSnippet} label={t('复制 .env')} />
+              </details>
+            </>
+          ) : (
+            <p className="small muted">
+              {t('当前后端没有提供生效配置，无法确认服务端在用哪套存储。')}
+            </p>
+          )}
+        </div>
+      </section>
 
       <Callout tone="info" icon="database" title={t('保存只是写配置，部署才算切换')}>
         {t('本页只写入这台电脑的本地安装配置，不会改动服务器上的文件或凭据。')}{' '}

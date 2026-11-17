@@ -144,8 +144,15 @@ type Comment struct {
 	Depth      int
 	Body       string
 	Status     string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// RiskScore is the server side assessment of the body, computed when the comment
+	// is written (see AssessRisk). It is moderator only: the review queue sorts by it,
+	// and a public thread must never receive it.
+	RiskScore int
+	// RiskFlags names the signals behind RiskScore, as stable identifiers the
+	// moderator UI translates. Storage keeps them as JSON text.
+	RiskFlags []string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // ValidCommentStatus reports whether status names a stored comment status.

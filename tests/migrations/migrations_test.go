@@ -67,9 +67,26 @@ var addedColumns = map[string][]string{
 		"access_mode", "access_password_hash", "comment_policy",
 		// The read counter of FSD A-16 (plan P0-06).
 		"view_count",
+		// Beta 1.2: the recycle bin marker, the per item SEO overrides and the cover.
+		"deleted_at", "seo_title", "seo_description", "seo_keywords",
+		"canonical_url", "og_image", "robots",
+		"cover_url", "cover_alt", "cover_position", "cover_hidden",
+	},
+	"media_assets": {
+		// Beta 1.2: the display name the uploader declared.
+		"file_name",
+	},
+	"comments": {
+		// Beta 1.2: the server side moderation score.
+		"risk_score", "risk_flags",
 	},
 	"users":         {"email_verified_at"},
 	"notifications": {"dedupe_key"},
+	"page_views": {
+		// The traffic attribution columns of the redirect/subscriber/email/phone
+		// change set: referrer host plus the derived source and device classes.
+		"referrer_host", "source", "device",
+	},
 }
 
 var addedTables = []string{
@@ -78,6 +95,9 @@ var addedTables = []string{
 	"content_search", "two_factors", "recovery_codes",
 	// Pending OAuth authorization requests (FSD F-05).
 	"oauth_states",
+	// Redirect rules, newsletter subscribers, the outbound mail log, the editable
+	// mail templates and the short lived SMS login codes.
+	"redirects", "subscribers", "email_logs", "email_templates", "phone_codes",
 }
 
 // addedTablesByDialect holds the objects only one engine needs. SQLite keeps the
@@ -107,6 +127,29 @@ var addedIndexes = []string{
 	"recoverycode_user_id_used_at",
 	// The OAuth state sweeper deletes expired rows by this column.
 	"oauthstate_expires_at",
+	// Beta 1.2: the recycle bin lists one site's trashed rows newest first.
+	"contentitem_site_id_deleted_at",
+	// Redirects: one rule per normalised incoming path inside a site, and the admin
+	// list ordered newest first.
+	"redirect_site_id_from_path",
+	"redirect_site_id_created_at",
+	// Subscribers: one lowercase address per site, a lookup by token hash alone, and
+	// the admin list filtered by state.
+	"subscriber_site_id_email",
+	"subscriber_token_hash",
+	"subscriber_site_id_status_created_at",
+	// The mail log list and its queue view.
+	"emaillog_site_id_created_at",
+	"emaillog_site_id_status_created_at",
+	// One template override per site and key.
+	"emailtemplate_site_id_key",
+	// SMS codes: redemption, the expiry sweeper and request rate limiting.
+	"phonecode_site_id_phone_hash_purpose_created_at",
+	"phonecode_expires_at",
+	"phonecode_site_id_request_ip_hash_created_at",
+	// The page view source and device breakdowns over one time window.
+	"pageview_site_id_source_created_at",
+	"pageview_site_id_device_created_at",
 }
 
 // addedIndexesByDialect holds the engine specific search index: FULLTEXT with the
@@ -272,6 +315,12 @@ func (h *harness) dropEverything(t *testing.T) {
 		"site_configs", "site_safety_settings", "site_ip_rules", "sensitive_words",
 		"content_items", "site_members", "sites",
 		"audit_logs", "user_identities", "users",
+		// Beta 1.2 adds columns to these two, so the baseline now creates them.
+		"comments", "media_assets",
+		// The redirect/subscriber/email/phone change set creates these five, and
+		// adds columns and indexes to page_views, which the baseline creates.
+		"redirects", "subscribers", "email_logs", "email_templates", "phone_codes",
+		"page_views",
 	}
 	for _, table := range tables {
 		var statement string

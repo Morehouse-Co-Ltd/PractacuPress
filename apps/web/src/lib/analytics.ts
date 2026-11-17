@@ -75,7 +75,12 @@ export interface BackendAnalytics {
 
 const VISITS_KEY = 'pp.web.visits.v1';
 const SESSION_KEY = 'pp.web.session.v1';
-const LAST_PATH_KEY = 'pp.web.lastpath.v1';
+/**
+ * 旧版本把「上一次上报的路径」缓存进 localStorage，并在下一次上报时优先把它当成
+ * 来源。那是跨会话、跨标签页的陈旧值：昨天从 `/articles` 关掉页面，今天从搜索引擎
+ * 进来时，真实来源会被它覆盖。键名保留只为启动时清掉存量脏数据，新代码不再读写它。
+ */
+const LEGACY_LAST_PATH_KEY = 'pp.web.lastpath.v1';
 const SEED_KEY = 'pp.web.visits.seeded.v1';
 const EVENT = 'pp:visits-changed';
 const MAX_RECORDS = 4000;
@@ -133,6 +138,63 @@ export function clientSessionId(): string {
   return sessionId();
 }
 
+/**
+ * 本文档（一次页面加载）内刚刚上报成功的上一跳路径。
+ *
+ * 只存在内存里，刷新页面就消失，因此不会变成「陈旧来源」。它只用来区分两种都没有
+ * `document.referrer` 的情况：同一次页面加载里的站内 SPA 跳转（真实站内来源），
+ * 以及一次全新的落地（直接输入网址、书签、强刷新 —— 真实直接访问）。
+ */
+let sameDocumentPreviousPath = '';
+
+/** 旧版本留下的跨会话路径缓存：每个页面加载清一次，之后不再碰 localStorage。 */
+let legacyLastPathCleared = false;
+
+function clearLegacyLastPath(): void {
+  if (legacyLastPathCleared || typeof window === 'undefined') return;
+  legacyLastPathCleared = true;
+  try {
+    localStorage.removeItem(LEGACY_LAST_PATH_KEY);
+  } catch {
+    /* 存储不可用时本来也不会有缓存 */
+  }
+}
+
+/** `document.referrer` 是否是可用于来源分类的绝对 http(s) 地址。 */
+function isAbsoluteHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 上报给服务端的来源值（`VisitRecord.referrer`）。
+ *
+ * 契约（后端 `analytics.DeriveVisitSignals`）：**服务端优先取请求体里的 `referrer`，
+ * 为空才回退到 Referer 头**。埋点是一次同源 POST，浏览器自动带的 Referer 头恰好是
+ * 当前被统计的页面；只有前端把 `document.referrer` 放进请求体，服务端才知道访客
+ * 是从站外哪里来的。以后不要改回「只读 Referer 头」，也不要拿上一次上报的路径顶替。
+ *
+ * 取值顺序：
+ * 1. `document.referrer` 是绝对 http(s) URL → 原样上报。站外 host 由服务端拆成
+ *    search / social / referral；站内 host 会被判成 internal。
+ * 2. 同一次页面加载内、上一跳是本站路径（SPA 站内跳转没有文档级 referrer）→
+ *    上报空字符串。服务端会回退到 Referer 头，而同源埋点的头就是本站页面，因此判
+ *    internal；传相对路径反而会被判成 direct，把站内跳转算进直接访问。
+ * 3. 没有可用的真实来源（直接输入网址、书签、强刷新）→ 上报 `'直接访问'`。它是
+ *    非 URL 哨兵值，服务端据此判 direct；不能传空串，否则会走第 2 条的回退，把
+ *    直接访问误判成 internal。
+ */
+function visitReferrer(path: string): string {
+  const documentReferrer = typeof document === 'undefined' ? '' : document.referrer.trim();
+  if (documentReferrer && isAbsoluteHttpUrl(documentReferrer)) return documentReferrer;
+  if (sameDocumentPreviousPath && sameDocumentPreviousPath !== path) return '';
+  return '直接访问';
+}
+
 /** 记录一次页面访问；相同路径 5 秒内重复触发（React StrictMode）会被忽略。 */
 export function recordVisit(input: {
   path: string;
@@ -142,12 +204,7 @@ export function recordVisit(input: {
   if (typeof window === 'undefined') return null;
   const path = input.path || '/';
   const now = new Date().toISOString();
-  const previous = localStorage.getItem(LAST_PATH_KEY) ?? '';
-  try {
-    localStorage.setItem(LAST_PATH_KEY, path);
-  } catch {
-    /* 忽略 */
-  }
+  clearLegacyLastPath();
 
   const items = readList();
   const latest = items[0];
@@ -158,11 +215,12 @@ export function recordVisit(input: {
     at: now,
     path,
     title: (input.title || path).slice(0, 160),
-    referrer: previous && previous !== path ? previous : document.referrer || '直接访问',
+    referrer: visitReferrer(path),
     session: sessionId(),
     surface: input.surface,
   };
   writeList([record, ...items]);
+  sameDocumentPreviousPath = path;
   return record;
 }
 

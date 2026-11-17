@@ -104,6 +104,11 @@ func ScanReason(v string) predicate.MediaAsset {
 	return predicate.MediaAsset(sql.FieldEQ(FieldScanReason, v))
 }
 
+// FileName applies equality check predicate on the "file_name" field. It's identical to FileNameEQ.
+func FileName(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldEQ(FieldFileName, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.MediaAsset {
 	return predicate.MediaAsset(sql.FieldEQ(FieldCreatedAt, v))
@@ -627,6 +632,71 @@ func ScanReasonEqualFold(v string) predicate.MediaAsset {
 // ScanReasonContainsFold applies the ContainsFold predicate on the "scan_reason" field.
 func ScanReasonContainsFold(v string) predicate.MediaAsset {
 	return predicate.MediaAsset(sql.FieldContainsFold(FieldScanReason, v))
+}
+
+// FileNameEQ applies the EQ predicate on the "file_name" field.
+func FileNameEQ(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldEQ(FieldFileName, v))
+}
+
+// FileNameNEQ applies the NEQ predicate on the "file_name" field.
+func FileNameNEQ(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldNEQ(FieldFileName, v))
+}
+
+// FileNameIn applies the In predicate on the "file_name" field.
+func FileNameIn(vs ...string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldIn(FieldFileName, vs...))
+}
+
+// FileNameNotIn applies the NotIn predicate on the "file_name" field.
+func FileNameNotIn(vs ...string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldNotIn(FieldFileName, vs...))
+}
+
+// FileNameGT applies the GT predicate on the "file_name" field.
+func FileNameGT(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldGT(FieldFileName, v))
+}
+
+// FileNameGTE applies the GTE predicate on the "file_name" field.
+func FileNameGTE(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldGTE(FieldFileName, v))
+}
+
+// FileNameLT applies the LT predicate on the "file_name" field.
+func FileNameLT(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldLT(FieldFileName, v))
+}
+
+// FileNameLTE applies the LTE predicate on the "file_name" field.
+func FileNameLTE(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldLTE(FieldFileName, v))
+}
+
+// FileNameContains applies the Contains predicate on the "file_name" field.
+func FileNameContains(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldContains(FieldFileName, v))
+}
+
+// FileNameHasPrefix applies the HasPrefix predicate on the "file_name" field.
+func FileNameHasPrefix(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldHasPrefix(FieldFileName, v))
+}
+
+// FileNameHasSuffix applies the HasSuffix predicate on the "file_name" field.
+func FileNameHasSuffix(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldHasSuffix(FieldFileName, v))
+}
+
+// FileNameEqualFold applies the EqualFold predicate on the "file_name" field.
+func FileNameEqualFold(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldEqualFold(FieldFileName, v))
+}
+
+// FileNameContainsFold applies the ContainsFold predicate on the "file_name" field.
+func FileNameContainsFold(v string) predicate.MediaAsset {
+	return predicate.MediaAsset(sql.FieldContainsFold(FieldFileName, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

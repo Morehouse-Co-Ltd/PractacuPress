@@ -97,6 +97,48 @@ func (_u *PageViewUpdate) SetNillableSurface(v *string) *PageViewUpdate {
 	return _u
 }
 
+// SetReferrerHost sets the "referrer_host" field.
+func (_u *PageViewUpdate) SetReferrerHost(v string) *PageViewUpdate {
+	_u.mutation.SetReferrerHost(v)
+	return _u
+}
+
+// SetNillableReferrerHost sets the "referrer_host" field if the given value is not nil.
+func (_u *PageViewUpdate) SetNillableReferrerHost(v *string) *PageViewUpdate {
+	if v != nil {
+		_u.SetReferrerHost(*v)
+	}
+	return _u
+}
+
+// SetSource sets the "source" field.
+func (_u *PageViewUpdate) SetSource(v string) *PageViewUpdate {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *PageViewUpdate) SetNillableSource(v *string) *PageViewUpdate {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetDevice sets the "device" field.
+func (_u *PageViewUpdate) SetDevice(v string) *PageViewUpdate {
+	_u.mutation.SetDevice(v)
+	return _u
+}
+
+// SetNillableDevice sets the "device" field if the given value is not nil.
+func (_u *PageViewUpdate) SetNillableDevice(v *string) *PageViewUpdate {
+	if v != nil {
+		_u.SetDevice(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PageViewMutation object of the builder.
 func (_u *PageViewUpdate) Mutation() *PageViewMutation {
 	return _u.mutation
@@ -156,6 +198,21 @@ func (_u *PageViewUpdate) check() error {
 			return &ValidationError{Name: "surface", err: fmt.Errorf(`ent: validator failed for field "PageView.surface": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReferrerHost(); ok {
+		if err := pageview.ReferrerHostValidator(v); err != nil {
+			return &ValidationError{Name: "referrer_host", err: fmt.Errorf(`ent: validator failed for field "PageView.referrer_host": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Source(); ok {
+		if err := pageview.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "PageView.source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Device(); ok {
+		if err := pageview.DeviceValidator(v); err != nil {
+			return &ValidationError{Name: "device", err: fmt.Errorf(`ent: validator failed for field "PageView.device": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -185,6 +242,15 @@ func (_u *PageViewUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Surface(); ok {
 		_spec.SetField(pageview.FieldSurface, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReferrerHost(); ok {
+		_spec.SetField(pageview.FieldReferrerHost, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(pageview.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Device(); ok {
+		_spec.SetField(pageview.FieldDevice, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -276,6 +342,48 @@ func (_u *PageViewUpdateOne) SetNillableSurface(v *string) *PageViewUpdateOne {
 	return _u
 }
 
+// SetReferrerHost sets the "referrer_host" field.
+func (_u *PageViewUpdateOne) SetReferrerHost(v string) *PageViewUpdateOne {
+	_u.mutation.SetReferrerHost(v)
+	return _u
+}
+
+// SetNillableReferrerHost sets the "referrer_host" field if the given value is not nil.
+func (_u *PageViewUpdateOne) SetNillableReferrerHost(v *string) *PageViewUpdateOne {
+	if v != nil {
+		_u.SetReferrerHost(*v)
+	}
+	return _u
+}
+
+// SetSource sets the "source" field.
+func (_u *PageViewUpdateOne) SetSource(v string) *PageViewUpdateOne {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *PageViewUpdateOne) SetNillableSource(v *string) *PageViewUpdateOne {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetDevice sets the "device" field.
+func (_u *PageViewUpdateOne) SetDevice(v string) *PageViewUpdateOne {
+	_u.mutation.SetDevice(v)
+	return _u
+}
+
+// SetNillableDevice sets the "device" field if the given value is not nil.
+func (_u *PageViewUpdateOne) SetNillableDevice(v *string) *PageViewUpdateOne {
+	if v != nil {
+		_u.SetDevice(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PageViewMutation object of the builder.
 func (_u *PageViewUpdateOne) Mutation() *PageViewMutation {
 	return _u.mutation
@@ -348,6 +456,21 @@ func (_u *PageViewUpdateOne) check() error {
 			return &ValidationError{Name: "surface", err: fmt.Errorf(`ent: validator failed for field "PageView.surface": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReferrerHost(); ok {
+		if err := pageview.ReferrerHostValidator(v); err != nil {
+			return &ValidationError{Name: "referrer_host", err: fmt.Errorf(`ent: validator failed for field "PageView.referrer_host": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Source(); ok {
+		if err := pageview.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "PageView.source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Device(); ok {
+		if err := pageview.DeviceValidator(v); err != nil {
+			return &ValidationError{Name: "device", err: fmt.Errorf(`ent: validator failed for field "PageView.device": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -394,6 +517,15 @@ func (_u *PageViewUpdateOne) sqlSave(ctx context.Context) (_node *PageView, err 
 	}
 	if value, ok := _u.mutation.Surface(); ok {
 		_spec.SetField(pageview.FieldSurface, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReferrerHost(); ok {
+		_spec.SetField(pageview.FieldReferrerHost, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(pageview.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Device(); ok {
+		_spec.SetField(pageview.FieldDevice, field.TypeString, value)
 	}
 	_node = &PageView{config: _u.config}
 	_spec.Assign = _node.assignValues

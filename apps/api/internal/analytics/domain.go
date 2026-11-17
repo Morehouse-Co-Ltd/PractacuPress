@@ -102,17 +102,24 @@ type VisitInput struct {
 	Referrer string
 	Session  string
 	Surface  Surface
+	// Signals are derived by the transport from the request headers. They are not
+	// part of the request body and must never be trusted from it; the zero value is
+	// normalized before storing so a direct service call still produces a valid row.
+	Signals Signals
 }
 
 // Visit is a validated page view ready to store.
 type Visit struct {
-	SiteID    string
-	Path      string
-	Title     string
-	Referrer  string
-	Session   string
-	Surface   Surface
-	CreatedAt time.Time
+	SiteID       string
+	Path         string
+	Title        string
+	Referrer     string
+	ReferrerHost string
+	Source       Source
+	Device       Device
+	Session      string
+	Surface      Surface
+	CreatedAt    time.Time
 }
 
 // ValidateVisit trims and bounds a page view report.
@@ -181,14 +188,64 @@ type TopContent struct {
 	Count int
 }
 
+// SourceCount is one row of the traffic source breakdown.
+//
+// Sessions can be counted under more than one source: a reader that arrives from
+// search and returns from a direct bookmark is one session in the total but appears
+// in both source rows, which is what the breakdown is meant to show.
+type SourceCount struct {
+	Source   Source
+	Visits   int
+	Sessions int
+}
+
+// DeviceCount is one row of the device breakdown.
+type DeviceCount struct {
+	Device   Device
+	Visits   int
+	Sessions int
+}
+
+// ReferrerCount is one row of the referrer host leaderboard.
+type ReferrerCount struct {
+	Host   string
+	Visits int
+}
+
+// RetentionPoint is one day of the new versus returning session series.
+type RetentionPoint struct {
+	Date              string
+	NewSessions       int
+	ReturningSessions int
+}
+
+// SessionVisit is one public page view projected to the session that produced it.
+//
+// The report needs it to count, per day, which sessions were active; the timestamp
+// stays UTC and the day is decided by the domain in the reader's zone.
+type SessionVisit struct {
+	Session string
+	At      time.Time
+}
+
+// SessionFirstSeen is the earliest public page view of one session.
+type SessionFirstSeen struct {
+	Session string
+	FirstAt time.Time
+}
+
 // Report is the complete dashboard payload.
 type Report struct {
-	Range      Range
-	Totals     Totals
-	Series     []Point
-	TopPages   []TopPage
-	TopContent []TopContent
-	Recent     []RecentVisit
+	Range        Range
+	Totals       Totals
+	Series       []Point
+	TopPages     []TopPage
+	TopContent   []TopContent
+	Recent       []RecentVisit
+	Sources      []SourceCount
+	Devices      []DeviceCount
+	TopReferrers []ReferrerCount
+	Retention    []RetentionPoint
 }
 
 // Query narrows a report aggregation.
@@ -214,6 +271,15 @@ type Aggregate struct {
 	Timestamps []time.Time
 	PageCounts []TopPage
 	Recent     []RecentVisit
+
+	SourceCounts   []SourceCount
+	DeviceCounts   []DeviceCount
+	ReferrerCounts []ReferrerCount
+	// SessionVisits and SessionFirstSeen are the raw retention inputs. The store
+	// returns rows rather than per day counts because a day is a calendar boundary
+	// in the reader's zone; only the domain knows that zone.
+	SessionVisits    []SessionVisit
+	SessionFirstSeen []SessionFirstSeen
 }
 
 // RecentVisit is one of the latest page views shown in the dashboard activity list.

@@ -34,6 +34,11 @@ func (MediaAsset) Fields() []ent.Field {
 			Default("pending").
 			Validate(oneOf("pending", "clean", "rejected", "needs_manual_review")),
 		field.String("scan_reason").MaxLen(120).Optional().Nillable(),
+		// file_name is the name the uploader used, captured when the upload session
+		// was opened. The library used to render a storage key fragment because the
+		// column did not exist; the storage key itself stays server derived and is
+		// never taken from user input.
+		field.String("file_name").MaxLen(200).Default(""),
 		createdField(),
 		updatedField(),
 	}

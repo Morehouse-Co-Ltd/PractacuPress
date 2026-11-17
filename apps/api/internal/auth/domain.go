@@ -38,6 +38,18 @@ var (
 	// ErrRegistrationClosed means the site has switched self-service registration off.
 	ErrRegistrationClosed = errors.New("auth: registration closed")
 
+	// ErrInvalidCode means the submitted phone verification code is wrong, expired or
+	// already consumed. All three cases answer the same way on purpose: telling them
+	// apart would let an attacker probe how close a guess was.
+	ErrInvalidCode = errors.New("auth: invalid phone verification code")
+	// ErrPhoneCodeNotFound means there is no redeemable phone code row. It is kept
+	// apart from ErrInvalidCode so the persistence layer can report "nothing matched"
+	// without deciding what the API should say.
+	ErrPhoneCodeNotFound = errors.New("auth: phone verification code not found")
+	// ErrSMSNotConfigured means the deployment has no SMS gateway, so phone login and
+	// code delivery are unavailable. It maps to 503 sms_not_configured.
+	ErrSMSNotConfigured = errors.New("auth: SMS gateway is not configured")
+
 	// ErrPermissionToSite means the account is not a member of the target site.
 	ErrPermissionToSite = errors.New("auth: not a member of this site")
 	// ErrActionNotAllowed means the caller's role is too low for the action.

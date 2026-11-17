@@ -95,6 +95,20 @@ func (_c *MediaAssetCreate) SetNillableScanReason(v *string) *MediaAssetCreate {
 	return _c
 }
 
+// SetFileName sets the "file_name" field.
+func (_c *MediaAssetCreate) SetFileName(v string) *MediaAssetCreate {
+	_c.mutation.SetFileName(v)
+	return _c
+}
+
+// SetNillableFileName sets the "file_name" field if the given value is not nil.
+func (_c *MediaAssetCreate) SetNillableFileName(v *string) *MediaAssetCreate {
+	if v != nil {
+		_c.SetFileName(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *MediaAssetCreate) SetCreatedAt(v time.Time) *MediaAssetCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -176,6 +190,10 @@ func (_c *MediaAssetCreate) defaults() {
 		v := mediaasset.DefaultScanStatus
 		_c.mutation.SetScanStatus(v)
 	}
+	if _, ok := _c.mutation.FileName(); !ok {
+		v := mediaasset.DefaultFileName
+		_c.mutation.SetFileName(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := mediaasset.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -248,6 +266,14 @@ func (_c *MediaAssetCreate) check() error {
 	if v, ok := _c.mutation.ScanReason(); ok {
 		if err := mediaasset.ScanReasonValidator(v); err != nil {
 			return &ValidationError{Name: "scan_reason", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.scan_reason": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.FileName(); !ok {
+		return &ValidationError{Name: "file_name", err: errors.New(`ent: missing required field "MediaAsset.file_name"`)}
+	}
+	if v, ok := _c.mutation.FileName(); ok {
+		if err := mediaasset.FileNameValidator(v); err != nil {
+			return &ValidationError{Name: "file_name", err: fmt.Errorf(`ent: validator failed for field "MediaAsset.file_name": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -328,6 +354,10 @@ func (_c *MediaAssetCreate) createSpec() (*MediaAsset, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ScanReason(); ok {
 		_spec.SetField(mediaasset.FieldScanReason, field.TypeString, value)
 		_node.ScanReason = &value
+	}
+	if value, ok := _c.mutation.FileName(); ok {
+		_spec.SetField(mediaasset.FieldFileName, field.TypeString, value)
+		_node.FileName = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(mediaasset.FieldCreatedAt, field.TypeTime, value)
@@ -464,6 +494,18 @@ func (u *MediaAssetUpsert) UpdateScanReason() *MediaAssetUpsert {
 // ClearScanReason clears the value of the "scan_reason" field.
 func (u *MediaAssetUpsert) ClearScanReason() *MediaAssetUpsert {
 	u.SetNull(mediaasset.FieldScanReason)
+	return u
+}
+
+// SetFileName sets the "file_name" field.
+func (u *MediaAssetUpsert) SetFileName(v string) *MediaAssetUpsert {
+	u.Set(mediaasset.FieldFileName, v)
+	return u
+}
+
+// UpdateFileName sets the "file_name" field to the value that was provided on create.
+func (u *MediaAssetUpsert) UpdateFileName() *MediaAssetUpsert {
+	u.SetExcluded(mediaasset.FieldFileName)
 	return u
 }
 
@@ -627,6 +669,20 @@ func (u *MediaAssetUpsertOne) UpdateScanReason() *MediaAssetUpsertOne {
 func (u *MediaAssetUpsertOne) ClearScanReason() *MediaAssetUpsertOne {
 	return u.Update(func(s *MediaAssetUpsert) {
 		s.ClearScanReason()
+	})
+}
+
+// SetFileName sets the "file_name" field.
+func (u *MediaAssetUpsertOne) SetFileName(v string) *MediaAssetUpsertOne {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.SetFileName(v)
+	})
+}
+
+// UpdateFileName sets the "file_name" field to the value that was provided on create.
+func (u *MediaAssetUpsertOne) UpdateFileName() *MediaAssetUpsertOne {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.UpdateFileName()
 	})
 }
 
@@ -959,6 +1015,20 @@ func (u *MediaAssetUpsertBulk) UpdateScanReason() *MediaAssetUpsertBulk {
 func (u *MediaAssetUpsertBulk) ClearScanReason() *MediaAssetUpsertBulk {
 	return u.Update(func(s *MediaAssetUpsert) {
 		s.ClearScanReason()
+	})
+}
+
+// SetFileName sets the "file_name" field.
+func (u *MediaAssetUpsertBulk) SetFileName(v string) *MediaAssetUpsertBulk {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.SetFileName(v)
+	})
+}
+
+// UpdateFileName sets the "file_name" field to the value that was provided on create.
+func (u *MediaAssetUpsertBulk) UpdateFileName() *MediaAssetUpsertBulk {
+	return u.Update(func(s *MediaAssetUpsert) {
+		s.UpdateFileName()
 	})
 }
 

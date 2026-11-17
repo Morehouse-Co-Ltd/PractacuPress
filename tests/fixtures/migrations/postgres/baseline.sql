@@ -44,3 +44,24 @@ CREATE TABLE notifications (
     read_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
+
+-- Beta 1.2 is the first change set to touch these two tables, so the baseline has
+-- to carry their pre-change shape: an id is all the up/down scripts need to add
+-- columns to.
+CREATE TABLE media_assets (
+    id VARCHAR(36) NOT NULL PRIMARY KEY
+);
+
+CREATE TABLE comments (
+    id VARCHAR(36) NOT NULL PRIMARY KEY
+);
+
+-- The page view ledger predates the reviewed change sets in this directory: no
+-- versioned script creates it, so the baseline carries the pre-change shape the
+-- 2026-11-21 change set needs. Only the columns that change set adds or indexes
+-- matter here: the primary key plus the site_id / created_at pair.
+CREATE TABLE page_views (
+    id VARCHAR(36) NOT NULL PRIMARY KEY,
+    site_id VARCHAR(36) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);

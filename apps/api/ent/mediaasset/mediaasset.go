@@ -29,6 +29,8 @@ const (
 	FieldScanStatus = "scan_status"
 	// FieldScanReason holds the string denoting the scan_reason field in the database.
 	FieldScanReason = "scan_reason"
+	// FieldFileName holds the string denoting the file_name field in the database.
+	FieldFileName = "file_name"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -48,6 +50,7 @@ var Columns = []string{
 	FieldPurpose,
 	FieldScanStatus,
 	FieldScanReason,
+	FieldFileName,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -81,6 +84,10 @@ var (
 	ScanStatusValidator func(string) error
 	// ScanReasonValidator is a validator for the "scan_reason" field. It is called by the builders before save.
 	ScanReasonValidator func(string) error
+	// DefaultFileName holds the default value on creation for the "file_name" field.
+	DefaultFileName string
+	// FileNameValidator is a validator for the "file_name" field. It is called by the builders before save.
+	FileNameValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -139,6 +146,11 @@ func ByScanStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByScanReason orders the results by the scan_reason field.
 func ByScanReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldScanReason, opts...).ToFunc()
+}
+
+// ByFileName orders the results by the file_name field.
+func ByFileName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFileName, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

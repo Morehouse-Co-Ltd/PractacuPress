@@ -72,6 +72,14 @@ type Plugin struct {
 	EnabledAt time.Time
 	Installed time.Time
 
+	// ManifestHash is the SHA-256 of the manifest recorded at install time and
+	// re-checked at enable time. Integrity is the resulting trust state. They are
+	// copies, not a live view: List and Get report what the last verify saw, and
+	// install/enable are the points that refresh them.
+	ManifestHash string
+	Integrity    IntegrityState
+	VerifiedAt   time.Time
+
 	// Each plugin owns its own wazero runtime. That costs a little memory but
 	// buys three things the global runtime cannot: a per-plugin memory limit, a
 	// timeout that can terminate one plugin without touching the others, and a
@@ -110,6 +118,12 @@ type Status struct {
 	LastError   string    `json:"last_error,omitempty"`
 	Installed   time.Time `json:"installed_at,omitempty"`
 	EnabledAt   time.Time `json:"enabled_at,omitempty"`
+	// ManifestHash is the digest of the manifest as installed (Beta 1.2).
+	ManifestHash string `json:"manifest_hash,omitempty"`
+	// Integrity is verified, unsigned or mismatch (Beta 1.2).
+	Integrity IntegrityState `json:"integrity,omitempty"`
+	// VerifiedAt is when the digest was recorded, zero for unsigned packages.
+	VerifiedAt time.Time `json:"verified_at,omitempty"`
 }
 
 // RequestInfo is what the HTTP layer knows about a plugin request. The router
@@ -238,6 +252,14 @@ func (h *Host) Install(dir string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
+	// Record the digest of the manifest this compile was based on. A package with
+	// no sidecar is unsigned rather than rejected: existing installations predate
+	// integrity tracking, and refusing them would make the feature a breaking
+	// upgrade. Enable re-checks the digest and refuses a mismatch.
+	verification, err := VerifyManifest(absolute)
+	if err != nil {
+		return Status{}, fmt.Errorf("plugins: verify manifest of %s: %w", manifest.ID, err)
+	}
 	if h.options.HostVersion != "" && !Satisfies(h.options.HostVersion, manifest.Engines.PP) {
 		return Status{}, fmt.Errorf("%w: plugin %s requires host %s, running %s",
 			ErrInvalidManifest, manifest.ID, manifest.Engines.PP, h.options.HostVersion)
@@ -295,14 +317,17 @@ func (h *Host) Install(dir string) (Status, error) {
 		return Status{}, fmt.Errorf("plugins: %s is already installed", manifest.ID)
 	}
 	plugin := &Plugin{
-		Manifest:  manifest,
-		Dir:       absolute,
-		State:     StateInstalled,
-		Installed: now,
-		runtime:   runtime,
-		compiled:  compiled,
-		wasm:      wasmBytes,
-		memoryMB:  memoryMB,
+		Manifest:     manifest,
+		Dir:          absolute,
+		State:        StateInstalled,
+		Installed:    now,
+		ManifestHash: reportedManifestHash(verification),
+		Integrity:    verification.Integrity,
+		VerifiedAt:   verification.VerifiedAt,
+		runtime:      runtime,
+		compiled:     compiled,
+		wasm:         wasmBytes,
+		memoryMB:     memoryMB,
 	}
 	h.plugins[manifest.ID] = plugin
 	h.order = append(h.order, manifest.ID)
@@ -312,12 +337,33 @@ func (h *Host) Install(dir string) (Status, error) {
 }
 
 // Enable makes an installed plugin live. It is idempotent.
+//
+// Beta 1.2: the manifest is re-verified before the state changes, so a package
+// whose manifest was edited after install (or after the last enable) cannot be
+// turned on. The mismatch is sticky: the plugin is marked failed and the reason
+// is kept for the management page, while disabling and removing stay possible so
+// the operator can always recover.
 func (h *Host) Enable(id string) (Status, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	plugin, err := h.lookupLocked(id)
 	if err != nil {
 		return Status{}, err
+	}
+	verification, err := VerifyManifest(plugin.Dir)
+	if err != nil {
+		return Status{}, fmt.Errorf("plugins: verify %s: %w", id, err)
+	}
+	plugin.ManifestHash = reportedManifestHash(verification)
+	plugin.Integrity = verification.Integrity
+	plugin.VerifiedAt = verification.VerifiedAt
+	if verification.Integrity == IntegrityMismatch {
+		plugin.State = StateFailed
+		plugin.LastError = "manifest integrity mismatch: " + verification.Reason
+		h.dirty = true
+		h.logger.Warn("refusing to enable a plugin with a modified manifest",
+			"plugin", id, "reason", verification.Reason)
+		return Status{}, fmt.Errorf("%w: %s: %s", ErrIntegrityMismatch, id, verification.Reason)
 	}
 	if plugin.State == StateEnabled {
 		return statusOf(plugin), nil
@@ -426,6 +472,11 @@ func (h *Host) PublicPlugins() []PublicPlugin {
 			Permissions: SortedPermissionList(plugin.Manifest.Permissions),
 			Integrity:   frontend.Integrity,
 			Settings:    len(plugin.Manifest.SettingsSchema) > 0,
+			// Beta 1.2: the boot record now carries the manifest digest recorded at
+			// install, so a browser or an operator can correlate the running bundle
+			// with the package the server verified. It was declared on the struct
+			// but never assigned before this fix.
+			ManifestHash: plugin.ManifestHash,
 		})
 	}
 	return out
@@ -649,15 +700,18 @@ func (h *Host) lookupLocked(id string) (*Plugin, error) {
 
 func statusOf(plugin *Plugin) Status {
 	return Status{
-		ID:          plugin.Manifest.ID,
-		Name:        plugin.Manifest.Name,
-		Version:     plugin.Manifest.Version,
-		State:       plugin.State,
-		Runtime:     plugin.Manifest.Runtime,
-		Permissions: SortedPermissionList(plugin.Manifest.Permissions),
-		LastError:   plugin.LastError,
-		Installed:   plugin.Installed,
-		EnabledAt:   plugin.EnabledAt,
+		ID:           plugin.Manifest.ID,
+		Name:         plugin.Manifest.Name,
+		Version:      plugin.Manifest.Version,
+		State:        plugin.State,
+		Runtime:      plugin.Manifest.Runtime,
+		Permissions:  SortedPermissionList(plugin.Manifest.Permissions),
+		LastError:    plugin.LastError,
+		Installed:    plugin.Installed,
+		EnabledAt:    plugin.EnabledAt,
+		ManifestHash: plugin.ManifestHash,
+		Integrity:    plugin.Integrity,
+		VerifiedAt:   plugin.VerifiedAt,
 	}
 }
 

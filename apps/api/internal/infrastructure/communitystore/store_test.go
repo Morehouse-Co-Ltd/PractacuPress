@@ -241,3 +241,60 @@ func TestListCommentsJoinsAuthorsAndFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 3)
 }
+
+// TestCommentRiskRoundTrip proves the assessment survives the database. The queue reads
+// rows, not the comment value that was just written, so a score that only lived in
+// memory would rank every page the same way.
+func TestCommentRiskRoundTrip(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	risky := []string{community.RiskFlagLinks, community.RiskFlagShouty}
+	created, err := store.InsertComment(ctx, community.Comment{
+		SiteID: siteID, AuthorID: "u1", TargetType: community.TargetArticle,
+		TargetID: "a1", Body: "BUY http://a.example http://b.example http://c.example",
+		Status: community.CommentStatusVisible, RiskScore: 65, RiskFlags: risky,
+		CreatedAt: now, UpdatedAt: now,
+	}, "", site.AuditEntry{SiteID: siteID, ActorID: "u1", Action: "community.comment.created"})
+	require.NoError(t, err)
+	require.Equal(t, 65, created.RiskScore)
+	require.Equal(t, risky, created.RiskFlags)
+
+	found, err := store.FindComment(ctx, siteID, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, 65, found.RiskScore)
+	require.Equal(t, risky, found.RiskFlags)
+
+	listed, err := store.ListComments(ctx, community.CommentListFilter{SiteID: siteID, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, 65, listed[0].RiskScore, "the queue reads the stored score")
+	require.Equal(t, risky, listed[0].RiskFlags)
+
+	// A comment nobody flagged still has to read back cleanly: the column defaults to
+	// "[]" and decoding must not turn that into an error or a nil page.
+	clean, err := store.InsertComment(ctx, community.Comment{
+		SiteID: siteID, AuthorID: "u1", TargetType: community.TargetArticle,
+		TargetID: "a1", Body: "a perfectly ordinary reply", Status: community.CommentStatusVisible,
+		CreatedAt: now.Add(time.Second), UpdatedAt: now,
+	}, "", site.AuditEntry{SiteID: siteID, ActorID: "u1", Action: "community.comment.created"})
+	require.NoError(t, err)
+	require.Zero(t, clean.RiskScore)
+	require.Empty(t, clean.RiskFlags)
+
+	// The write that follows an edit carries the rescored value with it.
+	clean.Body = "UPDATED http://a.example http://b.example http://c.example http://d.example"
+	clean.RiskScore = 80
+	clean.RiskFlags = []string{community.RiskFlagLinks}
+	updated, err := store.UpdateComment(ctx, clean, site.AuditEntry{
+		SiteID: siteID, ActorID: "u1", Action: "community.comment.edited",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 80, updated.RiskScore)
+	require.Equal(t, []string{community.RiskFlagLinks}, updated.RiskFlags)
+
+	count, err := handle.Client.Comment.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+}

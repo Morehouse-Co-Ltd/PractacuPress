@@ -37,7 +37,16 @@ export type ContentAction =
   | 'reject'
   | 'archive'
   | 'restore'
-  | 'security-retry';
+  | 'security-retry'
+  /** 回收站里的内容恢复为正常内容（Beta 1.2）。 */
+  | 'undelete'
+  /** 从回收站彻底删除，不可恢复（Beta 1.2）。 */
+  | 'purge'
+  /**
+   * 撤销发布（Beta 1.2，契约 I 节）：published → draft，清空 `published_at`。
+   * 需要发布权（作者或编辑及以上），返回内容本身。
+   */
+  | 'unpublish';
 export type CommentStatus = 'visible' | 'hidden' | 'deleted' | 'pending_review';
 export type ScanStatus = 'pending' | 'clean' | 'rejected' | 'needs_manual_review';
 export type UploadStatus = 'pending' | 'uploaded' | 'completed' | 'expired';
@@ -149,6 +158,34 @@ export interface StepUpSettingsUpdate {
 export interface StepUpVerifyResult {
   token: string;
   expires_in: number;
+}
+
+/* ---------- 短信登录（Beta 1.2，契约 A 节） ---------- */
+
+/**
+ * 短信登录是否可用（`GET /auth/phone/policy`，公开端点）。
+ *
+ * `enabled` 是服务端真正能发短信的判定（`SMS_PROVIDER` 不是 `off`），页面据此决定
+ * 是否显示「短信验证码登录」入口；`registration_open` 决定不存在的手机号能否自动建号。
+ */
+export interface PhonePolicy {
+  enabled: boolean;
+  provider: 'off' | 'log' | 'http';
+  registration_open: boolean;
+}
+
+/** 短信验证码的请求目的；登录与注册分开限流。 */
+export type PhoneCodePurpose = 'login' | 'register';
+
+/**
+ * 请求短信验证码的结果（`POST /auth/phone/codes`，202）。
+ *
+ * `dev_code` 只在服务端开启 `SMS_DEV_MODE` 时出现（演示模式同样给出），生产环境永远没有。
+ */
+export interface PhoneCodeResult {
+  expires_at: string;
+  resend_after_seconds: number;
+  dev_code?: string;
 }
 
 export interface Me {
@@ -487,6 +524,26 @@ export interface AuditLogQuery {
   cursor?: string;
 }
 
+/**
+ * 仪表盘「最近操作」的一行（Beta 1.2，契约 C 节：`GET /sites/{siteID}/activity`）。
+ *
+ * 数据来自服务端 `audit_logs`，不读浏览器存储；`detail` 是服务端拼好的一句说明，
+ * 与 `AuditLog.detail` 的结构化对象不同。
+ */
+export interface SiteActivityItem {
+  id: string;
+  /** 服务端动作码，例如 `content.publish`。 */
+  action: string;
+  actor_id: string;
+  actor_name: string;
+  target_type: string;
+  target_id: string;
+  /** `success` / `failure` 等与 audit_logs 相同的取值。 */
+  outcome: string;
+  detail: string;
+  created_at: string;
+}
+
 /** 管理员创建账户。 */
 export interface NewMemberInput {
   email: string;
@@ -535,6 +592,38 @@ export interface Content {
   category_id?: string;
   /** 文章标签以名称保存；主题与后台都按名称展示。 */
   tags?: string[];
+  /**
+   * 回收站标记（Beta 1.2）。
+   *
+   * 有值表示这篇内容已被软删除。它不出现在任何公开列表、搜索、feed 与 sitemap 里，
+   * 只有作者与编辑能通过 `trashed=true` 的列表看到并恢复。
+   */
+  deleted_at?: string;
+  /** 单篇 SEO 覆盖（Beta 1.2）。空字符串表示继承站点模板。 */
+  seo_title?: string;
+  seo_description?: string;
+  seo_keywords?: string;
+  /** 规范链接；为空时以本站该内容的地址为准。 */
+  canonical_url?: string;
+  /** 社交分享图；接受 data URL，因此长度不设上限。 */
+  og_image?: string;
+  /** 爬虫指令；空表示继承站点开关，`noindex` 会把内容排除出 sitemap。 */
+  robots?: '' | 'index' | 'noindex';
+  /** 封面（Beta 1.2 从站点外观配置迁入内容模型）。 */
+  cover_url?: string;
+  cover_alt?: string;
+  cover_position?: 'top' | 'center' | 'bottom';
+  cover_hidden?: boolean;
+  /**
+   * 审核风险分（Beta 1.2）。
+   *
+   * 只在**具备审核权限的调用者**读取**待审内容**（`pending_review` /
+   * `pending_security_check`）且服务端能拿到正文时才出现；它是读时计算的规则评分，
+   * 不落库，公开读者、作者本人与已发布内容一律没有这两个字段。
+   */
+  risk_score?: number;
+  /** 评分依据的英文标识，前端负责翻译成提示语。 */
+  risk_flags?: string[];
 }
 
 /** 内容版本历史中的一个不可变快照。 */
@@ -562,6 +651,128 @@ export interface ContentRevision {
 
 export interface ContentRevisionPage {
   items: ContentRevision[];
+}
+
+/* ---------- 版本 diff（Beta 1.2，契约 E 节） ---------- */
+
+/** 行级差异的一段操作。 */
+export type DiffOp = 'equal' | 'insert' | 'delete';
+
+/**
+ * 一段行级差异。
+ *
+ * `from_line` / `to_line` 是 1 起始的行号；`insert` 的 `from_line` 为前一条已消费的源行
+ * 行号（开头为 0），`delete` 的 `to_line` 为前一条已消费的目标行行号（开头为 0）。
+ */
+export interface ContentDiffHunk {
+  op: DiffOp;
+  from_line: number;
+  to_line: number;
+  text: string;
+}
+
+/**
+ * `GET /{articles|posts}/{contentID}/diff?from=&to=` 的行级差异。
+ *
+ * `to` 可以是版本号或 `current`；正文超过 20000 行时只比较前 20000 行并置 `truncated`。
+ */
+export interface ContentDiff {
+  from_version: number;
+  to_version: number;
+  stats: { added: number; removed: number };
+  hunks: ContentDiffHunk[];
+  truncated?: boolean;
+}
+
+/* ---------- 批量操作（Beta 1.2，契约 G 节） ---------- */
+
+/**
+ * 批量动作。
+ *
+ * 与单条 `ContentAction` 不完全同形：回收站用 `trash`（对应 `DELETE /{kind}s/{id}`），
+ * 没有单条的 `reject` / `restore` / `security-retry`。`ids` 一次最多 100 条。
+ */
+export type BulkAction =
+  | 'submit'
+  | 'publish'
+  | 'archive'
+  | 'unpublish'
+  | 'trash'
+  | 'undelete'
+  | 'purge';
+
+/** 批量操作里的一条结果；单条失败不影响其它条目。 */
+export interface BulkResultItem {
+  id: string;
+  ok: boolean;
+  /** 失败原因（服务端 problem.message）；成功时为空串。 */
+  error: string;
+}
+
+/** `POST /{articles|posts}/bulk` 的响应：逐条结果 + 成功 / 失败计数。 */
+export interface BulkResult {
+  results: BulkResultItem[];
+  succeeded: number;
+  failed: number;
+}
+
+/* ---------- 草稿预览（Beta 1.2，契约 H 节） ---------- */
+
+/**
+ * 一次预览授权（`POST /{articles|posts}/{contentID}/preview`）。
+ *
+ * `token` 是 HMAC 签名令牌，只对那一篇内容、默认 30 分钟内有效；
+ * `path` 是可直接打开或分享的站点内路径，已带 `preview_token` 查询串。
+ */
+export interface PreviewGrant {
+  token: string;
+  expires_at: string;
+  path: string;
+}
+
+/* ---------- 永久链接、slug 与重定向（Beta 1.2，契约 J 节） ---------- */
+
+/** 重定向规则的来源：站长手工创建，或服务端在已发布内容改 slug 时自动记录。 */
+export type RedirectSource = 'manual' | 'slug_change';
+
+/** 重定向规则允许的状态码。 */
+export type RedirectStatusCode = 301 | 302 | 308;
+
+/**
+ * 一条重定向规则（`GET /sites/{siteID}/redirects`）。
+ *
+ * `from_path` 由服务端规范化为以 `/` 开头、不含查询串；重复时创建 / 修改返回 409。
+ */
+export interface RedirectRule {
+  id: string;
+  from_path: string;
+  to_path: string;
+  status_code: RedirectStatusCode;
+  source: RedirectSource;
+  /** 这条规则被解析命中的次数。 */
+  hit_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 公开路径解析的三种结果（`GET /resolve?path=`，公开端点）。 */
+export type ResolveKind = 'content' | 'redirect' | 'missing';
+
+/**
+ * 公开路径解析结果，供静态服务器决定 301 / 200 / 404。
+ *
+ * - `kind=content`：id 形式且存在时 `status=301` 并给出 slug 形式的 `canonical_path`；
+ *   已是 slug 形式且存在时 `status=200`；
+ * - `kind=redirect`：命中重定向表，`canonical_path` 是目标路径，`status` 是规则状态码；
+ * - `kind=missing`：都不存在，`status=404`。
+ */
+export interface ResolveResult {
+  kind: ResolveKind;
+  canonical_path: string;
+  status: number;
+  content_id?: string;
+  slug?: string;
+  title?: string;
 }
 
 export interface ContentPage {
@@ -637,6 +848,26 @@ export interface DraftInput {
   /** 只写字段；留空保持原密码，切换为公开/仅登录时服务端清除。 */
   access_password?: string;
   comment_policy?: ContentCommentPolicy;
+  /** 单篇 SEO 覆盖（Beta 1.2）；空串表示继承站点模板。 */
+  seo_title?: string;
+  seo_description?: string;
+  seo_keywords?: string;
+  canonical_url?: string;
+  og_image?: string;
+  robots?: '' | 'index' | 'noindex';
+  /** 封面（Beta 1.2 起随内容一起保存）。 */
+  cover_url?: string;
+  cover_alt?: string;
+  cover_position?: 'top' | 'center' | 'bottom';
+  cover_hidden?: boolean;
+  /**
+   * 乐观并发控制（Beta 1.2，契约 F 节）：编辑时带上最后读到的版本号。
+   *
+   * 只有 PATCH 使用；提供且与服务端当前版本不一致时返回 409
+   * `content_version_conflict`（`details.current_revision` 是服务端当前版本）。
+   * 省略时保持原行为（后写覆盖）。
+   */
+  revision?: number;
 }
 
 /** 密码文章解锁成功的结果；授权本身保存在 HttpOnly Cookie 里。 */
@@ -657,6 +888,15 @@ export interface Comment {
   author_id?: string;
   author_name?: string;
   created_at?: string;
+  /**
+   * 服务端风险评分 0–100（Beta 1.2）。
+   *
+   * 只有管理侧接口返回；公开读者的评论列表永远不带这两个字段，因此它们是可选的。
+   * 评分在评论写入时由服务端计算并落库，不再依赖浏览器。
+   */
+  risk_score?: number;
+  /** 评分依据的英文标识，前端负责翻译成提示语。 */
+  risk_flags?: string[];
 }
 
 export interface ToggleResult {
@@ -2480,6 +2720,215 @@ export interface SystemMetrics {
 }
 
 /* ------------------------------------------------------------------ *
+ * 系统日志查看器 / 队列监控 / 自动备份（Beta 1.2，契约 K–L 节）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 请求日志的一条元数据（`GET /system/logs`）。
+ *
+ * 服务端只在进程内环形缓冲里保存最近 500 条，只记录元数据，不记请求体、请求头或查询串。
+ */
+export interface SystemLogEntry {
+  time: string;
+  request_id: string;
+  method: string;
+  path: string;
+  status: number;
+  duration_ms: number;
+  site_id: string;
+  user_id: string;
+}
+
+/** 队列最近一条事件。 */
+export interface QueueEventItem {
+  event_id: string;
+  event_type: string;
+  status: 'pending' | 'published' | 'failed';
+  attempts: number;
+  last_error: string;
+  occurred_at: string;
+}
+
+/** 队列监控（`GET /system/queue`）：outbox 积压、最近事件与邮件发送队列。 */
+export interface QueueStatus {
+  outbox: { pending: number; failed: number; oldest_age_seconds: number };
+  recent: QueueEventItem[];
+  mail: { queued: number; failed: number };
+}
+
+/** 自动备份产物（`GET /system/backup-schedule` 的 `artifacts`）。 */
+export interface BackupScheduleArtifact {
+  name: string;
+  size: number;
+  created_at: string;
+}
+
+/**
+ * 自动备份计划（`GET /system/backup-schedule`，平台管理员）。
+ *
+ * 计划来自 `BACKUP_AUTO_*` 环境变量；到点创建备份、保留最近 `keep` 份，每次运行写审计。
+ */
+export interface BackupSchedule {
+  enabled: boolean;
+  /** 每天几点运行（0–23）。 */
+  hour: number;
+  /** 保留最近几份。 */
+  keep: number;
+  last_run_at?: string;
+  /** 最近一次运行结果：`success` / `failed` 等；从未运行时为 undefined。 */
+  last_status?: string;
+  last_error?: string;
+  next_run_at?: string;
+  artifacts: BackupScheduleArtifact[];
+}
+
+/* ------------------------------------------------------------------ *
+ * 来源 / 设备 / 引荐 / 留存统计（Beta 1.2，契约 M 节）
+ * ------------------------------------------------------------------ */
+
+/** 来源分类；由服务端从 Referer 派生。 */
+export type AnalyticsSourceKind = 'direct' | 'internal' | 'search' | 'social' | 'referral';
+
+/** 设备分类；由服务端从 User-Agent 派生。 */
+export type AnalyticsDeviceKind = 'bot' | 'mobile' | 'tablet' | 'desktop' | 'unknown';
+
+export interface AnalyticsSourcePoint {
+  source: AnalyticsSourceKind;
+  visits: number;
+  sessions: number;
+}
+
+export interface AnalyticsDevicePoint {
+  device: AnalyticsDeviceKind;
+  visits: number;
+  sessions: number;
+}
+
+export interface AnalyticsReferrerPoint {
+  host: string;
+  visits: number;
+}
+
+/** 每日留存：当天首次出现的 session 数，与当天出现且此前已出现过的 session 数。 */
+export interface AnalyticsRetentionPoint {
+  date: string;
+  new_sessions: number;
+  returning_sessions: number;
+}
+
+/**
+ * `GET /sites/{siteID}/analytics` 响应新增的四个维度（旧后端不返回时按空数组处理）。
+ *
+ * 定义在 `types.ts` 而不是 `lib/analytics.ts`：后者只承载浏览器本地统计；
+ * 服务端响应类型在 `lib/api.ts` 里与既有 `BackendAnalytics` 合并成 `SiteAnalytics`。
+ */
+export interface AnalyticsBreakdown {
+  sources: AnalyticsSourcePoint[];
+  devices: AnalyticsDevicePoint[];
+  top_referrers: AnalyticsReferrerPoint[];
+  retention: AnalyticsRetentionPoint[];
+}
+
+/* ------------------------------------------------------------------ *
+ * 邮件订阅与 Newsletter（Beta 1.2，契约 N 节）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 订阅者状态。
+ *
+ * 契约 N 节只点名 pending / confirmed / unsubscribed 三态；服务端还会把硬退信标成
+ * `bounced`（不会自动删除订阅记录），所以类型里一并列出，页面需要把它显示成
+ * 「投递失败」而不是沿用未知状态。
+ */
+export type SubscriberStatus = 'pending' | 'confirmed' | 'unsubscribed' | 'bounced';
+
+/**
+ * 订阅 / 确认 / 退订三个公开端点的返回状态（契约 N1）。
+ *
+ * 与 `SubscriberStatus` 分开：这三个端点只会答 pending / confirmed / unsubscribed，
+ * `bounced` 只出现在管理端订阅名单的行里。
+ */
+export type NewsletterSubscriptionStatus = 'pending' | 'confirmed' | 'unsubscribed';
+
+/** 一条订阅记录（`GET /sites/{siteID}/subscribers`）。 */
+export interface Subscriber {
+  id: string;
+  email: string;
+  status: SubscriberStatus;
+  /** 订阅来源：站点表单 / 登录账户等由服务端记录。 */
+  source: string;
+  /** 关联的登录账户；匿名订阅为空。 */
+  user_id?: string;
+  confirmed_at?: string;
+  unsubscribed_at?: string;
+  last_sent_at?: string;
+  created_at: string;
+}
+
+/** 订阅名单统计（`GET /sites/{siteID}/newsletter-stats`）。 */
+export interface NewsletterStats {
+  confirmed: number;
+  pending: number;
+  unsubscribed: number;
+  sent_7d: number;
+  failed_7d: number;
+}
+
+/**
+ * 一封可编辑的邮件模板（`GET /sites/{siteID}/email-templates`）。
+ *
+ * 内置 key：`subscriber_confirm`、`subscriber_welcome`、`newsletter_post`、
+ * `password_reset`、`email_verify`。
+ */
+export interface EmailTemplate {
+  key: string;
+  name: string;
+  subject: string;
+  body_html: string;
+  body_text: string;
+  enabled: boolean;
+  /** 内置模板为 true；被站长改写过仍是内置模板，`updated_at` 表示上次改动时间。 */
+  builtin: boolean;
+  /**
+   * 上次被改写的时间；使用内置默认值（从未改写过）时服务端返回 null，
+   * 旧后端缺失这个键时按 undefined 处理。
+   */
+  updated_at?: string | null;
+}
+
+/** 邮件发送日志（`GET /sites/{siteID}/email-logs`）。 */
+export interface EmailLog {
+  id: string;
+  to_email: string;
+  /** 邮件种类，例如 `newsletter` / `confirm`。 */
+  kind: string;
+  /** 使用的模板 key；无模板的事务邮件为空。 */
+  template_key?: string;
+  subject: string;
+  status: 'queued' | 'sent' | 'failed';
+  error?: string;
+  sent_at?: string;
+  created_at: string;
+}
+
+/** 发送一次 newsletter 的结果（`POST /sites/{siteID}/newsletters`）。 */
+export interface NewsletterSendResult {
+  /** 本次入队的收件人数；没有 confirmed 订阅者时为 0。 */
+  queued: number;
+}
+
+/**
+ * 当前登录账户自己的订阅状态（`GET /me/newsletter`）。
+ *
+ * 与 `Subscriber` 不同：这里只暴露当前账户的邮箱与状态，不返回订阅 id 或时间线。
+ */
+export interface MyNewsletterPreference {
+  subscribed: boolean;
+  email: string;
+  status: SubscriberStatus;
+}
+
+/* ------------------------------------------------------------------ *
  * 服务器扩展（安装包扩展）
  *
  * 与「内置扩展」（随前端发布）和「创作者扩展」（站点级 HTML/CSS/JS）都不同：
@@ -2548,4 +2997,43 @@ export interface ExtensionSummary {
   last_error?: string;
   installed_at?: string;
   enabled_at?: string;
+  /**
+   * 清单文件的 SHA-256（Beta 1.2，契约 D 节）：安装 / 升级时计算并写入侧车文件。
+   * 旧后端不返回，前端按 undefined 处理。
+   */
+  manifest_hash?: string;
+  /**
+   * 完整性校验结果（Beta 1.2）：`verified` / `unsigned` / `mismatch`。
+   * `mismatch` 时服务端拒绝启用并记录审计，页面应禁用启用开关。
+   */
+  integrity?: 'verified' | 'unsigned' | 'mismatch';
+  /** 最近一次完整性校验通过的时间（RFC 3339）。 */
+  verified_at?: string;
+}
+
+/**
+ * 服务端「真实生效」的部署配置快照（Beta 1.2）。
+ *
+ * 后台的储存策略与访问/域名页面记录的是部署意图，真正生效的是 API 进程启动时读到的
+ * 环境变量。这个结构让页面能同时显示「计划值」与「生效值」，用户不会再以为改了设置
+ * 就立刻生效。任何密钥都不在这里出现。
+ */
+export interface EffectiveStorageScope {
+  /** `global` 或四个用途之一。 */
+  scope: string;
+  driver: string;
+  local_dir?: string;
+  s3_bucket?: string;
+  s3_region?: string;
+  s3_prefix?: string;
+}
+
+export interface EffectiveConfig {
+  storage: EffectiveStorageScope[];
+  cors: { allowed_origins: string[]; allow_credentials: boolean };
+  domains: { https_only: boolean; public_base_url: string; trusted_proxies: string[] };
+  mail: { configured: boolean; encryption?: string; from?: string };
+  /** 进程内的生效值与站点配置里的计划值不一致时为 true。 */
+  restart_required: boolean;
+  captured_at: string;
 }

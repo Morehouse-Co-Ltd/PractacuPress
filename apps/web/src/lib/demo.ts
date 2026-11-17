@@ -5,6 +5,10 @@ import type {
   AuditLogPage,
   AuditLogQuery,
   AuthProviderId,
+  BackupSchedule,
+  BulkAction,
+  BulkResult,
+  BulkResultItem,
   CaptchaStatus,
   ChangePasswordInput,
   CommentModerationAction,
@@ -13,6 +17,8 @@ import type {
   CommentsResult,
   Content,
   ContentAction,
+  ContentDiff,
+  ContentDiffHunk,
   ContentKind,
   ContentPage,
   ContentRevision,
@@ -20,7 +26,10 @@ import type {
   Conversation,
   CreateSiteInput,
   CreatedSite,
+  DiffOp,
   DraftInput,
+  EmailLog,
+  EmailTemplate,
   FollowEntry,
   InteractionEntry,
   InteractionStates,
@@ -28,13 +37,19 @@ import type {
   Member,
   MediaQuotaBytes,
   Message,
+  MyNewsletterPreference,
   NewMemberInput,
+  NewsletterSendResult,
+  NewsletterStats,
+  NewsletterSubscriptionStatus,
   Notification,
   NotificationPreferences,
   Page,
   PasswordLoginResult,
   PasswordResetPolicy,
   PasswordResetTicket,
+  PhoneCodeResult,
+  PhonePolicy,
   PlatformAccountPage,
   PlatformAccountQuery,
   PlatformActivityRow,
@@ -43,21 +58,30 @@ import type {
   PlatformSite,
   PlatformSiteDetail,
   PlatformSiteEntry,
+  PreviewGrant,
   ProbeResult,
   ProfileInput,
   PublicProfile,
+  QueueStatus,
   ReadingHistoryEntry,
+  RedirectRule,
   Report,
   ReportAction,
   ReportInput,
+  ResolveResult,
   Role,
   SearchQuery,
   SearchResult,
   Session,
   Site,
+  SiteActivityItem,
   SiteDomainVerification,
   SiteDomainVerificationResult,
+  Subscriber,
+  SubscriberStatus,
+  SystemLogEntry,
   SystemMetrics,
+  EffectiveConfig,
   TaxonomySettings,
   TaxonomyTerm,
   TaxonomyTermInput,
@@ -67,9 +91,13 @@ import type {
   TwoFactorStatus,
   User,
 } from '../types';
-import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
+import type { AnalyticsRange, VisitSurface } from './analytics';
 import { ApiError, fallbackProblem, uuid } from './api';
-import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
+import type {
+  SiteAnalytics,
+  SiteCustomizationSaved,
+  SiteCustomizationSnapshot,
+} from './api';
 import type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
 import type { ContactPayload } from './contactForm';
 import { readCaptchaStatus } from './captcha';
@@ -118,6 +146,7 @@ const DEMO_ACTION_CODES: Record<string, string> = {
   创建草稿: 'content.created',
   更新草稿: 'content.updated',
   发布: 'content.published',
+  撤销发布: 'content.unpublished',
   退回: 'content.rejected',
   归档: 'content.archived',
   恢复: 'content.restored',
@@ -272,6 +301,162 @@ function demoPopularScore(item: Content): number {
   const hours = Number.isNaN(published) ? 0 : Math.max(0, (Date.now() - published) / 3_600_000);
   return (item.view_count ?? 0) / (hours + 2) ** 1.5;
 }
+
+/* ------------------ Beta 1.2 演示数据辅助 ------------------ */
+
+/** 演示模式的短信验证码：与登录页提示保持一致，固定六位。 */
+const DEMO_SMS_CODE = '246810';
+
+/** 短信验证码有效期（秒），与契约默认值一致。 */
+const DEMO_SMS_TTL_SECONDS = 300;
+
+/** 预览令牌有效期（毫秒）：契约默认 30 分钟。 */
+const DEMO_PREVIEW_TTL_MS = 30 * 60 * 1000;
+
+/** diff 最多比较的行数：契约把超长文本截断到前 20000 行。 */
+const DEMO_DIFF_MAX_LINES = 20_000;
+
+/**
+ * 演示用的行级 diff。
+ *
+ * 先用最长公共子序列求出两边的行序列，再按契约的 hunk 形状输出：`from_line` /
+ * `to_line` 是 1 起始行号，insert / delete 的另一侧取前一条已消费的行号（开头为 0）。
+ * 行数乘积过大时 LCS 的二次开销不可接受，退化成「整段先删后插」——形状仍然合法，
+ * 演示数据也不会走到那里。
+ */
+function demoLineDiff(fromLines: string[], toLines: string[]): ContentDiffHunk[] {
+  const a = fromLines.slice(0, DEMO_DIFF_MAX_LINES);
+  const b = toLines.slice(0, DEMO_DIFF_MAX_LINES);
+  const rows = a.length;
+  const cols = b.length;
+  const hunks: ContentDiffHunk[] = [];
+  let fromLine = 0;
+  let toLine = 0;
+
+  if (rows * cols > 1_000_000) {
+    for (const text of a) {
+      fromLine += 1;
+      hunks.push({ op: 'delete', from_line: fromLine, to_line: toLine, text });
+    }
+    for (const text of b) {
+      toLine += 1;
+      hunks.push({ op: 'insert', from_line: fromLine, to_line: toLine, text });
+    }
+    return hunks;
+  }
+
+  const lcs: number[][] = Array.from({ length: rows + 1 }, () =>
+    new Array<number>(cols + 1).fill(0),
+  );
+  for (let i = rows - 1; i >= 0; i -= 1) {
+    for (let j = cols - 1; j >= 0; j -= 1) {
+      lcs[i][j] =
+        a[i] === b[j]
+          ? lcs[i + 1][j + 1] + 1
+          : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+
+  let i = 0;
+  let j = 0;
+  const push = (op: DiffOp, text: string, from: number, to: number) =>
+    hunks.push({ op, from_line: from, to_line: to, text });
+  while (i < rows && j < cols) {
+    if (a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      fromLine = i;
+      toLine = j;
+      push('equal', a[i - 1], fromLine, toLine);
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+      i += 1;
+      fromLine = i;
+      push('delete', a[i - 1], fromLine, toLine);
+    } else {
+      j += 1;
+      toLine = j;
+      push('insert', b[j - 1], fromLine, toLine);
+    }
+  }
+  while (i < rows) {
+    i += 1;
+    fromLine = i;
+    push('delete', a[i - 1], fromLine, toLine);
+  }
+  while (j < cols) {
+    j += 1;
+    toLine = j;
+    push('insert', b[j - 1], fromLine, toLine);
+  }
+  return hunks;
+}
+
+/** 演示模式的重定向规则：一条 slug 变更自动规则 + 一条手写规则。 */
+function demoSeedRedirects(): RedirectRule[] {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: 'redir_demo_1',
+      from_path: '/a/old-house',
+      to_path: '/a/cnt_house',
+      status_code: 301,
+      source: 'slug_change',
+      hit_count: 12,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 'redir_demo_2',
+      from_path: '/archive',
+      to_path: '/articles',
+      status_code: 302,
+      source: 'manual',
+      hit_count: 3,
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+}
+
+/** 演示模式的五个内置邮件模板（与契约 N4 的内置 key 一致）。 */
+const DEMO_EMAIL_TEMPLATES: {
+  key: string;
+  name: string;
+  subject: string;
+  body_text: string;
+}[] = [
+  {
+    key: 'subscriber_confirm',
+    name: '订阅确认',
+    subject: '确认订阅 Practacu Press',
+    body_text: '点击链接确认订阅：{link}',
+  },
+  {
+    key: 'subscriber_welcome',
+    name: '欢迎订阅',
+    subject: '欢迎成为读者',
+    body_text: '谢谢你订阅 Practacu Press。',
+  },
+  {
+    key: 'newsletter_post',
+    name: '文章推荐',
+    subject: '新文章：{title}',
+    body_text: '{summary}\n{url}',
+  },
+  {
+    key: 'password_reset',
+    name: '重置密码',
+    subject: '重置你的密码',
+    body_text: '点击链接重置密码：{link}',
+  },
+  {
+    key: 'email_verify',
+    name: '邮箱验证',
+    subject: '验证你的邮箱',
+    body_text: '点击链接完成验证：{link}',
+  },
+];
+
 export class DemoBackend {
   readonly mode = 'demo' as const;
   readonly origin = 'demo://local';
@@ -293,6 +478,20 @@ export class DemoBackend {
     email: { enabled: false, comments: true, reactions: true, follows: true, moderation: true },
     email_configured: false,
   };
+  /** 短信登录：演示模式的手机号 → 账户 id；只存在内存里。 */
+  private phoneAccounts = new Map<string, string>();
+  /** 草稿预览令牌：只存在内存，30 分钟后过期（与契约默认有效期一致）。 */
+  private previewTokens = new Map<string, { kind: ContentKind; id: string; expires_at: number }>();
+  /** 重定向规则：内存数组；演示模式不落库。 */
+  private redirects: RedirectRule[] = demoSeedRedirects();
+  /** 订阅名单（内存）；首次使用时按现有成员生成一段演示数据。 */
+  private subscribers: Subscriber[] | null = null;
+  /** 订阅确认 / 退订令牌：token → email。 */
+  private newsletterTokens = new Map<string, string>();
+  /** 邮件模板的站长改写（内存）；不在表里时使用内置默认。 */
+  private emailTemplateOverrides = new Map<string, EmailTemplate>();
+  /** 邮件发送日志（内存）；首次使用时生成一段演示历史。 */
+  private emailLogs: EmailLog[] | null = null;
 
   constructor() {
     const existing = loadState();
@@ -457,8 +656,13 @@ export class DemoBackend {
         return owner ? ['restore'] : [];
       case 'archived':
         return reviewer ? ['restore'] : [];
-      case 'published':
-        return reviewer ? ['archive'] : [];
+      case 'published': {
+        const actions: ContentAction[] = [];
+        if (reviewer) actions.push('archive');
+        // 撤销发布（Beta 1.2）：发布权（作者或编辑及以上）即可。
+        if (reviewer || owner) actions.push('unpublish');
+        return actions;
+      }
       case 'pending_security_check':
         return owner || reviewer ? ['security-retry'] : [];
       default:
@@ -562,6 +766,33 @@ export class DemoBackend {
     const found = this.state.contents.find((c) => c.kind === kind && c.id === id);
     if (!found) this.fail(404, 'not_found', '内容不存在，或不在当前站点内。');
     return found;
+  }
+
+  /** 按 `key` 读内容（Beta 1.2，契约 J1）：先按 id 查，查不到再按 slug 查。 */
+  private findContentByKey(kind: ContentKind, key: string) {
+    const byId = this.state.contents.find((c) => c.kind === kind && c.id === key);
+    if (byId) return byId;
+    const bySlug = this.state.contents.find((c) => c.kind === kind && c.slug === key);
+    if (!bySlug) this.fail(404, 'not_found', '内容不存在，或不在当前站点内。');
+    return bySlug;
+  }
+
+  /** 预览令牌是否对这一次读取有效（内容、类型都对得上且未过期）。 */
+  private previewValid(kind: ContentKind, key: string, token?: string): boolean {
+    if (!token) return false;
+    const record = this.previewTokens.get(token);
+    if (!record || record.expires_at < Date.now() || record.kind !== kind) return false;
+    const content = this.state.contents.find((item) => item.kind === kind && item.id === record.id);
+    return !!content && (content.id === key || content.slug === key);
+  }
+
+  /** 把路径规范化为以 `/` 开头、不含查询串与锚点的形式。 */
+  private cleanPath(value: string): string {
+    const trimmed = (value ?? '').trim();
+    if (!trimmed) return '/';
+    const withoutQuery = trimmed.split(/[?#]/, 1)[0] ?? '';
+    if (!withoutQuery) return '/';
+    return withoutQuery.startsWith('/') ? withoutQuery : `/${withoutQuery}`;
   }
 
   private canSee(content: Content, viewer: DemoUser | null): boolean {
@@ -1566,17 +1797,20 @@ export class DemoBackend {
 
   async listContent(
     kind: ContentKind,
-    options: { limit?: number; cursor?: string; authorId?: string } = {},
+    options: { limit?: number; cursor?: string; authorId?: string; trashed?: boolean } = {},
   ): Promise<ContentPage> {
     await wait(160);
     const viewer = this.optionalUser();
     if (this.state.site.visibility_mode === 'members_only' && !viewer) {
       this.fail(401, 'unauthenticated', '该站点仅对成员开放，请先登录。');
     }
+    if (options.trashed && !viewer) this.fail(401, 'unauthenticated', '回收站只对登录成员开放。');
     const limit = Math.min(100, Math.max(1, options.limit ?? 20));
     const offset = options.cursor ? Number(options.cursor.replace(/^o:/, '')) : 0;
     const all = this.state.contents
       .filter((c) => c.kind === kind)
+      // 回收站是互斥视图：默认隐藏已删除，打开回收站时只看已删除。
+      .filter((c) => (options.trashed ? Boolean(c.deleted_at) : !c.deleted_at))
       .filter((c) => !options.authorId || c.author_id === options.authorId)
       .filter((c) => this.canSee(c, viewer))
       // 密码 / 仅登录内容不进公开列表；编辑与站长在后台仍能看到。
@@ -1627,11 +1861,17 @@ export class DemoBackend {
       .slice(0, limit);
     return { items, window: options.window ?? '30d' };
   }
-  async getContent(kind: ContentKind, id: string): Promise<Content> {
+  async getContent(kind: ContentKind, key: string, previewToken?: string): Promise<Content> {
     await wait(120);
     const viewer = this.optionalUser();
-    const content = this.findContent(kind, id);
+    const content = this.findContentByKey(kind, key);
+    // 预览令牌（Beta 1.2）：只对签发时那一篇内容有效，有效时未发布内容也返回 200。
+    if (this.previewValid(kind, key, previewToken)) return this.decorate(content, viewer);
     const privileged = !!viewer && (content.author_id === viewer.id || canReview(viewer.role));
+    // 回收站里的内容对读者等同于不存在；作者与编辑仍可打开，方便就地恢复。
+    if (content.deleted_at && !privileged) {
+      this.fail(404, 'not_found', '内容不存在。');
+    }
     if ((content.access_mode ?? 'public') === 'password' && !privileged && !this.unlockedContent.has(content.id)) {
       this.fail(403, 'permission_denied', '这篇内容需要访问密码。', { reason: 'password_required' });
     }
@@ -1698,6 +1938,18 @@ export class DemoBackend {
       access_mode: input.access_mode ?? 'public',
       has_access_password: !!input.access_password,
       comment_policy: input.comment_policy ?? 'inherit',
+      // Beta 1.2：单篇 SEO 与封面是内容字段，演示后端也要落下来，否则演示模式下
+      // 保存后刷新就丢，看起来像功能没做。
+      seo_title: input.seo_title ?? '',
+      seo_description: input.seo_description ?? '',
+      seo_keywords: input.seo_keywords ?? '',
+      canonical_url: input.canonical_url ?? '',
+      og_image: input.og_image ?? '',
+      robots: input.robots ?? '',
+      cover_url: input.cover_url ?? '',
+      cover_alt: input.cover_alt ?? '',
+      cover_position: input.cover_position ?? 'center',
+      cover_hidden: input.cover_hidden ?? false,
     };
     this.state.contents.unshift(content);
     this.ensureRevisions(content);
@@ -1735,6 +1987,18 @@ export class DemoBackend {
     if (input.access_mode) content.access_mode = input.access_mode;
     if (input.access_password) content.has_access_password = true;
     if (input.comment_policy) content.comment_policy = input.comment_policy;
+    // Beta 1.2：编辑器每次保存都提交全量字段，空串表示"继承站点设置"，
+    // 所以这里无条件赋值，与服务端 PATCH 的 replace 语义保持一致。
+    content.seo_title = input.seo_title ?? '';
+    content.seo_description = input.seo_description ?? '';
+    content.seo_keywords = input.seo_keywords ?? '';
+    content.canonical_url = input.canonical_url ?? '';
+    content.og_image = input.og_image ?? '';
+    content.robots = input.robots ?? '';
+    content.cover_url = input.cover_url ?? '';
+    content.cover_alt = input.cover_alt ?? '';
+    content.cover_position = input.cover_position ?? 'center';
+    content.cover_hidden = input.cover_hidden ?? false;
     content.rendered_html = renderSource(content.source_format, input.source_body);
     content.updated_at = new Date().toISOString();
     this.pushRevision(content, user.id, 'updated', content.updated_at);
@@ -1885,6 +2149,16 @@ export class DemoBackend {
       content.status = 'archived';
       content.updated_at = new Date().toISOString();
       this.log('归档', content.title);
+    } else if (action === 'unpublish') {
+      // 撤销发布（Beta 1.2，契约 I 节）：published → draft，并清空 published_at。
+      if (content.status !== 'published') {
+        this.fail(409, 'content_state_invalid', '只有已发布内容可以撤销发布。');
+      }
+      if (!owner && !reviewer) this.fail(403, 'permission_denied', '没有撤销发布的权限。');
+      content.status = 'draft';
+      delete content.published_at;
+      content.updated_at = new Date().toISOString();
+      this.log('撤销发布', content.title);
     } else if (action === 'restore') {
       if (!owner && !reviewer) this.fail(403, 'permission_denied', '没有恢复权限。');
       if (content.status === 'rejected') content.status = 'draft';
@@ -1896,6 +2170,20 @@ export class DemoBackend {
       }
       content.updated_at = new Date().toISOString();
       this.log('恢复', content.title, content.status);
+    } else if (action === 'undelete') {
+      // 回收站恢复只清 deleted_at，状态保持删除前的样子。
+      if (!owner && !reviewer) this.fail(403, 'permission_denied', '没有恢复权限。');
+      if (!content.deleted_at) this.fail(409, 'content_state_invalid', '这条内容不在回收站里。');
+      delete content.deleted_at;
+      content.updated_at = new Date().toISOString();
+      this.log('恢复内容', content.title);
+    } else if (action === 'purge') {
+      if (!owner && !reviewer) this.fail(403, 'permission_denied', '没有彻底删除权限。');
+      if (!content.deleted_at) this.fail(409, 'content_state_invalid', '只有回收站里的内容可以彻底删除。');
+      this.state.contents = this.state.contents.filter((item) => item.id !== content.id);
+      this.log('彻底删除', content.title);
+      this.persist();
+      return this.decorate(content, user);
     } else if (action === 'security-retry') {
       if (content.status !== 'pending_security_check' || (!owner && !reviewer)) {
         this.fail(409, 'content_state_invalid', '当前状态不能重试安全检查。');
@@ -1909,6 +2197,41 @@ export class DemoBackend {
     }
     this.persist();
     return this.decorate(content, user);
+  }
+
+  /**
+   * 移入回收站（Beta 1.2）。
+   *
+   * 演示模式与服务端保持同一套语义：软删除、可恢复、彻底删除才真正移除。
+   * 早期版本的演示后端允许 `restore` 直接救回被驳回的内容，真实后端不允许，
+   * 于是"被驳回后重新提交"在演示里能过、在真实站点报错——这个差异在这里一并修掉。
+   */
+  async deleteContent(kind: ContentKind, id: string): Promise<Content> {
+    await wait(160);
+    const user = this.user();
+    const content = this.findContent(kind, id);
+    const owner =
+      content.author_id === user.id || user.role === 'site_admin' || user.role === 'platform_admin';
+    if (!owner && !canReview(user.role)) this.fail(403, 'permission_denied', '没有删除权限。');
+    content.deleted_at = content.deleted_at ?? new Date().toISOString();
+    content.updated_at = new Date().toISOString();
+    this.log('移入回收站', content.title);
+    this.persist();
+    return this.decorate(content, user);
+  }
+
+  /** 从回收站彻底删除；只剩这一条路径会真正移除内容。 */
+  async purgeContent(kind: ContentKind, id: string): Promise<void> {
+    await wait(160);
+    const user = this.user();
+    const content = this.findContent(kind, id);
+    const owner =
+      content.author_id === user.id || user.role === 'site_admin' || user.role === 'platform_admin';
+    if (!owner && !canReview(user.role)) this.fail(403, 'permission_denied', '没有彻底删除权限。');
+    if (!content.deleted_at) this.fail(409, 'content_state_invalid', '只有回收站里的内容可以彻底删除。');
+    this.state.contents = this.state.contents.filter((item) => item.id !== content.id);
+    this.log('彻底删除', content.title);
+    this.persist();
   }
 
   /**
@@ -2548,6 +2871,17 @@ export class DemoBackend {
     return this.state.assets;
   }
 
+  /** 删除一份媒体（Beta 1.2）。演示里没有引用计数，直接移除。 */
+  async deleteAsset(id: string): Promise<void> {
+    await wait(80);
+    this.user();
+    if (!this.state.assets.some((asset) => asset.id === id)) {
+      this.fail(404, 'not_found', '素材不存在。');
+    }
+    this.state.assets = this.state.assets.filter((asset) => asset.id !== id);
+    this.persist();
+  }
+
   /**
    * 演示模式的素材本来就存成 data URL，`<img>` 直接能显示；
    * 真实后端需要带鉴权取字节，。HttpBackend.assetSrc。
@@ -2738,8 +3072,99 @@ export class DemoBackend {
     // 演示数据没有服务端；访问记录。lib/analytics 的本地存储负责。
   }
 
-  async analytics(_siteId: string, _range: AnalyticsRange): Promise<BackendAnalytics | null> {
-    return null;
+  /**
+   * 演示统计（Beta 1.2，契约 M 节）。
+   *
+   * 演示模式没有服务端计数，用确定性公式生成一份形状完整的响应：既有 totals /
+   * series / top_pages / top_content / recent，也有来源 / 设备 / 引荐 / 留存四个
+   * 新维度。数字随 range 与日期变化，但同一输入始终一致。
+   */
+  async analytics(_siteId: string, range: AnalyticsRange): Promise<SiteAnalytics | null> {
+    await wait(80);
+    const days = range === '24h' ? 1 : range === '7d' ? 7 : 30;
+    const buckets = range === '24h' ? 24 : days;
+    const now = new Date();
+    const series = Array.from({ length: buckets }, (_, index) => {
+      const count = 6 + ((index * 13 + days * 5) % 23);
+      if (range === '24h') {
+        const hour = new Date(now.getTime() - (buckets - 1 - index) * 3_600_000);
+        return { label: `${String(hour.getHours()).padStart(2, '0')}:00`, count };
+      }
+      const day = new Date(now.getTime() - (buckets - 1 - index) * 86_400_000);
+      return { label: `${day.getMonth() + 1}/${day.getDate()}`, count };
+    });
+    const views = series.reduce((sum, point) => sum + point.count, 0);
+    const sessions = Math.max(1, Math.round(views * 0.68));
+
+    const published = this.state.contents.filter((item) => item.status === 'published');
+    const topContent = published.slice(0, 5).map((item, index) => ({
+      id: item.id,
+      count: Math.max(1, 24 - index * 4),
+    }));
+    // 站点内路径前缀由内容类型决定：文章 /a/，帖子 /p/。
+    const pathOf = (id: string): string => {
+      const item = this.state.contents.find((content) => content.id === id);
+      const prefix = item?.kind === 'post' ? 'p' : 'a';
+      return `/${prefix}/${item?.slug || id}`;
+    };
+    const recent = topContent.slice(0, 6).map((item, index) => {
+      const target = this.state.contents.find((content) => content.id === item.id);
+      return {
+        path: pathOf(item.id),
+        title: target?.title ?? '',
+        referrer: index % 3 === 0 ? 'https://www.google.com/' : index % 3 === 1 ? '' : '/',
+        session: `vs_seed_${index}`,
+        created_at: new Date(now.getTime() - (index + 1) * 17 * 60_000).toISOString(),
+      };
+    });
+
+    const sources = [
+      { source: 'direct' as const, visits: Math.round(views * 0.38), sessions: Math.round(sessions * 0.38) },
+      { source: 'search' as const, visits: Math.round(views * 0.31), sessions: Math.round(sessions * 0.3) },
+      { source: 'social' as const, visits: Math.round(views * 0.16), sessions: Math.round(sessions * 0.17) },
+      { source: 'internal' as const, visits: Math.round(views * 0.1), sessions: Math.round(sessions * 0.1) },
+      { source: 'referral' as const, visits: Math.round(views * 0.05), sessions: Math.round(sessions * 0.05) },
+    ];
+    const devices = [
+      { device: 'mobile' as const, visits: Math.round(views * 0.52), sessions: Math.round(sessions * 0.5) },
+      { device: 'desktop' as const, visits: Math.round(views * 0.39), sessions: Math.round(sessions * 0.4) },
+      { device: 'tablet' as const, visits: Math.round(views * 0.05), sessions: Math.round(sessions * 0.05) },
+      { device: 'bot' as const, visits: Math.round(views * 0.03), sessions: Math.round(sessions * 0.04) },
+      { device: 'unknown' as const, visits: Math.round(views * 0.01), sessions: Math.round(sessions * 0.01) },
+    ];
+    const topReferrers = [
+      { host: 'google.com', visits: Math.round(views * 0.22) },
+      { host: 'x.com', visits: Math.round(views * 0.09) },
+      { host: 'baidu.com', visits: Math.round(views * 0.05) },
+      { host: 'weibo.com', visits: Math.round(views * 0.03) },
+    ];
+    const retentionDays = Math.min(range === '24h' ? 7 : days, 7);
+    const retention = Array.from({ length: retentionDays }, (_, index) => {
+      const date = new Date(now.getTime() - (retentionDays - 1 - index) * 86_400_000);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return {
+        date: key,
+        new_sessions: 3 + ((index * 7 + days) % 11),
+        returning_sessions: 1 + ((index * 5 + days) % 7),
+      };
+    });
+
+    return {
+      range,
+      totals: { views, sessions, online: 3 },
+      series,
+      top_pages: [
+        { path: '/', count: Math.round(views * 0.31) },
+        { path: '/articles', count: Math.round(views * 0.18) },
+        ...topContent.slice(0, 3).map((item) => ({ path: pathOf(item.id), count: item.count })),
+      ],
+      top_content: topContent,
+      recent,
+      sources,
+      devices,
+      top_referrers: topReferrers,
+      retention,
+    };
   }
 
   async taxonomy(_siteId: string): Promise<TaxonomySettings | null> {
@@ -2798,6 +3223,871 @@ export class DemoBackend {
    */
   async systemMetrics(): Promise<SystemMetrics> {
     this.fail(404, 'not_found', '演示模式没有服务器指标。');
+  }
+
+  /**
+   * 演示模式的「生效配置」是固定值。
+   *
+   * 它不需要真实，只需要形状对：页面的「生效值」面板在演示模式下也要能渲染，
+   * 否则那两块界面在本地预览里就是空白。
+   */
+  async effectiveConfig(): Promise<EffectiveConfig> {
+    await wait(60);
+    return {
+      storage: [
+        { scope: 'global', driver: 'local', local_dir: './data/media' },
+        { scope: 'content', driver: 'local', local_dir: './data/media' },
+        { scope: 'site', driver: 'local', local_dir: './data/media' },
+        { scope: 'avatar', driver: 'local', local_dir: './data/media' },
+        { scope: 'attachment', driver: 'local', local_dir: './data/media' },
+      ],
+      cors: { allowed_origins: [], allow_credentials: false },
+      domains: { https_only: false, public_base_url: '', trusted_proxies: [] },
+      mail: { configured: false },
+      restart_required: false,
+      captured_at: new Date().toISOString(),
+    };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Beta 1.2 扩展包（契约 A–N 节）：以下都是演示后端的内存实现。
+   * 演示模式没有真实短信 / 邮件 / 队列，返回值只为让页面走通，并在结果里
+   * 明确标注固定的演示值，不伪造安全判断。
+   * ------------------------------------------------------------------ */
+
+  /* ---------- A. 短信登录 ---------- */
+
+  async phonePolicy(): Promise<PhonePolicy> {
+    await wait(40);
+    return {
+      enabled: true,
+      provider: 'log',
+      registration_open: this.state.site.registration_open !== false,
+    };
+  }
+
+  async requestPhoneCode(
+    phone: string,
+    _purpose: 'login' | 'register',
+  ): Promise<PhoneCodeResult> {
+    await wait(120);
+    if (!phone.trim()) this.fail(400, 'validation_failed', '请填写手机号。');
+    return {
+      expires_at: new Date(Date.now() + DEMO_SMS_TTL_SECONDS * 1000).toISOString(),
+      resend_after_seconds: 60,
+      // 演示模式固定验证码，登录页的提示与这里保持一致。
+      dev_code: DEMO_SMS_CODE,
+    };
+  }
+
+  async phoneLogin(input: {
+    phone: string;
+    code: string;
+    display_name?: string;
+  }): Promise<PasswordLoginResult> {
+    await wait(200);
+    const phone = input.phone.trim();
+    if (!phone) this.fail(400, 'validation_failed', '请填写手机号。');
+    if (input.code.trim() !== DEMO_SMS_CODE) {
+      this.fail(401, 'invalid_code', '验证码不正确。');
+    }
+    let userId = this.phoneAccounts.get(phone);
+    if (!userId) {
+      if (this.state.site.registration_open === false) {
+        this.fail(403, 'registration_closed', '本站暂未开放注册。');
+      }
+      // 演示数据没有手机号身份：第一个登录的号码使用演示管理员账户。
+      const owner =
+        this.state.users.find((user) => user.role === 'site_admin') ?? this.state.users[0];
+      if (!owner) this.fail(404, 'not_found', '演示数据里没有可登录的账户。');
+      userId = owner.id;
+      this.phoneAccounts.set(phone, userId);
+    }
+    const user = this.state.users.find(
+      (item) => item.id === userId && item.status === 'active',
+    );
+    if (!user) this.fail(401, 'invalid_code', '验证码不正确。');
+    this.currentId = user.id;
+    this.saveCurrent();
+    this.log('登录', user.display_name, '手机验证码');
+    this.persist();
+    return { status: 'session', session: this.session(user) };
+  }
+
+  /* ---------- C. 仪表盘「最近操作」 ---------- */
+
+  async siteActivity(_siteId: string, limit = 20): Promise<SiteActivityItem[]> {
+    await wait(80);
+    this.requireRole('site_admin');
+    const max = Math.min(100, Math.max(1, limit));
+    return this.state.activity.slice(0, max).map((entry) => {
+      const action = DEMO_ACTION_CODES[entry.action] ?? entry.action;
+      const actor = this.state.users.find((user) => user.display_name === entry.actor);
+      return {
+        id: entry.id,
+        action,
+        actor_id: actor?.id ?? '',
+        actor_name: entry.actor,
+        target_type: demoTargetType(action),
+        target_id: '',
+        outcome: 'success',
+        detail: entry.detail ?? '',
+        created_at: entry.at,
+      };
+    });
+  }
+
+  /* ---------- E. 版本 diff ---------- */
+
+  async contentDiff(
+    kind: ContentKind,
+    id: string,
+    from: number,
+    to: number | 'current' = 'current',
+  ): Promise<ContentDiff> {
+    await wait(160);
+    const user = this.user();
+    const content = this.findContentByKey(kind, id);
+    if (!this.canEditContent(content, user)) {
+      this.fail(404, 'not_found', '内容不存在，或不在当前站点内。');
+    }
+    const revisions = this.ensureRevisions(content);
+    const fromRevision = revisions.find((revision) => revision.version === from);
+    if (!fromRevision) this.fail(404, 'not_found', '源版本不存在。');
+    const fromLines = (fromRevision.source_body ?? '').split('\n');
+    let toLines: string[];
+    let toVersion: number;
+    if (to === 'current') {
+      toLines = (content.source_body ?? '').split('\n');
+      toVersion = revisions.reduce((max, revision) => Math.max(max, revision.version), 1);
+    } else {
+      const toRevision = revisions.find((revision) => revision.version === to);
+      if (!toRevision) this.fail(404, 'not_found', '目标版本不存在。');
+      toLines = (toRevision.source_body ?? '').split('\n');
+      toVersion = to;
+    }
+    const truncated =
+      fromLines.length > DEMO_DIFF_MAX_LINES || toLines.length > DEMO_DIFF_MAX_LINES;
+    const hunks = demoLineDiff(fromLines, toLines);
+    return {
+      from_version: from,
+      to_version: toVersion,
+      stats: {
+        added: hunks.filter((hunk) => hunk.op === 'insert').length,
+        removed: hunks.filter((hunk) => hunk.op === 'delete').length,
+      },
+      hunks,
+      ...(truncated ? { truncated: true } : {}),
+    };
+  }
+
+  /* ---------- G. 批量操作 ---------- */
+
+  async bulkContentAction(
+    kind: ContentKind,
+    ids: string[],
+    action: BulkAction,
+  ): Promise<BulkResult> {
+    await wait(140);
+    this.requireRole('editor');
+    const unique = [...new Set(ids)].slice(0, 100);
+    // 逐条独立执行：单条失败只记录在它的结果里，不影响其它条目（契约 G 节）。
+    const results: BulkResultItem[] = await Promise.all(
+      unique.map(async (id): Promise<BulkResultItem> => {
+        try {
+          if (action === 'trash') {
+            await this.deleteContent(kind, id);
+          } else {
+            await this.contentAction(kind, id, action);
+          }
+          return { id, ok: true, error: '' };
+        } catch (err) {
+          return {
+            id,
+            ok: false,
+            error: err instanceof ApiError ? err.message : String(err),
+          };
+        }
+      }),
+    );
+    const succeeded = results.filter((item) => item.ok).length;
+    return { results, succeeded, failed: results.length - succeeded };
+  }
+
+  /* ---------- H. 草稿预览 ---------- */
+
+  async issueContentPreview(kind: ContentKind, id: string): Promise<PreviewGrant> {
+    await wait(120);
+    const user = this.user();
+    const content = this.findContent(kind, id);
+    if (!this.canEditContent(content, user)) {
+      this.fail(403, 'permission_denied', '只有作者与编辑可以预览这篇内容。');
+    }
+    const token = `v1.demo.${uuid().replace(/-/g, '')}`;
+    const expiresAt = Date.now() + DEMO_PREVIEW_TTL_MS;
+    this.previewTokens.set(token, { kind, id: content.id, expires_at: expiresAt });
+    const prefix = kind === 'article' ? '/a' : '/p';
+    return {
+      token,
+      expires_at: new Date(expiresAt).toISOString(),
+      path: `${prefix}/${content.slug || content.id}?preview_token=${token}`,
+    };
+  }
+
+  /* ---------- J. 公开路径解析与重定向 ---------- */
+
+  async resolvePath(path: string): Promise<ResolveResult> {
+    await wait(60);
+    const cleaned = this.cleanPath(path);
+    const match = /^\/([ap])\/([^/]+)$/.exec(cleaned);
+    if (match) {
+      const kind: ContentKind = match[1] === 'a' ? 'article' : 'post';
+      const prefix = match[1] === 'a' ? '/a' : '/p';
+      const key = decodeURIComponent(match[2]);
+      const content = this.state.contents.find(
+        (item) =>
+          item.kind === kind &&
+          !item.deleted_at &&
+          item.status === 'published' &&
+          (item.id === key || item.slug === key),
+      );
+      if (content) {
+        return {
+          kind: 'content',
+          canonical_path: `${prefix}/${content.slug || content.id}`,
+          status: content.id === key ? 301 : 200,
+          content_id: content.id,
+          slug: content.slug,
+          title: content.title,
+        };
+      }
+    }
+    const redirect = this.redirects.find((rule) => rule.from_path === cleaned);
+    if (redirect) {
+      redirect.hit_count += 1;
+      return {
+        kind: 'redirect',
+        canonical_path: redirect.to_path,
+        status: redirect.status_code,
+      };
+    }
+    return { kind: 'missing', canonical_path: '', status: 404 };
+  }
+
+  async listRedirects(
+    siteId: string,
+    query: { limit?: number; cursor?: string; q?: string } = {},
+  ): Promise<Page<RedirectRule>> {
+    await wait(80);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const term = query.q?.trim().toLowerCase() ?? '';
+    const filtered = this.redirects
+      .filter((rule) => !term || rule.from_path.includes(term) || rule.to_path.includes(term))
+      .slice()
+      .sort(
+        (a, b) =>
+          b.created_at.localeCompare(a.created_at) ||
+          a.from_path.localeCompare(b.from_path),
+      );
+    const limit = Math.min(100, Math.max(1, query.limit ?? 50));
+    const offset = Number((query.cursor ?? '').replace(/^o:/, '')) || 0;
+    const page = filtered.slice(offset, offset + limit);
+    const next = offset + page.length;
+    return {
+      items: page,
+      next_cursor: next < filtered.length ? `o:${next}` : '',
+      has_more: next < filtered.length,
+    };
+  }
+
+  async createRedirect(
+    siteId: string,
+    input: {
+      from_path: string;
+      to_path: string;
+      status_code?: RedirectRule['status_code'];
+    },
+  ): Promise<RedirectRule> {
+    await wait(120);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const fromPath = this.normalizeRedirectPath(input.from_path, 'from_path');
+    const toPath = this.normalizeRedirectPath(input.to_path, 'to_path');
+    if (this.redirects.some((rule) => rule.from_path === fromPath)) {
+      this.fail(409, 'conflict', '这条路径已经存在重定向规则。');
+    }
+    const status = input.status_code ?? 301;
+    if (status !== 301 && status !== 302 && status !== 308) {
+      this.fail(400, 'validation_failed', '状态码只能是 301、302 或 308。');
+    }
+    const now = new Date().toISOString();
+    const rule: RedirectRule = {
+      id: `redir_${uuid().slice(0, 8)}`,
+      from_path: fromPath,
+      to_path: toPath,
+      status_code: status,
+      source: 'manual',
+      hit_count: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    this.redirects.unshift(rule);
+    this.log('新建重定向', `${fromPath} → ${toPath}`);
+    return rule;
+  }
+
+  async updateRedirect(
+    siteId: string,
+    redirectId: string,
+    patch: Partial<{
+      from_path: string;
+      to_path: string;
+      status_code: RedirectRule['status_code'];
+    }>,
+  ): Promise<RedirectRule> {
+    await wait(120);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const rule = this.redirects.find((item) => item.id === redirectId);
+    if (!rule) this.fail(404, 'not_found', '重定向规则不存在。');
+    if (patch.from_path !== undefined) {
+      const fromPath = this.normalizeRedirectPath(patch.from_path, 'from_path');
+      if (this.redirects.some((item) => item.id !== rule.id && item.from_path === fromPath)) {
+        this.fail(409, 'conflict', '这条路径已经存在重定向规则。');
+      }
+      rule.from_path = fromPath;
+    }
+    if (patch.to_path !== undefined) {
+      rule.to_path = this.normalizeRedirectPath(patch.to_path, 'to_path');
+    }
+    if (patch.status_code !== undefined) {
+      if (
+        patch.status_code !== 301 &&
+        patch.status_code !== 302 &&
+        patch.status_code !== 308
+      ) {
+        this.fail(400, 'validation_failed', '状态码只能是 301、302 或 308。');
+      }
+      rule.status_code = patch.status_code;
+    }
+    rule.updated_at = new Date().toISOString();
+    this.log('修改重定向', rule.from_path);
+    return rule;
+  }
+
+  async deleteRedirect(siteId: string, redirectId: string): Promise<void> {
+    await wait(120);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const index = this.redirects.findIndex((item) => item.id === redirectId);
+    if (index < 0) this.fail(404, 'not_found', '重定向规则不存在。');
+    const [removed] = this.redirects.splice(index, 1);
+    this.log('删除重定向', removed.from_path);
+  }
+
+  /** 规范化重定向路径：以 `/` 开头、无查询串；空值按校验失败处理。 */
+  private normalizeRedirectPath(value: string, field: string): string {
+    if (!value.trim()) this.fail(400, 'validation_failed', `${field} 不能为空。`);
+    return this.cleanPath(value);
+  }
+
+  /* ---------- K. 日志查看器与队列监控 ---------- */
+
+  async systemLogs(
+    query: { limit?: number; status?: number; path?: string; method?: string } = {},
+  ): Promise<SystemLogEntry[]> {
+    await wait(80);
+    this.requireRole('site_admin');
+    const limit = Math.min(500, Math.max(1, query.limit ?? 100));
+    const status = query.status !== undefined ? String(query.status) : '';
+    const method = query.method?.toUpperCase() ?? '';
+    const path = query.path?.trim() ?? '';
+    return this.demoSystemLogs()
+      .filter((entry) => !status || String(entry.status) === status)
+      .filter((entry) => !method || entry.method.toUpperCase() === method)
+      .filter((entry) => !path || entry.path.includes(path))
+      .slice(0, limit);
+  }
+
+  async systemQueue(): Promise<QueueStatus> {
+    await wait(80);
+    this.requireRole('site_admin');
+    const now = Date.now();
+    return {
+      outbox: { pending: 2, failed: 1, oldest_age_seconds: 95 },
+      recent: [
+        {
+          event_id: 'evt_demo_1',
+          event_type: 'content.published',
+          status: 'published',
+          attempts: 1,
+          last_error: '',
+          occurred_at: new Date(now - 60_000).toISOString(),
+        },
+        {
+          event_id: 'evt_demo_2',
+          event_type: 'community.comment.created',
+          status: 'pending',
+          attempts: 0,
+          last_error: '',
+          occurred_at: new Date(now - 30_000).toISOString(),
+        },
+        {
+          event_id: 'evt_demo_3',
+          event_type: 'newsletter.sent',
+          status: 'failed',
+          attempts: 3,
+          last_error: 'smtp timeout',
+          occurred_at: new Date(now - 600_000).toISOString(),
+        },
+      ],
+      mail: { queued: 1, failed: 1 },
+    };
+  }
+
+  async retryQueue(eventIds: string[] = []): Promise<{ retried: number }> {
+    await wait(160);
+    this.requireRole('site_admin');
+    return { retried: eventIds.length || 3 };
+  }
+
+  /* ---------- L. 自动备份 ---------- */
+
+  async backupSchedule(): Promise<BackupSchedule> {
+    await wait(60);
+    // 演示模式只有一个站点，站点管理员也能看到这份计划（真实后端要求平台管理员）。
+    this.requireRole('site_admin');
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(3, 0, 0, 0);
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+    return {
+      enabled: false,
+      hour: 3,
+      keep: 7,
+      last_run_at: new Date(now.getTime() - 86_400_000).toISOString(),
+      last_status: 'success',
+      last_error: '',
+      next_run_at: next.toISOString(),
+      artifacts: [
+        {
+          name: 'practacu-backup-demo-1.tar.gz',
+          size: 48_211_968,
+          created_at: new Date(now.getTime() - 86_400_000).toISOString(),
+        },
+        {
+          name: 'practacu-backup-demo-2.tar.gz',
+          size: 48_003_072,
+          created_at: new Date(now.getTime() - 2 * 86_400_000).toISOString(),
+        },
+      ],
+    };
+  }
+
+  /* ---------- N. 邮件订阅与 Newsletter ---------- */
+
+  async subscribeNewsletter(input: {
+    email: string;
+    source?: string;
+  }): Promise<{ status: NewsletterSubscriptionStatus }> {
+    await wait(140);
+    const email = input.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.fail(400, 'validation_failed', '邮箱格式不正确。');
+    }
+    const list = this.subscriberList();
+    const existing = list.find((item) => item.email === email);
+    if (existing) {
+      if (existing.status === 'confirmed') return { status: 'confirmed' };
+      // 待确认或已退订：重发确认信，状态回到 pending（契约 N1）。
+      existing.status = 'pending';
+      delete existing.unsubscribed_at;
+      this.issueNewsletterToken(email);
+      return { status: 'pending' };
+    }
+    const now = new Date().toISOString();
+    list.push({
+      id: `sub_${uuid().slice(0, 8)}`,
+      email,
+      status: 'pending',
+      source: input.source?.trim() || 'site',
+      created_at: now,
+    });
+    this.issueNewsletterToken(email);
+    return { status: 'pending' };
+  }
+
+  async confirmNewsletter(token: string): Promise<{ status: NewsletterSubscriptionStatus }> {
+    await wait(120);
+    const email = this.newsletterTokens.get(token);
+    const subscriber = email
+      ? this.subscriberList().find((item) => item.email === email)
+      : undefined;
+    if (!subscriber) this.fail(404, 'not_found', '确认链接无效或已过期。');
+    subscriber.status = 'confirmed';
+    subscriber.confirmed_at = new Date().toISOString();
+    delete subscriber.unsubscribed_at;
+    this.newsletterTokens.delete(token);
+    return { status: 'confirmed' };
+  }
+
+  async unsubscribeNewsletter(token: string): Promise<{ status: NewsletterSubscriptionStatus }> {
+    await wait(120);
+    const email = this.newsletterTokens.get(token);
+    const subscriber = email
+      ? this.subscriberList().find((item) => item.email === email)
+      : undefined;
+    if (!subscriber) this.fail(404, 'not_found', '退订链接无效或已过期。');
+    subscriber.status = 'unsubscribed';
+    subscriber.unsubscribed_at = new Date().toISOString();
+    this.newsletterTokens.delete(token);
+    return { status: 'unsubscribed' };
+  }
+
+  async myNewsletter(): Promise<MyNewsletterPreference> {
+    await wait(60);
+    const user = this.user();
+    const subscriber = this.subscriberList().find(
+      (item) => item.email.toLowerCase() === user.email.toLowerCase(),
+    );
+    const status: SubscriberStatus = subscriber?.status ?? 'unsubscribed';
+    return { subscribed: status === 'confirmed', email: user.email, status };
+  }
+
+  async setMyNewsletter(enabled: boolean): Promise<MyNewsletterPreference> {
+    await wait(120);
+    const user = this.user();
+    const list = this.subscriberList();
+    const email = user.email.toLowerCase();
+    const now = new Date().toISOString();
+    const existing = list.find((item) => item.email === email);
+    if (enabled) {
+      if (existing) {
+        existing.status = 'confirmed';
+        existing.confirmed_at = existing.confirmed_at ?? now;
+        existing.source = 'account';
+        existing.user_id = user.id;
+        delete existing.unsubscribed_at;
+      } else {
+        list.push({
+          id: `sub_${uuid().slice(0, 8)}`,
+          email,
+          status: 'confirmed',
+          source: 'account',
+          user_id: user.id,
+          confirmed_at: now,
+          created_at: now,
+        });
+      }
+      this.log('订阅邮件', user.email);
+    } else if (existing) {
+      existing.status = 'unsubscribed';
+      existing.unsubscribed_at = now;
+      this.log('退订邮件', user.email);
+    }
+    return {
+      subscribed: enabled,
+      email: user.email,
+      status: enabled ? 'confirmed' : 'unsubscribed',
+    };
+  }
+
+  async listSubscribers(
+    siteId: string,
+    query: { status?: string; q?: string; limit?: number; cursor?: string } = {},
+  ): Promise<Page<Subscriber>> {
+    await wait(80);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const term = query.q?.trim().toLowerCase() ?? '';
+    const status = query.status?.trim() ?? '';
+    const filtered = this.subscriberList()
+      .filter((item) => !status || item.status === status)
+      .filter((item) => !term || item.email.includes(term))
+      .slice()
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const limit = Math.min(100, Math.max(1, query.limit ?? 50));
+    const offset = Number((query.cursor ?? '').replace(/^o:/, '')) || 0;
+    const page = filtered.slice(offset, offset + limit);
+    const next = offset + page.length;
+    return {
+      items: page.map((item) => ({ ...item })),
+      next_cursor: next < filtered.length ? `o:${next}` : '',
+      has_more: next < filtered.length,
+    };
+  }
+
+  async deleteSubscriber(siteId: string, subscriberId: string): Promise<void> {
+    await wait(120);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const list = this.subscriberList();
+    const index = list.findIndex((item) => item.id === subscriberId);
+    if (index < 0) this.fail(404, 'not_found', '订阅者不存在。');
+    list.splice(index, 1);
+    this.log('删除订阅者', subscriberId);
+  }
+
+  async newsletterStats(siteId: string): Promise<NewsletterStats> {
+    await wait(60);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const list = this.subscriberList();
+    const since = Date.now() - 7 * 86_400_000;
+    const recent = this.emailLogList().filter(
+      (log) => new Date(log.created_at).getTime() >= since,
+    );
+    return {
+      confirmed: list.filter((item) => item.status === 'confirmed').length,
+      pending: list.filter((item) => item.status === 'pending').length,
+      unsubscribed: list.filter((item) => item.status === 'unsubscribed').length,
+      sent_7d: recent.filter((log) => log.status === 'sent').length,
+      failed_7d: recent.filter((log) => log.status === 'failed').length,
+    };
+  }
+
+  async listEmailTemplates(siteId: string): Promise<EmailTemplate[]> {
+    await wait(60);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    return this.templateList();
+  }
+
+  async saveEmailTemplate(
+    siteId: string,
+    key: string,
+    input: {
+      name?: string;
+      subject?: string;
+      body_html?: string;
+      body_text?: string;
+      enabled?: boolean;
+    },
+  ): Promise<EmailTemplate> {
+    await wait(120);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const template = this.templateList().find((item) => item.key === key);
+    if (!template) this.fail(404, 'not_found', '模板不存在。');
+    const next: EmailTemplate = {
+      ...template,
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.subject !== undefined ? { subject: input.subject } : {}),
+      ...(input.body_html !== undefined ? { body_html: input.body_html } : {}),
+      ...(input.body_text !== undefined ? { body_text: input.body_text } : {}),
+      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      builtin: true,
+      updated_at: new Date().toISOString(),
+    };
+    this.emailTemplateOverrides.set(key, next);
+    this.log('保存邮件模板', key);
+    return { ...next };
+  }
+
+  async resetEmailTemplate(siteId: string, key: string): Promise<void> {
+    await wait(120);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    if (!DEMO_EMAIL_TEMPLATES.some((template) => template.key === key)) {
+      this.fail(404, 'not_found', '模板不存在。');
+    }
+    this.emailTemplateOverrides.delete(key);
+    this.log('恢复默认邮件模板', key);
+  }
+
+  async listEmailLogs(
+    siteId: string,
+    query: { status?: string; kind?: string; limit?: number; cursor?: string } = {},
+  ): Promise<Page<EmailLog>> {
+    await wait(80);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    const status = query.status?.trim() ?? '';
+    const kind = query.kind?.trim() ?? '';
+    const filtered = this.emailLogList()
+      .filter((log) => !status || log.status === status)
+      .filter((log) => !kind || log.kind === kind)
+      .slice()
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const limit = Math.min(100, Math.max(1, query.limit ?? 50));
+    const offset = Number((query.cursor ?? '').replace(/^o:/, '')) || 0;
+    const page = filtered.slice(offset, offset + limit);
+    const next = offset + page.length;
+    return {
+      items: page.map((log) => ({ ...log })),
+      next_cursor: next < filtered.length ? `o:${next}` : '',
+      has_more: next < filtered.length,
+    };
+  }
+
+  async sendNewsletter(
+    siteId: string,
+    input: {
+      subject: string;
+      body_html: string;
+      body_text: string;
+      content_id?: string;
+    },
+  ): Promise<NewsletterSendResult> {
+    await wait(200);
+    this.requireRole('site_admin');
+    if (siteId !== this.state.site.id) this.fail(404, 'site_not_found', '站点不存在。');
+    if (!input.subject.trim()) this.fail(400, 'validation_failed', '主题不能为空。');
+    if (input.content_id && !this.state.contents.some((item) => item.id === input.content_id)) {
+      this.fail(404, 'not_found', '选择的内容不存在。');
+    }
+    const confirmed = this.subscriberList().filter((item) => item.status === 'confirmed');
+    const now = new Date().toISOString();
+    for (const subscriber of confirmed) {
+      this.emailLogList().unshift({
+        id: `mail_${uuid().slice(0, 8)}`,
+        to_email: subscriber.email,
+        kind: 'newsletter',
+        template_key: 'newsletter_post',
+        subject: input.subject.trim(),
+        status: 'queued',
+        created_at: now,
+      });
+      subscriber.last_sent_at = now;
+    }
+    this.log('发送刊物', input.subject.trim(), `${confirmed.length} 位订阅者`);
+    return { queued: confirmed.length };
+  }
+
+  /** 演示模式的请求日志：固定元数据，时间按「第几条」向前推。 */
+  private demoSystemLogs(): SystemLogEntry[] {
+    const now = Date.now();
+    const rows: { method: string; path: string; status: number; ms: number }[] = [
+      { method: 'GET', path: '/api/v1/articles', status: 200, ms: 42 },
+      { method: 'GET', path: '/api/v1/articles/cnt_house', status: 200, ms: 18 },
+      { method: 'GET', path: '/api/v1/posts', status: 200, ms: 33 },
+      { method: 'POST', path: '/api/v1/articles/cnt_house/publish', status: 200, ms: 96 },
+      { method: 'GET', path: '/api/v1/sites/site_demo/analytics', status: 200, ms: 27 },
+      { method: 'POST', path: '/api/v1/auth/login/password', status: 200, ms: 121 },
+      { method: 'GET', path: '/api/v1/me', status: 401, ms: 8 },
+      { method: 'GET', path: '/api/v1/comments', status: 200, ms: 24 },
+      { method: 'POST', path: '/api/v1/comments', status: 201, ms: 55 },
+      { method: 'GET', path: '/api/v1/notifications', status: 200, ms: 14 },
+      { method: 'GET', path: '/api/v1/media', status: 200, ms: 21 },
+      { method: 'POST', path: '/api/v1/media/uploads', status: 202, ms: 64 },
+      { method: 'GET', path: '/api/v1/system/queue', status: 200, ms: 11 },
+      { method: 'POST', path: '/api/v1/system/queue/retry', status: 200, ms: 73 },
+      { method: 'GET', path: '/api/v1/sites/site_demo/redirects', status: 200, ms: 16 },
+      { method: 'POST', path: '/api/v1/articles/cnt_house/preview', status: 200, ms: 19 },
+      { method: 'GET', path: '/api/v1/articles/cnt_house/diff', status: 200, ms: 38 },
+      { method: 'GET', path: '/api/v1/resolve', status: 404, ms: 6 },
+    ];
+    const siteId = this.state.site.id;
+    const adminId = this.state.users[0]?.id ?? '';
+    return rows.map((row, index) => ({
+      time: new Date(now - index * 37_000).toISOString(),
+      request_id: `req_demo_${String(index + 1).padStart(4, '0')}`,
+      method: row.method,
+      path: row.path,
+      status: row.status,
+      duration_ms: row.ms,
+      site_id: siteId,
+      user_id: index % 4 === 0 ? adminId : '',
+    }));
+  }
+
+  /** 演示订阅名单：首次使用时生成，之后在内存里增删改。 */
+  private subscriberList(): Subscriber[] {
+    if (!this.subscribers) {
+      const now = new Date().toISOString();
+      const primary = this.state.users[0];
+      this.subscribers = [
+        {
+          id: 'sub_demo_1',
+          email: (primary?.email ?? 'admin@practacu.local').toLowerCase(),
+          status: 'confirmed',
+          source: 'account',
+          user_id: primary?.id,
+          confirmed_at: now,
+          created_at: now,
+        },
+        {
+          id: 'sub_demo_2',
+          email: 'reader@example.com',
+          status: 'pending',
+          source: 'site',
+          created_at: now,
+        },
+        {
+          id: 'sub_demo_3',
+          email: 'weekly@example.com',
+          status: 'unsubscribed',
+          source: 'site',
+          unsubscribed_at: now,
+          created_at: now,
+        },
+      ];
+    }
+    return this.subscribers;
+  }
+
+  /** 演示邮件日志：首次使用时生成一段历史，发送 newsletter 时继续追加。 */
+  private emailLogList(): EmailLog[] {
+    if (!this.emailLogs) {
+      const now = Date.now();
+      this.emailLogs = [
+        {
+          id: 'mail_demo_1',
+          to_email: 'reader@example.com',
+          kind: 'newsletter',
+          template_key: 'newsletter_post',
+          subject: '本周新文章',
+          status: 'sent',
+          sent_at: new Date(now - 3_600_000).toISOString(),
+          created_at: new Date(now - 3_700_000).toISOString(),
+        },
+        {
+          id: 'mail_demo_2',
+          to_email: 'admin@practacu.local',
+          kind: 'confirm',
+          template_key: 'subscriber_confirm',
+          subject: '确认订阅 Practacu Press',
+          status: 'queued',
+          created_at: new Date(now - 600_000).toISOString(),
+        },
+        {
+          id: 'mail_demo_3',
+          to_email: 'weekly@example.com',
+          kind: 'newsletter',
+          template_key: 'newsletter_post',
+          subject: '上周回顾',
+          status: 'failed',
+          error: 'smtp timeout',
+          created_at: new Date(now - 86_400_000).toISOString(),
+        },
+      ];
+    }
+    return this.emailLogs;
+  }
+
+  /** 内置邮件模板 + 站长改写后的覆盖。 */
+  private templateList(): EmailTemplate[] {
+    return DEMO_EMAIL_TEMPLATES.map((template) => {
+      const override = this.emailTemplateOverrides.get(template.key);
+      if (override) return { ...override };
+      return {
+        key: template.key,
+        name: template.name,
+        subject: template.subject,
+        body_html: `<p>${template.body_text}</p>`,
+        body_text: template.body_text,
+        enabled: true,
+        builtin: true,
+      };
+    });
+  }
+
+  /** 发一张订阅确认 / 退订令牌；演示模式只存在内存里。 */
+  private issueNewsletterToken(email: string): string {
+    const token = `nl.demo.${uuid().replace(/-/g, '')}`;
+    this.newsletterTokens.set(token, email);
+    return token;
   }
 
   docsUrl(): string {

@@ -19,6 +19,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/contentrevision"
 	"github.com/practacu/practacu-press/apps/api/ent/conversation"
 	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
+	"github.com/practacu/practacu-press/apps/api/ent/emaillog"
+	"github.com/practacu/practacu-press/apps/api/ent/emailtemplate"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
@@ -31,9 +33,11 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/pageview"
 	"github.com/practacu/practacu-press/apps/api/ent/permissiongroup"
+	"github.com/practacu/practacu-press/apps/api/ent/phonecode"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/readinghistory"
 	"github.com/practacu/practacu-press/apps/api/ent/recoverycode"
+	"github.com/practacu/practacu-press/apps/api/ent/redirect"
 	"github.com/practacu/practacu-press/apps/api/ent/sensitiveword"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
@@ -42,6 +46,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/siteiprule"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/ent/sitesafetysetting"
+	"github.com/practacu/practacu-press/apps/api/ent/subscriber"
 	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
 	"github.com/practacu/practacu-press/apps/api/ent/twofactor"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
@@ -114,6 +119,8 @@ func checkColumn(t, c string) error {
 			contentrevision.Table:        contentrevision.ValidColumn,
 			conversation.Table:           conversation.ValidColumn,
 			conversationmember.Table:     conversationmember.ValidColumn,
+			emaillog.Table:               emaillog.ValidColumn,
+			emailtemplate.Table:          emailtemplate.ValidColumn,
 			follow.Table:                 follow.ValidColumn,
 			idempotencykey.Table:         idempotencykey.ValidColumn,
 			mediaasset.Table:             mediaasset.ValidColumn,
@@ -126,9 +133,11 @@ func checkColumn(t, c string) error {
 			outboxevent.Table:            outboxevent.ValidColumn,
 			pageview.Table:               pageview.ValidColumn,
 			permissiongroup.Table:        permissiongroup.ValidColumn,
+			phonecode.Table:              phonecode.ValidColumn,
 			reaction.Table:               reaction.ValidColumn,
 			readinghistory.Table:         readinghistory.ValidColumn,
 			recoverycode.Table:           recoverycode.ValidColumn,
+			redirect.Table:               redirect.ValidColumn,
 			sensitiveword.Table:          sensitiveword.ValidColumn,
 			session.Table:                session.ValidColumn,
 			site.Table:                   site.ValidColumn,
@@ -137,6 +146,7 @@ func checkColumn(t, c string) error {
 			siteiprule.Table:             siteiprule.ValidColumn,
 			sitemember.Table:             sitemember.ValidColumn,
 			sitesafetysetting.Table:      sitesafetysetting.ValidColumn,
+			subscriber.Table:             subscriber.ValidColumn,
 			taxonomyterm.Table:           taxonomyterm.ValidColumn,
 			twofactor.Table:              twofactor.ValidColumn,
 			user.Table:                   user.ValidColumn,

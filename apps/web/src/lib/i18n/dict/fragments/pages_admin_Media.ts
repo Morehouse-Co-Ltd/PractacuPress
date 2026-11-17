@@ -78,6 +78,22 @@ const fragment: Dictionary = {
   上传失败: 'Upload failed',
   '列表最多载入 100 条（按上传时间倒序），状态筛选在浏览器内完成。':
     'The list loads up to 100 items, newest first; status filtering happens in the browser.',
+
+  // ---- 预览 / 删除（Beta 1.2） ----
+  预览素材: 'Preview asset',
+  '预览「{name}」': 'Preview “{name}”',
+  '浏览器无法直接预览这个文件，可以复制「引用」里的地址打开。':
+    'The browser cannot preview this file directly; copy the address from “Quote” and open it.',
+  删除素材: 'Delete asset',
+  '删除素材「{name}」': 'Delete the asset “{name}”',
+  删除后不可恢复: 'Deletion cannot be undone',
+  '被内容引用的素材不能删除；先解除引用再试。':
+    'An asset that content references cannot be deleted; remove the reference first.',
+  '删除会同时清掉所有尺寸变体，无法撤销。':
+    'Deleting also removes every size variant; it cannot be undone.',
+  删除失败: 'Delete failed',
+  '删除失败。': 'Deletion failed.',
+  已删除素材: 'Asset deleted',
 };
 
 export default fragment;

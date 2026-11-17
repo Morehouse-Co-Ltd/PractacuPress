@@ -7,6 +7,7 @@ import {
   MAX_NAV_TABS,
   MAX_SOCIAL_LINKS,
   autoNavTabs,
+  contentPath,
   defaultFooterColumns,
   footerColumnsForReader,
   navIconName,
@@ -137,6 +138,22 @@ describe('导航 Tab', () => {
       navIconPositionOf({ id: 'a', label: 'A', href: '/', icon_position: 'none' }, layout),
     ).toBe('none');
     expect(navSubStyleOf({ id: 'a', label: 'A', href: '/', sub_style: 'bar' }, layout)).toBe('bar');
+  });
+});
+
+describe('内容详情地址', () => {
+  it('优先用 slug，按 kind 选前缀', () => {
+    expect(contentPath({ id: 'art_1', kind: 'article', slug: 'quiet-yard' })).toBe(
+      '/a/quiet-yard',
+    );
+    expect(contentPath({ id: 'p_9', kind: 'post', slug: 'nesting' })).toBe('/p/nesting');
+  });
+
+  it('缺 kind 按文章处理，slug 为空时回退 id', () => {
+    expect(contentPath({ id: 'art_1', slug: 'quiet-yard' })).toBe('/a/quiet-yard');
+    expect(contentPath({ id: 'art_1', slug: '' })).toBe('/a/art_1');
+    expect(contentPath({ id: 'art_1', slug: '   ' })).toBe('/a/art_1');
+    expect(contentPath({ id: 'p_9', kind: 'post' })).toBe('/p/p_9');
   });
 });
 

@@ -83,6 +83,48 @@ func (_c *PageViewCreate) SetNillableSurface(v *string) *PageViewCreate {
 	return _c
 }
 
+// SetReferrerHost sets the "referrer_host" field.
+func (_c *PageViewCreate) SetReferrerHost(v string) *PageViewCreate {
+	_c.mutation.SetReferrerHost(v)
+	return _c
+}
+
+// SetNillableReferrerHost sets the "referrer_host" field if the given value is not nil.
+func (_c *PageViewCreate) SetNillableReferrerHost(v *string) *PageViewCreate {
+	if v != nil {
+		_c.SetReferrerHost(*v)
+	}
+	return _c
+}
+
+// SetSource sets the "source" field.
+func (_c *PageViewCreate) SetSource(v string) *PageViewCreate {
+	_c.mutation.SetSource(v)
+	return _c
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_c *PageViewCreate) SetNillableSource(v *string) *PageViewCreate {
+	if v != nil {
+		_c.SetSource(*v)
+	}
+	return _c
+}
+
+// SetDevice sets the "device" field.
+func (_c *PageViewCreate) SetDevice(v string) *PageViewCreate {
+	_c.mutation.SetDevice(v)
+	return _c
+}
+
+// SetNillableDevice sets the "device" field if the given value is not nil.
+func (_c *PageViewCreate) SetNillableDevice(v *string) *PageViewCreate {
+	if v != nil {
+		_c.SetDevice(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *PageViewCreate) SetCreatedAt(v time.Time) *PageViewCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -158,6 +200,18 @@ func (_c *PageViewCreate) defaults() {
 		v := pageview.DefaultSurface
 		_c.mutation.SetSurface(v)
 	}
+	if _, ok := _c.mutation.ReferrerHost(); !ok {
+		v := pageview.DefaultReferrerHost
+		_c.mutation.SetReferrerHost(v)
+	}
+	if _, ok := _c.mutation.Source(); !ok {
+		v := pageview.DefaultSource
+		_c.mutation.SetSource(v)
+	}
+	if _, ok := _c.mutation.Device(); !ok {
+		v := pageview.DefaultDevice
+		_c.mutation.SetDevice(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := pageview.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -216,6 +270,30 @@ func (_c *PageViewCreate) check() error {
 	if v, ok := _c.mutation.Surface(); ok {
 		if err := pageview.SurfaceValidator(v); err != nil {
 			return &ValidationError{Name: "surface", err: fmt.Errorf(`ent: validator failed for field "PageView.surface": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ReferrerHost(); !ok {
+		return &ValidationError{Name: "referrer_host", err: errors.New(`ent: missing required field "PageView.referrer_host"`)}
+	}
+	if v, ok := _c.mutation.ReferrerHost(); ok {
+		if err := pageview.ReferrerHostValidator(v); err != nil {
+			return &ValidationError{Name: "referrer_host", err: fmt.Errorf(`ent: validator failed for field "PageView.referrer_host": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Source(); !ok {
+		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "PageView.source"`)}
+	}
+	if v, ok := _c.mutation.Source(); ok {
+		if err := pageview.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "PageView.source": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Device(); !ok {
+		return &ValidationError{Name: "device", err: errors.New(`ent: missing required field "PageView.device"`)}
+	}
+	if v, ok := _c.mutation.Device(); ok {
+		if err := pageview.DeviceValidator(v); err != nil {
+			return &ValidationError{Name: "device", err: fmt.Errorf(`ent: validator failed for field "PageView.device": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -285,6 +363,18 @@ func (_c *PageViewCreate) createSpec() (*PageView, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Surface(); ok {
 		_spec.SetField(pageview.FieldSurface, field.TypeString, value)
 		_node.Surface = value
+	}
+	if value, ok := _c.mutation.ReferrerHost(); ok {
+		_spec.SetField(pageview.FieldReferrerHost, field.TypeString, value)
+		_node.ReferrerHost = value
+	}
+	if value, ok := _c.mutation.Source(); ok {
+		_spec.SetField(pageview.FieldSource, field.TypeString, value)
+		_node.Source = value
+	}
+	if value, ok := _c.mutation.Device(); ok {
+		_spec.SetField(pageview.FieldDevice, field.TypeString, value)
+		_node.Device = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(pageview.FieldCreatedAt, field.TypeTime, value)
@@ -399,6 +489,42 @@ func (u *PageViewUpsert) SetSurface(v string) *PageViewUpsert {
 // UpdateSurface sets the "surface" field to the value that was provided on create.
 func (u *PageViewUpsert) UpdateSurface() *PageViewUpsert {
 	u.SetExcluded(pageview.FieldSurface)
+	return u
+}
+
+// SetReferrerHost sets the "referrer_host" field.
+func (u *PageViewUpsert) SetReferrerHost(v string) *PageViewUpsert {
+	u.Set(pageview.FieldReferrerHost, v)
+	return u
+}
+
+// UpdateReferrerHost sets the "referrer_host" field to the value that was provided on create.
+func (u *PageViewUpsert) UpdateReferrerHost() *PageViewUpsert {
+	u.SetExcluded(pageview.FieldReferrerHost)
+	return u
+}
+
+// SetSource sets the "source" field.
+func (u *PageViewUpsert) SetSource(v string) *PageViewUpsert {
+	u.Set(pageview.FieldSource, v)
+	return u
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *PageViewUpsert) UpdateSource() *PageViewUpsert {
+	u.SetExcluded(pageview.FieldSource)
+	return u
+}
+
+// SetDevice sets the "device" field.
+func (u *PageViewUpsert) SetDevice(v string) *PageViewUpsert {
+	u.Set(pageview.FieldDevice, v)
+	return u
+}
+
+// UpdateDevice sets the "device" field to the value that was provided on create.
+func (u *PageViewUpsert) UpdateDevice() *PageViewUpsert {
+	u.SetExcluded(pageview.FieldDevice)
 	return u
 }
 
@@ -523,6 +649,48 @@ func (u *PageViewUpsertOne) SetSurface(v string) *PageViewUpsertOne {
 func (u *PageViewUpsertOne) UpdateSurface() *PageViewUpsertOne {
 	return u.Update(func(s *PageViewUpsert) {
 		s.UpdateSurface()
+	})
+}
+
+// SetReferrerHost sets the "referrer_host" field.
+func (u *PageViewUpsertOne) SetReferrerHost(v string) *PageViewUpsertOne {
+	return u.Update(func(s *PageViewUpsert) {
+		s.SetReferrerHost(v)
+	})
+}
+
+// UpdateReferrerHost sets the "referrer_host" field to the value that was provided on create.
+func (u *PageViewUpsertOne) UpdateReferrerHost() *PageViewUpsertOne {
+	return u.Update(func(s *PageViewUpsert) {
+		s.UpdateReferrerHost()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *PageViewUpsertOne) SetSource(v string) *PageViewUpsertOne {
+	return u.Update(func(s *PageViewUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *PageViewUpsertOne) UpdateSource() *PageViewUpsertOne {
+	return u.Update(func(s *PageViewUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// SetDevice sets the "device" field.
+func (u *PageViewUpsertOne) SetDevice(v string) *PageViewUpsertOne {
+	return u.Update(func(s *PageViewUpsert) {
+		s.SetDevice(v)
+	})
+}
+
+// UpdateDevice sets the "device" field to the value that was provided on create.
+func (u *PageViewUpsertOne) UpdateDevice() *PageViewUpsertOne {
+	return u.Update(func(s *PageViewUpsert) {
+		s.UpdateDevice()
 	})
 }
 
@@ -814,6 +982,48 @@ func (u *PageViewUpsertBulk) SetSurface(v string) *PageViewUpsertBulk {
 func (u *PageViewUpsertBulk) UpdateSurface() *PageViewUpsertBulk {
 	return u.Update(func(s *PageViewUpsert) {
 		s.UpdateSurface()
+	})
+}
+
+// SetReferrerHost sets the "referrer_host" field.
+func (u *PageViewUpsertBulk) SetReferrerHost(v string) *PageViewUpsertBulk {
+	return u.Update(func(s *PageViewUpsert) {
+		s.SetReferrerHost(v)
+	})
+}
+
+// UpdateReferrerHost sets the "referrer_host" field to the value that was provided on create.
+func (u *PageViewUpsertBulk) UpdateReferrerHost() *PageViewUpsertBulk {
+	return u.Update(func(s *PageViewUpsert) {
+		s.UpdateReferrerHost()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *PageViewUpsertBulk) SetSource(v string) *PageViewUpsertBulk {
+	return u.Update(func(s *PageViewUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *PageViewUpsertBulk) UpdateSource() *PageViewUpsertBulk {
+	return u.Update(func(s *PageViewUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// SetDevice sets the "device" field.
+func (u *PageViewUpsertBulk) SetDevice(v string) *PageViewUpsertBulk {
+	return u.Update(func(s *PageViewUpsert) {
+		s.SetDevice(v)
+	})
+}
+
+// UpdateDevice sets the "device" field to the value that was provided on create.
+func (u *PageViewUpsertBulk) UpdateDevice() *PageViewUpsertBulk {
+	return u.Update(func(s *PageViewUpsert) {
+		s.UpdateDevice()
 	})
 }
 

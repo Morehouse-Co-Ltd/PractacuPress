@@ -39,11 +39,15 @@ const fragment: Dictionary = {
     'The queue is empty. New submissions show up here and trigger a notification.',
   作者: 'Author',
 
-  // ---- 最近操作 ----
+  // ---- 最近操作（服务端 audit_logs） ----
   最近操作: 'Recent activity',
-  演示后端记录: 'Recorded by the demo backend',
-  '本浏览器记录（无审计端点）': 'Recorded in this browser (no audit endpoint)',
+  '来自服务端 audit_logs 的审计记录': 'Audit records from the server audit_logs table',
+  '只有站点管理员可以查看服务端审计记录。': 'Only site admins can view server audit records.',
+  无法读取最近操作: 'Could not load recent activity',
   '还没有操作日志。': 'No activity recorded yet.',
+  成功: 'Success',
+  失败: 'Failure',
+  系统: 'System',
 };
 
 export default fragment;

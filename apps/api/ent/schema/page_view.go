@@ -13,6 +13,31 @@ const (
 	PageViewSurfaceAdmin = "admin"
 )
 
+// Traffic source values, derived on the server from the referrer host. The raw
+// referrer string already column exists, but grouping by it would need a wildcard
+// match on every report query; the enum is what the source breakdown aggregates.
+const (
+	PageViewSourceDirect   = "direct"
+	PageViewSourceSearch   = "search"
+	PageViewSourceSocial   = "social"
+	PageViewSourceReferral = "referral"
+	PageViewSourceInternal = "internal"
+	PageViewSourceUnknown  = "unknown"
+)
+
+// Device classes, derived from the User-Agent header at write time.
+//
+// The user agent itself is never stored: the dashboard only needs "how many mobile
+// readers", and keeping a per-visitor fingerprint would turn an anonymous counter
+// into a tracking table.
+const (
+	PageViewDeviceDesktop = "desktop"
+	PageViewDeviceMobile  = "mobile"
+	PageViewDeviceTablet  = "tablet"
+	PageViewDeviceBot     = "bot"
+	PageViewDeviceUnknown = "unknown"
+)
+
 // PageView is one recorded page visit.
 //
 // The row is an immutable event: it has no updated_at and is never edited. The
@@ -36,6 +61,21 @@ func (PageView) Fields() []ent.Field {
 		field.String("surface").
 			Default(PageViewSurfaceSite).
 			Validate(oneOf(PageViewSurfaceSite, PageViewSurfaceAdmin)),
+		// referrer_host is the host of the incoming referrer, lowercased and without
+		// scheme or path. Empty for a direct visit.
+		field.String("referrer_host").MaxLen(255).Default(""),
+		field.String("source").
+			Default(PageViewSourceUnknown).
+			Validate(oneOf(
+				PageViewSourceDirect, PageViewSourceSearch, PageViewSourceSocial,
+				PageViewSourceReferral, PageViewSourceInternal, PageViewSourceUnknown,
+			)),
+		field.String("device").
+			Default(PageViewDeviceUnknown).
+			Validate(oneOf(
+				PageViewDeviceDesktop, PageViewDeviceMobile,
+				PageViewDeviceTablet, PageViewDeviceBot, PageViewDeviceUnknown,
+			)),
 		createdField(),
 	}
 }
@@ -47,5 +87,8 @@ func (PageView) Indexes() []ent.Index {
 		index.Fields("site_id", "surface", "created_at"),
 		// Unique session and online counts per site.
 		index.Fields("site_id", "session", "created_at"),
+		// The source and device breakdowns group over one window.
+		index.Fields("site_id", "source", "created_at"),
+		index.Fields("site_id", "device", "created_at"),
 	}
 }

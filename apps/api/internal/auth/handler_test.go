@@ -50,6 +50,7 @@ func (s staticResolver) Resolve(context.Context, string) (site.Site, error) { re
 // hasher, bootstrap rule) while keeping the real Ent store, router and middleware.
 type apiHarnessOptions struct {
 	mailer              mailer.Sender
+	mailLog             auth.MailLog
 	hasher              auth.PasswordHasher
 	now                 func() time.Time
 	bootstrapFirstAdmin bool
@@ -112,6 +113,7 @@ func newAPIHarnessWithOptions(t *testing.T, opts apiHarnessOptions) *apiHarness 
 		Hasher:              hasher,
 		Tokens:              issuer,
 		Mailer:              opts.mailer,
+		MailLog:             opts.mailLog,
 		Now:                 opts.now,
 		BootstrapFirstAdmin: opts.bootstrapFirstAdmin,
 		RegistrationPolicy:  opts.registrationPolicy,

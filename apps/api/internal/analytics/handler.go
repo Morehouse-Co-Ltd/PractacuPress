@@ -86,6 +86,29 @@ type topContentResponse struct {
 	Count int    `json:"count"`
 }
 
+type sourceResponse struct {
+	Source   string `json:"source"`
+	Visits   int    `json:"visits"`
+	Sessions int    `json:"sessions"`
+}
+
+type deviceResponse struct {
+	Device   string `json:"device"`
+	Visits   int    `json:"visits"`
+	Sessions int    `json:"sessions"`
+}
+
+type referrerResponse struct {
+	Host   string `json:"host"`
+	Visits int    `json:"visits"`
+}
+
+type retentionResponse struct {
+	Date              string `json:"date"`
+	NewSessions       int    `json:"new_sessions"`
+	ReturningSessions int    `json:"returning_sessions"`
+}
+
 type recentVisitResponse struct {
 	Path      string `json:"path"`
 	Title     string `json:"title"`
@@ -95,12 +118,16 @@ type recentVisitResponse struct {
 }
 
 type reportResponse struct {
-	Range      string                `json:"range"`
-	Totals     totalsResponse        `json:"totals"`
-	Series     []pointResponse       `json:"series"`
-	TopPages   []topPageResponse     `json:"top_pages"`
-	TopContent []topContentResponse  `json:"top_content"`
-	Recent     []recentVisitResponse `json:"recent"`
+	Range        string                `json:"range"`
+	Totals       totalsResponse        `json:"totals"`
+	Series       []pointResponse       `json:"series"`
+	TopPages     []topPageResponse     `json:"top_pages"`
+	TopContent   []topContentResponse  `json:"top_content"`
+	Recent       []recentVisitResponse `json:"recent"`
+	Sources      []sourceResponse      `json:"sources"`
+	Devices      []deviceResponse      `json:"devices"`
+	TopReferrers []referrerResponse    `json:"top_referrers"`
+	Retention    []retentionResponse   `json:"retention"`
 }
 
 // RecordVisit stores one page view and answers 204.
@@ -130,12 +157,27 @@ func (h *Handler) RecordVisit(c *gin.Context) {
 		return
 	}
 
+	// Source, referrer host and device are derived on the server. The body referrer
+	// comes first: the tracking POST is a same-origin beacon, so its Referer header is
+	// the tracked page itself and would classify every real external entry as
+	// internal. The front end sends document.referrer in the body, and the header is
+	// only a fallback for clients that omit it. The request host and the configured
+	// domain both identify this site so a same-site referrer stays internal.
+	signals := DeriveVisitSignals(
+		req.Referrer,
+		c.GetHeader("Referer"),
+		c.GetHeader("User-Agent"),
+		c.Request.Host,
+		resolved.Domain,
+	)
+
 	err := h.service.Record(c.Request.Context(), resolved.ID, VisitInput{
 		Path:     req.Path,
 		Title:    req.Title,
 		Referrer: req.Referrer,
 		Session:  req.Session,
 		Surface:  Surface(req.Surface),
+		Signals:  signals,
 	})
 	if err != nil {
 		_ = c.Error(mapError(err))
@@ -209,13 +251,49 @@ func toReportResponse(report Report) reportResponse {
 		})
 	}
 
+	sources := make([]sourceResponse, 0, len(report.Sources))
+	for _, item := range report.Sources {
+		sources = append(sources, sourceResponse{
+			Source:   string(item.Source),
+			Visits:   item.Visits,
+			Sessions: item.Sessions,
+		})
+	}
+
+	devices := make([]deviceResponse, 0, len(report.Devices))
+	for _, item := range report.Devices {
+		devices = append(devices, deviceResponse{
+			Device:   string(item.Device),
+			Visits:   item.Visits,
+			Sessions: item.Sessions,
+		})
+	}
+
+	referrers := make([]referrerResponse, 0, len(report.TopReferrers))
+	for _, item := range report.TopReferrers {
+		referrers = append(referrers, referrerResponse{Host: item.Host, Visits: item.Visits})
+	}
+
+	retention := make([]retentionResponse, 0, len(report.Retention))
+	for _, item := range report.Retention {
+		retention = append(retention, retentionResponse{
+			Date:              item.Date,
+			NewSessions:       item.NewSessions,
+			ReturningSessions: item.ReturningSessions,
+		})
+	}
+
 	return reportResponse{
-		Range:      string(report.Range),
-		Totals:     totalsResponse{Views: report.Totals.Views, Sessions: report.Totals.Sessions, Online: report.Totals.Online},
-		Series:     series,
-		TopPages:   pages,
-		TopContent: content,
-		Recent:     recent,
+		Range:        string(report.Range),
+		Totals:       totalsResponse{Views: report.Totals.Views, Sessions: report.Totals.Sessions, Online: report.Totals.Online},
+		Series:       series,
+		TopPages:     pages,
+		TopContent:   content,
+		Recent:       recent,
+		Sources:      sources,
+		Devices:      devices,
+		TopReferrers: referrers,
+		Retention:    retention,
 	}
 }
 

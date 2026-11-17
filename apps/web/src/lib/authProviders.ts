@@ -42,6 +42,23 @@ export interface ProviderMeta {
   icon: IconName;
   summary: string;
   detail: string;
+  /**
+   * 真实后端能不能真正走完这种登录。
+   *
+   * - `oauth`：后端注册了 `GET /api/v1/auth/oauth/{id}/start`，点击后整页跳转即可；
+   * - `unsupported`：后端没有对应端点，登录页只能把入口标成不可用。
+   *
+   * 依据是后端自己的注册表（只读参考，前端不复制它的逻辑）：
+   * `apps/api/internal/transport/http/gin/router.go:303` 只挂了
+   * `/auth/oauth/:provider/start|callback`；`apps/api/internal/platform/config/config.go:736`
+   * 的提供方白名单是 google/github/wechat，而真正实现并注册的是
+   * `apps/api/cmd/server/oauth.go:43` 里的 google 与 github（微信还没有实现，QQ 连白名单
+   * 都不在）；短信与身份验证器登录则没有任何 `/auth` 端点
+   * （`apps/api/internal/auth/handler.go:147` 起只有邮箱注册、密码登录、刷新与两步验证）。
+   */
+  backend: 'oauth' | 'unsupported';
+  /** 后端不支持时展示给用户的说明；支持的提供方省略。 */
+  unsupportedHint?: string;
   /** 非机密字段。 */
   fields: ProviderField[];
   /** 只写进 .env，不落浏览器。 */
@@ -57,6 +74,8 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     icon: 'message',
     summary: t('用手机号与短信验证码登录。'),
     detail: t('需要短信服务商、签名与模板，密钥只存服务端。'),
+    backend: 'unsupported',
+    unsupportedHint: t('服务端还没有短信登录端点，这个入口暂时不可用。'),
     fields: [
       {
         key: 'note',
@@ -94,6 +113,7 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     icon: 'globe',
     summary: t('用 Google 账户授权登录。'),
     detail: t('需要 OAuth 客户端与已登记的回调地址。'),
+    backend: 'oauth',
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: '000000000000-xxxx.apps.googleusercontent.com', required: true },
       {
@@ -114,6 +134,7 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     icon: 'code',
     summary: t('用 GitHub 账户授权登录。'),
     detail: t('适合技术站点；需要 OAuth App。'),
+    backend: 'oauth',
     fields: [
       { key: 'client_id', label: 'Client ID', placeholder: 'Iv1.xxxxxxxxxxxx', required: true },
       {
@@ -133,6 +154,8 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     icon: 'message',
     summary: t('用微信扫码或公众号授权登录。'),
     detail: t('需要开放平台网站应用或公众号网页授权。'),
+    backend: 'unsupported',
+    unsupportedHint: t('服务端还没有实现微信登录，这个入口暂时不可用。'),
     fields: [
       { key: 'client_id', label: 'AppID', placeholder: 'wx0000000000000000', required: true },
       {
@@ -153,6 +176,8 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     icon: 'message',
     summary: t('用 QQ 账户授权登录。'),
     detail: t('需要在 QQ 互联创建网站应用，并登记回调地址。'),
+    backend: 'unsupported',
+    unsupportedHint: t('服务端没有 QQ 登录端点，这个入口暂时不可用。'),
     fields: [
       { key: 'client_id', label: t('AppID'), placeholder: '101000000', required: true },
       {
@@ -173,6 +198,8 @@ const RAW_PROVIDER_META: ProviderMeta[] = [
     icon: 'shield',
     summary: t('用身份验证器 App 的动态验证码登录。'),
     detail: t('基于 TOTP；用户需要先在账户安全里绑定身份验证器。'),
+    backend: 'unsupported',
+    unsupportedHint: t('身份验证器只用于两步验证的第二步，不能单独登录。'),
     fields: [
       { key: 'note', label: t('发行方名称'), placeholder: 'Practacu Press' },
       { key: 'extra', label: t('动态码位数'), placeholder: '6' },
@@ -250,6 +277,18 @@ export function activeProviders(settings: AuthSettings): AuthProviderId[] {
 
 export function providerEndpoint(id: AuthProviderId): string {
   return PROVIDER_BY_ID[id].endpoint;
+}
+
+/**
+ * 真实后端能不能在登录页真正发起这种登录。
+ *
+ * 只有后端注册了 `GET /api/v1/auth/oauth/{provider}/start` 的提供方返回 true；其余
+ * 方式（短信、验证器、微信、QQ）跳过去只会拿到一页 problem+json，所以登录页把它们
+ * 标成不可用，而不是等用户点了再报错。演示模式不走这个判断：演示后端用本地模拟，
+ * 任何方式都能「登录成功」。
+ */
+export function providerStartsOAuth(id: AuthProviderId): boolean {
+  return PROVIDER_BY_ID[id].backend === 'oauth';
 }
 
 /** 生成服务端环境变量片段；密钥只在本次会话里拼进去，不会被保存。 */

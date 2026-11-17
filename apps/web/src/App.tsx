@@ -52,6 +52,7 @@ import { MessagesPage } from './pages/site/Messages';
 import { AuthPage } from './pages/site/Auth';
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/site/PasswordReset';
 import { VerifyEmailPage } from './pages/site/VerifyEmail';
+import { NewsletterActionPage } from './pages/site/NewsletterAction';
 import { NotFoundPage } from './pages/NotFound';
 import { DashboardPage } from './pages/admin/Dashboard';
 import { ContentListPage } from './pages/admin/ContentList';
@@ -78,6 +79,10 @@ import { TaxonomyPage } from './pages/admin/Taxonomy';
 import { MediaPage } from './pages/admin/Media';
 import { ActivityPage } from './pages/admin/Activity';
 import { DocsPage } from './pages/admin/Docs';
+import { RedirectsPage } from './pages/admin/Redirects';
+import { InsightsPage } from './pages/admin/Insights';
+import { ObservabilityPage } from './pages/admin/Observability';
+import { NewsletterPage } from './pages/admin/Newsletter';
 import { PagesPage } from './pages/admin/Pages';
 import { PageEditorPage } from './pages/admin/PageEditor';
 import { ThemesPage } from './pages/admin/Themes';
@@ -587,6 +592,15 @@ export default function App() {
                 <Route path="forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="reset-password" element={<ResetPasswordPage />} />
                 <Route path="verify-email" element={<VerifyEmailPage />} />
+                {/*
+                  Beta 1.2：邮件订阅的双确认与退订链接落地页。两页都是公开的，
+                  令牌从 query 读，所以不需要登录就能完成。
+                */}
+                <Route path="newsletter/confirm" element={<NewsletterActionPage mode="confirm" />} />
+                <Route
+                  path="newsletter/unsubscribe"
+                  element={<NewsletterActionPage mode="unsubscribe" />}
+                />
                 <Route
                   path="notifications"
                   element={
@@ -693,6 +707,15 @@ export default function App() {
                 <Route path="loading" element={<LoadingPage />} />
                 <Route path="activity" element={<ActivityPage />} />
                 <Route path="docs" element={<DocsPage />} />
+                {/*
+                  Beta 1.2 第二批：永久链接规则、访问洞察（来源/留存/设备）与运行观察
+                  （请求日志、队列、自动备份）。三者都是站点管理员可见的运维面。
+                */}
+                <Route path="redirects" element={<RedirectsPage />} />
+                <Route path="insights" element={<InsightsPage />} />
+                <Route path="observability" element={<ObservabilityPage />} />
+                {/* 邮件订阅：名单、模板、投递日志与群发。 */}
+                <Route path="newsletter" element={<NewsletterPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>

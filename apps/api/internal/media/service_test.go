@@ -788,6 +788,7 @@ func seedAsset(
 	asset, err := repo.InsertAsset(context.Background(), Asset{
 		SiteID:     siteID,
 		OwnerID:    "u1",
+		FileName:   "photo.png",
 		StorageKey: fmt.Sprintf("ab/%d.png", len(repo.assets)),
 		MIME:       "image/png",
 		Size:       10,

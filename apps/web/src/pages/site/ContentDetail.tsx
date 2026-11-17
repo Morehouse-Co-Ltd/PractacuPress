@@ -287,10 +287,11 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       : undefined;
   const authorName = item?.author_name || profileAuthorName;
   // 作者明确隐藏封面时，整块 .article-hero 不渲染，避免留下空画框。
-  const coverHidden = useCoverHidden(item?.id);
+  // 封面已迁入内容模型（Beta 1.2）：内容对象优先，站点外观里的旧配置回退。
+  const coverHidden = useCoverHidden(item?.id, item);
   // 详情页的封面改成「全宽封面头」：有上传的图片就铺图片，没有就铺同款程序化封面，
   // 标题与摘要压在图上，正文顶部再衬一层同图的高斯模糊——和列表卡片共用一套封面。
-  const heroCover = coverHidden ? undefined : visibleCoverFor(customization, item?.id);
+  const heroCover = coverHidden ? undefined : visibleCoverFor(customization, item?.id, item);
 
   // 顶部透明 / 悬浮页头会被封面压在下面：给 <html> 打一个标记，让页头文字在滚动前切成白色，
   // 滚动后页头恢复实底，样式表会自动回到主题色（见 styles/articleHero.css）。
@@ -303,7 +304,23 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       delete root.dataset.articleHero;
     };
   }, [coverHidden, item]);
-  // 详情页的 SEO 在数据到位后写入；分享图优先取正文第一张图。
+  // 内容级 SEO 覆盖（Beta 1.2）：交给 lib/seo.ts 合并，字段缺省时自动回退站点级配置。
+  // 只挑这几个字段而不是整份 item：useSeo 内部会用 JSON.stringify 比较输入，
+  // 把 rendered_html 也塞进去会让每次渲染都白序列化一份正文。
+  const seoOverrides = useMemo(
+    () => ({
+      seo_title: item?.seo_title,
+      seo_description: item?.seo_description,
+      seo_keywords: item?.seo_keywords,
+      canonical_url: item?.canonical_url,
+      og_image: item?.og_image,
+      cover_url: item?.cover_url,
+      robots: item?.robots,
+    }),
+    [item],
+  );
+  // 详情页的 SEO 在数据到位后写入。分享图优先级由 lib/seo.ts 决定：
+  // 内容 og_image → 内容封面 → 正文第一张图 → 站点默认分享图。
   useSeo({
     title: item?.title,
     description: item?.summary,
@@ -314,6 +331,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     modifiedAt: item?.updated_at,
     author: authorName,
     keywords: item?.kind === 'article' ? [t('文章')] : [t('帖子')],
+    content: seoOverrides,
     jsonLd: item
       ? [
           articleJsonLd({

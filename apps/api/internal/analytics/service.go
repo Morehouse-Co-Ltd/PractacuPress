@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
@@ -68,14 +69,50 @@ func (s *Service) Record(ctx context.Context, siteID string, in VisitInput) erro
 	}
 
 	return s.repo.Insert(ctx, Visit{
-		SiteID:    siteID,
-		Path:      validated.Path,
-		Title:     validated.Title,
-		Referrer:  validated.Referrer,
-		Session:   validated.Session,
-		Surface:   validated.Surface,
-		CreatedAt: now,
+		SiteID:       siteID,
+		Path:         validated.Path,
+		Title:        validated.Title,
+		Referrer:     validated.Referrer,
+		ReferrerHost: boundReferrerHost(validated.Signals.ReferrerHost),
+		Source:       normalizeSource(validated.Signals.Source),
+		Device:       normalizeDevice(validated.Signals.Device),
+		Session:      validated.Session,
+		Surface:      validated.Surface,
+		CreatedAt:    now,
 	})
+}
+
+// boundReferrerHost keeps a derived host inside the column bound. Derivation already
+// drops over-long hosts; this guards a caller that builds Signals by hand so a visit
+// write can never fail on a value the browser did not even supply.
+func boundReferrerHost(host string) string {
+	if len(host) <= MaxReferrerHostLength {
+		return host
+	}
+	// Cut on a rune boundary: a split multi byte rune is invalid UTF-8, which strict
+	// backends such as PostgreSQL reject.
+	truncated := host[:MaxReferrerHostLength]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return truncated
+}
+
+// normalizeSource falls back to unknown so a directly constructed visit still
+// satisfies the storage enum instead of failing the write.
+func normalizeSource(source Source) Source {
+	if !source.Valid() {
+		return SourceUnknown
+	}
+	return source
+}
+
+// normalizeDevice falls back to unknown for the same reason as normalizeSource.
+func normalizeDevice(device Device) Device {
+	if !device.Valid() {
+		return DeviceUnknown
+	}
+	return device
 }
 
 // isDuplicateVisit reports whether this view was already accepted in the current
@@ -185,12 +222,16 @@ func (s *Service) Report(
 	}
 
 	return Report{
-		Range:      rangeValue,
-		Totals:     Totals{Views: aggregate.Views, Sessions: aggregate.Sessions, Online: aggregate.Online},
-		Series:     series,
-		TopPages:   topPages(aggregate.PageCounts, MaxTopPages),
-		TopContent: topContent(aggregate.PageCounts, MaxTopContent),
-		Recent:     aggregate.Recent,
+		Range:        rangeValue,
+		Totals:       Totals{Views: aggregate.Views, Sessions: aggregate.Sessions, Online: aggregate.Online},
+		Series:       series,
+		TopPages:     topPages(aggregate.PageCounts, MaxTopPages),
+		TopContent:   topContent(aggregate.PageCounts, MaxTopContent),
+		Recent:       aggregate.Recent,
+		Sources:      rankSources(aggregate.SourceCounts),
+		Devices:      rankDevices(aggregate.DeviceCounts),
+		TopReferrers: topReferrers(aggregate.ReferrerCounts, MaxTopReferrers),
+		Retention:    retentionSeries(window, now, aggregate.SessionVisits, aggregate.SessionFirstSeen),
 	}, nil
 }
 
@@ -236,4 +277,125 @@ func topContent(counts []TopPage, limit int) []TopContent {
 		ranking = ranking[:limit]
 	}
 	return ranking
+}
+
+// rankSources orders the source breakdown by visits, with the name as a stable
+// tie breaker so two replicas return the same payload.
+func rankSources(counts []SourceCount) []SourceCount {
+	sources := make([]SourceCount, len(counts))
+	copy(sources, counts)
+	sort.Slice(sources, func(i, j int) bool {
+		if sources[i].Visits != sources[j].Visits {
+			return sources[i].Visits > sources[j].Visits
+		}
+		return sources[i].Source < sources[j].Source
+	})
+	if sources == nil {
+		sources = []SourceCount{}
+	}
+	return sources
+}
+
+// rankDevices orders the device breakdown by visits, name as tie breaker.
+func rankDevices(counts []DeviceCount) []DeviceCount {
+	devices := make([]DeviceCount, len(counts))
+	copy(devices, counts)
+	sort.Slice(devices, func(i, j int) bool {
+		if devices[i].Visits != devices[j].Visits {
+			return devices[i].Visits > devices[j].Visits
+		}
+		return devices[i].Device < devices[j].Device
+	})
+	if devices == nil {
+		devices = []DeviceCount{}
+	}
+	return devices
+}
+
+// topReferrers ranks referrer hosts by visits and keeps the leaderboard bounded.
+func topReferrers(counts []ReferrerCount, limit int) []ReferrerCount {
+	referrers := make([]ReferrerCount, len(counts))
+	copy(referrers, counts)
+	sort.Slice(referrers, func(i, j int) bool {
+		if referrers[i].Visits != referrers[j].Visits {
+			return referrers[i].Visits > referrers[j].Visits
+		}
+		return referrers[i].Host < referrers[j].Host
+	})
+	if len(referrers) > limit {
+		referrers = referrers[:limit]
+	}
+	if referrers == nil {
+		referrers = []ReferrerCount{}
+	}
+	return referrers
+}
+
+// retentionDateLayout is the calendar day format the contract reports.
+const retentionDateLayout = "2006-01-02"
+
+// retentionSeries builds the per day new versus returning session counts.
+//
+// A session is new on the calendar day of its first public page view and returning
+// on every later day it appears. The first appearance may predate the reporting
+// window, which is why the store returns it separately: deriving it from the window
+// rows alone would misreport an established reader as new on the first day shown.
+//
+// Days are the calendar days the reader sees, so the report clock's zone decides the
+// boundary; the timestamps stay UTC.
+func retentionSeries(window Window, now time.Time, sessions []SessionVisit, firstSeen []SessionFirstSeen) []RetentionPoint {
+	zone := window.Start.Location()
+
+	startDay := calendarDay(window.Start, zone)
+	endDay := calendarDay(now, zone)
+	points := make([]RetentionPoint, 0, 31)
+	indexByDate := make(map[string]int, 31)
+	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
+		date := day.Format(retentionDateLayout)
+		indexByDate[date] = len(points)
+		points = append(points, RetentionPoint{Date: date})
+	}
+
+	// earliest is the first calendar day of each session, including the history that
+	// predates the window. The fallback covers a session the first-seen projection
+	// missed, so a data anomaly cannot silently turn a returning reader into a new
+	// one.
+	earliest := make(map[string]string, len(firstSeen)+len(sessions))
+	for _, item := range firstSeen {
+		earliest[item.Session] = item.FirstAt.In(zone).Format(retentionDateLayout)
+	}
+	activeByDate := make(map[string]map[string]struct{}, len(points))
+	for _, view := range sessions {
+		date := view.At.In(zone).Format(retentionDateLayout)
+		if _, ok := indexByDate[date]; !ok {
+			continue
+		}
+		set := activeByDate[date]
+		if set == nil {
+			set = make(map[string]struct{})
+			activeByDate[date] = set
+		}
+		set[view.Session] = struct{}{}
+		if first, seen := earliest[view.Session]; !seen || date < first {
+			earliest[view.Session] = date
+		}
+	}
+
+	for date, active := range activeByDate {
+		position := indexByDate[date]
+		for session := range active {
+			if earliest[session] == date {
+				points[position].NewSessions++
+			} else {
+				points[position].ReturningSessions++
+			}
+		}
+	}
+	return points
+}
+
+// calendarDay returns the local midnight of the day containing at in zone.
+func calendarDay(at time.Time, zone *time.Location) time.Time {
+	local := at.In(zone)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, zone)
 }

@@ -10,7 +10,10 @@ import type {
   AuditLogQuery,
   AuthProviderId,
   BackupArtifact,
+  BackupSchedule,
   BackendMode,
+  BulkAction,
+  BulkResult,
   CaptchaScene,
   CaptchaStatus,
   ChangePasswordInput,
@@ -20,6 +23,7 @@ import type {
   CommentsResult,
   Content,
   ContentAction,
+  ContentDiff,
   ContentKind,
   ContentPage,
   ContentRevision,
@@ -28,6 +32,8 @@ import type {
   CreateSiteInput,
   CreatedSite,
   DraftInput,
+  EmailLog,
+  EmailTemplate,
   ExtensionSummary,
   FollowEntry,
   ImportConflictStrategy,
@@ -39,7 +45,11 @@ import type {
   Member,
   MediaQuotaBytes,
   Message,
+  MyNewsletterPreference,
   NewMemberInput,
+  NewsletterSendResult,
+  NewsletterStats,
+  NewsletterSubscriptionStatus,
   Notification,
   NotificationPreferences,
   Page,
@@ -48,6 +58,9 @@ import type {
   PasswordResetTicket,
   PermissionGroupConfig,
   PermissionGroupInput,
+  PhoneCodePurpose,
+  PhoneCodeResult,
+  PhonePolicy,
   PlatformAccountPage,
   PlatformAccountQuery,
   PlatformAuditQuery,
@@ -55,10 +68,14 @@ import type {
   PlatformSite,
   PlatformSiteDetail,
   PlatformSiteEntry,
+  PreviewGrant,
   ProbeResult,
   ProfileInput,
   PublicProfile,
+  QueueStatus,
   ReadingHistoryEntry,
+  RedirectRule,
+  ResolveResult,
   Role,
   SafetyPolicy,
   SafetyRateLimit,
@@ -66,11 +83,15 @@ import type {
   SensitiveWordMode,
   Session,
   Site,
+  SiteActivityItem,
   SiteDomainVerification,
   SiteDomainVerificationResult,
   SiteImportReport,
   SiteIPRule,
+  Subscriber,
+  SystemLogEntry,
   SystemMetrics,
+  EffectiveConfig,
   StepUpSettings,
   StepUpSettingsUpdate,
   StepUpVerifyResult,
@@ -84,16 +105,60 @@ import type {
   User,
   WebConfig,
 } from '../types';
-import type { AnalyticsRange, BackendAnalytics, VisitSurface } from './analytics';
+import type { AnalyticsRange, VisitSurface } from './analytics';
 import { accessController, AccessBlockedError, isPreviewFrame, readAccess } from './access';
 import { HttpBackend, ApiError, fallbackProblem } from './api';
-import type { SiteCustomizationSaved, SiteCustomizationSnapshot, ContentListOptions } from './api';
+import type { SiteAnalytics, SiteCustomizationSaved, SiteCustomizationSnapshot, ContentListOptions } from './api';
 import type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
 import type { ContactPayload } from './contactForm';
 import { DemoBackend } from './demo';
 import { t, useT } from './i18n';
 import { configurePerformance, readPerformance } from './performance';
 import { readDemoStepUpSettings, saveDemoStepUpSettings } from './stepUp';
+
+/*
+ * Beta 1.2 扩展包新增的类型从这里再导出：页面只要从 `lib/backend` 取类型，
+ * 不必记住哪些类型在 `types.ts`、哪些在 `lib/api.ts`。
+ */
+export type {
+  AnalyticsBreakdown,
+  AnalyticsDeviceKind,
+  AnalyticsDevicePoint,
+  AnalyticsReferrerPoint,
+  AnalyticsRetentionPoint,
+  AnalyticsSourceKind,
+  AnalyticsSourcePoint,
+  BackupSchedule,
+  BackupScheduleArtifact,
+  BulkAction,
+  BulkResult,
+  BulkResultItem,
+  ContentDiff,
+  ContentDiffHunk,
+  DiffOp,
+  EmailLog,
+  EmailTemplate,
+  MyNewsletterPreference,
+  NewsletterSendResult,
+  NewsletterStats,
+  NewsletterSubscriptionStatus,
+  PhoneCodePurpose,
+  PhoneCodeResult,
+  PhonePolicy,
+  PreviewGrant,
+  QueueEventItem,
+  QueueStatus,
+  RedirectRule,
+  RedirectSource,
+  RedirectStatusCode,
+  ResolveKind,
+  ResolveResult,
+  SiteActivityItem,
+  Subscriber,
+  SubscriberStatus,
+  SystemLogEntry,
+} from '../types';
+export type { SiteAnalytics } from './api';
 
 export const CONFIG_KEY = 'pp.web.config.v1';
 
@@ -118,6 +183,23 @@ export interface Backend {
   }): Promise<PasswordLoginResult>;
   /** 兑换 2FA 挑战：6 位验证码或一次性恢复码。成功后与普通登录一样建立会话。 */
   loginTwoFactor(challengeToken: string, code: string): Promise<Session>;
+  /** 短信登录是否可用（公开端点）；`provider=off` 时发码会 503。 */
+  phonePolicy(): Promise<PhonePolicy>;
+  /**
+   * 请求短信验证码（202）。开发模式响应带 `dev_code`；限流与冷却由服务端判定。
+   */
+  requestPhoneCode(phone: string, purpose: PhoneCodePurpose): Promise<PhoneCodeResult>;
+  /**
+   * 手机号 + 验证码登录。
+   *
+   * 返回与密码登录**同形**的结果：启用 TOTP 的账号会拿到 2FA 挑战而不是会话，
+   * 调用方必须分支处理，不能假设它一定返回 Session。
+   */
+  phoneLogin(input: {
+    phone: string;
+    code: string;
+    display_name?: string;
+  }): Promise<PasswordLoginResult>;
   /** 自己的两步验证状态（是否开启、恢复码剩余数、绑定时间）。 */
   twoFactorStatus(): Promise<TwoFactorStatus>;
   /** 开始绑定两步验证；需要当前密码。 */
@@ -187,6 +269,11 @@ export interface Backend {
   verifyEmail(token: string): Promise<void>;
   /** 后台网站日志：服务端审计查询（时间、操作人、动作、目标、分页）。 */
   auditLogs(siteId: string, query?: AuditLogQuery): Promise<AuditLogPage>;
+  /**
+   * 仪表盘「最近操作」（Beta 1.2）：服务端 `audit_logs` 的最近动作，最多 20 条。
+   * 数据源是服务端，不读浏览器存储。
+   */
+  siteActivity(siteId: string, limit?: number): Promise<SiteActivityItem[]>;
   site(siteId: string): Promise<Site>;
   updateSite(
     siteId: string,
@@ -234,6 +321,36 @@ export interface Backend {
   siteDomain(siteId: string): Promise<SiteDomainVerification>;
   /** 立即验证主域名归属；失败抛 ApiError（problem.details.reason 说明原因）。 */
   verifySiteDomain(siteId: string): Promise<SiteDomainVerificationResult>;
+  /**
+   * 公开路径解析（Beta 1.2，契约 J2）：给静态服务器 / 路由决定 301、200 或 404。
+   */
+  resolvePath(path: string): Promise<ResolveResult>;
+  /** 重定向规则列表（`manage_site`）；`q` 搜索、游标分页。 */
+  listRedirects(
+    siteId: string,
+    query?: { limit?: number; cursor?: string; q?: string },
+  ): Promise<Page<RedirectRule>>;
+  /** 新建重定向规则；`from_path` 重复时 409。 */
+  createRedirect(
+    siteId: string,
+    input: {
+      from_path: string;
+      to_path: string;
+      status_code?: RedirectRule['status_code'];
+    },
+  ): Promise<RedirectRule>;
+  /** 修改重定向规则；省略的字段保持不变。 */
+  updateRedirect(
+    siteId: string,
+    redirectId: string,
+    patch: Partial<{
+      from_path: string;
+      to_path: string;
+      status_code: RedirectRule['status_code'];
+    }>,
+  ): Promise<RedirectRule>;
+  /** 删除重定向规则；成功是 204。 */
+  deleteRedirect(siteId: string, redirectId: string): Promise<void>;
   /**
    * 平台控制台：列出部署内全部站点。
    *
@@ -321,7 +438,11 @@ export interface Backend {
     kind: ContentKind,
     options?: ContentListOptions,
   ): Promise<ContentPage>;
-  getContent(kind: ContentKind, id: string): Promise<Content>;
+  /**
+   * 读取一篇内容。`key` 先按 id 再按 slug 查（Beta 1.2，契约 J1），所以 `/a/:key`
+   * 与 `/p/:key` 都能打开；带 `previewToken` 时未发布内容也返回 200。
+   */
+  getContent(kind: ContentKind, key: string, previewToken?: string): Promise<Content>;
   /**
    * 热门内容：服务端按阅读量 + 时间衰减排序的已发布公开内容（FSD A-16）。
    *
@@ -345,12 +466,36 @@ export interface Backend {
     action: ContentAction,
     reason?: string,
   ): Promise<Content>;
+  /** 移入回收站（Beta 1.2）；返回带 `deleted_at` 的内容。 */
+  deleteContent(kind: ContentKind, id: string): Promise<Content>;
+  /** 从回收站彻底删除，不可恢复。 */
+  purgeContent(kind: ContentKind, id: string): Promise<void>;
   /** 版本历史列表（服务端保留最新 20 版）。 */
   contentRevisions(kind: ContentKind, id: string): Promise<ContentRevisionPage>;
   /** 单个版本的完整快照，包含源文。 */
   contentRevision(kind: ContentKind, id: string, revisionId: string): Promise<ContentRevision>;
   /** 回滚到指定版本；服务端先备份当前版本，回滚不改变发布状态。 */
   restoreContentRevision(kind: ContentKind, id: string, revisionId: string): Promise<Content>;
+  /**
+   * 两个版本的行级差异（Beta 1.2，契约 E 节）。`to` 可以是版本号或 `current`；
+   * 超长正文截断到前 20000 行并置 `truncated`。
+   */
+  contentDiff(
+    kind: ContentKind,
+    id: string,
+    from: number,
+    to?: number | 'current',
+  ): Promise<ContentDiff>;
+  /**
+   * 批量执行内容动作（契约 G 节）。逐条独立判定，部分成功是正常结果；
+   * `ids` 一次最多 100 条。
+   */
+  bulkContentAction(kind: ContentKind, ids: string[], action: BulkAction): Promise<BulkResult>;
+  /**
+   * 签发一次性预览授权（契约 H 节）：返回 HMAC 令牌、过期时间与可分享路径。
+   * 预览读取用 `getContent(kind, key, token)`。
+   */
+  issueContentPreview(kind: ContentKind, id: string): Promise<PreviewGrant>;
   /**
    * 全文检索：相关度排序 + 真实游标分页 + 服务端筛选。
    *
@@ -437,6 +582,8 @@ export interface Backend {
     onProgress?: (percent: number) => void,
   ): Promise<Asset>;
   listAssets(): Promise<Asset[]>;
+  /** 删除一份媒体（Beta 1.2）；被内容引用时服务端拒绝。 */
+  deleteAsset(id: string): Promise<void>;
   /**
    * 取一个可以直接放进 `<img src>` 的媒体展示地址。
    *
@@ -455,6 +602,60 @@ export interface Backend {
   markAllNotificationsRead(): Promise<number>;
   notificationPreferences(): Promise<NotificationPreferences>;
   updateNotificationPreferences(input: NotificationPreferences): Promise<NotificationPreferences>;
+  /* ------------------------- 邮件订阅与 Newsletter（Beta 1.2，契约 N 节） ------------------------- */
+  /** 公开订阅；返回 `pending` / `confirmed`，已退订时服务端重发确认信。 */
+  subscribeNewsletter(input: {
+    email: string;
+    source?: string;
+  }): Promise<{ status: NewsletterSubscriptionStatus }>;
+  /** 兑换确认链接（公开）；无效令牌 404。 */
+  confirmNewsletter(token: string): Promise<{ status: NewsletterSubscriptionStatus }>;
+  /** 兑换退订链接（公开）；无效令牌 404。 */
+  unsubscribeNewsletter(token: string): Promise<{ status: NewsletterSubscriptionStatus }>;
+  /** 当前登录账户的订阅状态。 */
+  myNewsletter(): Promise<MyNewsletterPreference>;
+  /** 订阅 / 退订当前账户邮箱（`source=account`）。 */
+  setMyNewsletter(enabled: boolean): Promise<MyNewsletterPreference>;
+  /** 管理端订阅名单；`status` / `q` 筛选 + 游标分页。 */
+  listSubscribers(
+    siteId: string,
+    query?: { status?: string; q?: string; limit?: number; cursor?: string },
+  ): Promise<Page<Subscriber>>;
+  /** 删除订阅者；成功是 204。 */
+  deleteSubscriber(siteId: string, subscriberId: string): Promise<void>;
+  /** 订阅名单统计。 */
+  newsletterStats(siteId: string): Promise<NewsletterStats>;
+  /** 邮件模板列表（内置默认 + 站长改写）。 */
+  listEmailTemplates(siteId: string): Promise<EmailTemplate[]>;
+  /** 保存邮件模板；返回规范化后的模板。 */
+  saveEmailTemplate(
+    siteId: string,
+    key: string,
+    input: {
+      name?: string;
+      subject?: string;
+      body_html?: string;
+      body_text?: string;
+      enabled?: boolean;
+    },
+  ): Promise<EmailTemplate>;
+  /** 恢复内置默认模板；成功是 204。 */
+  resetEmailTemplate(siteId: string, key: string): Promise<void>;
+  /** 邮件发送日志；`status` / `kind` 筛选 + 游标分页。 */
+  listEmailLogs(
+    siteId: string,
+    query?: { status?: string; kind?: string; limit?: number; cursor?: string },
+  ): Promise<Page<EmailLog>>;
+  /** 发送一次 newsletter，返回入队收件人数。 */
+  sendNewsletter(
+    siteId: string,
+    input: {
+      subject: string;
+      body_html: string;
+      body_text: string;
+      content_id?: string;
+    },
+  ): Promise<NewsletterSendResult>;
   /**
    * 联系表单：匿名提交一次留言。
    *
@@ -471,7 +672,7 @@ export interface Backend {
     surface: VisitSurface;
   }): Promise<void>;
   /** 真实后端统计；端点不可用时返回 null，仪表盘回退到本地统计。 */
-  analytics(siteId: string, range: AnalyticsRange): Promise<BackendAnalytics | null>;
+  analytics(siteId: string, range: AnalyticsRange): Promise<SiteAnalytics | null>;
   /** 真实后端分类/标签；端点不可用时返回 null。 */
   taxonomy(siteId: string): Promise<TaxonomySettings | null>;
   createTaxonomyTerm(siteId: string, input: TaxonomyTermInput): Promise<TaxonomyTerm>;
@@ -509,6 +710,24 @@ export interface Backend {
    * 服务端可采样，演示后端明确报错，不伪造数字。
    */
   systemMetrics(): Promise<SystemMetrics>;
+  /**
+   * 服务端真实生效的部署配置（Beta 1.2）。
+   *
+   * 储存策略与访问/域名页面用它显示「生效值」，避免用户以为改完设置就立刻生效。
+   */
+  effectiveConfig(): Promise<EffectiveConfig>;
+  /**
+   * 请求日志查看器（Beta 1.2，契约 K 节）：服务端环形缓冲的最近请求元数据。
+   */
+  systemLogs(
+    query?: { limit?: number; status?: number; path?: string; method?: string },
+  ): Promise<SystemLogEntry[]>;
+  /** 队列监控（契约 K 节）：outbox 积压、最近事件与邮件发送队列。 */
+  systemQueue(): Promise<QueueStatus>;
+  /** 重试 outbox 投递；`eventIds` 为空表示重试最近 50 条失败事件。 */
+  retryQueue(eventIds?: string[]): Promise<{ retried: number }>;
+  /** 自动备份计划（契约 L 节，平台管理员）。 */
+  backupSchedule(): Promise<BackupSchedule>;
   /**
    * 服务器扩展管理（安装包扩展）。
    *

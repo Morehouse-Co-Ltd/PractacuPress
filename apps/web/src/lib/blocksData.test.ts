@@ -171,11 +171,14 @@ describe('resolveDataToken', () => {
     expect(resolveDataToken('site.year', ctx)).toBe('2026');
   });
 
-  it('文章地址在上下文缺失时按内容类型拼出来', () => {
-    expect(resolveDataToken('article.url', { article: article() })).toBe('/a/art_1');
-    expect(resolveDataToken('article.url', { article: article({ kind: 'post', id: 'p_9' }) })).toBe(
-      '/p/p_9',
-    );
+  it('文章地址优先用 slug，缺 slug 时回退 id', () => {
+    expect(resolveDataToken('article.url', { article: article() })).toBe('/a/quiet-yard');
+    expect(
+      resolveDataToken('article.url', {
+        article: article({ kind: 'post', id: 'p_9', slug: 'nesting' }),
+      }),
+    ).toBe('/p/nesting');
+    expect(resolveDataToken('article.url', { article: article({ slug: '' }) })).toBe('/a/art_1');
   });
 
   it('没有文章、没有数据时返回 undefined', () => {

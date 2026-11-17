@@ -104,6 +104,16 @@ func Status(v string) predicate.Comment {
 	return predicate.Comment(sql.FieldEQ(FieldStatus, v))
 }
 
+// RiskScore applies equality check predicate on the "risk_score" field. It's identical to RiskScoreEQ.
+func RiskScore(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldEQ(FieldRiskScore, v))
+}
+
+// RiskFlags applies equality check predicate on the "risk_flags" field. It's identical to RiskFlagsEQ.
+func RiskFlags(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldEQ(FieldRiskFlags, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Comment {
 	return predicate.Comment(sql.FieldEQ(FieldCreatedAt, v))
@@ -617,6 +627,111 @@ func StatusEqualFold(v string) predicate.Comment {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.Comment {
 	return predicate.Comment(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// RiskScoreEQ applies the EQ predicate on the "risk_score" field.
+func RiskScoreEQ(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldEQ(FieldRiskScore, v))
+}
+
+// RiskScoreNEQ applies the NEQ predicate on the "risk_score" field.
+func RiskScoreNEQ(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldNEQ(FieldRiskScore, v))
+}
+
+// RiskScoreIn applies the In predicate on the "risk_score" field.
+func RiskScoreIn(vs ...int) predicate.Comment {
+	return predicate.Comment(sql.FieldIn(FieldRiskScore, vs...))
+}
+
+// RiskScoreNotIn applies the NotIn predicate on the "risk_score" field.
+func RiskScoreNotIn(vs ...int) predicate.Comment {
+	return predicate.Comment(sql.FieldNotIn(FieldRiskScore, vs...))
+}
+
+// RiskScoreGT applies the GT predicate on the "risk_score" field.
+func RiskScoreGT(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldGT(FieldRiskScore, v))
+}
+
+// RiskScoreGTE applies the GTE predicate on the "risk_score" field.
+func RiskScoreGTE(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldGTE(FieldRiskScore, v))
+}
+
+// RiskScoreLT applies the LT predicate on the "risk_score" field.
+func RiskScoreLT(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldLT(FieldRiskScore, v))
+}
+
+// RiskScoreLTE applies the LTE predicate on the "risk_score" field.
+func RiskScoreLTE(v int) predicate.Comment {
+	return predicate.Comment(sql.FieldLTE(FieldRiskScore, v))
+}
+
+// RiskFlagsEQ applies the EQ predicate on the "risk_flags" field.
+func RiskFlagsEQ(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldEQ(FieldRiskFlags, v))
+}
+
+// RiskFlagsNEQ applies the NEQ predicate on the "risk_flags" field.
+func RiskFlagsNEQ(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldNEQ(FieldRiskFlags, v))
+}
+
+// RiskFlagsIn applies the In predicate on the "risk_flags" field.
+func RiskFlagsIn(vs ...string) predicate.Comment {
+	return predicate.Comment(sql.FieldIn(FieldRiskFlags, vs...))
+}
+
+// RiskFlagsNotIn applies the NotIn predicate on the "risk_flags" field.
+func RiskFlagsNotIn(vs ...string) predicate.Comment {
+	return predicate.Comment(sql.FieldNotIn(FieldRiskFlags, vs...))
+}
+
+// RiskFlagsGT applies the GT predicate on the "risk_flags" field.
+func RiskFlagsGT(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldGT(FieldRiskFlags, v))
+}
+
+// RiskFlagsGTE applies the GTE predicate on the "risk_flags" field.
+func RiskFlagsGTE(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldGTE(FieldRiskFlags, v))
+}
+
+// RiskFlagsLT applies the LT predicate on the "risk_flags" field.
+func RiskFlagsLT(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldLT(FieldRiskFlags, v))
+}
+
+// RiskFlagsLTE applies the LTE predicate on the "risk_flags" field.
+func RiskFlagsLTE(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldLTE(FieldRiskFlags, v))
+}
+
+// RiskFlagsContains applies the Contains predicate on the "risk_flags" field.
+func RiskFlagsContains(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldContains(FieldRiskFlags, v))
+}
+
+// RiskFlagsHasPrefix applies the HasPrefix predicate on the "risk_flags" field.
+func RiskFlagsHasPrefix(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldHasPrefix(FieldRiskFlags, v))
+}
+
+// RiskFlagsHasSuffix applies the HasSuffix predicate on the "risk_flags" field.
+func RiskFlagsHasSuffix(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldHasSuffix(FieldRiskFlags, v))
+}
+
+// RiskFlagsEqualFold applies the EqualFold predicate on the "risk_flags" field.
+func RiskFlagsEqualFold(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldEqualFold(FieldRiskFlags, v))
+}
+
+// RiskFlagsContainsFold applies the ContainsFold predicate on the "risk_flags" field.
+func RiskFlagsContainsFold(v string) predicate.Comment {
+	return predicate.Comment(sql.FieldContainsFold(FieldRiskFlags, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

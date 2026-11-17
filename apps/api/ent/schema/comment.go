@@ -26,6 +26,14 @@ func (Comment) Fields() []ent.Field {
 		field.String("status").
 			Default("visible").
 			Validate(oneOf("visible", "hidden", "deleted", "pending_review")),
+		// risk_score is computed on the server when the comment is written, from the
+		// same signals the moderator sees (length, link density, repetition). It used
+		// to be calculated in the browser, which meant the score depended on which
+		// device opened the queue and disappeared entirely with JavaScript disabled.
+		field.Int("risk_score").Default(0).NonNegative(),
+		// risk_flags is a JSON array of the reasons behind the score, so a moderator
+		// can see why a comment was ranked instead of trusting a bare number.
+		field.Text("risk_flags").Default("[]"),
 		createdField(),
 		updatedField(),
 	}

@@ -448,3 +448,56 @@ func TestReviewNotifiesCommentAuthor(t *testing.T) {
 	require.Equal(t, "u9", published.UserID)
 	require.Equal(t, "u2", published.ActorID)
 }
+
+// TestAddCommentStoresRiskAssessment is the reason scoring moved to the server: the
+// queue needs a number on the stored row, not one computed by whichever browser opened
+// the moderation page.
+func TestAddCommentStoresRiskAssessment(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo)
+	ctx := context.Background()
+	author := Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember}
+
+	spam, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1",
+		Body: "cheap tools https://a.example https://b.example https://c.example https://d.example",
+	})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, spam.RiskScore, 50)
+	require.Contains(t, spam.RiskFlags, RiskFlagLinks)
+
+	stored, err := repo.FindComment(ctx, "s1", spam.ID)
+	require.NoError(t, err)
+	require.Equal(t, spam.RiskScore, stored.RiskScore, "the score is part of the write")
+	require.Equal(t, spam.RiskFlags, stored.RiskFlags)
+
+	clean, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1",
+		Body: "Good point about the cache, I hit the same thing last week.",
+	})
+	require.NoError(t, err)
+	require.Less(t, clean.RiskScore, 20)
+	require.Empty(t, clean.RiskFlags)
+}
+
+// TestEditCommentRescoresTheBody closes the gap an edit would otherwise open: a clean
+// comment rewritten into spam has to move up the queue, which is the same reason an
+// edit already runs through the word list.
+func TestEditCommentRescoresTheBody(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo)
+	ctx := context.Background()
+	author := Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember}
+
+	created, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1", Body: "first thoughts, replying properly later",
+	})
+	require.NoError(t, err)
+	require.Zero(t, created.RiskScore)
+
+	edited, err := service.EditComment(ctx, author, created.ID,
+		"READ THIS http://a.example http://b.example http://c.example http://d.example NOW")
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, edited.RiskScore, 50)
+	require.Contains(t, edited.RiskFlags, RiskFlagLinks)
+}

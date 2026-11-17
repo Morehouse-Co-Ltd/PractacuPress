@@ -44,6 +44,8 @@ func TestListAssetsReturnsPage(t *testing.T) {
 	require.Equal(t, "content", first["purpose"])
 	require.Equal(t, "2026-10-18T12:00:00Z", first["created_at"], "newest first")
 	require.Equal(t, "/api/v1/media/"+first["id"].(string), first["url"])
+	require.Equal(t, "photo.png", first["file_name"],
+		"the listing carries the declared display name, not the storage key")
 }
 
 // TestListAssetsLastPageCarriesNoCursor keeps the client from requesting an empty page

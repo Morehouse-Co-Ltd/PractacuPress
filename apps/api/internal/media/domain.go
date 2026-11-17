@@ -84,6 +84,9 @@ var (
 	// ErrStorageMissing means the deployment has no storage adapter, so bytes cannot
 	// be accepted or inspected.
 	ErrStorageMissing = errors.New("media: storage is not configured")
+	// ErrAssetInUse means content still points at the asset, so removing it would break
+	// a page silently: nothing reports a missing image, the author only notices later.
+	ErrAssetInUse = errors.New("media: asset is still referenced by content")
 )
 
 // Bounds. They are enforced before a byte is stored.
@@ -128,6 +131,20 @@ type Actor struct {
 	// transport. It decides whether the caller may see every asset of the site
 	// (editor and above) or only their own (member).
 	Role site.Role
+	// Permissions is the expanded capability matrix of the caller's permission group.
+	// Nil means "not loaded": the built-in defaults of Role apply, which is the rule
+	// every caller had before permission groups existed. It mirrors site.Member, so a
+	// capability switched off in the dashboard is off here too once the transport
+	// passes the live matrix along.
+	Permissions site.PermissionSet
+}
+
+// Allows reports whether the caller's capability matrix enables capability.
+func (a Actor) Allows(capability site.Capability) bool {
+	if a.Permissions == nil {
+		return site.DefaultCapabilities(a.Role).Allows(capability)
+	}
+	return a.Permissions.Allows(capability)
 }
 
 // UploadRequest is the first phase: declare what will be uploaded.
@@ -217,9 +234,14 @@ func NewStorageKey(fileName string) string {
 
 // Asset is a stored, inspected object.
 type Asset struct {
-	ID         string
-	SiteID     string
-	OwnerID    string
+	ID      string
+	SiteID  string
+	OwnerID string
+	// FileName is the display name the uploader declared. It is stored for the library
+	// and for a copied reference, never for addressing bytes: the storage key below is
+	// generated on its own, so renaming a file or naming it "../etc/passwd" cannot move
+	// where the object lives.
+	FileName   string
 	StorageKey string
 	MIME       string
 	Size       int64

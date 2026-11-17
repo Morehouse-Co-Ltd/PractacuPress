@@ -7,8 +7,9 @@ import { useCustomization } from '../../lib/customize';
 import { formatDate, ROLE_LABEL } from '../../lib/format';
 import { isPersonalSite } from '../../lib/site';
 import { usePermissions } from '../../lib/usePermissions';
-import { Button, EmptyState, Field, Input, Modal, Skeleton, Textarea } from '../../components/ui';
+import { Button, EmptyState, Field, Input, Modal, Skeleton, Textarea, Toggle } from '../../components/ui';
 import { Avatar } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 import { ArticleCard } from '../../components/blocks/DataBlocks';
 import { useToast } from '../../lib/toast';
 import { useSeo, personJsonLd } from '../../lib/seo';
@@ -150,6 +151,13 @@ export function ProfilePage() {
     return assets.filter((asset) => asset.purpose === 'avatar');
   }, [backend, editOpen]);
 
+  // 邮件订阅只属于本人：接口是 `/me/newsletter`，访问别人的主页时不必发这次请求。
+  const newsletter = useAsync(
+    async () => (own ? backend.myNewsletter() : null),
+    [backend, own],
+  );
+  const [newsletterBusy, setNewsletterBusy] = useState(false);
+
   const openEdit = () => {
     setDisplayName(profileUser?.display_name ?? me?.user.display_name ?? '');
     setBio(profileUser?.bio ?? me?.user.bio ?? '');
@@ -242,6 +250,31 @@ export function ProfilePage() {
       toast.push('error', t('发送验证邮件失败'), errorText(err));
     } finally {
       setSendBusy(false);
+    }
+  };
+
+  /**
+   * 切换「邮件订阅」。
+   *
+   * 服务端是双重确认（double opt-in）：订阅之后状态还是 `pending`，要等收件人点了
+   * 确认链接才算 confirmed。所以提示按服务端返回的 status 给，不按点击方向猜。
+   */
+  const toggleNewsletter = async (next: boolean) => {
+    setNewsletterBusy(true);
+    try {
+      const result = await backend.setMyNewsletter(next);
+      newsletter.setData(result);
+      if (!next) {
+        toast.push('ok', t('已退订'), t('这个邮箱不会再收到本站的邮件。'));
+      } else if (result.status === 'pending') {
+        toast.push('ok', t('请到邮箱点击确认链接'), t('确认之后才会收到本刊邮件。'));
+      } else {
+        toast.push('ok', t('已订阅'), t('新的发布内容会通过邮件通知你。'));
+      }
+    } catch (err) {
+      toast.push('error', t('操作失败'), errorText(err));
+    } finally {
+      setNewsletterBusy(false);
     }
   };
 
@@ -370,6 +403,39 @@ export function ProfilePage() {
       ) : null}
 
       {own ? <TwoFactorPanel /> : null}
+
+      {own ? (
+        <section className="panel mt-32">
+          <div className="panel-head">
+            <h3>
+              <Icon name="mail" size={14} /> {t('邮件订阅')}
+            </h3>
+            <p>{t('订阅后，本站发布新内容时会通过邮件通知你，可以随时退订。')}</p>
+          </div>
+          <div className="panel-body">
+            {newsletter.loading ? (
+              <p className="tiny faint">{t('读取中…')}</p>
+            ) : newsletter.error || !newsletter.data ? (
+              <p className="field-hint">{t('暂时读不到订阅状态，请稍后刷新。')}</p>
+            ) : !newsletter.data.email ? (
+              <p className="field-hint">{t('这个账户还没有可用的邮箱，暂时无法订阅邮件。')}</p>
+            ) : (
+              <>
+                <Toggle
+                  checked={newsletter.data.subscribed}
+                  disabled={newsletterBusy}
+                  label={t('接收本站邮件')}
+                  description={t('新内容发布时会发到账户邮箱；随时可以退订。')}
+                  onChange={(next) => void toggleNewsletter(next)}
+                />
+                {newsletter.data.status === 'pending' ? (
+                  <p className="field-hint mt-8">{t('请到邮箱点击确认链接')}</p>
+                ) : null}
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <div className="profile-stats">
         <div>

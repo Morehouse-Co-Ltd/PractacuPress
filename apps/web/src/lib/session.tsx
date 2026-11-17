@@ -18,7 +18,8 @@ import type {
   SessionState,
   WebConfig,
 } from '../types';
-import type { Backend } from './backend';
+import { isDemo, type Backend } from './backend';
+import { providerStartsOAuth } from './authProviders';
 import { useT } from './i18n';
 import { REALTIME_FALLBACK_POLL_MS, readRealtimeStatus } from './realtimeCore';
 import { broadcastSessionSignal, subscribeSessionSignals } from './sessionSync';
@@ -33,8 +34,20 @@ interface AuthValue extends SessionState {
   login(email: string, password: string, captchaToken?: string): Promise<PasswordLoginResult>;
   /** 兑换 2FA 挑战；成功后与密码登录一样建立会话。 */
   verifyTwoFactor(challengeToken: string, code: string): Promise<Session>;
-  /** 演示模式下的手机 / 第三方登录模拟；真实后端未实现时会抛错。 */
+  /**
+   * 演示模式下的手机 / 第三方登录模拟。
+   *
+   * 真实后端没有这个端点（第三方登录由 `oauthStart` 整页跳转完成），调用会抛错。
+   */
   providerLogin(provider: AuthProviderId): Promise<void>;
+  /**
+   * 第三方登录：整页跳到后端的 `/api/v1/auth/oauth/{provider}/start`。
+   *
+   * `redirect` 只接受站内相对路径（以 `/` 开头且不以 `//` 开头），与登录页 `next`
+   * 同一套规则；不合法或省略时后端落到站点首页。登录成功后的回跳由后端 `landingURL`
+   * 负责，前端不再跳一次。演示模式不会跳转，仍然走 `providerLogin`。
+   */
+  oauthStart(provider: AuthProviderId, redirect?: string): void;
   register(input: {
     email: string;
     password: string;
@@ -115,6 +128,21 @@ function stripSwitchParam(): void {
   } catch {
     /* 地址栏不可写不影响已经建立的会话 */
   }
+}
+
+/**
+ * 只保留站内相对路径。
+ *
+ * 与登录页 `next` 参数、后端 `sanitizeOAuthRedirect` 同一套规则：必须以 `/` 开头且不能
+ * 以 `//` 开头（协议相对地址会把浏览器带到别人的站点）。另外拒绝反斜杠、制表符与换行，
+ * 浏览器和代理会把它们规范化成 `/`，`/\evil.com` 这类输入就能绕过前缀检查。不合法的
+ * 输入返回空串，调用方直接把 `redirect` 参数省掉，而不是拒绝整次登录。
+ */
+function inSitePath(raw: string | undefined): string {
+  const value = (raw ?? '').trim();
+  if (!value.startsWith('/') || value.startsWith('//')) return '';
+  if (/[\\\t\r\n]/.test(value)) return '';
+  return value;
 }
 
 export function AuthProvider({
@@ -339,6 +367,37 @@ export function AuthProvider({
     [backend, hydrate, t],
   );
 
+  /**
+   * 第三方登录的唯一入口。
+   *
+   * 授权页在提供商那边，必须整页跳转：`fetch` 既到不了对方的登录页，回调种下的
+   * HttpOnly Cookie 也不是 SPA 能用脚本处理的。所以这里只做两件事——拼出后端地址、
+   * 交给浏览器。后端 302 到提供方，回调时换码、种会话 Cookie，再按 `landingURL` 把
+   * 浏览器送回 `redirect` 指向的站内页面；回到站内后开屏水合会用刷新 Cookie 接上会话
+   * （见上面的 `backend.refresh()`），前端不需要也不应该再跳一次。
+   *
+   * 演示模式没有 `/start` 端点，跳过去只会 404，因此沿用原来的本地模拟。
+   */
+  const oauthStart = useCallback(
+    (provider: AuthProviderId, redirect?: string) => {
+      if (isDemo(backend)) {
+        // 演示后端用本地模拟，任何方式都能「登录成功」；失败由登录页自己提示。
+        providerLogin(provider).catch(() => undefined);
+        return;
+      }
+      // 后端没有实现的方式不发出去：跳过去只会看到一页 problem+json（404）。
+      if (!providerStartsOAuth(provider)) {
+        throw new Error(t('当前后端还没有实现这种登录方式。'));
+      }
+      const target = inSitePath(redirect);
+      const query = target ? `?redirect=${encodeURIComponent(target)}` : '';
+      window.location.assign(
+        `${backend.origin}/api/v1/auth/oauth/${encodeURIComponent(provider)}/start${query}`,
+      );
+    },
+    [backend, providerLogin, t],
+  );
+
   const register = useCallback(
     async (input: {
       email: string;
@@ -513,6 +572,7 @@ export function AuthProvider({
       login,
       verifyTwoFactor,
       providerLogin,
+      oauthStart,
       register,
       logout,
       reload,
@@ -529,6 +589,7 @@ export function AuthProvider({
       login,
       verifyTwoFactor,
       providerLogin,
+      oauthStart,
       register,
       logout,
       reload,

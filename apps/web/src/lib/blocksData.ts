@@ -1,6 +1,7 @@
 import type { BlockInstance, BlockProps, Content, ContentKind } from '../types';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
+import { contentPath } from './navigation';
 
 /**
  * 组件文字「显示什么数据」。
@@ -27,7 +28,7 @@ export interface BlockDataContext {
   /** 当前文章；首页 / 自定义页没有文章。 */
   article?: Content | null;
   kind?: ContentKind;
-  /** 文章地址（站内路径），例如 `/a/abc123`。 */
+  /** 文章地址（站内路径），例如 `/a/house-rules`；优先 slug，旧数据回退 id。 */
   url?: string;
   authorName?: string;
   /** 「2026.11.02 09:30」这种已经本地化的发布时间文案。 */
@@ -95,10 +96,6 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function articleUrl(article: Content): string {
-  return `/${article.kind === 'article' ? 'a' : 'p'}/${article.id}`;
-}
-
 /**
  * 把一个数据 token 解析成可显示的文字。
  *
@@ -137,7 +134,8 @@ export function resolveDataToken(
         ? String(context.views)
         : undefined;
     case 'article.url':
-      return text(context.url) ?? (article ? articleUrl(article) : undefined);
+      // 规范链接优先 slug；`context.url` 由阅读端提供（例如预览授权链接），直接使用。
+      return text(context.url) ?? (article ? contentPath(article) : undefined);
     case 'site.name':
       return text(context.siteName);
     case 'site.year':

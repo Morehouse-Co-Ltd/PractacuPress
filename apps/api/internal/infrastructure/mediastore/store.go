@@ -5,9 +5,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/practacu/practacu-press/apps/api/ent/contentitem"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaquotaguard"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaupload"
+	"github.com/practacu/practacu-press/apps/api/ent/predicate"
 	entsite "github.com/practacu/practacu-press/apps/api/ent/site"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/internal/media"
@@ -28,6 +30,10 @@ func New(client *entgen.Client) *Store { return &Store{client: client} }
 var _ media.Repository = (*Store)(nil)
 var _ media.QuotaOverrideReader = (*Store)(nil)
 var _ media.GarbageCatalog = (*Store)(nil)
+
+// The delete guard asks this store whether content still points at an asset; the media
+// service picks it up through its repository, so no extra wiring can be forgotten.
+var _ media.AssetUsageChecker = (*Store)(nil)
 
 // MediaQuotaOverrides returns the explicit site and active membership limits.
 // Nil values deliberately remain nil so the media service can apply deployment
@@ -273,6 +279,7 @@ func (s *Store) InsertAsset(ctx context.Context, asset media.Asset) (media.Asset
 	builder := s.client.MediaAsset.Create().
 		SetSiteID(asset.SiteID).
 		SetOwnerID(asset.OwnerID).
+		SetFileName(asset.FileName).
 		SetStorageKey(asset.StorageKey).
 		SetMimeType(asset.MIME).
 		SetSize(asset.Size).
@@ -390,6 +397,47 @@ func (s *Store) DeleteAsset(ctx context.Context, siteID, assetID string) error {
 	return nil
 }
 
+// AssetInUse reports whether any content item of the site still mentions the asset.
+//
+// It backs the delete guard, so it asks the opposite question of the read path: the
+// anonymous read only cares about published items, while a delete must not pull the
+// object out from under a draft, a scheduled post or the recycle bin. The bin matters
+// as much as the draft - a trashed item can be restored, and its row is what keeps its
+// media references resolvable.
+//
+// The match is a substring over the bodies and the two cover fields, which is safe for
+// the opaque ids and generated keys this build produces (no wildcards, no reserved
+// characters) and cheap enough because it only runs when an object is deleted.
+func (s *Store) AssetInUse(ctx context.Context, siteID, assetID, storageKey string) (bool, error) {
+	if siteID == "" || (assetID == "" && storageKey == "") {
+		return false, nil
+	}
+
+	needles := make([]predicate.ContentItem, 0, 2)
+	for _, needle := range []string{assetID, storageKey} {
+		if needle == "" {
+			continue
+		}
+		needles = append(needles, contentMentions(needle))
+	}
+
+	return s.client.ContentItem.Query().
+		Where(contentitem.SiteIDEQ(siteID), contentitem.Or(needles...)).
+		Exist(ctx)
+}
+
+// contentMentions matches one needle against every column content can reference a media
+// object from: the HTML a page serves, the markdown the author edits, and the two cover
+// fields, which store a URL of their own.
+func contentMentions(needle string) predicate.ContentItem {
+	return contentitem.Or(
+		contentitem.RenderedHTMLContains(needle),
+		contentitem.SourceBodyContains(needle),
+		contentitem.CoverURLContains(needle),
+		contentitem.OgImageContains(needle),
+	)
+}
+
 // AllAssets returns every asset row across every site.
 //
 // It exists for offline garbage collection only, which is why it is not part of
@@ -460,6 +508,7 @@ func toAsset(row *entgen.MediaAsset) media.Asset {
 		ID:         row.ID,
 		SiteID:     row.SiteID,
 		OwnerID:    row.OwnerID,
+		FileName:   row.FileName,
 		StorageKey: row.StorageKey,
 		MIME:       row.MimeType,
 		Size:       row.Size,

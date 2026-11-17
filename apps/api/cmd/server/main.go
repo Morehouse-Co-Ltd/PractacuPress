@@ -38,9 +38,11 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/mediastore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/messagingstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/moderationstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/newsletterstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/notificationstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/outboxstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/platformstore"
+	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/redirectstore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/safetystore"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/securityclient"
 	"github.com/practacu/practacu-press/apps/api/internal/infrastructure/sitestore"
@@ -48,14 +50,20 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/media"
 	"github.com/practacu/practacu-press/apps/api/internal/messaging"
 	"github.com/practacu/practacu-press/apps/api/internal/moderation"
+	"github.com/practacu/practacu-press/apps/api/internal/newsletter"
 	"github.com/practacu/practacu-press/apps/api/internal/notifications"
+	"github.com/practacu/practacu-press/apps/api/internal/observability"
 	"github.com/practacu/practacu-press/apps/api/internal/outbox"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/config"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/emailgateway"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/fieldcrypto"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/logging"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/preview"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/sms"
 	"github.com/practacu/practacu-press/apps/api/internal/platformadmin"
 	"github.com/practacu/practacu-press/apps/api/internal/plugins"
+	"github.com/practacu/practacu-press/apps/api/internal/redirect"
 	"github.com/practacu/practacu-press/apps/api/internal/safety"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 	"github.com/practacu/practacu-press/apps/api/internal/system"
@@ -278,12 +286,17 @@ func run() error {
 	// The SMTP sender is shared by password reset and notification email, so one
 	// relay configuration and one optional capability decision reaches both.
 	mailSender := buildMailer(cfg, logger)
+	// One store backs the mail log for every module: newsletter campaigns, the reset
+	// and verification mail from auth, and notification mail all write email_logs
+	// through it, which is what makes the dashboard's mail log complete.
+	mailLogStore := newsletterstore.New(handle.Client)
 
 	authHandler, authService, err := buildAuth(
 		cfg, logger, handle, securityClient, siteService,
 		mediaAvatarValidator{media: mediaService},
 		auditStore,
 		mailSender,
+		authMailLog{store: mailLogStore},
 		captchaGuard,
 		issuer,
 		stepUpSigner,
@@ -333,6 +346,7 @@ func run() error {
 		// Comment, reaction, follow and review notifications also honour the
 		// recipient's channel switches and optionally go out as email.
 		notifications.WithMailer(mailSender),
+		notifications.WithMailLog(notificationMailLog{store: mailLogStore}),
 		notifications.WithBaseURL(cfg.PublicBaseURL),
 		notifications.WithLogger(logger),
 	)
@@ -379,6 +393,11 @@ func run() error {
 		messagingstore.New(handle.Client, messagingstore.WithFieldCipher(fieldCipher)),
 		// Only active members of the site may be put into a conversation (V-14).
 		messaging.WithMembershipChecker(siteMembershipChecker{sites: siteService}),
+		// Beta 1.2: a delivered message also lands in each recipient's inbox. The fan
+		// out is best effort on purpose: the message row is the authoritative record,
+		// and an inbox write failing must not turn a successful send into an error.
+		messaging.WithNotifier(notificationService),
+		messaging.WithLogger(logger),
 	)
 	if err != nil {
 		return fmt.Errorf("build messaging service: %w", err)
@@ -394,6 +413,17 @@ func run() error {
 	})
 	if err != nil {
 		return fmt.Errorf("build contact service: %w", err)
+	}
+
+	// Redirect rules are the other half of the permalink change: the content service
+	// records an automatic 301 when a published slug moves, and the public resolver
+	// answers the page server. The two services reference each other, so the mutual
+	// edges are wired after both exist.
+	redirectService, err := redirect.NewService(redirect.ServiceConfig{
+		Repository: redirectstore.New(handle.Client),
+	})
+	if err != nil {
+		return fmt.Errorf("build redirect service: %w", err)
 	}
 
 	contentService, err := content.NewService(content.ServiceConfig{
@@ -416,14 +446,77 @@ func run() error {
 		UnlockTokens: issuer,
 		// Publish/reject decisions land in the author's inbox.
 		ReviewNotifier: contentReviewNotifier{notifications: notificationService},
+		// Beta 1.2: when a published slug changes the old path keeps working.
+		RedirectRecorder: redirectService,
 	})
 	if err != nil {
 		return fmt.Errorf("build content service: %w", err)
 	}
+
+	// The resolver needs a content lookup and the content service needs a rule
+	// writer; wiring the second edge here keeps both constructors independent.
+	redirectService.SetLocator(contentService)
+
+	// Draft preview links are signed with a key that lives in the data directory, so
+	// a restart keeps already handed out links usable and a copied database cannot
+	// mint its own.
+	previewSigner, err := preview.Open(extensionDataDir(cfg))
+	if err != nil {
+		return fmt.Errorf("open preview signer: %w", err)
+	}
+	contentService.SetPreviewSigner(previewSigner)
 	// The scheduled publisher is the in-process half of C-17: a due draft is
 	// promoted every 10 seconds. The transition is conditional, so a second replica
 	// simply loses the race instead of publishing twice.
 	go runContentScheduler(ctx, logger, contentService)
+
+	// Newsletter: subscriptions, templates, the mail log and the campaign sender. The
+	// gateway writes one email_logs row per attempt, which is what makes "mail is
+	// configured" verifiable from the dashboard instead of only in the relay log.
+	// The newsletter reuses the same store: one email_logs table backs campaigns and
+	// system mail alike, so the operator sees one timeline instead of two.
+	newsletterRepo := mailLogStore
+	emailGateway := emailgateway.New(newsletterRepo, mailSender, emailgateway.WithLogger(logger))
+	newsletterService, err := newsletter.NewService(newsletter.ServiceConfig{
+		Repository:    newsletterRepo,
+		Gateway:       emailGateway,
+		PublicBaseURL: cfg.PublicBaseURL,
+		AccountEmail: func(ctx context.Context, userID string) (string, error) {
+			view, err := authService.Me(ctx, userID)
+			if err != nil {
+				return "", err
+			}
+			return view.Email, nil
+		},
+		// The content service already renders title, summary and the canonical link.
+		ContentDigest: contentService,
+		Logger:        logger,
+	})
+	if err != nil {
+		return fmt.Errorf("build newsletter service: %w", err)
+	}
+	newsletterSender := newsletter.NewSender(newsletterService, newsletter.SenderConfig{Logger: logger})
+	go newsletterSender.Start(ctx)
+	newsletterHandler := newsletter.NewHandler(newsletterService, newsletter.HandlerConfig{
+		Principal: func(c *gin.Context) (newsletter.Principal, bool) {
+			principal, ok := middleware.PrincipalFrom(c)
+			if !ok {
+				return newsletter.Principal{}, false
+			}
+			out := newsletter.Principal{
+				UserID: principal.UserID,
+				SiteID: principal.SiteID,
+				Role:   principal.Role,
+			}
+			if member, ok := middleware.MembershipFrom(c); ok {
+				out.CanManageSite = member.Allows(site.CapabilityManageSite)
+			}
+			return out, true
+		},
+		Site:          middleware.SiteFrom,
+		PublicBaseURL: cfg.PublicBaseURL,
+		Secure:        cfg.CookieSecure,
+	})
 
 	// The report queue composes the content, community and site services through
 	// narrow ports: a moderation decision uses each module's own state machine
@@ -507,6 +600,8 @@ func run() error {
 		Host:    pluginHost,
 		DataDir: extensionDataDir(cfg),
 		Logger:  logger,
+		// Integrity failures found while loading packages at boot are recorded here.
+		Audit: auditStore,
 	})
 	if err != nil {
 		_ = pluginHost.Close()
@@ -518,11 +613,68 @@ func run() error {
 		}
 	}()
 
+	// Operator console backends: a bounded request log ring buffer, the queue viewer
+	// and the automatic backup loop. All three are read only views over data the
+	// process already owns, so they live here rather than in their own services.
+	requestLog := observability.NewRecorder()
+	systemOps := system.NewOpsHandler(
+		requestLog,
+		system.NewEntQueueStore(handle.Client),
+		system.OpsHandlerConfig{},
+	)
+	scheduleOpts, err := backup.EnvSchedulerOptions()
+	if err != nil {
+		// A malformed BACKUP_AUTO_* value fails the boot instead of scheduling the
+		// wrong thing silently, the same rule storage and mail variables follow.
+		return fmt.Errorf("backup schedule: %w", err)
+	}
+	scheduleOpts.Logger = logger
+	scheduleOpts.Audit = auditStore
+	backupScheduler, err := backup.NewScheduler(backupService, scheduleOpts)
+	if err != nil {
+		return fmt.Errorf("build backup scheduler: %w", err)
+	}
+	go backupScheduler.Start(ctx)
+	backupScheduleHandler := backup.NewScheduleHandler(backupScheduler, backup.ScheduleHandlerConfig{})
+
 	router := ginrouter.New(ginrouter.Dependencies{
 		Config:       cfg,
 		Logger:       logger,
 		Readiness:    handle.Ping,
 		SiteResolver: siteService,
+		// Beta 1.2: request metadata for the operator console. Bodies, headers,
+		// cookies and query strings never enter the buffer.
+		RequestLog: requestLog,
+		// Queue statistics and the manual retry action.
+		Ops: systemOps,
+		// The auto backup schedule the process is actually running with.
+		BackupSchedule: backupScheduleHandler,
+		// Public path resolution for the page server plus the site level redirect
+		// rules the permalink change depends on.
+		Redirect: redirect.NewHandler(redirectService, redirect.HandlerConfig{
+			Principal: func(c *gin.Context) (site.Member, bool) {
+				if member, ok := middleware.MembershipFrom(c); ok {
+					return member, true
+				}
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return site.Member{}, false
+				}
+				return site.Member{
+					UserID: principal.UserID,
+					SiteID: principal.SiteID,
+					Role:   principal.Role,
+					Status: site.MemberStatusActive,
+				}, true
+			},
+			Site: middleware.SiteFrom,
+		}),
+		// Subscriptions, templates, the mail log and campaign sending.
+		Newsletter: newsletterHandler,
+		// Beta 1.2: applies the per-site origin list the dashboard already collected.
+		// The site service owns the document, so the transport asks it rather than
+		// parsing site configuration a second time.
+		SiteCORSOrigins: siteService.SiteCORSOrigins,
 		Install:      siteService,
 		// Extension administration is deployment scoped, so the handler re-checks the
 		// platform administrator seat itself; the payload can install server side code.
@@ -859,7 +1011,18 @@ func requestSiteID(cfg config.Config) auth.SiteIDFunc {
 // The token issuer and the step-up signer originate in run() because the site
 // service needs the step-up signer too: the guard that protects high threat routes
 // verifies the same grants this module mints.
-func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client, sites *site.Service, avatars auth.AvatarValidator, auditRecorder audit.Recorder, mailSender mailer.Sender, captchaGuard auth.CaptchaGuard, issuer *auth.TokenIssuer, stepUpSigner *auth.StepUpSigner, fieldCipher *fieldcrypto.Cipher) (*auth.Handler, *auth.Service, error) {
+func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security securityclient.Client, sites *site.Service, avatars auth.AvatarValidator, auditRecorder audit.Recorder, mailSender mailer.Sender, mailLog auth.MailLog, captchaGuard auth.CaptchaGuard, issuer *auth.TokenIssuer, stepUpSigner *auth.StepUpSigner, fieldCipher *fieldcrypto.Cipher) (*auth.Handler, *auth.Service, error) {
+	// The phone sign-in gateway. A deployment with SMS_PROVIDER=off gets a nil sender
+	// and the phone endpoints report themselves unavailable instead of failing later.
+	smsSender, err := sms.New(sms.Config{
+		Provider: cfg.SMSProvider,
+		URL:      cfg.SMSHTTPURL,
+		Token:    cfg.SMSHTTPToken,
+		Logger:   logger,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("build sms sender: %w", err)
+	}
 	service, err := auth.NewService(auth.ServiceConfig{
 		Repository: authstore.New(handle.Client, authstore.WithFieldCipher(fieldCipher)),
 		Hasher:     choosePasswordHasher(cfg, logger, security),
@@ -872,6 +1035,9 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 		// first administrator into a fresh (default-open) site.
 		RegistrationPolicy: sites.RegistrationOpen,
 		Mailer:             mailSender,
+		// Every system mail also lands in email_logs, so the dashboard can answer
+		// "did the reset mail go out" without reading the relay's log.
+		MailLog:            mailLog,
 		PublicBaseURL:      cfg.PublicBaseURL,
 		Audit:              auditRecorder,
 		AvatarValidator:    avatars,
@@ -880,6 +1046,12 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 		StepUpSigner: stepUpSigner,
 		StepUpConfig: sites,
 		Logger:       logger,
+		// Beta 1.2: phone sign-in. The SMS sender may be nil, which is the ordinary
+		// state of a deployment that never configured a gateway.
+		SMS:         smsSender,
+		SMSProvider: cfg.SMSProvider,
+		SMSDevMode:  cfg.SMSDevMode,
+		SMSCodeTTL:  cfg.SMSCodeTTL,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("build auth service: %w", err)
@@ -1057,7 +1229,20 @@ func buildSystemHandler(
 ) *system.Handler {
 	if systemMetricsDisabled() {
 		logger.Info("system metrics panel disabled by PP_SYSTEM_METRICS")
-		return nil
+		// The effective deployment configuration is not part of the resource panel: an
+		// operator reads it exactly when they are debugging storage or access settings,
+		// which is also when they may have switched the panel off. It survives that
+		// switch, mounted without a sampler.
+		return system.NewHandler(nil, system.HandlerConfig{
+			Principal: func(c *gin.Context) (string, bool) {
+				principal, ok := middleware.PrincipalFrom(c)
+				if !ok {
+					return "", false
+				}
+				return string(principal.Role), true
+			},
+			Deployment: func() config.Config { return cfg },
+		})
 	}
 	appDirs := make([]string, 0, 3)
 	if workingDir, err := os.Getwd(); err == nil {
@@ -1088,6 +1273,9 @@ func buildSystemHandler(
 			}
 			return string(principal.Role), true
 		},
+		// Beta 1.2: the storage and access panels report the values this process really
+		// loaded, so a site owner can tell a saved setting from an applied one.
+		Deployment: func() config.Config { return cfg },
 	})
 }
 
@@ -1473,6 +1661,18 @@ func runContentScheduler(ctx context.Context, logger *slog.Logger, service *cont
 					"failed", result.Failed,
 					"cancelled", result.Cancelled,
 				)
+			}
+			// The recycle bin is swept on the same tick. Deletion is a cheap indexed
+			// update of the rows that are past the retention window, and running it here
+			// keeps one scheduler instead of two: an operator sees every content
+			// lifecycle job in the same log stream.
+			purged, purgeErr := service.ProcessTrashRetention(ctx)
+			if purgeErr != nil {
+				logger.Error("trash retention pass failed", "error", purgeErr)
+				continue
+			}
+			if purged > 0 {
+				logger.Info("trash retention pass", "purged", purged)
 			}
 		}
 	}

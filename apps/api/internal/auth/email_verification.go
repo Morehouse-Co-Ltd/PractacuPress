@@ -28,6 +28,10 @@ const (
 	emailVerificationTokenBytes = 32
 	// VerifyEmailPath is the frontend route a verification link points at.
 	VerifyEmailPath = "/verify-email"
+	// emailVerificationSubject is the subject line of the verification mail. It is a
+	// constant because the mail log records it, so a skipped attempt still says what
+	// would have been sent.
+	emailVerificationSubject = "验证你的邮箱地址"
 )
 
 // EmailVerificationRequest is the outcome of asking for a verification link.
@@ -47,6 +51,10 @@ func (s *Service) RequestEmailVerification(
 	userID, siteID, baseURL string,
 ) (EmailVerificationRequest, error) {
 	if !s.mailReady() {
+		// No relay: the caller keeps the same "capability unavailable" answer as
+		// before. Best effort, the attempt is still recorded as skipped so the
+		// dashboard can explain why no verification mail went out.
+		s.recordEmailVerificationSkipped(ctx, userID, siteID)
 		return EmailVerificationRequest{}, ErrMailNotConfigured
 	}
 
@@ -75,7 +83,7 @@ func (s *Service) RequestEmailVerification(
 		return EmailVerificationRequest{}, findErr
 	}
 
-	expiresAt, err := s.issueEmailVerificationToken(ctx, userID, identity.Email, baseURL, now)
+	expiresAt, err := s.issueEmailVerificationToken(ctx, userID, siteID, identity.Email, baseURL, now)
 	if err != nil {
 		return EmailVerificationRequest{}, err
 	}
@@ -142,9 +150,12 @@ func (s *Service) VerifyEmail(ctx context.Context, plainToken string) error {
 }
 
 // issueEmailVerificationToken retires the previous link and sends a new one.
+//
+// siteID only scopes the mail log row; an empty value is recorded as such rather
+// than invented, and a row that cannot be written never blocks the mail.
 func (s *Service) issueEmailVerificationToken(
 	ctx context.Context,
-	userID, email, baseURL string,
+	userID, siteID, email, baseURL string,
 	now time.Time,
 ) (time.Time, error) {
 	plain, err := randomToken(emailVerificationTokenBytes)
@@ -169,11 +180,31 @@ func (s *Service) issueEmailVerificationToken(
 	}
 
 	link := verifyEmailLink(s.resetOrigin(baseURL), plain)
-	if err := s.mailer.Send(ctx, buildVerificationEmail(email, link, expiresAt)); err != nil {
+	if err := s.sendSystemMail(ctx, siteID, MailLogTemplateEmailVerify,
+		buildVerificationEmail(email, link, expiresAt)); err != nil {
 		return time.Time{}, err
 	}
 	s.logInfo("email verification mail sent", "user_id", userID)
 	return expiresAt, nil
+}
+
+// recordEmailVerificationSkipped writes the mail log row for a verification mail that
+// was never attempted because the deployment has no relay.
+//
+// The address has to be looked up here: the unconfigured check runs before the
+// caller's identity is read, and email_logs.to_email is mandatory, so without an
+// identity there is nothing to record. Every step is best effort; the caller's
+// answer is not affected.
+func (s *Service) recordEmailVerificationSkipped(ctx context.Context, userID, siteID string) {
+	if s.mailLog == nil {
+		return
+	}
+	identity, err := s.repo.FindEmailIdentityByUser(ctx, userID)
+	if err != nil || strings.TrimSpace(identity.Email) == "" {
+		return
+	}
+	s.recordSkippedSystemMail(ctx, siteID, MailLogTemplateEmailVerify, identity.Email,
+		emailVerificationSubject, mailLogReasonNoRelay)
 }
 
 // sendEmailVerification is the registration path: it issues a link and reports the
@@ -186,7 +217,7 @@ func (s *Service) sendEmailVerification(
 		return time.Time{}, nil
 	}
 	now := s.now()
-	expiresAt, err := s.issueEmailVerificationToken(ctx, userID, email, baseURL, now)
+	expiresAt, err := s.issueEmailVerificationToken(ctx, userID, siteID, email, baseURL, now)
 	if err != nil {
 		return time.Time{}, err
 	}

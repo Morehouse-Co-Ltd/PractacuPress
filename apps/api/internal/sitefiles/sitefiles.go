@@ -29,10 +29,16 @@ const (
 )
 
 // Item is one published content item that belongs in the sitemap.
+//
+// Slug is the permalink the site now advertises (J5): /a/{slug} and /p/{slug}. ID is
+// kept as the fallback for content that never got a slug, and CanonicalURL overrides
+// both when the author pinned an external canonical address.
 type Item struct {
-	ID        string
-	Kind      content.Kind
-	UpdatedAt time.Time
+	ID           string
+	Slug         string
+	Kind         content.Kind
+	CanonicalURL string
+	UpdatedAt    time.Time
 }
 
 // Page is one custom page from the site's design document.
@@ -128,12 +134,29 @@ func Published(ctx context.Context, lister ContentLister, siteID string) ([]Item
 			if item.Status != content.StatusPublished || item.ID == "" {
 				continue
 			}
+			// A trashed item is not a crawlable page any more. The listing already
+			// excludes it, and the explicit check keeps a sitemap from advertising a
+			// URL that answers 404 - the one thing a sitemap must never do.
+			if item.DeletedAt != nil {
+				continue
+			}
 			// A sitemap advertises crawlable URLs. Password and members-only items
 			// are direct-link-only, so they must never be listed here.
 			if item.AccessMode != "" && item.AccessMode != content.AccessPublic {
 				continue
 			}
-			items = append(items, Item{ID: item.ID, Kind: item.Kind, UpdatedAt: item.UpdatedAt})
+			// An item the author marked noindex may still be readable, but it is
+			// explicitly not an invitation to crawl.
+			if item.Robots.NoIndex() {
+				continue
+			}
+			items = append(items, Item{
+				ID:           item.ID,
+				Slug:         item.Slug,
+				Kind:         item.Kind,
+				CanonicalURL: item.CanonicalURL,
+				UpdatedAt:    item.UpdatedAt,
+			})
 		}
 		if next == "" {
 			break
@@ -148,9 +171,11 @@ func Published(ctx context.Context, lister ContentLister, siteID string) ([]Item
 
 // Build renders the sitemap entries for a site.
 //
-// The route shape mirrors the frontend: /a/{id} for articles, /p/{id} for posts and
-// /{slug} for custom pages. origin is trimmed of its trailing slash so the locs
-// never contain a double slash.
+// The route shape mirrors the frontend: /a/{slug} for articles, /p/{slug} for posts
+// and /{slug} for custom pages. A content item without a slug falls back to its id, so
+// a sitemap still advertises a reachable URL for legacy content. An author supplied
+// canonical URL wins over both (J5). origin is trimmed of its trailing slash so the
+// locs never contain a double slash.
 func Build(origin string, items []Item, pages []Page) []Entry {
 	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
 
@@ -162,20 +187,12 @@ func Build(origin string, items []Item, pages []Page) []Entry {
 	)
 
 	for _, item := range items {
-		if item.ID == "" {
-			continue
-		}
-		prefix := ""
-		switch item.Kind {
-		case content.KindArticle:
-			prefix = "/a/"
-		case content.KindPost:
-			prefix = "/p/"
-		default:
+		loc := itemLoc(origin, item)
+		if loc == "" {
 			continue
 		}
 		entries = append(entries, Entry{
-			Loc:          origin + prefix + url.PathEscape(item.ID),
+			Loc:          loc,
 			LastModified: lastModified(item.UpdatedAt),
 			ChangeFreq:   "monthly",
 			Priority:     0.7,
@@ -198,6 +215,43 @@ func Build(origin string, items []Item, pages []Page) []Entry {
 		})
 	}
 	return entries
+}
+
+// itemLoc builds the public address of one content item.
+//
+// The canonical override is emitted verbatim: it may point at another host (a
+// republished article), and rewriting it would defeat the author's decision. Inside the
+// site the slug is the permalink; the id is only a fallback so content that predates
+// the slug rule stays crawlable.
+func itemLoc(origin string, item Item) string {
+	if canonical := strings.TrimSpace(item.CanonicalURL); canonical != "" {
+		return canonical
+	}
+	prefix := contentPrefix(item.Kind)
+	if prefix == "" {
+		return ""
+	}
+	key := strings.TrimSpace(item.Slug)
+	if key == "" {
+		key = item.ID
+	}
+	if key == "" {
+		return ""
+	}
+	return origin + prefix + url.PathEscape(key)
+}
+
+// contentPrefix returns the public permalink prefix of a kind, or an empty string for
+// a kind that has no page.
+func contentPrefix(kind content.Kind) string {
+	switch kind {
+	case content.KindArticle:
+		return "/a/"
+	case content.KindPost:
+		return "/p/"
+	default:
+		return ""
+	}
 }
 
 // XML renders the sitemap document.

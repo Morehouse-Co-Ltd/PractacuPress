@@ -225,7 +225,7 @@ func TestBuildProjectionAndVisibility(t *testing.T) {
 	lister := &stubContent{items: []content.Content{
 		{
 			ID: "a1", SiteID: "site_1", AuthorID: "u1", Kind: content.KindArticle,
-			Status: content.StatusPublished, Title: "Hello", Summary: "Short",
+			Status: content.StatusPublished, Title: "Hello", Slug: "hello", Summary: "Short",
 			RenderedHTML: "<p>Body</p>", CategoryID: "cat_1", Tags: []string{"Go"},
 			PublishedAt: &published, CreatedAt: published, UpdatedAt: published,
 		},
@@ -252,11 +252,43 @@ func TestBuildProjectionAndVisibility(t *testing.T) {
 	require.Equal(t, DefaultLimit, lister.limit)
 	require.Len(t, channel.Items, 1)
 	entry := channel.Items[0]
-	require.Equal(t, "https://press.example.com/a/a1", entry.URL)
+	require.Equal(t, "https://press.example.com/a/hello", entry.URL)
 	require.Equal(t, "Ada", entry.AuthorName)
 	require.Equal(t, "News", entry.CategoryName)
 	require.Equal(t, []string{"Go"}, entry.Tags)
 	require.Equal(t, published, entry.PublishedAt)
+}
+
+func TestBuildUsesSlugCanonicalAndIDFallbacks(t *testing.T) {
+	published := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	lister := &stubContent{items: []content.Content{
+		{
+			ID: "a1", SiteID: "site_1", Kind: content.KindArticle,
+			Status: content.StatusPublished, Title: "Slugged", Slug: "hello-world",
+			CreatedAt: published, UpdatedAt: published,
+		},
+		{
+			ID: "p1", SiteID: "site_1", Kind: content.KindPost,
+			Status: content.StatusPublished, Title: "Canonical",
+			CanonicalURL: "https://elsewhere.example/republished",
+			CreatedAt:    published, UpdatedAt: published,
+		},
+		{
+			ID: "legacy", SiteID: "site_1", Kind: content.KindArticle,
+			Status: content.StatusPublished, Title: "No slug",
+			CreatedAt: published, UpdatedAt: published,
+		},
+	}}
+
+	channel, err := Build(context.Background(), Source{Content: lister}, Request{
+		SiteID: "site_1", SiteName: "Press", Origin: "https://press.example.com",
+		Settings: Defaults(),
+	})
+	require.NoError(t, err)
+	require.Len(t, channel.Items, 3)
+	require.Equal(t, "https://press.example.com/a/hello-world", channel.Items[0].URL)
+	require.Equal(t, "https://elsewhere.example/republished", channel.Items[1].URL)
+	require.Equal(t, "https://press.example.com/a/legacy", channel.Items[2].URL)
 }
 
 func TestBuildFullTextFallsBackToExcerpt(t *testing.T) {

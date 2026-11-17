@@ -27,6 +27,12 @@ type Conversation func(*sql.Selector)
 // ConversationMember is the predicate function for conversationmember builders.
 type ConversationMember func(*sql.Selector)
 
+// EmailLog is the predicate function for emaillog builders.
+type EmailLog func(*sql.Selector)
+
+// EmailTemplate is the predicate function for emailtemplate builders.
+type EmailTemplate func(*sql.Selector)
+
 // Follow is the predicate function for follow builders.
 type Follow func(*sql.Selector)
 
@@ -63,6 +69,9 @@ type PageView func(*sql.Selector)
 // PermissionGroup is the predicate function for permissiongroup builders.
 type PermissionGroup func(*sql.Selector)
 
+// PhoneCode is the predicate function for phonecode builders.
+type PhoneCode func(*sql.Selector)
+
 // Reaction is the predicate function for reaction builders.
 type Reaction func(*sql.Selector)
 
@@ -71,6 +80,9 @@ type ReadingHistory func(*sql.Selector)
 
 // RecoveryCode is the predicate function for recoverycode builders.
 type RecoveryCode func(*sql.Selector)
+
+// Redirect is the predicate function for redirect builders.
+type Redirect func(*sql.Selector)
 
 // SensitiveWord is the predicate function for sensitiveword builders.
 type SensitiveWord func(*sql.Selector)
@@ -95,6 +107,9 @@ type SiteMember func(*sql.Selector)
 
 // SiteSafetySetting is the predicate function for sitesafetysetting builders.
 type SiteSafetySetting func(*sql.Selector)
+
+// Subscriber is the predicate function for subscriber builders.
+type Subscriber func(*sql.Selector)
 
 // TaxonomyTerm is the predicate function for taxonomyterm builders.
 type TaxonomyTerm func(*sql.Selector)

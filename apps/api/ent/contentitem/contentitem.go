@@ -57,6 +57,28 @@ const (
 	FieldViewCount = "view_count"
 	// FieldCommentPolicy holds the string denoting the comment_policy field in the database.
 	FieldCommentPolicy = "comment_policy"
+	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
+	FieldDeletedAt = "deleted_at"
+	// FieldSeoTitle holds the string denoting the seo_title field in the database.
+	FieldSeoTitle = "seo_title"
+	// FieldSeoDescription holds the string denoting the seo_description field in the database.
+	FieldSeoDescription = "seo_description"
+	// FieldSeoKeywords holds the string denoting the seo_keywords field in the database.
+	FieldSeoKeywords = "seo_keywords"
+	// FieldCanonicalURL holds the string denoting the canonical_url field in the database.
+	FieldCanonicalURL = "canonical_url"
+	// FieldOgImage holds the string denoting the og_image field in the database.
+	FieldOgImage = "og_image"
+	// FieldRobots holds the string denoting the robots field in the database.
+	FieldRobots = "robots"
+	// FieldCoverURL holds the string denoting the cover_url field in the database.
+	FieldCoverURL = "cover_url"
+	// FieldCoverAlt holds the string denoting the cover_alt field in the database.
+	FieldCoverAlt = "cover_alt"
+	// FieldCoverPosition holds the string denoting the cover_position field in the database.
+	FieldCoverPosition = "cover_position"
+	// FieldCoverHidden holds the string denoting the cover_hidden field in the database.
+	FieldCoverHidden = "cover_hidden"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -90,6 +112,17 @@ var Columns = []string{
 	FieldAccessPasswordHash,
 	FieldViewCount,
 	FieldCommentPolicy,
+	FieldDeletedAt,
+	FieldSeoTitle,
+	FieldSeoDescription,
+	FieldSeoKeywords,
+	FieldCanonicalURL,
+	FieldOgImage,
+	FieldRobots,
+	FieldCoverURL,
+	FieldCoverAlt,
+	FieldCoverPosition,
+	FieldCoverHidden,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -161,6 +194,40 @@ var (
 	DefaultCommentPolicy string
 	// CommentPolicyValidator is a validator for the "comment_policy" field. It is called by the builders before save.
 	CommentPolicyValidator func(string) error
+	// DefaultSeoTitle holds the default value on creation for the "seo_title" field.
+	DefaultSeoTitle string
+	// SeoTitleValidator is a validator for the "seo_title" field. It is called by the builders before save.
+	SeoTitleValidator func(string) error
+	// DefaultSeoDescription holds the default value on creation for the "seo_description" field.
+	DefaultSeoDescription string
+	// SeoDescriptionValidator is a validator for the "seo_description" field. It is called by the builders before save.
+	SeoDescriptionValidator func(string) error
+	// DefaultSeoKeywords holds the default value on creation for the "seo_keywords" field.
+	DefaultSeoKeywords string
+	// SeoKeywordsValidator is a validator for the "seo_keywords" field. It is called by the builders before save.
+	SeoKeywordsValidator func(string) error
+	// DefaultCanonicalURL holds the default value on creation for the "canonical_url" field.
+	DefaultCanonicalURL string
+	// CanonicalURLValidator is a validator for the "canonical_url" field. It is called by the builders before save.
+	CanonicalURLValidator func(string) error
+	// DefaultOgImage holds the default value on creation for the "og_image" field.
+	DefaultOgImage string
+	// DefaultRobots holds the default value on creation for the "robots" field.
+	DefaultRobots string
+	// RobotsValidator is a validator for the "robots" field. It is called by the builders before save.
+	RobotsValidator func(string) error
+	// DefaultCoverURL holds the default value on creation for the "cover_url" field.
+	DefaultCoverURL string
+	// DefaultCoverAlt holds the default value on creation for the "cover_alt" field.
+	DefaultCoverAlt string
+	// CoverAltValidator is a validator for the "cover_alt" field. It is called by the builders before save.
+	CoverAltValidator func(string) error
+	// DefaultCoverPosition holds the default value on creation for the "cover_position" field.
+	DefaultCoverPosition string
+	// CoverPositionValidator is a validator for the "cover_position" field. It is called by the builders before save.
+	CoverPositionValidator func(string) error
+	// DefaultCoverHidden holds the default value on creation for the "cover_hidden" field.
+	DefaultCoverHidden bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -289,6 +356,61 @@ func ByViewCount(opts ...sql.OrderTermOption) OrderOption {
 // ByCommentPolicy orders the results by the comment_policy field.
 func ByCommentPolicy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCommentPolicy, opts...).ToFunc()
+}
+
+// ByDeletedAt orders the results by the deleted_at field.
+func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
+}
+
+// BySeoTitle orders the results by the seo_title field.
+func BySeoTitle(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSeoTitle, opts...).ToFunc()
+}
+
+// BySeoDescription orders the results by the seo_description field.
+func BySeoDescription(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSeoDescription, opts...).ToFunc()
+}
+
+// BySeoKeywords orders the results by the seo_keywords field.
+func BySeoKeywords(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSeoKeywords, opts...).ToFunc()
+}
+
+// ByCanonicalURL orders the results by the canonical_url field.
+func ByCanonicalURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCanonicalURL, opts...).ToFunc()
+}
+
+// ByOgImage orders the results by the og_image field.
+func ByOgImage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOgImage, opts...).ToFunc()
+}
+
+// ByRobots orders the results by the robots field.
+func ByRobots(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRobots, opts...).ToFunc()
+}
+
+// ByCoverURL orders the results by the cover_url field.
+func ByCoverURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCoverURL, opts...).ToFunc()
+}
+
+// ByCoverAlt orders the results by the cover_alt field.
+func ByCoverAlt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCoverAlt, opts...).ToFunc()
+}
+
+// ByCoverPosition orders the results by the cover_position field.
+func ByCoverPosition(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCoverPosition, opts...).ToFunc()
+}
+
+// ByCoverHidden orders the results by the cover_hidden field.
+func ByCoverHidden(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCoverHidden, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

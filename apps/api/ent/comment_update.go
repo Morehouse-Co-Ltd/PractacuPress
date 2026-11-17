@@ -56,6 +56,41 @@ func (_u *CommentUpdate) SetNillableStatus(v *string) *CommentUpdate {
 	return _u
 }
 
+// SetRiskScore sets the "risk_score" field.
+func (_u *CommentUpdate) SetRiskScore(v int) *CommentUpdate {
+	_u.mutation.ResetRiskScore()
+	_u.mutation.SetRiskScore(v)
+	return _u
+}
+
+// SetNillableRiskScore sets the "risk_score" field if the given value is not nil.
+func (_u *CommentUpdate) SetNillableRiskScore(v *int) *CommentUpdate {
+	if v != nil {
+		_u.SetRiskScore(*v)
+	}
+	return _u
+}
+
+// AddRiskScore adds value to the "risk_score" field.
+func (_u *CommentUpdate) AddRiskScore(v int) *CommentUpdate {
+	_u.mutation.AddRiskScore(v)
+	return _u
+}
+
+// SetRiskFlags sets the "risk_flags" field.
+func (_u *CommentUpdate) SetRiskFlags(v string) *CommentUpdate {
+	_u.mutation.SetRiskFlags(v)
+	return _u
+}
+
+// SetNillableRiskFlags sets the "risk_flags" field if the given value is not nil.
+func (_u *CommentUpdate) SetNillableRiskFlags(v *string) *CommentUpdate {
+	if v != nil {
+		_u.SetRiskFlags(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *CommentUpdate) SetUpdatedAt(v time.Time) *CommentUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -110,6 +145,11 @@ func (_u *CommentUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Comment.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RiskScore(); ok {
+		if err := comment.RiskScoreValidator(v); err != nil {
+			return &ValidationError{Name: "risk_score", err: fmt.Errorf(`ent: validator failed for field "Comment.risk_score": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -133,6 +173,15 @@ func (_u *CommentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(comment.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskScore(); ok {
+		_spec.SetField(comment.FieldRiskScore, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRiskScore(); ok {
+		_spec.AddField(comment.FieldRiskScore, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RiskFlags(); ok {
+		_spec.SetField(comment.FieldRiskFlags, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(comment.FieldUpdatedAt, field.TypeTime, value)
@@ -181,6 +230,41 @@ func (_u *CommentUpdateOne) SetStatus(v string) *CommentUpdateOne {
 func (_u *CommentUpdateOne) SetNillableStatus(v *string) *CommentUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetRiskScore sets the "risk_score" field.
+func (_u *CommentUpdateOne) SetRiskScore(v int) *CommentUpdateOne {
+	_u.mutation.ResetRiskScore()
+	_u.mutation.SetRiskScore(v)
+	return _u
+}
+
+// SetNillableRiskScore sets the "risk_score" field if the given value is not nil.
+func (_u *CommentUpdateOne) SetNillableRiskScore(v *int) *CommentUpdateOne {
+	if v != nil {
+		_u.SetRiskScore(*v)
+	}
+	return _u
+}
+
+// AddRiskScore adds value to the "risk_score" field.
+func (_u *CommentUpdateOne) AddRiskScore(v int) *CommentUpdateOne {
+	_u.mutation.AddRiskScore(v)
+	return _u
+}
+
+// SetRiskFlags sets the "risk_flags" field.
+func (_u *CommentUpdateOne) SetRiskFlags(v string) *CommentUpdateOne {
+	_u.mutation.SetRiskFlags(v)
+	return _u
+}
+
+// SetNillableRiskFlags sets the "risk_flags" field if the given value is not nil.
+func (_u *CommentUpdateOne) SetNillableRiskFlags(v *string) *CommentUpdateOne {
+	if v != nil {
+		_u.SetRiskFlags(*v)
 	}
 	return _u
 }
@@ -252,6 +336,11 @@ func (_u *CommentUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Comment.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RiskScore(); ok {
+		if err := comment.RiskScoreValidator(v); err != nil {
+			return &ValidationError{Name: "risk_score", err: fmt.Errorf(`ent: validator failed for field "Comment.risk_score": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -292,6 +381,15 @@ func (_u *CommentUpdateOne) sqlSave(ctx context.Context) (_node *Comment, err er
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(comment.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskScore(); ok {
+		_spec.SetField(comment.FieldRiskScore, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRiskScore(); ok {
+		_spec.AddField(comment.FieldRiskScore, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.RiskFlags(); ok {
+		_spec.SetField(comment.FieldRiskFlags, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(comment.FieldUpdatedAt, field.TypeTime, value)

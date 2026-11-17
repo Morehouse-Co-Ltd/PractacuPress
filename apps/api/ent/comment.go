@@ -33,6 +33,10 @@ type Comment struct {
 	Body string `json:"body,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// RiskScore holds the value of the "risk_score" field.
+	RiskScore int `json:"risk_score,omitempty"`
+	// RiskFlags holds the value of the "risk_flags" field.
+	RiskFlags string `json:"risk_flags,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -45,9 +49,9 @@ func (*Comment) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case comment.FieldDepth:
+		case comment.FieldDepth, comment.FieldRiskScore:
 			values[i] = new(sql.NullInt64)
-		case comment.FieldID, comment.FieldSiteID, comment.FieldAuthorID, comment.FieldTargetType, comment.FieldTargetID, comment.FieldParentID, comment.FieldBody, comment.FieldStatus:
+		case comment.FieldID, comment.FieldSiteID, comment.FieldAuthorID, comment.FieldTargetType, comment.FieldTargetID, comment.FieldParentID, comment.FieldBody, comment.FieldStatus, comment.FieldRiskFlags:
 			values[i] = new(sql.NullString)
 		case comment.FieldCreatedAt, comment.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -120,6 +124,18 @@ func (_m *Comment) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case comment.FieldRiskScore:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field risk_score", values[i])
+			} else if value.Valid {
+				_m.RiskScore = int(value.Int64)
+			}
+		case comment.FieldRiskFlags:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field risk_flags", values[i])
+			} else if value.Valid {
+				_m.RiskFlags = value.String
 			}
 		case comment.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -194,6 +210,12 @@ func (_m *Comment) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("risk_score=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RiskScore))
+	builder.WriteString(", ")
+	builder.WriteString("risk_flags=")
+	builder.WriteString(_m.RiskFlags)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

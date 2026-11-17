@@ -87,6 +87,113 @@ every existing membership keeps its current behaviour. The unique index on
 `(site_id, key)` is what makes a key stable while its label changes. Apply the
 matching script before deploying the API, and use the paired `.down.sql` for rollback.
 
+### 2026-11-20 content trash, SEO, cover and comment risk (Beta 1.2)
+
+`20261120000000_content_trash_seo_risk.up.sql` adds eleven columns to `content_items`:
+`deleted_at`, the nullable recycle bin marker, plus the
+`contentitem_site_id_deleted_at` index on `(site_id, deleted_at)` that serves the bin
+listing and the `deleted_at IS NULL` predicate every other query adds; the per item SEO
+overrides `seo_title`, `seo_description`, `seo_keywords`, `canonical_url` and `robots`;
+the social card and cover `og_image` and `cover_url`, unbounded text because a cover may
+be an inline data URL; and the cover presentation columns `cover_alt`, `cover_position`
+and `cover_hidden`. The same change set adds `media_assets.file_name` (the name the
+uploader used instead of a storage key fragment) and the server side comment ranking
+`comments.risk_score` and `comments.risk_flags`, which used to be computed in the
+browser.
+
+Every column has a default, so there is no backfill and an existing deployment keeps its
+current behaviour: no item sits in the recycle bin, every SEO field inherits the site
+template, no cover is configured, no comment is ranked and no asset loses its name.
+Deletes become soft deletes: the row, its revisions, comments and media references stay
+resolvable, and readers filter it out through `deleted_at`.
+
+Apply the script that matches the deployment database before deploying the Beta 1.2
+binary, and use the paired `.down.sql` for rollback:
+
+```bash
+# PostgreSQL
+psql "$DATABASE_DSN" -v ON_ERROR_STOP=1 -1 \
+  -f migrations/postgres/20261120000000_content_trash_seo_risk.up.sql
+# MySQL
+mysql --default-character-set=utf8mb4 "$DATABASE_DSN" \
+  < migrations/mysql/20261120000000_content_trash_seo_risk.up.sql
+# SQLite
+sqlite3 data/practacu.db \
+  < migrations/sqlite/20261120000000_content_trash_seo_risk.up.sql
+```
+
+Only the PostgreSQL script can be re-run: it uses `ADD COLUMN IF NOT EXISTS` and
+`CREATE INDEX IF NOT EXISTS`. MySQL and SQLite have neither for a column, so their
+scripts are applied exactly once, which is what the separate migration step in
+[Production](#production) provides. That step is *not* `apps/api/cmd/migrate`: that
+command reconciles the Ent model additively and idempotently, so on a development
+database it also produces these columns, after which the versioned script would be a
+no-op on PostgreSQL and a duplicate-column error on MySQL and SQLite. Run one path per
+database: `migrate` for development and the desktop build, the reviewed script for
+production.
+
+### 2026-11-21 redirects, subscribers, mail log, mail templates and SMS codes
+
+`20261121000000_redirect_subscriber_email_phone.up.sql` is one cross-dialect change
+set that adds five tables and extends the page view ledger:
+
+- `redirects` — one permanent/temporary URL rule per `(site_id, from_path)`. The
+  unique `redirect_site_id_from_path` index is what makes resolution an exact match, so
+  two rules can never decide the result by order; `redirect_site_id_created_at` serves
+  the admin list.
+- `subscribers` — one newsletter entry per `(site_id, email)`, with lowercase emails so
+  `Alice@Example.com` and `alice@example.com` collide on purpose. Only `token_hash` is
+  stored, never the plaintext confirmation/unsubscribe token. The unique
+  `subscriber_token_hash` index is the lookup used by both mailed links.
+- `email_logs` — one row per outbound message, written before the relay call and
+  updated with the outcome. The body is never stored, only the subject and template
+  key.
+- `email_templates` — one editable override per `(site_id, key)`; a missing row means
+  the shipped default, so existing sites need no backfill.
+- `phone_codes` — one short lived SMS code. The number is stored as a keyed hash plus a
+  masked display value; `phonecode_expires_at` lets the sweeper remove expired rows.
+- `page_views` gains `referrer_host`, `source` and `device`, plus
+  `pageview_site_id_source_created_at` and `pageview_site_id_device_created_at` for the
+  per window source and device breakdowns. The pre-existing surface/session indexes
+  are untouched.
+
+Every new column that is not a key, an owner column or an instant has a default that
+mirrors the Ent schema (`status_code` 301, redirect `source` `manual`, subscriber
+`status` `pending`, email `kind` `system` / `status` `queued`, template `enabled`
+`TRUE`/`1`, phone code `purpose` `login`, page view `source`/`device` `unknown`), so a
+row written around the ORM still lands on the value the ORM would have written. An
+existing deployment keeps its behaviour with no backfill: it simply has no redirects,
+no subscribers, no mail log rows, no template overrides and no phone codes yet.
+
+Types follow the per-dialect conventions used by the earlier change sets: booleans are
+native `BOOLEAN` on PostgreSQL and `TINYINT(1)`/`INTEGER` 0/1 on MySQL/SQLite,
+instants are `TIMESTAMPTZ` on PostgreSQL and `DATETIME(6)`/`DATETIME` on MySQL/SQLite,
+and the template bodies are `LONGTEXT`/`TEXT`/`TEXT`. The MySQL `TEXT` defaults use the
+8.0.13+ expression form `DEFAULT ('')`, exactly like the Beta 1.2 change set.
+
+Apply the script that matches the deployment database before deploying the binary that
+reads these tables, and use the paired `.down.sql` for rollback:
+
+```bash
+# PostgreSQL
+psql "$DATABASE_DSN" -v ON_ERROR_STOP=1 -1 \
+  -f migrations/postgres/20261121000000_redirect_subscriber_email_phone.up.sql
+# MySQL
+mysql --default-character-set=utf8mb4 "$DATABASE_DSN" \
+  < migrations/mysql/20261121000000_redirect_subscriber_email_phone.up.sql
+# SQLite
+sqlite3 data/practacu.db \
+  < migrations/sqlite/20261121000000_redirect_subscriber_email_phone.up.sql
+```
+
+Only the PostgreSQL script is genuinely re-runnable: it uses `CREATE TABLE IF NOT
+EXISTS`, `CREATE INDEX IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS`. The SQLite and
+MySQL scripts are applied exactly once, like the earlier change sets: both have no
+`ADD COLUMN IF NOT EXISTS`/`ADD COLUMN ... IF NOT EXISTS`, so a second application
+would fail on the page_views half. The down script drops the indexes before the tables
+and columns they reference — SQLite refuses to drop an indexed column — and the page
+view rows themselves survive the rollback.
+
 ## Rollback
 
 Every migration must be paired with a reviewed rollback statement in the same

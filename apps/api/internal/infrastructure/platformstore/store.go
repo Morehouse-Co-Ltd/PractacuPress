@@ -153,17 +153,30 @@ func (s *Store) siteMetrics(
 				sitemember.StatusEQ(memberStatusActive),
 				sitemember.RoleIn(roleSiteAdmin, rolePlatformAdmin),
 			)},
+		// The recycle bin is excluded from every content counter: an operator reading
+		// the cross site dashboard is asking how much live content a site has, and a
+		// trashed row is not that. It is still counted nowhere else, so the number the
+		// site owner sees in the content library matches this one.
 		{"content", &item.Content.Total, s.client.ContentItem.Query().
-			Where(contentitem.SiteIDEQ(found.ID))},
+			Where(contentitem.SiteIDEQ(found.ID), contentitem.DeletedAtIsNil())},
 		{"published content", &item.Content.Published, s.client.ContentItem.Query().
-			Where(contentitem.SiteIDEQ(found.ID), contentitem.StatusEQ(contentStatusPublished))},
+			Where(
+				contentitem.SiteIDEQ(found.ID),
+				contentitem.StatusEQ(contentStatusPublished),
+				contentitem.DeletedAtIsNil(),
+			)},
 		{"pending content", &item.Content.Pending, s.client.ContentItem.Query().
 			Where(
 				contentitem.SiteIDEQ(found.ID),
 				contentitem.StatusIn(contentStatusPending, contentStatusSecurity),
+				contentitem.DeletedAtIsNil(),
 			)},
 		{"draft content", &item.Content.Draft, s.client.ContentItem.Query().
-			Where(contentitem.SiteIDEQ(found.ID), contentitem.StatusEQ(contentStatusDraft))},
+			Where(
+				contentitem.SiteIDEQ(found.ID),
+				contentitem.StatusEQ(contentStatusDraft),
+				contentitem.DeletedAtIsNil(),
+			)},
 		{"comments", &item.Comments.Total, s.client.Comment.Query().
 			Where(comment.SiteIDEQ(found.ID))},
 		{"pending comments", &item.Comments.Pending, s.client.Comment.Query().

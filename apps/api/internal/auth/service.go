@@ -12,6 +12,7 @@ import (
 
 	"github.com/practacu/practacu-press/apps/api/internal/audit"
 	"github.com/practacu/practacu-press/apps/api/internal/platform/mailer"
+	"github.com/practacu/practacu-press/apps/api/internal/platform/sms"
 	"github.com/practacu/practacu-press/apps/api/internal/site"
 )
 
@@ -36,6 +37,10 @@ type Service struct {
 	// setting so an operator can close sign-ups without a redeploy.
 	registrationPolicy func(ctx context.Context, siteID string) (bool, error)
 	mailer             mailer.Sender
+	// mailLog records reset and verification mail in the shared email_logs table, so
+	// the dashboard's mail log covers system mail too. Nil means "do not record":
+	// delivery is unaffected and behaves exactly as it did before the log existed.
+	mailLog MailLog
 	// publicBaseURL overrides the origin of reset links. Empty means the origin of
 	// the request that asked for the reset is used.
 	publicBaseURL string
@@ -55,7 +60,19 @@ type Service struct {
 	// stepUpConfig reads the site's optional dedicated security password. Nil means
 	// only account login passwords can authorize a step-up.
 	stepUpConfig StepUpConfigReader
-	logger       *slog.Logger
+	// phone is the persistence port of phone code login. Nil disables the feature:
+	// the policy endpoint reports it as not enabled and the endpoints answer
+	// sms_not_configured instead of writing codes nobody can redeem.
+	phone PhoneRepository
+	// sms delivers verification codes. Nil means no gateway is wired.
+	sms sms.Sender
+	// smsProvider is the provider name reported by GET /auth/phone/policy.
+	smsProvider string
+	// smsDevMode returns the code in the request response and fixes it to DevPhoneCode.
+	smsDevMode bool
+	// smsCodeTTL is how long a requested code stays valid.
+	smsCodeTTL time.Duration
+	logger     *slog.Logger
 }
 
 // ServiceConfig configures a Service.
@@ -87,6 +104,11 @@ type ServiceConfig struct {
 	// Mailer delivers transactional mail. Leaving it nil disables password reset,
 	// which is the correct behaviour for an install without an SMTP relay.
 	Mailer mailer.Sender
+	// MailLog records every system mail attempt in the shared email log
+	// (email_logs). Leaving it nil keeps the old behaviour: mail is delivered but
+	// nothing is recorded, because a logging port is an observability add on and
+	// never a delivery precondition.
+	MailLog MailLog
 	// PublicBaseURL is the origin used in reset links, for example
 	// "https://press.example.com". Empty falls back to the request origin.
 	PublicBaseURL string
@@ -102,6 +124,24 @@ type ServiceConfig struct {
 	// StepUpConfig reads each site's dedicated security password. Nil means only the
 	// caller's account login password can authorize a step-up.
 	StepUpConfig StepUpConfigReader
+	// PhoneCodes is the persistence port of phone code login (contract A).
+	//
+	// Leaving it nil falls back to Repository when that also implements
+	// PhoneRepository: the server wires one authstore for both, and typing it twice
+	// is exactly the kind of wiring mistake that silently disables a feature. Phone
+	// login still stays off unless SMS is configured too.
+	PhoneCodes PhoneRepository
+	// SMS delivers phone verification codes. Nil disables phone login.
+	SMS sms.Sender
+	// SMSProvider is the gateway name the policy endpoint reports ("off", "log" or
+	// "http"). Empty is derived from SMS: a configured sender means the log provider
+	// was wired by hand.
+	SMSProvider string
+	// SMSDevMode returns the verification code in the request response. config.Load
+	// refuses it in production; a hand built Service is trusted to have decided.
+	SMSDevMode bool
+	// SMSCodeTTL defaults to DefaultPhoneCodeTTL (5 minutes).
+	SMSCodeTTL time.Duration
 	// Logger records delivery failures. Nil discards them.
 	Logger *slog.Logger
 }
@@ -128,12 +168,21 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		bootstrapFirstAdmin: cfg.BootstrapFirstAdmin,
 		registrationPolicy:  cfg.RegistrationPolicy,
 		mailer:              cfg.Mailer,
+		mailLog:             cfg.MailLog,
 		publicBaseURL:       cfg.PublicBaseURL,
 		audit:               cfg.Audit,
 		avatars:             cfg.AvatarValidator,
 		stepUpSigner:        cfg.StepUpSigner,
 		stepUpConfig:        cfg.StepUpConfig,
+		phone:               phoneRepository(cfg),
+		sms:                 cfg.SMS,
+		smsProvider:         normalizeSMSProvider(cfg.SMSProvider, cfg.SMS),
+		smsDevMode:          cfg.SMSDevMode,
+		smsCodeTTL:          cfg.SMSCodeTTL,
 		logger:              cfg.Logger,
+	}
+	if s.smsCodeTTL <= 0 {
+		s.smsCodeTTL = DefaultPhoneCodeTTL
 	}
 	if s.refreshTTL <= 0 {
 		s.refreshTTL = RefreshTTL

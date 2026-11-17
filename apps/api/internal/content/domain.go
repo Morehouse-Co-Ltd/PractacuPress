@@ -102,6 +102,42 @@ func (p CommentPolicy) Valid() bool {
 	}
 }
 
+// Robots is the per item crawler directive (C-29).
+type Robots string
+
+// The crawler directives an item may carry.
+const (
+	// RobotsInherit follows the site level indexing switch.
+	RobotsInherit Robots = ""
+	// RobotsIndex keeps the item indexable even when the site default says otherwise.
+	RobotsIndex Robots = "index"
+	// RobotsNoIndex keeps the item out of crawler files and marks its page noindex.
+	RobotsNoIndex Robots = "noindex"
+)
+
+// Valid reports whether the directive is defined.
+func (r Robots) Valid() bool {
+	return r == RobotsInherit || r == RobotsIndex || r == RobotsNoIndex
+}
+
+// NoIndex reports whether the item asks crawlers to skip it.
+func (r Robots) NoIndex() bool { return r == RobotsNoIndex }
+
+// CoverPosition is the focal point of a cover image.
+type CoverPosition string
+
+// The supported focal points.
+const (
+	CoverTop    CoverPosition = "top"
+	CoverCenter CoverPosition = "center"
+	CoverBottom CoverPosition = "bottom"
+)
+
+// Valid reports whether the focal point is defined.
+func (p CoverPosition) Valid() bool {
+	return p == CoverTop || p == CoverCenter || p == CoverBottom
+}
+
 // Bounds on an access password.
 const (
 	// MinAccessPasswordLength is the shortest access password accepted.
@@ -141,9 +177,30 @@ type Action string
 const (
 	ActionSubmit  Action = "submit"
 	ActionPublish Action = "publish"
-	ActionReject  Action = "reject"
-	ActionArchive Action = "archive"
-	ActionRestore Action = "restore"
+	// ActionUnpublish withdraws a live item back to draft (Beta 1.2 contract I): the
+	// published_at stamp is cleared and the item returns to the editor under its
+	// current revision. It is deliberately not the same verb as delete: the row stays
+	// addressable and the history is untouched.
+	ActionUnpublish Action = "unpublish"
+	ActionReject    Action = "reject"
+	ActionArchive   Action = "archive"
+	ActionRestore   Action = "restore"
+)
+
+// The lifecycle actions.
+//
+// They are deliberately kept out of the workflow table: deleting an item is
+// orthogonal to where it sits in the review state machine (a published and a draft
+// item can both be trashed), so a transition row would have to be duplicated for
+// every status. They are decided by authorizeLifecycle instead, and they live in the
+// separate recycle bin vocabulary the client switches on.
+const (
+	// ActionDelete moves an item into the recycle bin.
+	ActionDelete Action = "delete"
+	// ActionUndelete restores an item from the recycle bin.
+	ActionUndelete Action = "undelete"
+	// ActionPurge destroys a trashed item and its history for good.
+	ActionPurge Action = "purge"
 )
 
 // Sentinel errors.
@@ -185,10 +242,42 @@ var (
 	// ErrScheduleNotAllowed means the caller may not publish directly, so it may not
 	// schedule a publication either.
 	ErrScheduleNotAllowed = errors.New("content: schedule not allowed")
+	// ErrPreviewUnavailable means the preview signer was not wired, so no draft
+	// preview link can be minted on this deployment.
+	ErrPreviewUnavailable = errors.New("content: preview signing unavailable")
 )
+
+// VersionConflictError reports a save that carried a stale revision token (Beta 1.2
+// contract F).
+//
+// Current is the stored revision the client has to reload before retrying; the HTTP
+// layer exposes it as details.current_revision under the content_version_conflict
+// code.
+type VersionConflictError struct {
+	Current int
+}
+
+// Error implements the error interface.
+func (e *VersionConflictError) Error() string { return "content: version conflict" }
+
+// Unwrap makes a revision conflict matchable as the package's general ErrConflict.
+func (e *VersionConflictError) Unwrap() error { return ErrConflict }
 
 // RevisionRetention bounds the history kept per item (C-20 keeps 20 versions).
 const RevisionRetention = 20
+
+// Recycle bin retention.
+const (
+	// TrashRetentionDays is how long a trashed item stays recoverable. The value is
+	// a product promise, not a cache TTL: a longer window means the site keeps
+	// deleted bodies and their media references around for that much longer, so it
+	// is fixed here and swept by ProcessTrashRetention rather than left to a caller.
+	TrashRetentionDays = 30
+	// TrashRetentionBatch bounds one retention pass. A large backlog must not hold a
+	// single write transaction open; the scheduler calls the sweep again on its next
+	// tick, so the bound only affects how fast a backlog drains.
+	TrashRetentionBatch = 100
+)
 
 // RevisionAction records which write produced a history snapshot.
 type RevisionAction string
@@ -229,6 +318,15 @@ const (
 	MaxTags = 12
 	// MaxTagLength bounds one label.
 	MaxTagLength = 24
+	// MaxSeoKeywordsLength bounds the comma separated keyword hint. The value is
+	// stored verbatim and never split server side, so the bound guards storage only.
+	MaxSeoKeywordsLength = 500
+	// MaxURLLength bounds the canonical URL override. It matches the column bound and
+	// is generous enough for a signed media URL; the two image fields are unbounded
+	// text on purpose, because a cover or share card may be an inline data URL.
+	MaxURLLength = 500
+	// MaxCoverAltLength bounds the cover's alternative text.
+	MaxCoverAltLength = 200
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -273,6 +371,11 @@ type Content struct {
 	Tags          []string
 	PublishedAt   *time.Time
 	ArchivedAt    *time.Time
+	// DeletedAt is the recycle bin marker: nil means the item is live, any value
+	// means it is trashed. Soft delete is the only delete an author can reach, so a
+	// mistaken removal stays recoverable for TrashRetentionDays; only Purge destroys
+	// the row, and every read path filters on this marker.
+	DeletedAt *time.Time
 	// PublishAt is the scheduled publication instant (C-17). The scheduler claims
 	// due drafts; a manual publish clears it.
 	PublishAt *time.Time
@@ -294,6 +397,26 @@ type Content struct {
 	// Revision is the current version number. It starts at 1 for a newly created
 	// item and increments on every save; the history table uses the same number.
 	Revision int
+
+	// The SEO overrides (C-29). An empty value means "inherit the site template", so
+	// an item that never touches them renders exactly as it did before they existed.
+	// They are not part of the revision snapshot: history restores text, and silently
+	// reverting a canonical URL or a noindex decision alongside it would be a
+	// crawler facing side effect nobody asked for.
+	SeoTitle       string
+	SeoDescription string
+	SeoKeywords    string
+	CanonicalURL   string
+	OgImage        string
+	// Robots is the per item crawler directive. The empty value inherits the site
+	// switch; noindex keeps the item out of the sitemap and marks its page noindex.
+	Robots Robots
+	// The cover belongs to the item rather than to the site design document, so it
+	// survives an export, a feed entry and a share card.
+	CoverURL      string
+	CoverAlt      string
+	CoverPosition CoverPosition
+	CoverHidden   bool
 }
 
 // Revision is one immutable snapshot of a Content item.
@@ -360,6 +483,9 @@ func (c *Content) applyRevision(rev Revision) {
 // IsAuthor reports whether the actor wrote this item.
 func (c Content) IsAuthor(actor Actor) bool { return c.AuthorID == actor.UserID }
 
+// IsTrashed reports whether the item sits in the recycle bin.
+func (c Content) IsTrashed() bool { return c.DeletedAt != nil }
+
 // IsPasswordProtected reports whether reading the item needs its access password.
 func (c Content) IsPasswordProtected() bool { return c.AccessMode == AccessPassword }
 
@@ -408,6 +534,25 @@ type DraftInput struct {
 	// CommentPolicy is empty on an update that keeps the stored policy; an empty
 	// value on create means CommentPolicyInherit.
 	CommentPolicy CommentPolicy
+	// The SEO and cover overrides use replace semantics, not merge: a save always
+	// carries the whole table, so an empty value means "clear the override and inherit
+	// the site default again". That is what makes the field removable from the editor
+	// without a second, "unset this one" endpoint.
+	SeoTitle       string
+	SeoDescription string
+	SeoKeywords    string
+	CanonicalURL   string
+	OgImage        string
+	Robots         Robots
+	CoverURL       string
+	CoverAlt       string
+	CoverPosition  CoverPosition
+	CoverHidden    bool
+	// Revision is the optional optimistic concurrency token of a PATCH (Beta 1.2
+	// contract F). Nil keeps the historical last-write-wins behaviour; a non nil value
+	// that does not match the stored revision is refused as a conflict instead of
+	// overwriting an editor's newer save. It is never persisted as a form field.
+	Revision *int
 }
 
 // Transition is one row of the workflow table.
@@ -431,6 +576,12 @@ var workflow = []Transition{
 
 	{Action: ActionPublish, From: StatusPendingReview, To: StatusPublished},
 	{Action: ActionPublish, From: StatusDraft, To: StatusPublished, NeedsPublishRight: true},
+
+	// Withdrawing a live item returns it to draft and clears published_at, so the
+	// next publish is an ordinary transition from draft again. It does not need the
+	// publish right: the authority to take a page down is decided by
+	// authorizeAction (author or editor), not by the ability to skip review.
+	{Action: ActionUnpublish, From: StatusPublished, To: StatusDraft},
 
 	{Action: ActionReject, From: StatusPendingReview, To: StatusRejected},
 	{Action: ActionArchive, From: StatusPublished, To: StatusArchived},
@@ -516,6 +667,15 @@ func authorizeAction(action Action, from Status, item Content, actor Actor) erro
 		}
 		return ErrPermissionDenied
 
+	case ActionUnpublish:
+		// Taking one's own page down is an author decision; an editor may spare a
+		// contributor from having to ask. The published state is the precondition,
+		// not the authority.
+		if item.IsAuthor(actor) || actor.Role.AtLeast(site.RoleEditor) {
+			return nil
+		}
+		return ErrPermissionDenied
+
 	case ActionArchive:
 		if item.IsAuthor(actor) || actor.Role.AtLeast(site.RoleEditor) {
 			return nil
@@ -527,13 +687,38 @@ func authorizeAction(action Action, from Status, item Content, actor Actor) erro
 	}
 }
 
+// authorizeLifecycle decides who may move an item in or out of the recycle bin.
+//
+// The rule is the write rule, not the workflow rule: the caller needs the site's
+// write_content capability, which in the role model means a signed in member, and
+// then either authorship or an editor seat. The item's status is deliberately not
+// consulted - an author must be able to withdraw a published article without asking
+// a moderator first, and a moderator must be able to clean up somebody's abandoned
+// draft. Reusing this one function for all three lifecycle actions is what keeps
+// "who may delete" from drifting away from "who may restore".
+func authorizeLifecycle(item Content, actor Actor) error {
+	if item.SiteID != actor.SiteID {
+		return ErrCrossSite
+	}
+	if actor.UserID == "" {
+		// write_content is a member capability; an anonymous reader holds nothing.
+		return ErrPermissionDenied
+	}
+	if item.IsAuthor(actor) || actor.Role.AtLeast(site.RoleEditor) {
+		return nil
+	}
+	return ErrPermissionDenied
+}
+
 // AvailableActions lists the actions the actor may take on the item right now.
 //
 // Handlers use it to build the UI affordances, which keeps the client from guessing
 // and keeps the rule in one place.
 func (p Policy) AvailableActions(item Content, actor Actor) []Action {
 	actions := make([]Action, 0, len(workflow))
-	for _, candidate := range []Action{ActionSubmit, ActionPublish, ActionReject, ActionArchive, ActionRestore} {
+	for _, candidate := range []Action{
+		ActionSubmit, ActionPublish, ActionUnpublish, ActionReject, ActionArchive, ActionRestore,
+	} {
 		if _, err := p.Next(item, candidate, actor); err == nil {
 			actions = append(actions, candidate)
 		}
@@ -547,6 +732,13 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 	in.Summary = strings.TrimSpace(in.Summary)
 	in.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
 	in.CategoryID = strings.TrimSpace(in.CategoryID)
+	in.SeoTitle = strings.TrimSpace(in.SeoTitle)
+	in.SeoDescription = strings.TrimSpace(in.SeoDescription)
+	in.SeoKeywords = strings.TrimSpace(in.SeoKeywords)
+	in.CanonicalURL = strings.TrimSpace(in.CanonicalURL)
+	in.OgImage = strings.TrimSpace(in.OgImage)
+	in.CoverURL = strings.TrimSpace(in.CoverURL)
+	in.CoverAlt = strings.TrimSpace(in.CoverAlt)
 
 	tags, err := NormalizeTags(in.Tags)
 	if err != nil {
@@ -609,6 +801,36 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 	}
 	if in.CommentPolicy != "" && !in.CommentPolicy.Valid() {
 		return DraftInput{}, invalidField("comment_policy", "unknown", "unknown comment policy")
+	}
+
+	// The SEO and cover overrides are bounded here rather than only by the column
+	// validator: a too long value must come back as a field error the editor can
+	// point at, not as a failed insert the client reads as a server fault.
+	if len([]rune(in.SeoTitle)) > MaxTitleLength {
+		return DraftInput{}, invalidField("seo_title", "too_long", "seo title is too long")
+	}
+	if len([]rune(in.SeoDescription)) > MaxSummaryLength {
+		return DraftInput{}, invalidField("seo_description", "too_long", "seo description is too long")
+	}
+	if len([]rune(in.SeoKeywords)) > MaxSeoKeywordsLength {
+		return DraftInput{}, invalidField("seo_keywords", "too_long", "seo keywords are too long")
+	}
+	if len([]rune(in.CanonicalURL)) > MaxURLLength {
+		return DraftInput{}, invalidField("canonical_url", "too_long", "canonical url is too long")
+	}
+	if len([]rune(in.CoverAlt)) > MaxCoverAltLength {
+		return DraftInput{}, invalidField("cover_alt", "too_long", "cover alt text is too long")
+	}
+	if !in.Robots.Valid() {
+		return DraftInput{}, invalidField("robots", "unknown", "unknown robots directive")
+	}
+	// An empty focal point means "the default crop", which is what a create without a
+	// cover sends; storing it as center keeps the column's closed vocabulary intact.
+	if in.CoverPosition == "" {
+		in.CoverPosition = CoverCenter
+	}
+	if !in.CoverPosition.Valid() {
+		return DraftInput{}, invalidField("cover_position", "unknown", "unknown cover position")
 	}
 
 	return in, nil

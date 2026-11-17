@@ -58,6 +58,10 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth, optionalAuth gin.HandlerFun
 	// The library listing is a session only view: an anonymous reader has no site to
 	// enumerate, and an asset that failed inspection must stay invisible to the public.
 	group.GET("", h.ListAssets)
+	// Deleting is the only destructive media operation, so it sits behind the session
+	// guard like the rest of the library. An anonymous reader can never be handed the
+	// ability to remove an object it was allowed to view.
+	group.DELETE("/:assetID", h.DeleteAsset)
 	group.POST("/uploads", h.CreateUpload)
 	group.POST("/uploads/:uploadID/content", h.UploadContent)
 	group.POST("/uploads/:uploadID/complete", h.CompleteUpload)
@@ -79,7 +83,12 @@ type uploadResponse struct {
 }
 
 type assetResponse struct {
-	ID         string `json:"id"`
+	ID string `json:"id"`
+	// FileName is the display name the uploader declared. It is omitted rather than
+	// sent empty when the row predates the column, because the dashboard falls back to
+	// the storage key only on a missing value - an empty string would render as a blank
+	// name next to a working image.
+	FileName   string `json:"file_name,omitempty"`
 	StorageKey string `json:"storage_key"`
 	MIME       string `json:"mime_type"`
 	Size       int64  `json:"size"`
@@ -98,6 +107,7 @@ type assetResponse struct {
 func assetView(asset Asset) assetResponse {
 	return assetResponse{
 		ID:         asset.ID,
+		FileName:   asset.FileName,
 		StorageKey: asset.StorageKey,
 		MIME:       asset.MIME,
 		Size:       asset.Size,
@@ -448,6 +458,38 @@ func (h *Handler) ListAssets(c *gin.Context) {
 	})
 }
 
+// DeleteAsset removes an asset and its stored object.
+//
+// The refusal a caller can act on is reported as such: content that still references the
+// asset answers 409, because removing the image from that article is exactly the next
+// step. Everything else - someone else's object, an asset of another site, an id that
+// never existed - answers 404. Distinguishing them would confirm that another account's
+// upload exists, which is the disclosure the read path already refuses to make.
+func (h *Handler) DeleteAsset(c *gin.Context) {
+	actor, ok := h.principal(c)
+	if !ok {
+		_ = c.Error(apperr.Unauthenticated().WithDetail("reason", "missing_principal"))
+		return
+	}
+
+	if err := h.service.DeleteAsset(c.Request.Context(), actor, c.Param("assetID")); err != nil {
+		_ = c.Error(failDelete(err))
+		return
+	}
+
+	// No body: the caller asked for the resource to stop existing, so there is nothing
+	// left to describe.
+	c.Status(http.StatusNoContent)
+}
+
+// failDelete translates a delete failure into the API error model.
+func failDelete(err error) *apperr.Problem {
+	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrPermissionDenied) {
+		return apperr.NotFound("media asset")
+	}
+	return mapError(err)
+}
+
 // failList translates a listing failure into the API error model.
 //
 // mapError speaks about uploads, which is the wrong answer for a refused filter value,
@@ -477,6 +519,12 @@ func mapError(err error) *apperr.Problem {
 		return apperr.PermissionDenied()
 	case errors.Is(err, ErrAlreadyCompleted):
 		return apperr.Conflict(apperr.CodeConflict).WithMessage("上传已完成")
+	case errors.Is(err, ErrAssetInUse):
+		// A conflict, not a validation failure: the request is well formed, the state of
+		// the site is what refuses it.
+		return apperr.Conflict(apperr.CodeConflict).
+			WithMessage("素材正被内容引用，无法删除").
+			WithDetail("reason", "asset_in_use")
 	case errors.Is(err, ErrQuotaExceeded):
 		return apperr.New(apperr.CodeQuotaExceeded)
 	case errors.Is(err, ErrSecurityUnavailable):

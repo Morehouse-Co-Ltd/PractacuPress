@@ -28,6 +28,10 @@ const (
 	resetTokenBytes = 32
 	// ResetPath is the frontend route a reset link points at.
 	ResetPath = "/reset-password"
+	// passwordResetSubject is the subject line of the reset mail. It is a constant
+	// because the mail log records it: a skipped attempt still says what would have
+	// been sent.
+	passwordResetSubject = "重置你的账户密码"
 )
 
 // Password reset failures.
@@ -84,6 +88,18 @@ func (s *Service) RequestPasswordReset(
 	siteID, rawEmail, baseURL string,
 ) (ResetRequest, error) {
 	if !s.mailReady() {
+		// No relay: the caller keeps the same "capability unavailable" answer as
+		// before. The attempt is still written to the mail log as skipped (best
+		// effort) so the dashboard can explain why no reset mail went out.
+		//
+		// The address is the one the caller submitted, not necessarily a registered
+		// account: on this path there is no account lookup at all (that is what keeps
+		// the endpoint free of an enumeration signal), so recording the request as it
+		// arrived is the only honest trace available.
+		if email, err := NormalizeEmail(rawEmail); err == nil {
+			s.recordSkippedSystemMail(ctx, siteID, MailLogTemplatePasswordReset, email,
+				passwordResetSubject, mailLogReasonNoRelay)
+		}
 		return ResetRequest{}, ErrMailNotConfigured
 	}
 	if siteID == "" {
@@ -149,7 +165,8 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	link := resetLink(s.resetOrigin(baseURL), plain)
-	if err := s.mailer.Send(ctx, buildResetEmail(identity.Email, link, expiresAt)); err != nil {
+	if err := s.sendSystemMail(ctx, siteID, MailLogTemplatePasswordReset,
+		buildResetEmail(identity.Email, link, expiresAt)); err != nil {
 		// The response stays accepted on purpose. A delivery failure that only
 		// happens for registered addresses would restore the enumeration oracle,
 		// so it is logged for the operator instead of reported to the caller.
@@ -265,7 +282,7 @@ func resetLink(baseURL, token string) string {
 // and a single link survives every mail client and every spam filter.
 func buildResetEmail(to, link string, expiresAt time.Time) mailer.Message {
 	minutes := int(ResetTokenTTL / time.Minute)
-	subject := "重置你的账户密码"
+	subject := passwordResetSubject
 	text := fmt.Sprintf(`你好：
 
 我们收到了重置这个账户密码的请求。点击下面的链接设置新密码：
@@ -311,5 +328,13 @@ func (s *Service) logInfo(msg string, args ...any) {
 func (s *Service) logError(msg string, args ...any) {
 	if s.logger != nil {
 		s.logger.Error(msg, args...)
+	}
+}
+
+// logWarn records a degraded but non fatal condition: exactly the class of failure a
+// best-effort mail log write produces.
+func (s *Service) logWarn(msg string, args ...any) {
+	if s.logger != nil {
+		s.logger.Warn(msg, args...)
 	}
 }

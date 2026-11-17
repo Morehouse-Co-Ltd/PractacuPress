@@ -174,6 +174,61 @@ func CommentPolicy(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldCommentPolicy, v))
 }
 
+// DeletedAt applies equality check predicate on the "deleted_at" field. It's identical to DeletedAtEQ.
+func DeletedAt(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldDeletedAt, v))
+}
+
+// SeoTitle applies equality check predicate on the "seo_title" field. It's identical to SeoTitleEQ.
+func SeoTitle(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldSeoTitle, v))
+}
+
+// SeoDescription applies equality check predicate on the "seo_description" field. It's identical to SeoDescriptionEQ.
+func SeoDescription(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldSeoDescription, v))
+}
+
+// SeoKeywords applies equality check predicate on the "seo_keywords" field. It's identical to SeoKeywordsEQ.
+func SeoKeywords(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldSeoKeywords, v))
+}
+
+// CanonicalURL applies equality check predicate on the "canonical_url" field. It's identical to CanonicalURLEQ.
+func CanonicalURL(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCanonicalURL, v))
+}
+
+// OgImage applies equality check predicate on the "og_image" field. It's identical to OgImageEQ.
+func OgImage(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldOgImage, v))
+}
+
+// Robots applies equality check predicate on the "robots" field. It's identical to RobotsEQ.
+func Robots(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldRobots, v))
+}
+
+// CoverURL applies equality check predicate on the "cover_url" field. It's identical to CoverURLEQ.
+func CoverURL(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverURL, v))
+}
+
+// CoverAlt applies equality check predicate on the "cover_alt" field. It's identical to CoverAltEQ.
+func CoverAlt(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverAlt, v))
+}
+
+// CoverPosition applies equality check predicate on the "cover_position" field. It's identical to CoverPositionEQ.
+func CoverPosition(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverPosition, v))
+}
+
+// CoverHidden applies equality check predicate on the "cover_hidden" field. It's identical to CoverHiddenEQ.
+func CoverHidden(v bool) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverHidden, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldEQ(FieldCreatedAt, v))
@@ -1512,6 +1567,651 @@ func CommentPolicyEqualFold(v string) predicate.ContentItem {
 // CommentPolicyContainsFold applies the ContainsFold predicate on the "comment_policy" field.
 func CommentPolicyContainsFold(v string) predicate.ContentItem {
 	return predicate.ContentItem(sql.FieldContainsFold(FieldCommentPolicy, v))
+}
+
+// DeletedAtEQ applies the EQ predicate on the "deleted_at" field.
+func DeletedAtEQ(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldDeletedAt, v))
+}
+
+// DeletedAtNEQ applies the NEQ predicate on the "deleted_at" field.
+func DeletedAtNEQ(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldDeletedAt, v))
+}
+
+// DeletedAtIn applies the In predicate on the "deleted_at" field.
+func DeletedAtIn(vs ...time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldDeletedAt, vs...))
+}
+
+// DeletedAtNotIn applies the NotIn predicate on the "deleted_at" field.
+func DeletedAtNotIn(vs ...time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldDeletedAt, vs...))
+}
+
+// DeletedAtGT applies the GT predicate on the "deleted_at" field.
+func DeletedAtGT(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldDeletedAt, v))
+}
+
+// DeletedAtGTE applies the GTE predicate on the "deleted_at" field.
+func DeletedAtGTE(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldDeletedAt, v))
+}
+
+// DeletedAtLT applies the LT predicate on the "deleted_at" field.
+func DeletedAtLT(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldDeletedAt, v))
+}
+
+// DeletedAtLTE applies the LTE predicate on the "deleted_at" field.
+func DeletedAtLTE(v time.Time) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldDeletedAt, v))
+}
+
+// DeletedAtIsNil applies the IsNil predicate on the "deleted_at" field.
+func DeletedAtIsNil() predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIsNull(FieldDeletedAt))
+}
+
+// DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
+func DeletedAtNotNil() predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotNull(FieldDeletedAt))
+}
+
+// SeoTitleEQ applies the EQ predicate on the "seo_title" field.
+func SeoTitleEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldSeoTitle, v))
+}
+
+// SeoTitleNEQ applies the NEQ predicate on the "seo_title" field.
+func SeoTitleNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldSeoTitle, v))
+}
+
+// SeoTitleIn applies the In predicate on the "seo_title" field.
+func SeoTitleIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldSeoTitle, vs...))
+}
+
+// SeoTitleNotIn applies the NotIn predicate on the "seo_title" field.
+func SeoTitleNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldSeoTitle, vs...))
+}
+
+// SeoTitleGT applies the GT predicate on the "seo_title" field.
+func SeoTitleGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldSeoTitle, v))
+}
+
+// SeoTitleGTE applies the GTE predicate on the "seo_title" field.
+func SeoTitleGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldSeoTitle, v))
+}
+
+// SeoTitleLT applies the LT predicate on the "seo_title" field.
+func SeoTitleLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldSeoTitle, v))
+}
+
+// SeoTitleLTE applies the LTE predicate on the "seo_title" field.
+func SeoTitleLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldSeoTitle, v))
+}
+
+// SeoTitleContains applies the Contains predicate on the "seo_title" field.
+func SeoTitleContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldSeoTitle, v))
+}
+
+// SeoTitleHasPrefix applies the HasPrefix predicate on the "seo_title" field.
+func SeoTitleHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldSeoTitle, v))
+}
+
+// SeoTitleHasSuffix applies the HasSuffix predicate on the "seo_title" field.
+func SeoTitleHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldSeoTitle, v))
+}
+
+// SeoTitleEqualFold applies the EqualFold predicate on the "seo_title" field.
+func SeoTitleEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldSeoTitle, v))
+}
+
+// SeoTitleContainsFold applies the ContainsFold predicate on the "seo_title" field.
+func SeoTitleContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldSeoTitle, v))
+}
+
+// SeoDescriptionEQ applies the EQ predicate on the "seo_description" field.
+func SeoDescriptionEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldSeoDescription, v))
+}
+
+// SeoDescriptionNEQ applies the NEQ predicate on the "seo_description" field.
+func SeoDescriptionNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldSeoDescription, v))
+}
+
+// SeoDescriptionIn applies the In predicate on the "seo_description" field.
+func SeoDescriptionIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldSeoDescription, vs...))
+}
+
+// SeoDescriptionNotIn applies the NotIn predicate on the "seo_description" field.
+func SeoDescriptionNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldSeoDescription, vs...))
+}
+
+// SeoDescriptionGT applies the GT predicate on the "seo_description" field.
+func SeoDescriptionGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldSeoDescription, v))
+}
+
+// SeoDescriptionGTE applies the GTE predicate on the "seo_description" field.
+func SeoDescriptionGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldSeoDescription, v))
+}
+
+// SeoDescriptionLT applies the LT predicate on the "seo_description" field.
+func SeoDescriptionLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldSeoDescription, v))
+}
+
+// SeoDescriptionLTE applies the LTE predicate on the "seo_description" field.
+func SeoDescriptionLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldSeoDescription, v))
+}
+
+// SeoDescriptionContains applies the Contains predicate on the "seo_description" field.
+func SeoDescriptionContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldSeoDescription, v))
+}
+
+// SeoDescriptionHasPrefix applies the HasPrefix predicate on the "seo_description" field.
+func SeoDescriptionHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldSeoDescription, v))
+}
+
+// SeoDescriptionHasSuffix applies the HasSuffix predicate on the "seo_description" field.
+func SeoDescriptionHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldSeoDescription, v))
+}
+
+// SeoDescriptionEqualFold applies the EqualFold predicate on the "seo_description" field.
+func SeoDescriptionEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldSeoDescription, v))
+}
+
+// SeoDescriptionContainsFold applies the ContainsFold predicate on the "seo_description" field.
+func SeoDescriptionContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldSeoDescription, v))
+}
+
+// SeoKeywordsEQ applies the EQ predicate on the "seo_keywords" field.
+func SeoKeywordsEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsNEQ applies the NEQ predicate on the "seo_keywords" field.
+func SeoKeywordsNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsIn applies the In predicate on the "seo_keywords" field.
+func SeoKeywordsIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldSeoKeywords, vs...))
+}
+
+// SeoKeywordsNotIn applies the NotIn predicate on the "seo_keywords" field.
+func SeoKeywordsNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldSeoKeywords, vs...))
+}
+
+// SeoKeywordsGT applies the GT predicate on the "seo_keywords" field.
+func SeoKeywordsGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsGTE applies the GTE predicate on the "seo_keywords" field.
+func SeoKeywordsGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsLT applies the LT predicate on the "seo_keywords" field.
+func SeoKeywordsLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsLTE applies the LTE predicate on the "seo_keywords" field.
+func SeoKeywordsLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsContains applies the Contains predicate on the "seo_keywords" field.
+func SeoKeywordsContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsHasPrefix applies the HasPrefix predicate on the "seo_keywords" field.
+func SeoKeywordsHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsHasSuffix applies the HasSuffix predicate on the "seo_keywords" field.
+func SeoKeywordsHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsEqualFold applies the EqualFold predicate on the "seo_keywords" field.
+func SeoKeywordsEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldSeoKeywords, v))
+}
+
+// SeoKeywordsContainsFold applies the ContainsFold predicate on the "seo_keywords" field.
+func SeoKeywordsContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldSeoKeywords, v))
+}
+
+// CanonicalURLEQ applies the EQ predicate on the "canonical_url" field.
+func CanonicalURLEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCanonicalURL, v))
+}
+
+// CanonicalURLNEQ applies the NEQ predicate on the "canonical_url" field.
+func CanonicalURLNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldCanonicalURL, v))
+}
+
+// CanonicalURLIn applies the In predicate on the "canonical_url" field.
+func CanonicalURLIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldCanonicalURL, vs...))
+}
+
+// CanonicalURLNotIn applies the NotIn predicate on the "canonical_url" field.
+func CanonicalURLNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldCanonicalURL, vs...))
+}
+
+// CanonicalURLGT applies the GT predicate on the "canonical_url" field.
+func CanonicalURLGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldCanonicalURL, v))
+}
+
+// CanonicalURLGTE applies the GTE predicate on the "canonical_url" field.
+func CanonicalURLGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldCanonicalURL, v))
+}
+
+// CanonicalURLLT applies the LT predicate on the "canonical_url" field.
+func CanonicalURLLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldCanonicalURL, v))
+}
+
+// CanonicalURLLTE applies the LTE predicate on the "canonical_url" field.
+func CanonicalURLLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldCanonicalURL, v))
+}
+
+// CanonicalURLContains applies the Contains predicate on the "canonical_url" field.
+func CanonicalURLContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldCanonicalURL, v))
+}
+
+// CanonicalURLHasPrefix applies the HasPrefix predicate on the "canonical_url" field.
+func CanonicalURLHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldCanonicalURL, v))
+}
+
+// CanonicalURLHasSuffix applies the HasSuffix predicate on the "canonical_url" field.
+func CanonicalURLHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldCanonicalURL, v))
+}
+
+// CanonicalURLEqualFold applies the EqualFold predicate on the "canonical_url" field.
+func CanonicalURLEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldCanonicalURL, v))
+}
+
+// CanonicalURLContainsFold applies the ContainsFold predicate on the "canonical_url" field.
+func CanonicalURLContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldCanonicalURL, v))
+}
+
+// OgImageEQ applies the EQ predicate on the "og_image" field.
+func OgImageEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldOgImage, v))
+}
+
+// OgImageNEQ applies the NEQ predicate on the "og_image" field.
+func OgImageNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldOgImage, v))
+}
+
+// OgImageIn applies the In predicate on the "og_image" field.
+func OgImageIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldOgImage, vs...))
+}
+
+// OgImageNotIn applies the NotIn predicate on the "og_image" field.
+func OgImageNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldOgImage, vs...))
+}
+
+// OgImageGT applies the GT predicate on the "og_image" field.
+func OgImageGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldOgImage, v))
+}
+
+// OgImageGTE applies the GTE predicate on the "og_image" field.
+func OgImageGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldOgImage, v))
+}
+
+// OgImageLT applies the LT predicate on the "og_image" field.
+func OgImageLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldOgImage, v))
+}
+
+// OgImageLTE applies the LTE predicate on the "og_image" field.
+func OgImageLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldOgImage, v))
+}
+
+// OgImageContains applies the Contains predicate on the "og_image" field.
+func OgImageContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldOgImage, v))
+}
+
+// OgImageHasPrefix applies the HasPrefix predicate on the "og_image" field.
+func OgImageHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldOgImage, v))
+}
+
+// OgImageHasSuffix applies the HasSuffix predicate on the "og_image" field.
+func OgImageHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldOgImage, v))
+}
+
+// OgImageEqualFold applies the EqualFold predicate on the "og_image" field.
+func OgImageEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldOgImage, v))
+}
+
+// OgImageContainsFold applies the ContainsFold predicate on the "og_image" field.
+func OgImageContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldOgImage, v))
+}
+
+// RobotsEQ applies the EQ predicate on the "robots" field.
+func RobotsEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldRobots, v))
+}
+
+// RobotsNEQ applies the NEQ predicate on the "robots" field.
+func RobotsNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldRobots, v))
+}
+
+// RobotsIn applies the In predicate on the "robots" field.
+func RobotsIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldRobots, vs...))
+}
+
+// RobotsNotIn applies the NotIn predicate on the "robots" field.
+func RobotsNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldRobots, vs...))
+}
+
+// RobotsGT applies the GT predicate on the "robots" field.
+func RobotsGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldRobots, v))
+}
+
+// RobotsGTE applies the GTE predicate on the "robots" field.
+func RobotsGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldRobots, v))
+}
+
+// RobotsLT applies the LT predicate on the "robots" field.
+func RobotsLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldRobots, v))
+}
+
+// RobotsLTE applies the LTE predicate on the "robots" field.
+func RobotsLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldRobots, v))
+}
+
+// RobotsContains applies the Contains predicate on the "robots" field.
+func RobotsContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldRobots, v))
+}
+
+// RobotsHasPrefix applies the HasPrefix predicate on the "robots" field.
+func RobotsHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldRobots, v))
+}
+
+// RobotsHasSuffix applies the HasSuffix predicate on the "robots" field.
+func RobotsHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldRobots, v))
+}
+
+// RobotsEqualFold applies the EqualFold predicate on the "robots" field.
+func RobotsEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldRobots, v))
+}
+
+// RobotsContainsFold applies the ContainsFold predicate on the "robots" field.
+func RobotsContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldRobots, v))
+}
+
+// CoverURLEQ applies the EQ predicate on the "cover_url" field.
+func CoverURLEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverURL, v))
+}
+
+// CoverURLNEQ applies the NEQ predicate on the "cover_url" field.
+func CoverURLNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldCoverURL, v))
+}
+
+// CoverURLIn applies the In predicate on the "cover_url" field.
+func CoverURLIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldCoverURL, vs...))
+}
+
+// CoverURLNotIn applies the NotIn predicate on the "cover_url" field.
+func CoverURLNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldCoverURL, vs...))
+}
+
+// CoverURLGT applies the GT predicate on the "cover_url" field.
+func CoverURLGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldCoverURL, v))
+}
+
+// CoverURLGTE applies the GTE predicate on the "cover_url" field.
+func CoverURLGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldCoverURL, v))
+}
+
+// CoverURLLT applies the LT predicate on the "cover_url" field.
+func CoverURLLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldCoverURL, v))
+}
+
+// CoverURLLTE applies the LTE predicate on the "cover_url" field.
+func CoverURLLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldCoverURL, v))
+}
+
+// CoverURLContains applies the Contains predicate on the "cover_url" field.
+func CoverURLContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldCoverURL, v))
+}
+
+// CoverURLHasPrefix applies the HasPrefix predicate on the "cover_url" field.
+func CoverURLHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldCoverURL, v))
+}
+
+// CoverURLHasSuffix applies the HasSuffix predicate on the "cover_url" field.
+func CoverURLHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldCoverURL, v))
+}
+
+// CoverURLEqualFold applies the EqualFold predicate on the "cover_url" field.
+func CoverURLEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldCoverURL, v))
+}
+
+// CoverURLContainsFold applies the ContainsFold predicate on the "cover_url" field.
+func CoverURLContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldCoverURL, v))
+}
+
+// CoverAltEQ applies the EQ predicate on the "cover_alt" field.
+func CoverAltEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverAlt, v))
+}
+
+// CoverAltNEQ applies the NEQ predicate on the "cover_alt" field.
+func CoverAltNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldCoverAlt, v))
+}
+
+// CoverAltIn applies the In predicate on the "cover_alt" field.
+func CoverAltIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldCoverAlt, vs...))
+}
+
+// CoverAltNotIn applies the NotIn predicate on the "cover_alt" field.
+func CoverAltNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldCoverAlt, vs...))
+}
+
+// CoverAltGT applies the GT predicate on the "cover_alt" field.
+func CoverAltGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldCoverAlt, v))
+}
+
+// CoverAltGTE applies the GTE predicate on the "cover_alt" field.
+func CoverAltGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldCoverAlt, v))
+}
+
+// CoverAltLT applies the LT predicate on the "cover_alt" field.
+func CoverAltLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldCoverAlt, v))
+}
+
+// CoverAltLTE applies the LTE predicate on the "cover_alt" field.
+func CoverAltLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldCoverAlt, v))
+}
+
+// CoverAltContains applies the Contains predicate on the "cover_alt" field.
+func CoverAltContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldCoverAlt, v))
+}
+
+// CoverAltHasPrefix applies the HasPrefix predicate on the "cover_alt" field.
+func CoverAltHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldCoverAlt, v))
+}
+
+// CoverAltHasSuffix applies the HasSuffix predicate on the "cover_alt" field.
+func CoverAltHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldCoverAlt, v))
+}
+
+// CoverAltEqualFold applies the EqualFold predicate on the "cover_alt" field.
+func CoverAltEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldCoverAlt, v))
+}
+
+// CoverAltContainsFold applies the ContainsFold predicate on the "cover_alt" field.
+func CoverAltContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldCoverAlt, v))
+}
+
+// CoverPositionEQ applies the EQ predicate on the "cover_position" field.
+func CoverPositionEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverPosition, v))
+}
+
+// CoverPositionNEQ applies the NEQ predicate on the "cover_position" field.
+func CoverPositionNEQ(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldCoverPosition, v))
+}
+
+// CoverPositionIn applies the In predicate on the "cover_position" field.
+func CoverPositionIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldIn(FieldCoverPosition, vs...))
+}
+
+// CoverPositionNotIn applies the NotIn predicate on the "cover_position" field.
+func CoverPositionNotIn(vs ...string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNotIn(FieldCoverPosition, vs...))
+}
+
+// CoverPositionGT applies the GT predicate on the "cover_position" field.
+func CoverPositionGT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGT(FieldCoverPosition, v))
+}
+
+// CoverPositionGTE applies the GTE predicate on the "cover_position" field.
+func CoverPositionGTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldGTE(FieldCoverPosition, v))
+}
+
+// CoverPositionLT applies the LT predicate on the "cover_position" field.
+func CoverPositionLT(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLT(FieldCoverPosition, v))
+}
+
+// CoverPositionLTE applies the LTE predicate on the "cover_position" field.
+func CoverPositionLTE(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldLTE(FieldCoverPosition, v))
+}
+
+// CoverPositionContains applies the Contains predicate on the "cover_position" field.
+func CoverPositionContains(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContains(FieldCoverPosition, v))
+}
+
+// CoverPositionHasPrefix applies the HasPrefix predicate on the "cover_position" field.
+func CoverPositionHasPrefix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasPrefix(FieldCoverPosition, v))
+}
+
+// CoverPositionHasSuffix applies the HasSuffix predicate on the "cover_position" field.
+func CoverPositionHasSuffix(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldHasSuffix(FieldCoverPosition, v))
+}
+
+// CoverPositionEqualFold applies the EqualFold predicate on the "cover_position" field.
+func CoverPositionEqualFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEqualFold(FieldCoverPosition, v))
+}
+
+// CoverPositionContainsFold applies the ContainsFold predicate on the "cover_position" field.
+func CoverPositionContainsFold(v string) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldContainsFold(FieldCoverPosition, v))
+}
+
+// CoverHiddenEQ applies the EQ predicate on the "cover_hidden" field.
+func CoverHiddenEQ(v bool) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldEQ(FieldCoverHidden, v))
+}
+
+// CoverHiddenNEQ applies the NEQ predicate on the "cover_hidden" field.
+func CoverHiddenNEQ(v bool) predicate.ContentItem {
+	return predicate.ContentItem(sql.FieldNEQ(FieldCoverHidden, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

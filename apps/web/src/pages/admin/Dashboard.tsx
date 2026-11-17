@@ -1,17 +1,16 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../lib/session';
-import { useBackend, isDemo } from '../../lib/backend';
-import { useAsync, useTitle } from '../../lib/hooks';
-import { readActivity } from '../../lib/activity';
+import { useBackend } from '../../lib/backend';
+import { errorText, useAsync, useTitle } from '../../lib/hooks';
 import {
   formatDateTime,
   isSiteAdmin,
   STATUS_LABEL,
-  activityTone,
 } from '../../lib/format';
+import { activityActionLabel } from '../../lib/activityLabels';
 import { useLocale, useT } from '../../lib/i18n';
 import { usePermissions } from '../../lib/usePermissions';
-import { Badge, Button, Callout } from '../../components/ui';
+import { Badge, Button, Callout, Skeleton } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { DashboardAnalytics, DashboardPopular, DashboardRecent } from '../../components/DashboardInsights';
 
@@ -21,7 +20,6 @@ export function DashboardPage() {
   const { me, site } = useAuth();
   const { personal } = usePermissions();
   const backend = useBackend();
-  const demo = isDemo(backend) ? backend : null;
   useTitle(t('仪表盘'));
 
   const data = useAsync(async () => {
@@ -31,9 +29,20 @@ export function DashboardPage() {
     ]);
     const members =
       me && isSiteAdmin(me.role) ? await backend.members(me.site_id).catch(() => []) : [];
-    const activity = demo ? await demo.activity() : readActivity();
-    return { articles: articles.items, posts: posts.items, members, activity };
-  }, [backend, demo, me]);
+    return { articles: articles.items, posts: posts.items, members };
+  }, [backend, me]);
+
+  /**
+   * 「最近操作」改读服务端审计（`GET /sites/{siteID}/activity`）。
+   *
+   * 不再回退 localStorage：失败时只在面板内显示可重试错误，其它卡片不受影响。
+   * 该端点要求站点管理员，普通编辑看不到服务端审计记录。
+   */
+  const canViewActivity = !!site && isSiteAdmin(me?.role);
+  const activity = useAsync(async () => {
+    if (!site || !isSiteAdmin(me?.role)) return [];
+    return backend.siteActivity(site.id, 10);
+  }, [backend, site?.id, me?.role]);
 
   const all = [...(data.data?.articles ?? []), ...(data.data?.posts ?? [])].sort((a, b) =>
     b.updated_at.localeCompare(a.updated_at),
@@ -158,29 +167,50 @@ export function DashboardPage() {
           <div className="panel-head">
             <div>
               <h3>{t('最近操作')}</h3>
-              <p>{demo ? t('演示后端记录') : t('本浏览器记录（无审计端点）')}</p>
+              <p>{t('来自服务端 audit_logs 的审计记录')}</p>
             </div>
             <Link to="/admin/activity" className="btn btn-ghost btn-sm">
               {t('全部')}
             </Link>
           </div>
           <div className="panel-body">
-            {(data.data?.activity ?? []).length === 0 ? (
+            {!canViewActivity ? (
+              <p className="small muted">{t('只有站点管理员可以查看服务端审计记录。')}</p>
+            ) : activity.loading ? (
+              <Skeleton lines={3} />
+            ) : activity.error ? (
+              <Callout tone="danger" icon="alert" title={t('无法读取最近操作')}>
+                <p>{errorText(activity.error) || t('请求失败。')}</p>
+                <div className="mt-12">
+                  <Button variant="secondary" size="sm" onClick={activity.reload}>
+                    {t('重试')}
+                  </Button>
+                </div>
+              </Callout>
+            ) : (activity.data ?? []).length === 0 ? (
               <p className="small muted">{t('还没有操作日志。')}</p>
             ) : (
-              (data.data?.activity ?? []).slice(0, 6).map((entry) => (
-                <div className="mini-row" key={entry.id}>
-                  <div style={{ minWidth: 0 }}>
-                    <span className="small">{entry.actor}</span>{' '}
-                    <span className="muted small">{entry.action}</span>
-                    <div className="tiny faint" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {entry.target}
-                      {entry.detail ? ` · ${entry.detail}` : ''}
+              (activity.data ?? []).map((entry) => {
+                const failed = entry.outcome === 'failure';
+                return (
+                  <div className="mini-row" key={entry.id}>
+                    <div style={{ minWidth: 0 }}>
+                      <span className="small">{entry.actor_name || entry.actor_id || t('系统')}</span>{' '}
+                      <span className="muted small">{activityActionLabel(entry.action, t)}</span>
+                      <div
+                        className="tiny faint"
+                        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {formatDateTime(entry.created_at)}
+                        {entry.detail ? ` · ${entry.detail}` : ''}
+                      </div>
                     </div>
+                    <Badge tone={failed ? 'danger' : 'ok'}>
+                      {failed ? t('失败') : t('成功')}
+                    </Badge>
                   </div>
-                  <Badge tone={activityTone(entry.action)}>{entry.action}</Badge>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>

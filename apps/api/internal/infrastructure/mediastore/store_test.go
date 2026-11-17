@@ -471,3 +471,107 @@ func TestGarbageCatalogListsAllSitesAndExpiresUploads(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, media.UploadExpired, found.Status)
 }
+
+// TestAssetKeepsTheDeclaredFileName pins the display name round trip: the dashboard shows
+// the name the uploader declared, and the storage key stays independent of it.
+func TestAssetKeepsTheDeclaredFileName(t *testing.T) {
+	store, _, siteID := newStore(t)
+	ctx := context.Background()
+
+	created, err := store.InsertAsset(ctx, media.Asset{
+		SiteID: siteID, OwnerID: "u1", FileName: "Quarterly report.png",
+		StorageKey: "ab/abcdef.png", MIME: "image/png", Size: 10,
+		ScanStatus: media.ScanClean, Purpose: media.PurposeContent, CreatedAt: time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Quarterly report.png", created.FileName)
+
+	found, err := store.FindAsset(ctx, siteID, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Quarterly report.png", found.FileName)
+	require.NotContains(t, found.StorageKey, "Quarterly",
+		"the name is display only; the key is generated on its own")
+
+	// A row written before the column existed keeps working with an empty name, which is
+	// what lets the dashboard fall back to the key instead of showing a blank label.
+	legacy, err := store.InsertAsset(ctx, media.Asset{
+		SiteID: siteID, OwnerID: "u1", StorageKey: "ab/legacy.png", MIME: "image/png",
+		Size: 4, ScanStatus: media.ScanClean, Purpose: media.PurposeContent,
+		CreatedAt: time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	require.Empty(t, legacy.FileName)
+}
+
+// TestAssetInUseSeesEveryKindOfReference is the delete guard against the real schema.
+//
+// Every place content can name a media object keeps it alive: the HTML a page serves, the
+// markdown its author edits, and the two cover fields. A trashed item counts too, because
+// restoring it is exactly what the recycle bin promises. Another site's reference does not.
+func TestAssetInUseSeesEveryKindOfReference(t *testing.T) {
+	store, handle, siteID := newStore(t)
+	ctx := context.Background()
+
+	other, err := handle.Client.Site.Create().SetSlug("other").SetName("Other").Save(ctx)
+	require.NoError(t, err)
+
+	// seedItem writes one content item; only the fields a reference can live in matter.
+	seedItem := func(siteID, body, cover, ogImage, status string, trashed bool) {
+		t.Helper()
+		builder := handle.Client.ContentItem.Create().
+			SetSiteID(siteID).
+			SetAuthorID("u1").
+			SetKind("article").
+			SetTitle("Item").
+			SetSourceBody(body).
+			SetRenderedHTML("<p>" + body + "</p>").
+			SetCoverURL(cover).
+			SetOgImage(ogImage).
+			SetStatus(status)
+		if trashed {
+			builder.SetDeletedAt(time.Now().UTC())
+		}
+		_, saveErr := builder.Save(ctx)
+		require.NoError(t, saveErr)
+	}
+
+	const (
+		draftRef     = "draft-asset-id"
+		publishedRef = "published-asset-id"
+		coverRef     = "cover-asset-id"
+		ogRef        = "og-asset-id"
+		trashRef     = "trashed-asset-id"
+		foreignRef   = "foreign-asset-id"
+		keyOnlyRef   = "ab/key-only.png"
+	)
+
+	seedItem(siteID, "![x](/api/v1/media/"+draftRef+")", "", "", "draft", false)
+	seedItem(siteID, "![x](/api/v1/media/"+publishedRef+")", "", "", "published", false)
+	seedItem(siteID, "", "/api/v1/media/"+coverRef, "", "published", false)
+	seedItem(siteID, "", "", "/api/v1/media/"+ogRef, "draft", false)
+	seedItem(siteID, "![x](/api/v1/media/"+trashRef+")", "", "", "draft", true)
+	seedItem(other.ID, "![x](/api/v1/media/"+foreignRef+")", "", "", "published", false)
+	seedItem(siteID, "raw key: "+keyOnlyRef, "", "", "draft", false)
+
+	for _, assetID := range []string{draftRef, publishedRef, coverRef, ogRef, trashRef} {
+		inUse, err := store.AssetInUse(ctx, siteID, assetID, "")
+		require.NoError(t, err)
+		require.True(t, inUse, "asset %s is still referenced", assetID)
+	}
+
+	inUse, err := store.AssetInUse(ctx, siteID, "", keyOnlyRef)
+	require.NoError(t, err)
+	require.True(t, inUse, "a body quoting the storage key keeps the object too")
+
+	inUse, err = store.AssetInUse(ctx, siteID, "nobody-references-me", "")
+	require.NoError(t, err)
+	require.False(t, inUse)
+
+	inUse, err = store.AssetInUse(ctx, siteID, foreignRef, "")
+	require.NoError(t, err)
+	require.False(t, inUse, "another site's article is not this site's reference")
+
+	inUse, err = store.AssetInUse(ctx, "", draftRef, "")
+	require.NoError(t, err)
+	require.False(t, inUse, "without a site there is nothing to search")
+}

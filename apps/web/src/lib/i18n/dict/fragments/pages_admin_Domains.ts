@@ -182,6 +182,32 @@ const fragment: Dictionary = {
   '验证失败，请稍后重试。': 'Verification failed; please try again later.',
   '主域名已保存，待完成 TXT 验证；验证完成前公网域名暂不生效，可在本机继续管理。把下方部署片段应用后，域名与 HTTPS 才会真正对外服务。':
     'The primary domain was saved and is pending TXT verification; until then the public domain stays inactive and you can keep managing the site locally. Apply the deployment snippet below for the domain and HTTPS to actually serve visitors.',
+
+  // ---- 当前生效（服务端部署快照，Beta 1.2） ----
+  '当前生效（只读）': 'In force now (read only)',
+  '这些值由 API 在启动时从环境变量读取；上面保存的设置要写进 .env 并重启 API 才会生效。':
+    'The API reads these values from its environment at startup; the settings saved above only take effect once they are written into .env and the API is restarted.',
+  需重启: 'Needs restart',
+  无法读取服务端的生效配置: 'Cannot read the effective server configuration',
+  '有设置尚未生效，需要重启 API': 'Some settings are not in force yet; restart the API',
+  'API 只在启动时读取 .env；改完这些设置要写进服务器的 .env 再重启，正在运行的进程不会热加载。':
+    'The API reads .env only at startup: after changing these settings, write them into the server .env and restart; a running process does not reload them.',
+  未开放跨域请求: 'Cross-origin requests are not allowed',
+  允许携带凭证: 'Allow credentials',
+  '强制 HTTPS': 'Force HTTPS',
+  公开访问地址: 'Public base URL',
+  '未设置：按请求来源推导': 'Not set: derived from each request',
+  受信代理: 'Trusted proxies',
+  '未配置：忽略转发头': 'Not configured: forwarding headers are ignored',
+  发信: 'Outgoing mail',
+  已配置发信: 'Outgoing mail is configured',
+  '已配置发信（{from}）': 'Outgoing mail is configured ({from})',
+  未配置发信: 'Outgoing mail is not configured',
+  '采集时间：{time}': 'Captured at: {time}',
+  'API 本身不强制 HTTPS：TLS 由前面的网关终止，这一项反映的是进程自己的配置。':
+    'The API does not force HTTPS itself: TLS is terminated by the gateway in front, so this row reflects the process’s own configuration.',
+  '当前后端没有提供生效配置，无法确认服务端实际启用了哪些设置。':
+    'This backend does not expose the effective configuration, so which settings the server actually applies cannot be confirmed.',
 };
 
 export default fragment;

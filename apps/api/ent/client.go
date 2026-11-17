@@ -21,6 +21,8 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/contentrevision"
 	"github.com/practacu/practacu-press/apps/api/ent/conversation"
 	"github.com/practacu/practacu-press/apps/api/ent/conversationmember"
+	"github.com/practacu/practacu-press/apps/api/ent/emaillog"
+	"github.com/practacu/practacu-press/apps/api/ent/emailtemplate"
 	"github.com/practacu/practacu-press/apps/api/ent/follow"
 	"github.com/practacu/practacu-press/apps/api/ent/idempotencykey"
 	"github.com/practacu/practacu-press/apps/api/ent/mediaasset"
@@ -33,9 +35,11 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/outboxevent"
 	"github.com/practacu/practacu-press/apps/api/ent/pageview"
 	"github.com/practacu/practacu-press/apps/api/ent/permissiongroup"
+	"github.com/practacu/practacu-press/apps/api/ent/phonecode"
 	"github.com/practacu/practacu-press/apps/api/ent/reaction"
 	"github.com/practacu/practacu-press/apps/api/ent/readinghistory"
 	"github.com/practacu/practacu-press/apps/api/ent/recoverycode"
+	"github.com/practacu/practacu-press/apps/api/ent/redirect"
 	"github.com/practacu/practacu-press/apps/api/ent/sensitiveword"
 	"github.com/practacu/practacu-press/apps/api/ent/session"
 	"github.com/practacu/practacu-press/apps/api/ent/site"
@@ -44,6 +48,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/ent/siteiprule"
 	"github.com/practacu/practacu-press/apps/api/ent/sitemember"
 	"github.com/practacu/practacu-press/apps/api/ent/sitesafetysetting"
+	"github.com/practacu/practacu-press/apps/api/ent/subscriber"
 	"github.com/practacu/practacu-press/apps/api/ent/taxonomyterm"
 	"github.com/practacu/practacu-press/apps/api/ent/twofactor"
 	"github.com/practacu/practacu-press/apps/api/ent/user"
@@ -70,6 +75,10 @@ type Client struct {
 	Conversation *ConversationClient
 	// ConversationMember is the client for interacting with the ConversationMember builders.
 	ConversationMember *ConversationMemberClient
+	// EmailLog is the client for interacting with the EmailLog builders.
+	EmailLog *EmailLogClient
+	// EmailTemplate is the client for interacting with the EmailTemplate builders.
+	EmailTemplate *EmailTemplateClient
 	// Follow is the client for interacting with the Follow builders.
 	Follow *FollowClient
 	// IdempotencyKey is the client for interacting with the IdempotencyKey builders.
@@ -94,12 +103,16 @@ type Client struct {
 	PageView *PageViewClient
 	// PermissionGroup is the client for interacting with the PermissionGroup builders.
 	PermissionGroup *PermissionGroupClient
+	// PhoneCode is the client for interacting with the PhoneCode builders.
+	PhoneCode *PhoneCodeClient
 	// Reaction is the client for interacting with the Reaction builders.
 	Reaction *ReactionClient
 	// ReadingHistory is the client for interacting with the ReadingHistory builders.
 	ReadingHistory *ReadingHistoryClient
 	// RecoveryCode is the client for interacting with the RecoveryCode builders.
 	RecoveryCode *RecoveryCodeClient
+	// Redirect is the client for interacting with the Redirect builders.
+	Redirect *RedirectClient
 	// SensitiveWord is the client for interacting with the SensitiveWord builders.
 	SensitiveWord *SensitiveWordClient
 	// Session is the client for interacting with the Session builders.
@@ -116,6 +129,8 @@ type Client struct {
 	SiteMember *SiteMemberClient
 	// SiteSafetySetting is the client for interacting with the SiteSafetySetting builders.
 	SiteSafetySetting *SiteSafetySettingClient
+	// Subscriber is the client for interacting with the Subscriber builders.
+	Subscriber *SubscriberClient
 	// TaxonomyTerm is the client for interacting with the TaxonomyTerm builders.
 	TaxonomyTerm *TaxonomyTermClient
 	// TwoFactor is the client for interacting with the TwoFactor builders.
@@ -144,6 +159,8 @@ func (c *Client) init() {
 	c.ContentRevision = NewContentRevisionClient(c.config)
 	c.Conversation = NewConversationClient(c.config)
 	c.ConversationMember = NewConversationMemberClient(c.config)
+	c.EmailLog = NewEmailLogClient(c.config)
+	c.EmailTemplate = NewEmailTemplateClient(c.config)
 	c.Follow = NewFollowClient(c.config)
 	c.IdempotencyKey = NewIdempotencyKeyClient(c.config)
 	c.MediaAsset = NewMediaAssetClient(c.config)
@@ -156,9 +173,11 @@ func (c *Client) init() {
 	c.OutboxEvent = NewOutboxEventClient(c.config)
 	c.PageView = NewPageViewClient(c.config)
 	c.PermissionGroup = NewPermissionGroupClient(c.config)
+	c.PhoneCode = NewPhoneCodeClient(c.config)
 	c.Reaction = NewReactionClient(c.config)
 	c.ReadingHistory = NewReadingHistoryClient(c.config)
 	c.RecoveryCode = NewRecoveryCodeClient(c.config)
+	c.Redirect = NewRedirectClient(c.config)
 	c.SensitiveWord = NewSensitiveWordClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.Site = NewSiteClient(c.config)
@@ -167,6 +186,7 @@ func (c *Client) init() {
 	c.SiteIPRule = NewSiteIPRuleClient(c.config)
 	c.SiteMember = NewSiteMemberClient(c.config)
 	c.SiteSafetySetting = NewSiteSafetySettingClient(c.config)
+	c.Subscriber = NewSubscriberClient(c.config)
 	c.TaxonomyTerm = NewTaxonomyTermClient(c.config)
 	c.TwoFactor = NewTwoFactorClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -271,6 +291,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ContentRevision:        NewContentRevisionClient(cfg),
 		Conversation:           NewConversationClient(cfg),
 		ConversationMember:     NewConversationMemberClient(cfg),
+		EmailLog:               NewEmailLogClient(cfg),
+		EmailTemplate:          NewEmailTemplateClient(cfg),
 		Follow:                 NewFollowClient(cfg),
 		IdempotencyKey:         NewIdempotencyKeyClient(cfg),
 		MediaAsset:             NewMediaAssetClient(cfg),
@@ -283,9 +305,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		OutboxEvent:            NewOutboxEventClient(cfg),
 		PageView:               NewPageViewClient(cfg),
 		PermissionGroup:        NewPermissionGroupClient(cfg),
+		PhoneCode:              NewPhoneCodeClient(cfg),
 		Reaction:               NewReactionClient(cfg),
 		ReadingHistory:         NewReadingHistoryClient(cfg),
 		RecoveryCode:           NewRecoveryCodeClient(cfg),
+		Redirect:               NewRedirectClient(cfg),
 		SensitiveWord:          NewSensitiveWordClient(cfg),
 		Session:                NewSessionClient(cfg),
 		Site:                   NewSiteClient(cfg),
@@ -294,6 +318,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SiteIPRule:             NewSiteIPRuleClient(cfg),
 		SiteMember:             NewSiteMemberClient(cfg),
 		SiteSafetySetting:      NewSiteSafetySettingClient(cfg),
+		Subscriber:             NewSubscriberClient(cfg),
 		TaxonomyTerm:           NewTaxonomyTermClient(cfg),
 		TwoFactor:              NewTwoFactorClient(cfg),
 		User:                   NewUserClient(cfg),
@@ -325,6 +350,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ContentRevision:        NewContentRevisionClient(cfg),
 		Conversation:           NewConversationClient(cfg),
 		ConversationMember:     NewConversationMemberClient(cfg),
+		EmailLog:               NewEmailLogClient(cfg),
+		EmailTemplate:          NewEmailTemplateClient(cfg),
 		Follow:                 NewFollowClient(cfg),
 		IdempotencyKey:         NewIdempotencyKeyClient(cfg),
 		MediaAsset:             NewMediaAssetClient(cfg),
@@ -337,9 +364,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		OutboxEvent:            NewOutboxEventClient(cfg),
 		PageView:               NewPageViewClient(cfg),
 		PermissionGroup:        NewPermissionGroupClient(cfg),
+		PhoneCode:              NewPhoneCodeClient(cfg),
 		Reaction:               NewReactionClient(cfg),
 		ReadingHistory:         NewReadingHistoryClient(cfg),
 		RecoveryCode:           NewRecoveryCodeClient(cfg),
+		Redirect:               NewRedirectClient(cfg),
 		SensitiveWord:          NewSensitiveWordClient(cfg),
 		Session:                NewSessionClient(cfg),
 		Site:                   NewSiteClient(cfg),
@@ -348,6 +377,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SiteIPRule:             NewSiteIPRuleClient(cfg),
 		SiteMember:             NewSiteMemberClient(cfg),
 		SiteSafetySetting:      NewSiteSafetySettingClient(cfg),
+		Subscriber:             NewSubscriberClient(cfg),
 		TaxonomyTerm:           NewTaxonomyTermClient(cfg),
 		TwoFactor:              NewTwoFactorClient(cfg),
 		User:                   NewUserClient(cfg),
@@ -383,13 +413,14 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.ContentRevision,
-		c.Conversation, c.ConversationMember, c.Follow, c.IdempotencyKey, c.MediaAsset,
-		c.MediaQuotaGuard, c.MediaUpload, c.Message, c.ModerationReport,
-		c.Notification, c.NotificationPreference, c.OutboxEvent, c.PageView,
-		c.PermissionGroup, c.Reaction, c.ReadingHistory, c.RecoveryCode,
-		c.SensitiveWord, c.Session, c.Site, c.SiteConfig, c.SiteCustomization,
-		c.SiteIPRule, c.SiteMember, c.SiteSafetySetting, c.TaxonomyTerm, c.TwoFactor,
-		c.User, c.UserIdentity, c.VerificationToken,
+		c.Conversation, c.ConversationMember, c.EmailLog, c.EmailTemplate, c.Follow,
+		c.IdempotencyKey, c.MediaAsset, c.MediaQuotaGuard, c.MediaUpload, c.Message,
+		c.ModerationReport, c.Notification, c.NotificationPreference, c.OutboxEvent,
+		c.PageView, c.PermissionGroup, c.PhoneCode, c.Reaction, c.ReadingHistory,
+		c.RecoveryCode, c.Redirect, c.SensitiveWord, c.Session, c.Site, c.SiteConfig,
+		c.SiteCustomization, c.SiteIPRule, c.SiteMember, c.SiteSafetySetting,
+		c.Subscriber, c.TaxonomyTerm, c.TwoFactor, c.User, c.UserIdentity,
+		c.VerificationToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -400,13 +431,14 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditLog, c.Bookmark, c.Comment, c.ContentItem, c.ContentRevision,
-		c.Conversation, c.ConversationMember, c.Follow, c.IdempotencyKey, c.MediaAsset,
-		c.MediaQuotaGuard, c.MediaUpload, c.Message, c.ModerationReport,
-		c.Notification, c.NotificationPreference, c.OutboxEvent, c.PageView,
-		c.PermissionGroup, c.Reaction, c.ReadingHistory, c.RecoveryCode,
-		c.SensitiveWord, c.Session, c.Site, c.SiteConfig, c.SiteCustomization,
-		c.SiteIPRule, c.SiteMember, c.SiteSafetySetting, c.TaxonomyTerm, c.TwoFactor,
-		c.User, c.UserIdentity, c.VerificationToken,
+		c.Conversation, c.ConversationMember, c.EmailLog, c.EmailTemplate, c.Follow,
+		c.IdempotencyKey, c.MediaAsset, c.MediaQuotaGuard, c.MediaUpload, c.Message,
+		c.ModerationReport, c.Notification, c.NotificationPreference, c.OutboxEvent,
+		c.PageView, c.PermissionGroup, c.PhoneCode, c.Reaction, c.ReadingHistory,
+		c.RecoveryCode, c.Redirect, c.SensitiveWord, c.Session, c.Site, c.SiteConfig,
+		c.SiteCustomization, c.SiteIPRule, c.SiteMember, c.SiteSafetySetting,
+		c.Subscriber, c.TaxonomyTerm, c.TwoFactor, c.User, c.UserIdentity,
+		c.VerificationToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -429,6 +461,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Conversation.mutate(ctx, m)
 	case *ConversationMemberMutation:
 		return c.ConversationMember.mutate(ctx, m)
+	case *EmailLogMutation:
+		return c.EmailLog.mutate(ctx, m)
+	case *EmailTemplateMutation:
+		return c.EmailTemplate.mutate(ctx, m)
 	case *FollowMutation:
 		return c.Follow.mutate(ctx, m)
 	case *IdempotencyKeyMutation:
@@ -453,12 +489,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PageView.mutate(ctx, m)
 	case *PermissionGroupMutation:
 		return c.PermissionGroup.mutate(ctx, m)
+	case *PhoneCodeMutation:
+		return c.PhoneCode.mutate(ctx, m)
 	case *ReactionMutation:
 		return c.Reaction.mutate(ctx, m)
 	case *ReadingHistoryMutation:
 		return c.ReadingHistory.mutate(ctx, m)
 	case *RecoveryCodeMutation:
 		return c.RecoveryCode.mutate(ctx, m)
+	case *RedirectMutation:
+		return c.Redirect.mutate(ctx, m)
 	case *SensitiveWordMutation:
 		return c.SensitiveWord.mutate(ctx, m)
 	case *SessionMutation:
@@ -475,6 +515,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SiteMember.mutate(ctx, m)
 	case *SiteSafetySettingMutation:
 		return c.SiteSafetySetting.mutate(ctx, m)
+	case *SubscriberMutation:
+		return c.Subscriber.mutate(ctx, m)
 	case *TaxonomyTermMutation:
 		return c.TaxonomyTerm.mutate(ctx, m)
 	case *TwoFactorMutation:
@@ -1418,6 +1460,272 @@ func (c *ConversationMemberClient) mutate(ctx context.Context, m *ConversationMe
 		return (&ConversationMemberDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ConversationMember mutation op: %q", m.Op())
+	}
+}
+
+// EmailLogClient is a client for the EmailLog schema.
+type EmailLogClient struct {
+	config
+}
+
+// NewEmailLogClient returns a client for the EmailLog from the given config.
+func NewEmailLogClient(c config) *EmailLogClient {
+	return &EmailLogClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `emaillog.Hooks(f(g(h())))`.
+func (c *EmailLogClient) Use(hooks ...Hook) {
+	c.hooks.EmailLog = append(c.hooks.EmailLog, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `emaillog.Intercept(f(g(h())))`.
+func (c *EmailLogClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EmailLog = append(c.inters.EmailLog, interceptors...)
+}
+
+// Create returns a builder for creating a EmailLog entity.
+func (c *EmailLogClient) Create() *EmailLogCreate {
+	mutation := newEmailLogMutation(c.config, OpCreate)
+	return &EmailLogCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EmailLog entities.
+func (c *EmailLogClient) CreateBulk(builders ...*EmailLogCreate) *EmailLogCreateBulk {
+	return &EmailLogCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EmailLogClient) MapCreateBulk(slice any, setFunc func(*EmailLogCreate, int)) *EmailLogCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EmailLogCreateBulk{err: fmt.Errorf("calling to EmailLogClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EmailLogCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EmailLogCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EmailLog.
+func (c *EmailLogClient) Update() *EmailLogUpdate {
+	mutation := newEmailLogMutation(c.config, OpUpdate)
+	return &EmailLogUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EmailLogClient) UpdateOne(_m *EmailLog) *EmailLogUpdateOne {
+	mutation := newEmailLogMutation(c.config, OpUpdateOne, withEmailLog(_m))
+	return &EmailLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EmailLogClient) UpdateOneID(id string) *EmailLogUpdateOne {
+	mutation := newEmailLogMutation(c.config, OpUpdateOne, withEmailLogID(id))
+	return &EmailLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EmailLog.
+func (c *EmailLogClient) Delete() *EmailLogDelete {
+	mutation := newEmailLogMutation(c.config, OpDelete)
+	return &EmailLogDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EmailLogClient) DeleteOne(_m *EmailLog) *EmailLogDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EmailLogClient) DeleteOneID(id string) *EmailLogDeleteOne {
+	builder := c.Delete().Where(emaillog.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EmailLogDeleteOne{builder}
+}
+
+// Query returns a query builder for EmailLog.
+func (c *EmailLogClient) Query() *EmailLogQuery {
+	return &EmailLogQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEmailLog},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EmailLog entity by its id.
+func (c *EmailLogClient) Get(ctx context.Context, id string) (*EmailLog, error) {
+	return c.Query().Where(emaillog.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EmailLogClient) GetX(ctx context.Context, id string) *EmailLog {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EmailLogClient) Hooks() []Hook {
+	return c.hooks.EmailLog
+}
+
+// Interceptors returns the client interceptors.
+func (c *EmailLogClient) Interceptors() []Interceptor {
+	return c.inters.EmailLog
+}
+
+func (c *EmailLogClient) mutate(ctx context.Context, m *EmailLogMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EmailLogCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EmailLogUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EmailLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EmailLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EmailLog mutation op: %q", m.Op())
+	}
+}
+
+// EmailTemplateClient is a client for the EmailTemplate schema.
+type EmailTemplateClient struct {
+	config
+}
+
+// NewEmailTemplateClient returns a client for the EmailTemplate from the given config.
+func NewEmailTemplateClient(c config) *EmailTemplateClient {
+	return &EmailTemplateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `emailtemplate.Hooks(f(g(h())))`.
+func (c *EmailTemplateClient) Use(hooks ...Hook) {
+	c.hooks.EmailTemplate = append(c.hooks.EmailTemplate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `emailtemplate.Intercept(f(g(h())))`.
+func (c *EmailTemplateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EmailTemplate = append(c.inters.EmailTemplate, interceptors...)
+}
+
+// Create returns a builder for creating a EmailTemplate entity.
+func (c *EmailTemplateClient) Create() *EmailTemplateCreate {
+	mutation := newEmailTemplateMutation(c.config, OpCreate)
+	return &EmailTemplateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EmailTemplate entities.
+func (c *EmailTemplateClient) CreateBulk(builders ...*EmailTemplateCreate) *EmailTemplateCreateBulk {
+	return &EmailTemplateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EmailTemplateClient) MapCreateBulk(slice any, setFunc func(*EmailTemplateCreate, int)) *EmailTemplateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EmailTemplateCreateBulk{err: fmt.Errorf("calling to EmailTemplateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EmailTemplateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EmailTemplateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EmailTemplate.
+func (c *EmailTemplateClient) Update() *EmailTemplateUpdate {
+	mutation := newEmailTemplateMutation(c.config, OpUpdate)
+	return &EmailTemplateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EmailTemplateClient) UpdateOne(_m *EmailTemplate) *EmailTemplateUpdateOne {
+	mutation := newEmailTemplateMutation(c.config, OpUpdateOne, withEmailTemplate(_m))
+	return &EmailTemplateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EmailTemplateClient) UpdateOneID(id string) *EmailTemplateUpdateOne {
+	mutation := newEmailTemplateMutation(c.config, OpUpdateOne, withEmailTemplateID(id))
+	return &EmailTemplateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EmailTemplate.
+func (c *EmailTemplateClient) Delete() *EmailTemplateDelete {
+	mutation := newEmailTemplateMutation(c.config, OpDelete)
+	return &EmailTemplateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EmailTemplateClient) DeleteOne(_m *EmailTemplate) *EmailTemplateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EmailTemplateClient) DeleteOneID(id string) *EmailTemplateDeleteOne {
+	builder := c.Delete().Where(emailtemplate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EmailTemplateDeleteOne{builder}
+}
+
+// Query returns a query builder for EmailTemplate.
+func (c *EmailTemplateClient) Query() *EmailTemplateQuery {
+	return &EmailTemplateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEmailTemplate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EmailTemplate entity by its id.
+func (c *EmailTemplateClient) Get(ctx context.Context, id string) (*EmailTemplate, error) {
+	return c.Query().Where(emailtemplate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EmailTemplateClient) GetX(ctx context.Context, id string) *EmailTemplate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EmailTemplateClient) Hooks() []Hook {
+	return c.hooks.EmailTemplate
+}
+
+// Interceptors returns the client interceptors.
+func (c *EmailTemplateClient) Interceptors() []Interceptor {
+	return c.inters.EmailTemplate
+}
+
+func (c *EmailTemplateClient) mutate(ctx context.Context, m *EmailTemplateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EmailTemplateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EmailTemplateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EmailTemplateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EmailTemplateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EmailTemplate mutation op: %q", m.Op())
 	}
 }
 
@@ -3017,6 +3325,139 @@ func (c *PermissionGroupClient) mutate(ctx context.Context, m *PermissionGroupMu
 	}
 }
 
+// PhoneCodeClient is a client for the PhoneCode schema.
+type PhoneCodeClient struct {
+	config
+}
+
+// NewPhoneCodeClient returns a client for the PhoneCode from the given config.
+func NewPhoneCodeClient(c config) *PhoneCodeClient {
+	return &PhoneCodeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `phonecode.Hooks(f(g(h())))`.
+func (c *PhoneCodeClient) Use(hooks ...Hook) {
+	c.hooks.PhoneCode = append(c.hooks.PhoneCode, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `phonecode.Intercept(f(g(h())))`.
+func (c *PhoneCodeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PhoneCode = append(c.inters.PhoneCode, interceptors...)
+}
+
+// Create returns a builder for creating a PhoneCode entity.
+func (c *PhoneCodeClient) Create() *PhoneCodeCreate {
+	mutation := newPhoneCodeMutation(c.config, OpCreate)
+	return &PhoneCodeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PhoneCode entities.
+func (c *PhoneCodeClient) CreateBulk(builders ...*PhoneCodeCreate) *PhoneCodeCreateBulk {
+	return &PhoneCodeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PhoneCodeClient) MapCreateBulk(slice any, setFunc func(*PhoneCodeCreate, int)) *PhoneCodeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PhoneCodeCreateBulk{err: fmt.Errorf("calling to PhoneCodeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PhoneCodeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PhoneCodeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PhoneCode.
+func (c *PhoneCodeClient) Update() *PhoneCodeUpdate {
+	mutation := newPhoneCodeMutation(c.config, OpUpdate)
+	return &PhoneCodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PhoneCodeClient) UpdateOne(_m *PhoneCode) *PhoneCodeUpdateOne {
+	mutation := newPhoneCodeMutation(c.config, OpUpdateOne, withPhoneCode(_m))
+	return &PhoneCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PhoneCodeClient) UpdateOneID(id string) *PhoneCodeUpdateOne {
+	mutation := newPhoneCodeMutation(c.config, OpUpdateOne, withPhoneCodeID(id))
+	return &PhoneCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PhoneCode.
+func (c *PhoneCodeClient) Delete() *PhoneCodeDelete {
+	mutation := newPhoneCodeMutation(c.config, OpDelete)
+	return &PhoneCodeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PhoneCodeClient) DeleteOne(_m *PhoneCode) *PhoneCodeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PhoneCodeClient) DeleteOneID(id string) *PhoneCodeDeleteOne {
+	builder := c.Delete().Where(phonecode.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PhoneCodeDeleteOne{builder}
+}
+
+// Query returns a query builder for PhoneCode.
+func (c *PhoneCodeClient) Query() *PhoneCodeQuery {
+	return &PhoneCodeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePhoneCode},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PhoneCode entity by its id.
+func (c *PhoneCodeClient) Get(ctx context.Context, id string) (*PhoneCode, error) {
+	return c.Query().Where(phonecode.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PhoneCodeClient) GetX(ctx context.Context, id string) *PhoneCode {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PhoneCodeClient) Hooks() []Hook {
+	return c.hooks.PhoneCode
+}
+
+// Interceptors returns the client interceptors.
+func (c *PhoneCodeClient) Interceptors() []Interceptor {
+	return c.inters.PhoneCode
+}
+
+func (c *PhoneCodeClient) mutate(ctx context.Context, m *PhoneCodeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PhoneCodeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PhoneCodeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PhoneCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PhoneCodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PhoneCode mutation op: %q", m.Op())
+	}
+}
+
 // ReactionClient is a client for the Reaction schema.
 type ReactionClient struct {
 	config
@@ -3413,6 +3854,139 @@ func (c *RecoveryCodeClient) mutate(ctx context.Context, m *RecoveryCodeMutation
 		return (&RecoveryCodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown RecoveryCode mutation op: %q", m.Op())
+	}
+}
+
+// RedirectClient is a client for the Redirect schema.
+type RedirectClient struct {
+	config
+}
+
+// NewRedirectClient returns a client for the Redirect from the given config.
+func NewRedirectClient(c config) *RedirectClient {
+	return &RedirectClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `redirect.Hooks(f(g(h())))`.
+func (c *RedirectClient) Use(hooks ...Hook) {
+	c.hooks.Redirect = append(c.hooks.Redirect, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `redirect.Intercept(f(g(h())))`.
+func (c *RedirectClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Redirect = append(c.inters.Redirect, interceptors...)
+}
+
+// Create returns a builder for creating a Redirect entity.
+func (c *RedirectClient) Create() *RedirectCreate {
+	mutation := newRedirectMutation(c.config, OpCreate)
+	return &RedirectCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Redirect entities.
+func (c *RedirectClient) CreateBulk(builders ...*RedirectCreate) *RedirectCreateBulk {
+	return &RedirectCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RedirectClient) MapCreateBulk(slice any, setFunc func(*RedirectCreate, int)) *RedirectCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RedirectCreateBulk{err: fmt.Errorf("calling to RedirectClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RedirectCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RedirectCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Redirect.
+func (c *RedirectClient) Update() *RedirectUpdate {
+	mutation := newRedirectMutation(c.config, OpUpdate)
+	return &RedirectUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RedirectClient) UpdateOne(_m *Redirect) *RedirectUpdateOne {
+	mutation := newRedirectMutation(c.config, OpUpdateOne, withRedirect(_m))
+	return &RedirectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RedirectClient) UpdateOneID(id string) *RedirectUpdateOne {
+	mutation := newRedirectMutation(c.config, OpUpdateOne, withRedirectID(id))
+	return &RedirectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Redirect.
+func (c *RedirectClient) Delete() *RedirectDelete {
+	mutation := newRedirectMutation(c.config, OpDelete)
+	return &RedirectDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RedirectClient) DeleteOne(_m *Redirect) *RedirectDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RedirectClient) DeleteOneID(id string) *RedirectDeleteOne {
+	builder := c.Delete().Where(redirect.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RedirectDeleteOne{builder}
+}
+
+// Query returns a query builder for Redirect.
+func (c *RedirectClient) Query() *RedirectQuery {
+	return &RedirectQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRedirect},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Redirect entity by its id.
+func (c *RedirectClient) Get(ctx context.Context, id string) (*Redirect, error) {
+	return c.Query().Where(redirect.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RedirectClient) GetX(ctx context.Context, id string) *Redirect {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RedirectClient) Hooks() []Hook {
+	return c.hooks.Redirect
+}
+
+// Interceptors returns the client interceptors.
+func (c *RedirectClient) Interceptors() []Interceptor {
+	return c.inters.Redirect
+}
+
+func (c *RedirectClient) mutate(ctx context.Context, m *RedirectMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RedirectCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RedirectUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RedirectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RedirectDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Redirect mutation op: %q", m.Op())
 	}
 }
 
@@ -4480,6 +5054,139 @@ func (c *SiteSafetySettingClient) mutate(ctx context.Context, m *SiteSafetySetti
 	}
 }
 
+// SubscriberClient is a client for the Subscriber schema.
+type SubscriberClient struct {
+	config
+}
+
+// NewSubscriberClient returns a client for the Subscriber from the given config.
+func NewSubscriberClient(c config) *SubscriberClient {
+	return &SubscriberClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriber.Hooks(f(g(h())))`.
+func (c *SubscriberClient) Use(hooks ...Hook) {
+	c.hooks.Subscriber = append(c.hooks.Subscriber, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriber.Intercept(f(g(h())))`.
+func (c *SubscriberClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Subscriber = append(c.inters.Subscriber, interceptors...)
+}
+
+// Create returns a builder for creating a Subscriber entity.
+func (c *SubscriberClient) Create() *SubscriberCreate {
+	mutation := newSubscriberMutation(c.config, OpCreate)
+	return &SubscriberCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Subscriber entities.
+func (c *SubscriberClient) CreateBulk(builders ...*SubscriberCreate) *SubscriberCreateBulk {
+	return &SubscriberCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriberClient) MapCreateBulk(slice any, setFunc func(*SubscriberCreate, int)) *SubscriberCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriberCreateBulk{err: fmt.Errorf("calling to SubscriberClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriberCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriberCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Subscriber.
+func (c *SubscriberClient) Update() *SubscriberUpdate {
+	mutation := newSubscriberMutation(c.config, OpUpdate)
+	return &SubscriberUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriberClient) UpdateOne(_m *Subscriber) *SubscriberUpdateOne {
+	mutation := newSubscriberMutation(c.config, OpUpdateOne, withSubscriber(_m))
+	return &SubscriberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriberClient) UpdateOneID(id string) *SubscriberUpdateOne {
+	mutation := newSubscriberMutation(c.config, OpUpdateOne, withSubscriberID(id))
+	return &SubscriberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Subscriber.
+func (c *SubscriberClient) Delete() *SubscriberDelete {
+	mutation := newSubscriberMutation(c.config, OpDelete)
+	return &SubscriberDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriberClient) DeleteOne(_m *Subscriber) *SubscriberDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriberClient) DeleteOneID(id string) *SubscriberDeleteOne {
+	builder := c.Delete().Where(subscriber.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriberDeleteOne{builder}
+}
+
+// Query returns a query builder for Subscriber.
+func (c *SubscriberClient) Query() *SubscriberQuery {
+	return &SubscriberQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriber},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Subscriber entity by its id.
+func (c *SubscriberClient) Get(ctx context.Context, id string) (*Subscriber, error) {
+	return c.Query().Where(subscriber.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriberClient) GetX(ctx context.Context, id string) *Subscriber {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriberClient) Hooks() []Hook {
+	return c.hooks.Subscriber
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriberClient) Interceptors() []Interceptor {
+	return c.inters.Subscriber
+}
+
+func (c *SubscriberClient) mutate(ctx context.Context, m *SubscriberMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriberCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriberUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriberDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Subscriber mutation op: %q", m.Op())
+	}
+}
+
 // TaxonomyTermClient is a client for the TaxonomyTerm schema.
 type TaxonomyTermClient struct {
 	config
@@ -5149,20 +5856,22 @@ func (c *VerificationTokenClient) mutate(ctx context.Context, m *VerificationTok
 type (
 	hooks struct {
 		AuditLog, Bookmark, Comment, ContentItem, ContentRevision, Conversation,
-		ConversationMember, Follow, IdempotencyKey, MediaAsset, MediaQuotaGuard,
-		MediaUpload, Message, ModerationReport, Notification, NotificationPreference,
-		OutboxEvent, PageView, PermissionGroup, Reaction, ReadingHistory, RecoveryCode,
-		SensitiveWord, Session, Site, SiteConfig, SiteCustomization, SiteIPRule,
-		SiteMember, SiteSafetySetting, TaxonomyTerm, TwoFactor, User, UserIdentity,
+		ConversationMember, EmailLog, EmailTemplate, Follow, IdempotencyKey,
+		MediaAsset, MediaQuotaGuard, MediaUpload, Message, ModerationReport,
+		Notification, NotificationPreference, OutboxEvent, PageView, PermissionGroup,
+		PhoneCode, Reaction, ReadingHistory, RecoveryCode, Redirect, SensitiveWord,
+		Session, Site, SiteConfig, SiteCustomization, SiteIPRule, SiteMember,
+		SiteSafetySetting, Subscriber, TaxonomyTerm, TwoFactor, User, UserIdentity,
 		VerificationToken []ent.Hook
 	}
 	inters struct {
 		AuditLog, Bookmark, Comment, ContentItem, ContentRevision, Conversation,
-		ConversationMember, Follow, IdempotencyKey, MediaAsset, MediaQuotaGuard,
-		MediaUpload, Message, ModerationReport, Notification, NotificationPreference,
-		OutboxEvent, PageView, PermissionGroup, Reaction, ReadingHistory, RecoveryCode,
-		SensitiveWord, Session, Site, SiteConfig, SiteCustomization, SiteIPRule,
-		SiteMember, SiteSafetySetting, TaxonomyTerm, TwoFactor, User, UserIdentity,
+		ConversationMember, EmailLog, EmailTemplate, Follow, IdempotencyKey,
+		MediaAsset, MediaQuotaGuard, MediaUpload, Message, ModerationReport,
+		Notification, NotificationPreference, OutboxEvent, PageView, PermissionGroup,
+		PhoneCode, Reaction, ReadingHistory, RecoveryCode, Redirect, SensitiveWord,
+		Session, Site, SiteConfig, SiteCustomization, SiteIPRule, SiteMember,
+		SiteSafetySetting, Subscriber, TaxonomyTerm, TwoFactor, User, UserIdentity,
 		VerificationToken []ent.Interceptor
 	}
 )

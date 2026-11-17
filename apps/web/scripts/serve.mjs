@@ -16,6 +16,21 @@
  *
  * 另外提供 `GET /__pp/update`：服务端读取版本清单（`version.json`）并与本机版本比较。
  * 它和启动器的同名接口行为一致，这样 `npm start` 起的站点也能检查更新。
+ *
+ * 内容页元数据（Beta 1.2）：`/a/:id`、`/p/:id` 的 HTML 请求不再直接返回裸外壳，
+ * 而是先向 API 取一次内容元数据，把 title / description / Open Graph / canonical
+ * 注入 `dist/index.html` 后再返回，社交抓取器（微信 / X / Telegram）于是能拿到真实
+ * 卡片。API 基地址解析顺序：
+ *
+ *   1. 环境变量 `PP_API_BASE`（例如 `http://127.0.0.1:8080`）
+ *   2. 默认 `http://127.0.0.1:8080`
+ *
+ * 注意这两者是「约定」而不是「发现」：API 换了端口（`deploy/linux/install.sh` 默认
+ * 把 API 放在 8081）就要显式给 `PP_API_BASE`，否则取不到元数据——站点照旧能打开，
+ * 只是退回默认分享卡片。缓存 60 秒、单次超时 800ms，都是下面的常量。
+ *
+ * 请求透传原始 Host 头——API 按 Host 解析站点。取元数据失败、超时或 404 一律原样
+ * 返回 index.html，站点不会因为 API 挂掉而打不开（细节见下面的「内容页元数据注入」段）。
  */
 
 import http from 'node:http';
@@ -362,6 +377,329 @@ async function handleUpdateCheck(req, res, url) {
 }
 
 
+/* ---------------- 内容页元数据注入（爬虫可读的 SPA 外壳） ---------------- */
+
+/**
+ * 社交平台的抓取器不执行 JS，只会读 HTML 源码。SPA 外壳里因此只有站点默认卡片，
+ * 分享出去的每一篇都长一个样。这里在返回外壳之前补一次内容元数据。
+ *
+ * 三条硬要求（改动这段之前先读一遍）：
+ *
+ *   1. **失败即降级**：API 超时、非 200、JSON 不合法、index.html 读不到——任何一种
+ *      都原样返回 index.html。静态服务不能因为 API 挂了就把网站关掉。
+ *   2. **有缓存**：结果按 `(Host, 路径)` 缓存 `SEO_CACHE_TTL_MS`（60 秒），正常访问
+ *      不会每个请求都打 API。失败结果同样缓存，否则 API 挂掉时每个请求都要白等
+ *      一次 800ms 超时，比拿到默认卡片更糟。
+ *   3. **一律转义**：注入的每个值都过 `escapeHtml`，标题里有 `"` `<` `&` 也破坏不了
+ *      属性；只往标签里塞文本，不拼任何 HTML 片段。
+ *
+ * API 基地址：`PP_API_BASE` → 默认 `http://127.0.0.1:8080`（见文件头部注释）。
+ * Host 头原样透传，因为 API 靠它解析站点；协议用 `X-Forwarded-Proto`（反向代理后面
+ * 才可能是 https），拼 canonical 与 og:url 时用得到。
+ *
+ * 边界：只处理 `Accept` 里带 `text/html` 的 GET 导航请求——读者与主流抓取器都这么发。
+ * 少数只把 `Accept` 设成星号通配的老抓取器仍按改动前的行为拿到 404（它们本来也拿不到外壳）。
+ */
+
+/** API 基地址：没配置 `PP_API_BASE` 时假设 API 在本机默认端口。 */
+const DEFAULT_API_BASE = 'http://127.0.0.1:8080';
+
+/** 外壳缓存时长：60 秒。改内容后最多一分钟，抓取器就能看到新的卡片。 */
+const SEO_CACHE_TTL_MS = 60 * 1000;
+
+/** 单次元数据请求的超时：800ms。超时按失败处理（原样返回外壳）。 */
+const SEO_FETCH_TIMEOUT_MS = 800;
+
+/** 缓存条目上限：条目少，淘汰最省事的那条即可，不值得为它上 LRU。 */
+const SEO_CACHE_LIMIT = 500;
+
+/** 单次读取的响应体上限；超了就放弃注入（宁可返回默认卡片，也不拖垮内存）。 */
+const SEO_BODY_LIMIT = 1024 * 1024;
+
+/** 外壳里的元数据占位符；没有占位符时改写同名的既有标签（见 injectMeta）。 */
+const META_PLACEHOLDER = '<!--PP_META-->';
+
+/** `/a/:id`（article）与 `/p/:id`（post），允许结尾多一个斜杠。 */
+const CONTENT_PATH = /^\/(a|p)\/([^/]+)\/?$/;
+
+/** 注入标签统一带这个标记：页面启动后由 lib/seo.ts 的 clearManaged 接管并替换。 */
+const SEO_MARK = ' data-pp-seo="1"';
+
+/**
+ * 解析 API 基地址；非法地址返回 null。
+ *
+ * 返回 null 不是启动失败：所有请求照旧返回原始外壳，只是没有服务端元数据。
+ * 这样运维配错一个环境变量不会让站点起不来。
+ */
+function parseApiBase(value) {
+  try {
+    const base = new URL(String(value || '').trim());
+    if (base.protocol !== 'http:' && base.protocol !== 'https:') return null;
+    return base;
+  } catch {
+    return null;
+  }
+}
+
+const API_BASE = parseApiBase(process.env.PP_API_BASE || DEFAULT_API_BASE);
+
+/** `(Host + 路径)` → `{ html, expires }`，html 是注入好的外壳（失败时就是原样外壳）。 */
+const seoShellCache = new Map();
+
+/** HTML 文本转义：注入的每一个值都从这里过。 */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** 合并连续空白：标题/摘要里的换行不该原样进 `<title>`。 */
+function collapseSpace(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** 相对地址补成绝对地址；http(s) 与 data URL 原样返回。 */
+function absoluteMetaUrl(value, origin) {
+  const url = collapseSpace(value);
+  if (!url) return '';
+  if (/^(?:https?:|data:)/i.test(url)) return url;
+  if (!origin) return url;
+  return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+/** 请求对外的站点地址：`X-Forwarded-Proto`（没有则 http）+ 原始 Host 头。 */
+function publicOrigin(req) {
+  const host = String(req.headers.host || '').trim();
+  return `${protocolOf(req)}://${host || 'localhost'}`;
+}
+
+/** 一个受管理的 meta 标签；`SEO_MARK` 让运行时 SEO 层认得它。 */
+function metaTag(attribute, key, value) {
+  return `<meta ${attribute}="${key}" content="${escapeHtml(value)}"${SEO_MARK} />`;
+}
+
+/** 匹配同名 meta 标签，用于在原位替换（避免外壳里出现两份 og:title）。 */
+function metaPattern(attribute, key) {
+  return new RegExp(`<meta\\b[^>]*\\b${attribute}=["']${key}["'][^>]*>`, 'gi');
+}
+
+function linkPattern(rel) {
+  return new RegExp(`<link\\b[^>]*\\brel=["']${rel}["'][^>]*>`, 'gi');
+}
+
+/**
+ * 把一次 API 响应的内容字段投影成「标签 + 在哪儿替换」的列表。
+ *
+ * 只读这几个字段，正文（rendered_html）一概不看：这里的目标是分享卡片。
+ * 值全部经过 escapeHtml，返回值只用于拼标签、不再被当作 HTML 解析。
+ */
+function metaTags(content, origin, pathname) {
+  const item = content && typeof content === 'object' ? content : {};
+  const title = collapseSpace(item.seo_title) || collapseSpace(item.title) || collapseSpace(item.slug);
+  const description = (
+    collapseSpace(item.seo_description) || collapseSpace(item.summary)
+  ).slice(0, 300);
+  const canonical = absoluteMetaUrl(item.canonical_url, origin) || `${origin}${pathname}`;
+  const image = absoluteMetaUrl(collapseSpace(item.og_image) || collapseSpace(item.cover_url), origin);
+  const keywords = collapseSpace(item.seo_keywords);
+  const noindex = String(item.robots || '').trim() === 'noindex';
+
+  const tags = [];
+  if (title) {
+    tags.push({ pattern: /<title>[\s\S]*?<\/title>/gi, tag: `<title>${escapeHtml(title)}</title>` });
+  }
+  if (description) {
+    tags.push({
+      pattern: metaPattern('name', 'description'),
+      tag: metaTag('name', 'description', description),
+    });
+  }
+  // robots：只有作者明确写了 noindex 才输出，其它情况沿用站点级设置（外壳里本来就有）。
+  if (noindex) {
+    tags.push({ pattern: metaPattern('name', 'robots'), tag: metaTag('name', 'robots', 'noindex') });
+  }
+  if (keywords) {
+    tags.push({ pattern: metaPattern('name', 'keywords'), tag: metaTag('name', 'keywords', keywords) });
+  }
+  tags.push({ pattern: metaPattern('property', 'og:type'), tag: metaTag('property', 'og:type', 'article') });
+  if (title) {
+    tags.push({ pattern: metaPattern('property', 'og:title'), tag: metaTag('property', 'og:title', title) });
+  }
+  if (description) {
+    tags.push({
+      pattern: metaPattern('property', 'og:description'),
+      tag: metaTag('property', 'og:description', description),
+    });
+  }
+  if (image) {
+    tags.push({ pattern: metaPattern('property', 'og:image'), tag: metaTag('property', 'og:image', image) });
+  }
+  tags.push({ pattern: metaPattern('property', 'og:url'), tag: metaTag('property', 'og:url', canonical) });
+  tags.push({
+    pattern: metaPattern('name', 'twitter:card'),
+    tag: metaTag('name', 'twitter:card', image ? 'summary_large_image' : 'summary'),
+  });
+  tags.push({
+    pattern: linkPattern('canonical'),
+    tag: `<link rel="canonical" href="${escapeHtml(canonical)}"${SEO_MARK} />`,
+  });
+  return tags;
+}
+
+/**
+ * 把标签塞进外壳。
+ *
+ * 优先替换 `<!--PP_META-->` 占位符。构建产物里还没有占位符时（`index.html` 目前就
+ * 自带一组默认标签），改写同名标签，重复的那几个直接删掉——抓取器只认第一个
+ * og:title，留着旧的等于白注入。两种方式插入的标签都带 data-pp-seo，页面启动后
+ * 由 lib/seo.ts 统一接管。
+ *
+ * 替换一律用函数形式的 `String.replace`：标签内容可能含 `$&` 之类的字符，
+ * 字符串替换会把它们当成替换模式。
+ */
+function injectMeta(html, tags) {
+  if (!tags.length) return html;
+  const block = tags.map((entry) => entry.tag).join('\n    ');
+  if (html.includes(META_PLACEHOLDER)) return html.replace(META_PLACEHOLDER, () => block);
+
+  let out = html;
+  const leftovers = [];
+  for (const { pattern, tag } of tags) {
+    let placed = false;
+    out = out.replace(pattern, () => {
+      if (placed) return '';
+      placed = true;
+      return tag;
+    });
+    if (!placed) leftovers.push(tag);
+  }
+  if (!leftovers.length) return out;
+  const tail = leftovers.join('\n    ');
+  return /<\/head>/i.test(out) ? out.replace(/<\/head>/i, () => `    ${tail}\n  </head>`) : out;
+}
+
+/**
+ * 读一次内容元数据。**从不抛错**：超时、非 200、坏 JSON、过大都返回 null，
+ * 调用方据此原样返回外壳。
+ */
+function fetchContentMeta(req, kind, id) {
+  return new Promise((resolveMeta) => {
+    if (!API_BASE) {
+      resolveMeta(null);
+      return;
+    }
+    const endpoint = kind === 'a' ? 'articles' : 'posts';
+    const prefix = API_BASE.pathname.replace(/\/+$/, '');
+    const target = `${API_BASE.origin}${prefix}/api/v1/${endpoint}/${encodeURIComponent(id)}`;
+    const headers = {
+      Accept: 'application/json',
+      'User-Agent': 'practacu-press-static-seo',
+      'X-Forwarded-Proto': protocolOf(req),
+    };
+    // 站点由 Host 解析：必须透传原始 Host，不能让 API 只看到 127.0.0.1:8080。
+    const hostHeader = String(req.headers.host || '').trim();
+    if (hostHeader) headers.Host = hostHeader;
+
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolveMeta(value);
+    };
+
+    const request = http.request(
+      target,
+      { method: 'GET', headers, timeout: SEO_FETCH_TIMEOUT_MS },
+      (response) => {
+        if (response.statusCode !== 200) {
+          response.resume();
+          finish(null);
+          return;
+        }
+        let text = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          text += chunk;
+          if (text.length > SEO_BODY_LIMIT) {
+            request.destroy();
+            finish(null);
+          }
+        });
+        response.on('end', () => {
+          try {
+            finish(JSON.parse(stripBom(text)));
+          } catch {
+            finish(null);
+          }
+        });
+        response.on('error', () => finish(null));
+      },
+    );
+    request.on('timeout', () => {
+      request.destroy();
+      finish(null);
+    });
+    request.on('error', () => finish(null));
+    request.end();
+  });
+}
+
+/** 读 `dist/index.html`；读不到返回 null（调用方回退到原来的静态分支）。 */
+async function readShell() {
+  try {
+    return await readFile(join(DIST, 'index.html'), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** 记一条外壳缓存；超出上限时丢掉最早写入的一条（Map 保持插入顺序）。 */
+function rememberShell(key, entry) {
+  if (seoShellCache.size >= SEO_CACHE_LIMIT) {
+    const oldest = seoShellCache.keys().next().value;
+    if (oldest !== undefined) seoShellCache.delete(oldest);
+  }
+  seoShellCache.set(key, entry);
+}
+
+/**
+ * 内容页的外壳：命中缓存直接返回，否则取元数据并注入。
+ * 返回 null 表示连 index.html 都读不到——调用方按原来的逻辑返回。
+ */
+async function seoShellFor(req, pathname, kind, id) {
+  const key = `${String(req.headers.host || '').toLowerCase()}\n${pathname}`;
+  const cached = seoShellCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.html;
+
+  const shell = await readShell();
+  if (shell === null) return null;
+
+  const content = await fetchContentMeta(req, kind, id);
+  const html = content ? injectMeta(shell, metaTags(content, publicOrigin(req), pathname)) : shell;
+  rememberShell(key, { html, expires: Date.now() + SEO_CACHE_TTL_MS });
+  return html;
+}
+
+/** 返回注入后的外壳；缓存策略与 index.html 一致（不进缓存）。 */
+async function sendSeoShell(req, res, pathname, kind, id) {
+  const html = await seoShellFor(req, pathname, kind, id);
+  if (html === null) {
+    await sendFile(req, res, join(DIST, 'index.html'));
+    return;
+  }
+  const body = Buffer.from(html, 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.end(body);
+}
+
 let currentPort = DEFAULT_PORT;
 let activeServers = [];
 let distReady = false;
@@ -493,6 +831,12 @@ async function handle(req, res) {
   // 只有导航请求才回退到 index.html，静态资源缺失要如实 404。
   const acceptsHtml = String(req.headers.accept || '').includes('text/html');
   if (!extname(pathname) && acceptsHtml && req.method === 'GET') {
+    // 内容详情页：先补元数据再返回外壳，抓取器不执行 JS 也能拿到真实分享卡片。
+    const contentPath = CONTENT_PATH.exec(pathname);
+    if (contentPath) {
+      await sendSeoShell(req, res, pathname, contentPath[1], contentPath[2]);
+      return;
+    }
     await sendFile(req, res, join(DIST, 'index.html'));
     return;
   }

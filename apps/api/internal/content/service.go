@@ -61,8 +61,14 @@ type Repository interface {
 	// audit entry in one transaction. The update only succeeds when the stored
 	// revision still equals item.Revision.
 	SaveDraft(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
-	// FindByID loads an item inside a site scope.
+	// FindByID loads an item inside a site scope. A trashed item is reported as
+	// missing: the recycle bin has its own lookup, so no read path can accidentally
+	// serve deleted content by loading it the ordinary way.
 	FindByID(ctx context.Context, siteID, contentID string) (Content, error)
+	// FindByIDIncludingTrashed loads an item even when it sits in the recycle bin.
+	// Only the lifecycle operations use it, because they are the ones that act on
+	// what every reader path must hide.
+	FindByIDIncludingTrashed(ctx context.Context, siteID, contentID string) (Content, error)
 	// List returns items of a site filtered by what the caller may see.
 	List(ctx context.Context, filter ListFilter) ([]Content, error)
 	// Search returns one relevance ordered page of published, public items whose
@@ -100,6 +106,17 @@ type Repository interface {
 	// Popular returns the leaderboard candidates of one site ordered by raw view
 	// count, newest first on a tie. The service applies the time decay afterwards.
 	Popular(ctx context.Context, filter PopularFilter) ([]Content, error)
+	// Trash stamps the recycle bin marker on an item. A row that is already trashed
+	// is returned unchanged so a retried delete stays idempotent.
+	Trash(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
+	// Undelete clears the recycle bin marker and returns the restored item.
+	Undelete(ctx context.Context, item Content, audit site.AuditEntry) (Content, error)
+	// Purge removes a trashed item, its revision history and its search index rows.
+	// It refuses a live item: the two step delete is the only destruction path.
+	Purge(ctx context.Context, siteID, contentID string, audit site.AuditEntry) error
+	// PurgeExpired removes up to limit items deleted before the given instant and
+	// reports how many rows it removed. It backs the retention sweep.
+	PurgeExpired(ctx context.Context, before time.Time, limit int) (int, error)
 }
 
 // DraftQuotaStore is the optional storage capability that backs the per-author draft
@@ -115,6 +132,56 @@ type DraftQuotaStore interface {
 	CountActiveDraftsByAuthor(ctx context.Context, siteID, authorID string) (int, error)
 	// SumActiveDraftBytesByAuthor sums the source body bytes of those items.
 	SumActiveDraftBytesByAuthor(ctx context.Context, siteID, authorID string) (int64, error)
+}
+
+// RevisionLookupStore is the optional storage capability behind the version diff
+// (Beta 1.2 contract E).
+//
+// It is an optional port rather than a Repository method so a test double or an
+// alternative store that predates the diff endpoint keeps satisfying Repository. When
+// it is missing the service falls back to scanning the bounded revision list, which
+// is correct for the twenty versions the retention policy keeps.
+type RevisionLookupStore interface {
+	// FindRevisionByVersion loads one history snapshot by its version number inside a
+	// site and content scope.
+	FindRevisionByVersion(ctx context.Context, siteID, contentID string, version int) (Revision, error)
+}
+
+// SlugLookupStore is the optional storage capability that resolves a site scoped slug
+// to its item (Beta 1.2 contract J1).
+//
+// It is optional for the same reason as RevisionLookupStore: a repository that does
+// not implement it keeps the pre Beta 1.2 id only addressing instead of failing to
+// compile.
+type SlugLookupStore interface {
+	// FindBySlug loads the live item of one kind carrying slug on the site. An
+	// unknown slug answers ErrNotFound; a trashed row is never returned.
+	FindBySlug(ctx context.Context, siteID string, kind Kind, slug string) (Content, error)
+}
+
+// PreviewSigner mints and verifies the draft preview tokens of contract H.
+//
+// It mirrors *preview.Signer without importing the platform package, so this package
+// stays independent of where the key is stored. Verify reports the content id the
+// token was minted for; the caller must compare it with the item it is reading, which
+// is what scopes a token to one draft. A nil signer disables preview links.
+type PreviewSigner interface {
+	// Issue mints a token for one content id, valid for ttl.
+	Issue(contentID string, ttl time.Duration) (token string, expiresAt time.Time, err error)
+	// Verify returns the content id a valid token authorizes.
+	Verify(token string) (contentID string, ok bool)
+}
+
+// RedirectRecorder records the redirect a slug change of a published item creates
+// (Beta 1.2 contract J4).
+//
+// It is a port instead of an import because the redirect module owns that table. A nil
+// recorder (a deployment that does not run the redirect feature) simply skips the
+// recording: the save itself must not depend on it.
+type RedirectRecorder interface {
+	// RecordSlugChange stores the 301 rule from fromPath to toPath, both of which are
+	// site relative paths already carrying the content kind prefix.
+	RecordSlugChange(ctx context.Context, siteID, fromPath, toPath string) error
 }
 
 // PublishModeFunc resolves the publishing rule of a site.
@@ -192,6 +259,16 @@ type Service struct {
 	hasher      AccessPasswordHasher
 	unlocks     UnlockTokens
 	unlockGuard *unlockLimiter
+	// The optional storage capabilities of the Beta 1.2 endpoints. They are resolved
+	// from the repository once, at construction, so a read path never type asserts per
+	// request.
+	revisions RevisionLookupStore
+	slugs     SlugLookupStore
+	// preview mints the draft preview links (contract H); nil disables them.
+	preview PreviewSigner
+	// redirects receives the slug change rule of a published item (contract J4); nil
+	// skips the recording.
+	redirects RedirectRecorder
 	// views is the in-process de-duplication table of the read counter. It is bound
 	// to the service clock so a test can move time across the window.
 	views *viewGate
@@ -219,7 +296,14 @@ type ServiceConfig struct {
 	// UnlockTokens mints the session grant the unlock endpoint returns. Nil disables
 	// password access in the same way as a missing hasher.
 	UnlockTokens UnlockTokens
-	Now          func() time.Time
+	// PreviewSigner mints draft preview links (Beta 1.2 contract H). Nil disables the
+	// preview endpoint with ErrPreviewUnavailable; the server wires
+	// *preview.Signer, which persists its key under the data directory.
+	PreviewSigner PreviewSigner
+	// RedirectRecorder receives the 301 rule a published item's slug change creates
+	// (contract J4). Nil skips the recording without failing the save.
+	RedirectRecorder RedirectRecorder
+	Now              func() time.Time
 }
 
 // NewService builds a Service.
@@ -240,7 +324,18 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		notifier:    cfg.ReviewNotifier,
 		hasher:      cfg.AccessPasswordHasher,
 		unlocks:     cfg.UnlockTokens,
+		preview:     cfg.PreviewSigner,
+		redirects:   cfg.RedirectRecorder,
 		now:         cfg.Now,
+	}
+	// The Beta 1.2 features are storage capabilities of the same repository, so they
+	// are detected here instead of being threaded through a second config field: the
+	// content store implements them, and a pre Beta 1.2 test double simply does not.
+	if store, ok := cfg.Repository.(RevisionLookupStore); ok {
+		service.revisions = store
+	}
+	if store, ok := cfg.Repository.(SlugLookupStore); ok {
+		service.slugs = store
 	}
 	if service.publishMode == nil {
 		// The safe default is review: content never publishes without a human.
@@ -303,6 +398,7 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 	if err := s.applyAccessFields(ctx, &item, validated, true); err != nil {
 		return Content{}, err
 	}
+	applySeoFields(&item, validated)
 	if err := s.applySchedule(ctx, actor, &item, validated.PublishAt, now); err != nil {
 		return Content{}, err
 	}
@@ -404,11 +500,21 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	if !item.IsAuthor(actor) && !actor.Role.AtLeast(site.RoleEditor) {
 		return Content{}, ErrPermissionDenied
 	}
+	// The optimistic concurrency token of contract F: a save that carries a stale
+	// revision is refused with the current one so the editor reloads instead of
+	// overwriting a colleague's newer text. Omitted keeps last-write-wins.
+	if in.Revision != nil && *in.Revision != item.Revision {
+		return Content{}, &VersionConflictError{Current: item.Revision}
+	}
 
 	validated, err := ValidateDraft(in)
 	if err != nil {
 		return Content{}, err
 	}
+	// The public address before the save, captured for the automatic redirect a slug
+	// change of a live item creates (contract J4).
+	previousSlug := item.Slug
+	wasPublished := item.Status == StatusPublished
 	// Editing a draft can grow its source, so the same byte quota applies to growth
 	// here: otherwise an author could create small drafts and then inflate each one
 	// past the limit. Published content no longer counts as an active draft, so a
@@ -437,6 +543,7 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	if err := s.applyAccessFields(ctx, &item, validated, false); err != nil {
 		return Content{}, err
 	}
+	applySeoFields(&item, validated)
 	// Scheduling only applies to a draft: a published item is already live, and a
 	// pending/rejected item has to pass its review first.
 	if validated.PublishAt != nil && item.Status != StatusDraft {
@@ -460,7 +567,6 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	// A failed sanitization holds an unpublished draft for a retry, but it must
 	// never take a live item offline: publishing an empty rendered body would be a
 	// silent outage, so a published revision fails closed without being saved.
-	wasPublished := item.Status == StatusPublished
 	// The word list runs before sanitization for the same reason as CreateDraft. A
 	// review match only queues unpublished items: silently unpublishing a live
 	// article because an editor fixed a typo would be a bigger harm than the word.
@@ -501,6 +607,13 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	})
 	if err != nil {
 		return Content{}, err
+	}
+	// A live item whose slug changed left its old address behind: a bookmarked or
+	// crawled /a/old-slug URL must keep working, so a 301 is recorded through the
+	// optional redirect port. The save has already committed, so a failed recording is
+	// not turned into a failed edit; the rule can also be created by hand afterwards.
+	if wasPublished {
+		s.recordSlugChange(ctx, item.SiteID, item.Kind, previousSlug, saved.Slug)
 	}
 	return saved, securityErr
 }
@@ -633,6 +746,19 @@ func (s *Service) RetrySecurityCheck(ctx context.Context, actor Actor, contentID
 		SourceBody:   item.SourceBody,
 		CategoryID:   item.CategoryID,
 		Tags:         item.Tags,
+		// The retry re-saves the whole item, so the overrides travel with it: a
+		// security retry must not silently drop the SEO and cover settings an editor
+		// already saved.
+		SeoTitle:       item.SeoTitle,
+		SeoDescription: item.SeoDescription,
+		SeoKeywords:    item.SeoKeywords,
+		CanonicalURL:   item.CanonicalURL,
+		OgImage:        item.OgImage,
+		Robots:         item.Robots,
+		CoverURL:       item.CoverURL,
+		CoverAlt:       item.CoverAlt,
+		CoverPosition:  item.CoverPosition,
+		CoverHidden:    item.CoverHidden,
 	})
 }
 
@@ -736,6 +862,17 @@ func canReadHistory(item Content, actor Actor) bool {
 // The handler needs this to render affordances, and it must agree with Apply, so it
 // runs the same policy with the site's real publish mode.
 func (s *Service) Actions(ctx context.Context, actor Actor, item Content) ([]Action, error) {
+	// A trashed item is not in the review state machine at all: no workflow move is
+	// legal from the bin, so offering one would be a button that always fails. The
+	// bin has its own two moves, decided by the lifecycle rule.
+	if item.IsTrashed() {
+		actions := make([]Action, 0, 2)
+		if err := authorizeLifecycle(item, actor); err != nil {
+			return actions, nil
+		}
+		return append(actions, ActionUndelete, ActionPurge), nil
+	}
+
 	mode, err := s.publishMode(ctx, item.SiteID)
 	if err != nil {
 		return nil, err
@@ -785,6 +922,11 @@ type ListFilter struct {
 	Since time.Time
 	// Sort picks the ordering: "newest" (default) or "oldest".
 	Sort string
+	// Trashed selects the recycle bin: only items carrying a delete marker are
+	// returned, and the caller must be signed in. The zero value is the ordinary
+	// listing, which excludes trashed items, so a caller that never sets this field
+	// keeps the pre recycle bin behaviour exactly.
+	Trashed bool
 	// After is the page boundary; zero means the first page.
 	After page.Cursor
 	Limit int
@@ -869,6 +1011,19 @@ func (s *Service) listFilter(
 	}
 	filter.Sort = sort
 
+	// The recycle bin is an authoring surface, not a reader one: it lists what nobody
+	// may read any more, so the published/public visibility rule below must not apply
+	// to it. A signed-in member keeps exactly the live listing's authorship rule -
+	// their own rows only - while an editor sees the whole site. Who is allowed to ask
+	// at all is decided by the callers through canListTrash.
+	if narrow.Trashed {
+		filter.Trashed = true
+		if !actor.Role.AtLeast(site.RoleEditor) {
+			filter.AuthorID = actor.UserID
+		}
+		return filter, nil
+	}
+
 	// Visibility is recomputed, never inherited from the caller's filter.
 	if !actor.Role.AtLeast(site.RoleEditor) {
 		filter.Statuses = []Status{StatusPublished}
@@ -894,6 +1049,15 @@ func (s *Service) ListAfter(
 	return s.ListAfterFilter(ctx, actor, kind, limit, after, ListFilter{})
 }
 
+// canListTrash reports whether the actor may list the recycle bin.
+//
+// Listing the bin is an authoring surface, so it needs write_content, which in the
+// role model means a signed-in account. A caller without it is answered with the empty
+// page a site with nothing trashed would produce rather than a 403: a listing never
+// confirms what exists on a site, and a 403 would tell every anonymous visitor that
+// this site has a recycle bin to ask for.
+func canListTrash(actor Actor) bool { return actor.UserID != "" }
+
 // ListAfterFilter is ListAfter narrowed by the caller's query filters.
 //
 // It backs the public listing and the author archive (/u/{userID}): the visibility
@@ -914,6 +1078,9 @@ func (s *Service) ListAfterFilter(
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 20
+	}
+	if narrow.Trashed && !canListTrash(actor) {
+		return []Content{}, "", nil
 	}
 
 	filter, err := s.listFilter(actor, kind, limit, after, narrow)
@@ -952,6 +1119,9 @@ func (s *Service) List(
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 20
+	}
+	if narrow.Trashed && !canListTrash(actor) {
+		return []Content{}, nil
 	}
 
 	filter, err := s.listFilter(actor, kind, limit, page.Cursor{}, narrow)
@@ -1102,16 +1272,23 @@ func (s *Service) Read(ctx context.Context, actor Actor, contentID string, unloc
 
 // readableBy applies the read access rules to a loaded item.
 func readableBy(item Content, actor Actor, unlocked bool) error {
+	return readableWithPreview(item, actor, unlocked, false)
+}
+
+// readableWithPreview applies the read rules, optionally with a valid preview grant.
+//
+// A preview bypasses exactly one rule: unpublished status. The access mode still
+// applies, because a preview link is a shareable URL and must not turn a password or
+// members-only draft into a public page. A privileged caller (author or editor) keeps
+// its unconditional access as before.
+func readableWithPreview(item Content, actor Actor, unlocked, preview bool) error {
 	privileged := item.IsAuthor(actor) || actor.Role.AtLeast(site.RoleEditor)
-	if !item.Status.IsPublic() {
-		// Unpublished content is visible to its author and to moderators only.
-		if privileged {
-			return nil
-		}
-		return ErrNotFound
-	}
 	if privileged {
 		return nil
+	}
+	if !item.Status.IsPublic() && !preview {
+		// Unpublished content is visible to its author and to moderators only.
+		return ErrNotFound
 	}
 	switch item.AccessMode {
 	case AccessPassword:
@@ -1202,6 +1379,25 @@ func (s *Service) load(ctx context.Context, actor Actor, contentID string) (Cont
 // IsSanitized reports whether the item carries HTML produced by a security policy.
 func (c Content) IsSanitized() bool {
 	return c.RenderedHTML != "" && c.PolicyVersion != ""
+}
+
+// applySeoFields copies the validated SEO and cover overrides onto the item.
+//
+// It writes every field on every save, including the empty ones: the request carries
+// the whole table, so an empty value is the client clearing an override and falling
+// back to the site template. Keeping that in one function is what stops a create and
+// an update from disagreeing about which fields they persist.
+func applySeoFields(item *Content, in DraftInput) {
+	item.SeoTitle = in.SeoTitle
+	item.SeoDescription = in.SeoDescription
+	item.SeoKeywords = in.SeoKeywords
+	item.CanonicalURL = in.CanonicalURL
+	item.OgImage = in.OgImage
+	item.Robots = in.Robots
+	item.CoverURL = in.CoverURL
+	item.CoverAlt = in.CoverAlt
+	item.CoverPosition = in.CoverPosition
+	item.CoverHidden = in.CoverHidden
 }
 
 // editable reports whether a save may write to the item in this state.

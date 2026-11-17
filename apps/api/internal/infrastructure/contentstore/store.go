@@ -87,8 +87,20 @@ func (s *Store) Insert(ctx context.Context, item content.Content, audit site.Aud
 		SetAccessMode(string(item.AccessMode)).
 		SetCommentPolicy(string(item.CommentPolicy)).
 		SetPublishAttempts(item.PublishAttempts).
+		SetSeoTitle(item.SeoTitle).
+		SetSeoDescription(item.SeoDescription).
+		SetSeoKeywords(item.SeoKeywords).
+		SetCanonicalURL(item.CanonicalURL).
+		SetOgImage(item.OgImage).
+		SetRobots(string(item.Robots)).
+		SetCoverURL(item.CoverURL).
+		SetCoverAlt(item.CoverAlt).
+		SetCoverHidden(item.CoverHidden).
 		SetCreatedAt(item.CreatedAt).
 		SetUpdatedAt(item.UpdatedAt)
+	if item.CoverPosition != "" {
+		builder.SetCoverPosition(string(item.CoverPosition))
+	}
 	if item.AccessPasswordHash != "" {
 		builder.SetAccessPasswordHash(item.AccessPasswordHash)
 	}
@@ -167,7 +179,19 @@ func (s *Store) SaveDraft(ctx context.Context, item content.Content, audit site.
 		SetAccessMode(string(item.AccessMode)).
 		SetCommentPolicy(string(item.CommentPolicy)).
 		SetPublishAttempts(item.PublishAttempts).
+		SetSeoTitle(item.SeoTitle).
+		SetSeoDescription(item.SeoDescription).
+		SetSeoKeywords(item.SeoKeywords).
+		SetCanonicalURL(item.CanonicalURL).
+		SetOgImage(item.OgImage).
+		SetRobots(string(item.Robots)).
+		SetCoverURL(item.CoverURL).
+		SetCoverAlt(item.CoverAlt).
+		SetCoverHidden(item.CoverHidden).
 		SetUpdatedAt(item.UpdatedAt)
+	if item.CoverPosition != "" {
+		update.SetCoverPosition(string(item.CoverPosition))
+	}
 	if item.AccessPasswordHash != "" {
 		update.SetAccessPasswordHash(item.AccessPasswordHash)
 	} else {
@@ -217,10 +241,38 @@ func (s *Store) SaveDraft(ctx context.Context, item content.Content, audit site.
 }
 
 // FindByID loads an item inside a site scope.
+//
+// A trashed item is not found here. Filtering in the lookup rather than at each
+// caller is what makes the recycle bin one rule instead of nine: detail reads,
+// edits, workflow actions, history, unlock and every service that loads an item all
+// go through this method, so none of them can serve deleted content by forgetting a
+// predicate.
 func (s *Store) FindByID(ctx context.Context, siteID, contentID string) (content.Content, error) {
-	row, err := s.client.ContentItem.Query().
-		Where(contentitem.IDEQ(contentID), contentitem.SiteIDEQ(siteID)).
-		Only(ctx)
+	return s.findByID(ctx, siteID, contentID, true)
+}
+
+// FindByIDIncludingTrashed loads an item even when it carries the delete marker.
+//
+// Only the lifecycle operations use it: they are the ones that must act on what every
+// read path hides.
+func (s *Store) FindByIDIncludingTrashed(
+	ctx context.Context,
+	siteID, contentID string,
+) (content.Content, error) {
+	return s.findByID(ctx, siteID, contentID, false)
+}
+
+func (s *Store) findByID(
+	ctx context.Context,
+	siteID, contentID string,
+	excludeTrashed bool,
+) (content.Content, error) {
+	query := s.client.ContentItem.Query().
+		Where(contentitem.IDEQ(contentID), contentitem.SiteIDEQ(siteID))
+	if excludeTrashed {
+		query = query.Where(contentitem.DeletedAtIsNil())
+	}
+	row, err := query.Only(ctx)
 	if err != nil {
 		if entgen.IsNotFound(err) {
 			return content.Content{}, content.ErrNotFound
@@ -234,6 +286,15 @@ func (s *Store) FindByID(ctx context.Context, siteID, contentID string) (content
 func (s *Store) List(ctx context.Context, filter content.ListFilter) ([]content.Content, error) {
 	query := s.client.ContentItem.Query().
 		Where(contentitem.SiteIDEQ(filter.SiteID))
+
+	// The recycle bin is a different listing, not a widening of the ordinary one: it
+	// returns exactly the rows every other query hides. The zero value of the flag
+	// keeps the default listing unchanged.
+	if filter.Trashed {
+		query = query.Where(contentitem.DeletedAtNotNil())
+	} else {
+		query = query.Where(contentitem.DeletedAtIsNil())
+	}
 
 	if filter.Kind != "" {
 		query = query.Where(contentitem.KindEQ(string(filter.Kind)))
@@ -390,6 +451,258 @@ func (s *Store) Transition(
 		return content.Content{}, err
 	}
 	return toContent(updated), nil
+}
+
+// Trash stamps the recycle bin marker on a live item.
+//
+// The update is conditional on the row still being live. That is not only a
+// concurrency guard: it also keeps a repeated delete from refreshing deleted_at, so a
+// client that keeps issuing DELETE cannot postpone the retention sweep forever. A zero
+// row count therefore means "already trashed" (or gone), and the already trashed case
+// is a success.
+func (s *Store) Trash(ctx context.Context, item content.Content, audit site.AuditEntry) (content.Content, error) {
+	if item.DeletedAt == nil {
+		return content.Content{}, content.ErrInvalidInput
+	}
+
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return content.Content{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	affected, err := tx.ContentItem.Update().
+		Where(
+			contentitem.IDEQ(item.ID),
+			contentitem.SiteIDEQ(item.SiteID),
+			contentitem.DeletedAtIsNil(),
+		).
+		SetDeletedAt(*item.DeletedAt).
+		SetUpdatedAt(item.UpdatedAt).
+		Save(ctx)
+	if err != nil {
+		return content.Content{}, err
+	}
+	if affected == 0 {
+		stored, err := tx.ContentItem.Query().
+			Where(contentitem.IDEQ(item.ID), contentitem.SiteIDEQ(item.SiteID)).
+			Only(ctx)
+		if err != nil {
+			if entgen.IsNotFound(err) {
+				return content.Content{}, content.ErrNotFound
+			}
+			return content.Content{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return content.Content{}, err
+		}
+		committed = true
+		return toContent(stored), nil
+	}
+
+	if err := insertAudit(ctx, tx.Client(), audit, item.Kind, item.ID); err != nil {
+		return content.Content{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return content.Content{}, err
+	}
+	committed = true
+
+	// The search index keeps its row: the indexed predicates join the content table
+	// and require deleted_at IS NULL, so a restore makes the old row visible again
+	// without a re-index, and a purge removes it explicitly.
+	updated, err := s.client.ContentItem.Get(ctx, item.ID)
+	if err != nil {
+		return content.Content{}, err
+	}
+	return toContent(updated), nil
+}
+
+// Undelete clears the recycle bin marker of a trashed item.
+//
+// Mirrors Trash: the update is conditional on the item actually being trashed, and a
+// zero row count is the idempotent "already live" answer rather than an error.
+func (s *Store) Undelete(ctx context.Context, item content.Content, audit site.AuditEntry) (content.Content, error) {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return content.Content{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	affected, err := tx.ContentItem.Update().
+		Where(
+			contentitem.IDEQ(item.ID),
+			contentitem.SiteIDEQ(item.SiteID),
+			contentitem.DeletedAtNotNil(),
+		).
+		ClearDeletedAt().
+		SetUpdatedAt(item.UpdatedAt).
+		Save(ctx)
+	if err != nil {
+		return content.Content{}, err
+	}
+	if affected == 0 {
+		stored, err := tx.ContentItem.Query().
+			Where(contentitem.IDEQ(item.ID), contentitem.SiteIDEQ(item.SiteID)).
+			Only(ctx)
+		if err != nil {
+			if entgen.IsNotFound(err) {
+				return content.Content{}, content.ErrNotFound
+			}
+			return content.Content{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return content.Content{}, err
+		}
+		committed = true
+		return toContent(stored), nil
+	}
+
+	if err := insertAudit(ctx, tx.Client(), audit, item.Kind, item.ID); err != nil {
+		return content.Content{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return content.Content{}, err
+	}
+	committed = true
+
+	updated, err := s.client.ContentItem.Get(ctx, item.ID)
+	if err != nil {
+		return content.Content{}, err
+	}
+	return toContent(updated), nil
+}
+
+// Purge destroys a trashed item and its history in one transaction.
+//
+// The row and its revisions go together: keeping the revisions of a purged item would
+// leave the raw source of deleted content readable through the history table, which is
+// the whole thing a purge is asked to prevent. The search index rows are removed right
+// after the commit for the same reason indexContent is written after it - the index is
+// reached through the raw pool, which Ent's transaction does not expose (see
+// indexContent).
+func (s *Store) Purge(ctx context.Context, siteID, contentID string, audit site.AuditEntry) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	row, err := tx.ContentItem.Query().
+		Where(contentitem.IDEQ(contentID), contentitem.SiteIDEQ(siteID)).
+		Only(ctx)
+	if err != nil {
+		if entgen.IsNotFound(err) {
+			return content.ErrNotFound
+		}
+		return err
+	}
+	if row.DeletedAt == nil {
+		// Reading the marker inside the transaction is what makes the two step delete
+		// enforceable: a concurrent restore wins, and the purge is refused instead of
+		// destroying an item the author just recovered.
+		return content.ErrInvalidTransition
+	}
+
+	if _, err := tx.ContentRevision.Delete().
+		Where(
+			contentrevision.SiteIDEQ(siteID),
+			contentrevision.ContentIDEQ(contentID),
+		).
+		Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.ContentItem.Delete().
+		Where(contentitem.IDEQ(contentID), contentitem.SiteIDEQ(siteID)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	if err := insertAudit(ctx, tx.Client(), audit, content.Kind(row.Kind), contentID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+
+	s.removeIndexedContent(ctx, contentID)
+	return nil
+}
+
+// PurgeExpired removes up to limit items that were trashed before the given instant.
+//
+// The whole batch is one transaction: the sweep is a maintenance pass, so paying one
+// commit for a hundred rows is what keeps it cheap enough to run on the scheduler.
+// Nothing is audited here on purpose - the entry that matters is the original delete,
+// and a policy sweep has no actor to attribute the removal to.
+func (s *Store) PurgeExpired(ctx context.Context, before time.Time, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return 0, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Oldest first, so a backlog drains in the order it accumulated and an interrupted
+	// pass makes progress instead of retrying the same rows.
+	ids, err := tx.ContentItem.Query().
+		Where(
+			contentitem.DeletedAtNotNil(),
+			contentitem.DeletedAtLTE(before),
+		).
+		Order(entgen.Asc(contentitem.FieldDeletedAt)).
+		Limit(limit).
+		IDs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	if _, err := tx.ContentRevision.Delete().
+		Where(contentrevision.ContentIDIn(ids...)).
+		Exec(ctx); err != nil {
+		return 0, err
+	}
+	removed, err := tx.ContentItem.Delete().
+		Where(contentitem.IDIn(ids...)).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	committed = true
+
+	for _, id := range ids {
+		s.removeIndexedContent(ctx, id)
+	}
+	return removed, nil
 }
 
 // ListRevisions returns the newest snapshots of one item, newest first.
@@ -604,6 +917,11 @@ var activeDraftStatuses = []string{
 
 // CountActiveDraftsByAuthor counts the items of one author that have not been
 // published or archived. It backs the per-account draft quota.
+//
+// Trashed rows are counted on purpose. The quota bounds stored growth, and a trashed
+// draft still occupies the database until the retention sweep removes it; excluding
+// the bin would let an account trash a full quota and immediately create another one,
+// which is exactly the loop the quota exists to stop.
 func (s *Store) CountActiveDraftsByAuthor(ctx context.Context, siteID, authorID string) (int, error) {
 	if siteID == "" || authorID == "" {
 		return 0, nil
@@ -662,6 +980,9 @@ func (s *Store) PublishedAssetReference(ctx context.Context, siteID, assetID str
 			// An image referenced only by a password or members-only item is not a
 			// public asset either.
 			contentitem.AccessModeEQ(string(content.AccessPublic)),
+			// Nor is one that the only reference to it is a trashed item: the page
+			// that used to show it is not public any more.
+			contentitem.DeletedAtIsNil(),
 			contentitem.Or(
 				contentitem.RenderedHTMLContains(assetID),
 				contentitem.SourceBodyContains(assetID),
@@ -682,6 +1003,10 @@ func (s *Store) DueSchedules(ctx context.Context, now time.Time, limit int) ([]c
 			contentitem.StatusEQ(string(content.StatusDraft)),
 			contentitem.PublishAtNotNil(),
 			contentitem.PublishAtLTE(now),
+			// A trashed draft keeps its schedule (a restore puts the item back as it
+			// was), so the scheduler has to skip the bin explicitly. Without this
+			// predicate deleting a scheduled draft would publish it.
+			contentitem.DeletedAtIsNil(),
 		).
 		Order(entgen.Asc(contentitem.FieldPublishAt)).
 		Limit(limit).
@@ -760,6 +1085,9 @@ func (s *Store) IncrementViewCount(ctx context.Context, siteID, contentID string
 			contentitem.IDEQ(contentID),
 			contentitem.SiteIDEQ(siteID),
 			contentitem.StatusEQ(string(content.StatusPublished)),
+			// The counter only counts reads of a live item; a trashed row is not a
+			// public page any more, so its counter must stop moving with it.
+			contentitem.DeletedAtIsNil(),
 		).
 		AddViewCount(1).
 		Exec(ctx)
@@ -781,6 +1109,9 @@ func (s *Store) Popular(ctx context.Context, filter content.PopularFilter) ([]co
 		contentitem.SiteIDEQ(filter.SiteID),
 		contentitem.StatusEQ(string(content.StatusPublished)),
 		contentitem.AccessModeEQ(string(content.AccessPublic)),
+		// A trashed item is invisible everywhere, and a leaderboard is a listing like
+		// any other: a deleted article must not be advertised by its read count.
+		contentitem.DeletedAtIsNil(),
 	)
 	if filter.Kind != "" {
 		query = query.Where(contentitem.KindEQ(string(filter.Kind)))
@@ -916,6 +1247,7 @@ func toContent(row *entgen.ContentItem) content.Content {
 		Tags:            content.DecodeTags(row.Tags),
 		PublishedAt:     row.PublishedAt,
 		ArchivedAt:      row.ArchivedAt,
+		DeletedAt:       row.DeletedAt,
 		PublishAt:       row.PublishAt,
 		AccessMode:      content.AccessMode(row.AccessMode),
 		CommentPolicy:   content.CommentPolicy(row.CommentPolicy),
@@ -924,6 +1256,16 @@ func toContent(row *entgen.ContentItem) content.Content {
 		UpdatedAt:       row.UpdatedAt,
 		Revision:        row.Revision,
 		PublishAttempts: row.PublishAttempts,
+		SeoTitle:        row.SeoTitle,
+		SeoDescription:  row.SeoDescription,
+		SeoKeywords:     row.SeoKeywords,
+		CanonicalURL:    row.CanonicalURL,
+		OgImage:         row.OgImage,
+		Robots:          content.Robots(row.Robots),
+		CoverURL:        row.CoverURL,
+		CoverAlt:        row.CoverAlt,
+		CoverPosition:   content.CoverPosition(row.CoverPosition),
+		CoverHidden:     row.CoverHidden,
 	}
 	if row.CategoryID != nil {
 		item.CategoryID = *row.CategoryID

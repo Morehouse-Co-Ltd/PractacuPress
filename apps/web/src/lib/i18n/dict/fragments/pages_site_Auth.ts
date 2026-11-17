@@ -39,9 +39,9 @@ const fragment: Dictionary = {
     '{provider} is not fully configured yet. Fill in the remaining fields under Dashboard → Sign-in settings.',
   '{provider}登录': '{provider} sign-in',
   '请先获取验证码。': 'Request a verification code first.',
-  服务端配置已复制: 'Server configuration copied',
-  无法复制: 'Could not copy',
-  '请手动选择内容。': 'Please select the content manually.',
+  暂不支持: 'Not supported yet',
+  '服务端还没有实现 {providers} 登录，这些入口暂时不可用。':
+    'The server has not implemented {providers} sign-in yet, so these entrances are unavailable.',
 
   // ---- 标题与引导语 ----
   '回到书房。': 'Back to the study.',
@@ -93,13 +93,10 @@ const fragment: Dictionary = {
     '“Independence is not refusing platforms; it is keeping the ability to move out. The house does not have to be big — enough to keep the rain off and host a few friends.”',
   服务端强制授权: 'Authorization enforced by the server',
 
-  // ---- 第三方登录弹窗 ----
+  // ---- 第三方登录弹窗（演示模式） ----
   '演示模式不会真的发送短信或跳转授权页；确认后会以站点管理员身份进入。':
     'Demo mode does not really send an SMS or open an authorization page; confirming signs you in as the site administrator.',
-  '服务端实现对应端点后，这个入口才能真正完成登录。':
-    'This entrance can only complete a real sign-in once the server implements the matching endpoint.',
   模拟授权并继续: 'Simulate authorization and continue',
-  复制服务端配置: 'Copy server configuration',
   手机号: 'Phone number',
   验证码: 'Verification code',
   重新获取: 'Resend',
@@ -109,11 +106,6 @@ const fragment: Dictionary = {
   请输入: 'Enter',
   '。真实环境由短信服务商下发，前端不保存验证码。':
     '. In production the SMS provider issues it; the front end never stores it.',
-  等待服务端实现: 'Waiting for the server',
-  '契约 v0.1.0 没有这个登录端点。服务端实现':
-    'Contract v0.1.0 has no such sign-in endpoint. Once the server implements',
-  '后，前端才能把用户交给提供商并接收回调。':
-    'the front end can hand the user to the provider and receive the callback.',
 
   // O-3 注册关闭
   本站暂未开放注册: 'Registration is not open on this site',
@@ -144,6 +136,27 @@ const fragment: Dictionary = {
   '验证失败。': 'Verification failed.',
   '演示模式固定使用 {code}。': 'In demo mode, use {code}.',
   '验证码是 6 位数字。': 'The code is 6 digits.',
+
+  // ---- 短信登录（真实后端：/auth/phone/*） ----
+  手机验证码登录: 'Sign in with a text message code',
+  '用手机号接收 6 位验证码登录；未注册的号码在站点开放注册时会自动创建账户。':
+    'Sign in with a 6-digit code sent to your phone; an unknown number gets an account created automatically while the site allows registration.',
+  '服务端没有可用的短信网关（SMS_PROVIDER=off），手机验证码登录暂时不可用。':
+    'This server has no usable SMS gateway (SMS_PROVIDER=off), so signing in with a phone code is unavailable.',
+  短信未配置: 'SMS not configured',
+  '{seconds} 秒后重发': 'Resend in {seconds}s',
+  验证码已发送: 'Code sent',
+  '请查看手机短信，验证码几分钟内有效。':
+    'Check your text messages; the code is valid for a few minutes.',
+  开发模式验证码: 'Development code',
+  '开发模式下短信服务商不会真的发信，验证码是 {code}。':
+    'In development mode the SMS provider does not really send a message; the code is {code}.',
+  '请输入验证码。': 'Enter the verification code.',
+  '验证码不正确或已过期，请重新获取。':
+    'The code is incorrect or has expired. Request a new one.',
+  '服务端还没有配置短信服务，暂时无法发送验证码。':
+    'The server has not configured SMS yet, so no code can be sent.',
+  '操作过于频繁，请在 {seconds} 秒后再试。': 'Too many requests. Try again in {seconds} seconds.',
 };
 
 export default fragment;

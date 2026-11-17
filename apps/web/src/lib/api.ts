@@ -1,9 +1,13 @@
 import type {
+  AnalyticsBreakdown,
   Asset,
   AuditLogPage,
   AuditLogQuery,
   BackupArtifact,
+  BackupSchedule,
   BackendMode,
+  BulkAction,
+  BulkResult,
   CaptchaScene,
   CaptchaStatus,
   ChangePasswordInput,
@@ -13,6 +17,7 @@ import type {
   CommentsResult,
   Content,
   ContentAction,
+  ContentDiff,
   ContentKind,
   ContentPage,
   ContentRevision,
@@ -22,6 +27,8 @@ import type {
   CreateSiteInput,
   CreatedSite,
   DraftInput,
+  EmailLog,
+  EmailTemplate,
   ExtensionSummary,
   FollowEntry,
   InteractionEntry,
@@ -32,6 +39,14 @@ import type {
   LocalCaptchaSolution,
   ImportConflictStrategy,
   Me,
+  MyNewsletterPreference,
+  NewsletterSendResult,
+  NewsletterStats,
+  NewsletterSubscriptionStatus,
+  PhoneCodeResult,
+  PhoneCodePurpose,
+  PhonePolicy,
+  PreviewGrant,
   ReadingHistoryEntry,
   Member,
   MediaQuotaBytes,
@@ -57,13 +72,17 @@ import type {
   ProblemBody,
   ProfileInput,
   PublicProfile,
+  QueueStatus,
+  RedirectRule,
   Report,
   ReportAction,
   ReportInput,
+  ResolveResult,
   SafetyPolicy,
   SafetyRateLimit,
   SensitiveWord,
   SensitiveWordMode,
+  SiteActivityItem,
   SiteIPRule,
   Role,
   SearchQuery,
@@ -73,7 +92,10 @@ import type {
   SiteDomainVerification,
   SiteDomainVerificationResult,
   SiteImportReport,
+  Subscriber,
+  SystemLogEntry,
   SystemMetrics,
+  EffectiveConfig,
   StepUpSettings,
   StepUpSettingsUpdate,
   StepUpVerifyResult,
@@ -334,6 +356,12 @@ export interface ContentListOptions {
   /** RFC3339 时间点；只保留此刻之后发布的内容。 */
   since?: string;
   sort?: 'newest' | 'oldest';
+  /**
+   * 只列出回收站里的内容（Beta 1.2）。
+   *
+   * 缺省与 `false` 都表示"排除已删除"；只有作者与编辑能打开这个视图。
+   */
+  trashed?: boolean;
 }
 
 /**
@@ -363,6 +391,15 @@ export interface MemberDirectoryOptions {
   limit?: number;
   cursor?: string;
 }
+
+/**
+ * `GET /sites/{siteID}/analytics` 的完整响应（Beta 1.2，契约 M 节）。
+ *
+ * 既有的 `BackendAnalytics`（`lib/analytics.ts`，服务端统计的客户端镜像）加上来源 /
+ * 设备 / 引荐 / 留存四个新维度。旧后端不返回这四个数组时，`HttpBackend.analytics`
+ * 会补成空数组，调用方不需要自己判空。
+ */
+export type SiteAnalytics = BackendAnalytics & AnalyticsBreakdown;
 
 interface HttpBackendOptions {
   base: string;
@@ -610,6 +647,61 @@ export class HttpBackend {
     return session;
   }
 
+  /* ------------------------- 短信登录（Beta 1.2） ------------------------- */
+
+  /**
+   * 短信登录是否可用（`GET /auth/phone/policy`，公开）。
+   *
+   * 页面据此决定是否显示验证码登录入口；`provider=off` 时服务端发码返回 503
+   * `sms_not_configured`。
+   */
+  async phonePolicy(): Promise<PhonePolicy> {
+    return this.performRequest<PhonePolicy>('/auth/phone/policy');
+  }
+
+  /**
+   * 请求一条短信验证码（`POST /auth/phone/codes`，202）。
+   *
+   * 同手机号 5 次/小时、同 IP 20 次/小时；超限 429。开发模式（`SMS_DEV_MODE`）下
+   * 响应会带 `dev_code`。
+   */
+  async requestPhoneCode(
+    phone: string,
+    purpose: PhoneCodePurpose,
+  ): Promise<PhoneCodeResult> {
+    return this.request<PhoneCodeResult>('/auth/phone/codes', {
+      method: 'POST',
+      body: JSON.stringify({ phone, purpose }),
+    });
+  }
+
+  /**
+   * 用手机号 + 验证码登录（`POST /auth/phone/login`）。
+   *
+   * 返回形状与密码登录**完全一致**（`PasswordLoginResult`）：账号启用了 TOTP 时
+   * 服务端只回一个挑战、不签发会话，所以这里绝不能无条件 `applySession`——否则会把
+   * 挑战体当成会话写进存储，令牌变成 undefined。不存在的手机号在开放注册时自动建号，
+   * 关闭注册时服务端返回 403 `registration_closed`。
+   */
+  async phoneLogin(input: {
+    phone: string;
+    code: string;
+    display_name?: string;
+  }): Promise<PasswordLoginResult> {
+    const result = await this.request<Session | TwoFactorChallenge>('/auth/phone/login', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    if ('two_factor_required' in result && result.two_factor_required) {
+      return { status: 'two_factor_required', challenge: result };
+    }
+    // Same narrowing the password endpoint uses: an account with TOTP enabled gets a
+    // challenge and no session, so only a real session may reach the token store.
+    const session = result as Session;
+    this.applySession(session);
+    return { status: 'session', session };
+  }
+
   /** 自己的两步验证状态：是否开启、恢复码剩余数量、绑定时间。 */
   async twoFactorStatus(): Promise<TwoFactorStatus> {
     return this.performRequest<TwoFactorStatus>('/me/2fa');
@@ -823,6 +915,20 @@ export class HttpBackend {
     );
   }
 
+  /**
+   * 仪表盘「最近操作」（Beta 1.2，契约 C 节：`GET /sites/{siteID}/activity`）。
+   *
+   * 数据源是服务端 `audit_logs`，不是浏览器本地记录。响应只有 `items`，没有游标；
+   * `limit` 省略时服务端按 20 条返回。
+   */
+  async siteActivity(siteId: string, limit = 20): Promise<SiteActivityItem[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    const res = await this.performRequest<{ items: SiteActivityItem[] }>(
+      `/sites/${siteId}/activity?${params.toString()}`,
+    );
+    return res.items ?? [];
+  }
+
   async passwordResetPolicy(): Promise<PasswordResetPolicy> {
     return this.request<PasswordResetPolicy>('/auth/password-reset/policy');
   }
@@ -1006,6 +1112,76 @@ export class HttpBackend {
     });
   }
 
+  /* ------------------------- 重定向与公开路径解析（Beta 1.2） ------------------------- */
+
+  /**
+   * 公开路径解析（`GET /resolve?path=`，公开端点，契约 J2）。
+   *
+   * 供静态服务器与前端路由决定 301 / 200 / 404：id 形式且存在 → 301 到 slug 形式；
+   * 已是 slug 形式且存在 → 200；命中重定向表 → 规则的 301 / 302 / 308；否则 404。
+   * 走 `performRequest` 而不是 `request`：路径解析结果会随 slug 变化，不能吃 GET 短缓存。
+   */
+  async resolvePath(path: string): Promise<ResolveResult> {
+    return this.performRequest<ResolveResult>(`/resolve?path=${encodeURIComponent(path)}`);
+  }
+
+  /**
+   * 重定向规则列表（`GET /sites/{siteID}/redirects`，需要 `manage_site`）。
+   *
+   * `q` 按 `from_path` / `to_path` 搜索；游标分页，形状与其它列表一致。
+   */
+  async listRedirects(
+    siteId: string,
+    query: { limit?: number; cursor?: string; q?: string } = {},
+  ): Promise<Page<RedirectRule>> {
+    const params = new URLSearchParams();
+    params.set('limit', String(query.limit ?? 50));
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.q) params.set('q', query.q);
+    return this.request<Page<RedirectRule>>(
+      `/sites/${siteId}/redirects?${params.toString()}`,
+    );
+  }
+
+  /** 新建重定向规则（契约 J3）；`from_path` 重复时服务端返回 409。 */
+  async createRedirect(
+    siteId: string,
+    input: {
+      from_path: string;
+      to_path: string;
+      status_code?: RedirectRule['status_code'];
+    },
+  ): Promise<RedirectRule> {
+    return this.request<RedirectRule>(`/sites/${siteId}/redirects`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 修改重定向规则；省略的字段保持不变。 */
+  async updateRedirect(
+    siteId: string,
+    redirectId: string,
+    patch: Partial<{
+      from_path: string;
+      to_path: string;
+      status_code: RedirectRule['status_code'];
+    }>,
+  ): Promise<RedirectRule> {
+    return this.request<RedirectRule>(
+      `/sites/${siteId}/redirects/${encodeURIComponent(redirectId)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    );
+  }
+
+  /** 删除重定向规则；成功是 204。 */
+  async deleteRedirect(siteId: string, redirectId: string): Promise<void> {
+    await this.request<void>(
+      `/sites/${siteId}/redirects/${encodeURIComponent(redirectId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
   /** 平台控制台：部署内全部站点（仅平台管理员）。 */
   async platformSites(): Promise<PlatformSite[]> {
     const res = await this.request<{ items: PlatformSite[] }>('/platform/sites');
@@ -1166,6 +1342,60 @@ export class HttpBackend {
     return this.performRequest<SystemMetrics>('/system/metrics');
   }
 
+  /**
+   * 读取服务端真实生效的部署配置（Beta 1.2）。
+   *
+   * 与 `systemMetrics` 分开是因为它面向站点管理员而不是平台管理员：储存与访问设置
+   * 是站长会去改的东西，他们需要看到自己改的到底有没有生效。响应里没有任何密钥。
+   */
+  async effectiveConfig(): Promise<EffectiveConfig> {
+    return this.performRequest<EffectiveConfig>('/system/effective-config');
+  }
+
+  /* ------------------------- 日志查看器 / 队列监控 / 自动备份（Beta 1.2） ------------------------- */
+
+  /**
+   * 请求日志查看器（`GET /system/logs`，site_admin，契约 K 节）。
+   *
+   * 服务端只有进程内环形缓冲（最近 500 条），只记元数据；筛选与 `limit` 都在服务端做。
+   * 走 `performRequest` 而不是 `request`：日志页不该看到短缓存里的旧记录。
+   */
+  async systemLogs(
+    query: { limit?: number; status?: number; path?: string; method?: string } = {},
+  ): Promise<SystemLogEntry[]> {
+    const params = new URLSearchParams();
+    params.set('limit', String(query.limit ?? 100));
+    if (query.status !== undefined) params.set('status', String(query.status));
+    if (query.path) params.set('path', query.path);
+    if (query.method) params.set('method', query.method);
+    const res = await this.performRequest<{ items: SystemLogEntry[] }>(
+      `/system/logs?${params.toString()}`,
+    );
+    return res.items ?? [];
+  }
+
+  /** 队列监控（`GET /system/queue`，site_admin）：outbox 积压、最近事件与邮件队列。 */
+  async systemQueue(): Promise<QueueStatus> {
+    return this.performRequest<QueueStatus>('/system/queue');
+  }
+
+  /**
+   * 重试 outbox 投递（`POST /system/queue/retry`，site_admin）。
+   *
+   * `eventIds` 为空表示重试最近 50 条失败事件；返回实际重试的条数。
+   */
+  async retryQueue(eventIds: string[] = []): Promise<{ retried: number }> {
+    return this.request<{ retried: number }>('/system/queue/retry', {
+      method: 'POST',
+      body: JSON.stringify({ event_ids: eventIds }),
+    });
+  }
+
+  /** 自动备份计划（`GET /system/backup-schedule`，platform_admin，契约 L 节）。 */
+  async backupSchedule(): Promise<BackupSchedule> {
+    return this.performRequest<BackupSchedule>('/system/backup-schedule');
+  }
+
   /* ------------------------- 服务器扩展管理 ------------------------- */
 
   /**
@@ -1314,13 +1544,24 @@ export class HttpBackend {
     if (options.tag) params.set('tag', options.tag);
     if (options.since) params.set('since', options.since);
     if (options.sort) params.set('sort', options.sort);
+    if (options.trashed) params.set('trashed', 'true');
     return this.request<ContentPage>(`/${kind}s?${params.toString()}`);
   }
 
-  async getContent(kind: ContentKind, id: string): Promise<Content> {
+  /**
+   * 读取一篇内容（`GET /{kind}s/{key}`）。
+   *
+   * `key` 先按 id 查，查不到再按 slug 查（契约 J1），所以 `/a/:key` 与 `/p/:key` 两种
+   * 路由都能打开。带 `previewToken` 时以预览身份读取：未发布内容也返回 200，
+   * 令牌无效 / 过期仍是 404。
+   */
+  async getContent(kind: ContentKind, key: string, previewToken?: string): Promise<Content> {
     // 详情读取是服务端累加阅读量的地方（FSD A-16）。带上匿名会话，让同一浏览器
     // 在短窗口内的刷新、前进后退只算一次；没有会话时服务端退回账号或来源地址。
-    return this.request<Content>(`/${kind}s/${id}`, {
+    const suffix = previewToken
+      ? `?preview_token=${encodeURIComponent(previewToken)}`
+      : '';
+    return this.request<Content>(`/${kind}s/${encodeURIComponent(key)}${suffix}`, {
       headers: { 'X-Visit-Session': clientSessionId() },
     });
   }
@@ -1386,6 +1627,28 @@ export class HttpBackend {
     });
   }
 
+  /**
+   * 把内容移入回收站（Beta 1.2）。
+   *
+   * 服务端只做软删除：行还在，revisions、评论与媒体引用都保持可解析，所以恢复是
+   * 无损的。返回的 `deleted_at` 有值，界面据此切换到"已删除"态。
+   */
+  async deleteContent(kind: ContentKind, id: string): Promise<Content> {
+    return this.request<Content>(`/${kind}s/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Idempotency-Key': uuid() },
+    });
+  }
+
+  /** 从回收站彻底删除。不可恢复；成功没有响应体。 */
+  async purgeContent(kind: ContentKind, id: string): Promise<void> {
+    await this.request<void>(`/${kind}s/${encodeURIComponent(id)}/purge`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': uuid() },
+      body: JSON.stringify({}),
+    });
+  }
+
   /** 版本历史列表（最新 20 版）；只有作者与编辑可以读取。 */
   async contentRevisions(kind: ContentKind, id: string): Promise<ContentRevisionPage> {
     return this.request<ContentRevisionPage>(`/${kind}s/${id}/revisions`);
@@ -1409,6 +1672,55 @@ export class HttpBackend {
     return this.request<Content>(`/${kind}s/${id}/revisions/${revisionId}/restore`, {
       method: 'POST',
       headers: { 'Idempotency-Key': uuid() },
+      body: JSON.stringify({}),
+    });
+  }
+
+  /**
+   * 两个版本的行级差异（Beta 1.2，契约 E 节）。
+   *
+   * `to` 可以是版本号或 `current`；超长正文由服务端截断到前 20000 行并置
+   * `truncated: true`。只有作者与编辑可以读取。
+   */
+  async contentDiff(
+    kind: ContentKind,
+    id: string,
+    from: number,
+    to: number | 'current' = 'current',
+  ): Promise<ContentDiff> {
+    const params = new URLSearchParams({ from: String(from), to: String(to) });
+    return this.request<ContentDiff>(
+      `/${kind}s/${encodeURIComponent(id)}/diff?${params.toString()}`,
+    );
+  }
+
+  /**
+   * 批量执行内容动作（Beta 1.2，契约 G 节：`POST /{articles|posts}/bulk`）。
+   *
+   * 逐条独立判定权限与状态并返回逐条结果，所以部分成功是正常结果而不是错误；
+   * `ids` 一次最多 100 条，单条失败不会让整个请求 500。
+   */
+  async bulkContentAction(
+    kind: ContentKind,
+    ids: string[],
+    action: BulkAction,
+  ): Promise<BulkResult> {
+    return this.request<BulkResult>(`/${kind}s/bulk`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': uuid() },
+      body: JSON.stringify({ ids, action }),
+    });
+  }
+
+  /**
+   * 为草稿 / 未发布内容签发一次性预览授权（Beta 1.2，契约 H 节）。
+   *
+   * 令牌为 HMAC 签名，默认 30 分钟有效且只对这篇内容有效；`path` 可以直接打开或
+   * 分享。预览读取使用 `getContent(kind, key, token)`。
+   */
+  async issueContentPreview(kind: ContentKind, id: string): Promise<PreviewGrant> {
+    return this.request<PreviewGrant>(`/${kind}s/${encodeURIComponent(id)}/preview`, {
+      method: 'POST',
       body: JSON.stringify({}),
     });
   }
@@ -1734,6 +2046,16 @@ export class HttpBackend {
   }
 
   /**
+   * 删除一份媒体（Beta 1.2）。
+   *
+   * 服务端会先清掉所有尺寸变体再删原对象；素材仍被内容引用时请求会被拒绝，
+   * 错误按常规 ApiError 抛给页面展示，调用方不要吞掉。
+   */
+  async deleteAsset(id: string): Promise<void> {
+    await this.request<void>(`/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /**
    * 取一份能直接放进 `<img src>` 的媒体地址。
    *
    * 媒体读取端点对 content 素材要求登录，而 `<img>` 不会带 Authorization，匿名
@@ -1834,6 +2156,160 @@ export class HttpBackend {
     });
   }
 
+  /* ------------------------- 邮件订阅与 Newsletter（Beta 1.2，契约 N 节） ------------------------- */
+
+  /**
+   * 公开订阅（`POST /newsletter/subscribe`，契约 N1）。
+   *
+   * 双确认：新订阅返回 `pending` 并发确认信；已确认返回 `confirmed`；已退订时重发
+   * 确认信。同 IP 每小时 10 次，超限 429。
+   */
+  async subscribeNewsletter(input: {
+    email: string;
+    source?: string;
+  }): Promise<{ status: NewsletterSubscriptionStatus }> {
+    return this.request<{ status: NewsletterSubscriptionStatus }>('/newsletter/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** 兑换订阅确认链接（`GET /newsletter/confirm?token=`，公开）；无效令牌 404。 */
+  async confirmNewsletter(token: string): Promise<{ status: NewsletterSubscriptionStatus }> {
+    return this.performRequest<{ status: NewsletterSubscriptionStatus }>(
+      `/newsletter/confirm?token=${encodeURIComponent(token)}`,
+    );
+  }
+
+  /** 兑换退订链接（`GET /newsletter/unsubscribe?token=`，公开）；无效令牌 404。 */
+  async unsubscribeNewsletter(
+    token: string,
+  ): Promise<{ status: NewsletterSubscriptionStatus }> {
+    return this.performRequest<{ status: NewsletterSubscriptionStatus }>(
+      `/newsletter/unsubscribe?token=${encodeURIComponent(token)}`,
+    );
+  }
+
+  /** 当前登录账户自己的订阅状态（`GET /me/newsletter`，契约 N2）。 */
+  async myNewsletter(): Promise<MyNewsletterPreference> {
+    return this.performRequest<MyNewsletterPreference>('/me/newsletter');
+  }
+
+  /** 订阅 / 退订当前账户邮箱（`PUT /me/newsletter`，服务端记 `source=account`）。 */
+  async setMyNewsletter(enabled: boolean): Promise<MyNewsletterPreference> {
+    return this.request<MyNewsletterPreference>('/me/newsletter', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  /**
+   * 管理端订阅名单（`GET /sites/{siteID}/subscribers`，`manage_site`）。
+   *
+   * 游标分页形状与其它列表一致；`status` 与 `q` 都是可选筛选。
+   */
+  async listSubscribers(
+    siteId: string,
+    query: { status?: string; q?: string; limit?: number; cursor?: string } = {},
+  ): Promise<Page<Subscriber>> {
+    const params = new URLSearchParams();
+    params.set('limit', String(query.limit ?? 50));
+    if (query.status) params.set('status', query.status);
+    if (query.q) params.set('q', query.q);
+    if (query.cursor) params.set('cursor', query.cursor);
+    return this.request<Page<Subscriber>>(
+      `/sites/${siteId}/subscribers?${params.toString()}`,
+    );
+  }
+
+  /** 删除一个订阅者（`DELETE /sites/{siteID}/subscribers/{subscriberID}`，204）。 */
+  async deleteSubscriber(siteId: string, subscriberId: string): Promise<void> {
+    await this.request<void>(
+      `/sites/${siteId}/subscribers/${encodeURIComponent(subscriberId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /** 订阅名单统计（`GET /sites/{siteID}/newsletter-stats`）。 */
+  async newsletterStats(siteId: string): Promise<NewsletterStats> {
+    return this.request<NewsletterStats>(`/sites/${siteId}/newsletter-stats`);
+  }
+
+  /**
+   * 邮件模板列表（`GET /sites/{siteID}/email-templates`，`manage_site`）。
+   *
+   * 服务端返回内置默认与站长改写后的模板；这里同时兼容 `{items:[...]}` 与裸数组。
+   */
+  async listEmailTemplates(siteId: string): Promise<EmailTemplate[]> {
+    const res = await this.performRequest<
+      { items?: EmailTemplate[] } | EmailTemplate[]
+    >(`/sites/${siteId}/email-templates`);
+    return Array.isArray(res) ? res : res.items ?? [];
+  }
+
+  /** 保存一封邮件模板（`PUT /sites/{siteID}/email-templates/{key}`）；返回规范化后的模板。 */
+  async saveEmailTemplate(
+    siteId: string,
+    key: string,
+    input: {
+      name?: string;
+      subject?: string;
+      body_html?: string;
+      body_text?: string;
+      enabled?: boolean;
+    },
+  ): Promise<EmailTemplate> {
+    return this.request<EmailTemplate>(
+      `/sites/${siteId}/email-templates/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    );
+  }
+
+  /** 恢复内置默认模板（`DELETE /sites/{siteID}/email-templates/{key}`，204）。 */
+  async resetEmailTemplate(siteId: string, key: string): Promise<void> {
+    await this.request<void>(
+      `/sites/${siteId}/email-templates/${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /** 邮件发送日志（`GET /sites/{siteID}/email-logs`）；`status` / `kind` 可选筛选。 */
+  async listEmailLogs(
+    siteId: string,
+    query: { status?: string; kind?: string; limit?: number; cursor?: string } = {},
+  ): Promise<Page<EmailLog>> {
+    const params = new URLSearchParams();
+    params.set('limit', String(query.limit ?? 50));
+    if (query.status) params.set('status', query.status);
+    if (query.kind) params.set('kind', query.kind);
+    if (query.cursor) params.set('cursor', query.cursor);
+    return this.request<Page<EmailLog>>(
+      `/sites/${siteId}/email-logs?${params.toString()}`,
+    );
+  }
+
+  /**
+   * 发送一次 newsletter（`POST /sites/{siteID}/newsletters`，`manage_site`）。
+   *
+   * 服务端为每个 `confirmed` 订阅者写一条 `queued` 邮件日志并返回入队数；
+   * `content_id` 非空时用该内容渲染正文，`body_html` 作为附加说明。
+   */
+  async sendNewsletter(
+    siteId: string,
+    input: {
+      subject: string;
+      body_html: string;
+      body_text: string;
+      content_id?: string;
+    },
+  ): Promise<NewsletterSendResult> {
+    return this.request<NewsletterSendResult>(`/sites/${siteId}/newsletters`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': uuid() },
+      body: JSON.stringify(input),
+    });
+  }
+
   async recordVisit(input: {
     path: string;
     title: string;
@@ -1859,12 +2335,25 @@ export class HttpBackend {
     });
   }
 
-  async analytics(siteId: string, range: AnalyticsRange): Promise<BackendAnalytics | null> {
+  /**
+   * 站点统计（`GET /sites/{siteID}/analytics`，契约 M 节）。
+   *
+   * Beta 1.2 起响应多了来源 / 设备 / 引荐 / 留存四个维度；旧后端没有时补空数组，
+   * 页面照常渲染既有图表。端点不可用（404 / 503）时返回 null，仪表盘回退到本地统计。
+   */
+  async analytics(siteId: string, range: AnalyticsRange): Promise<SiteAnalytics | null> {
     const offset = -new Date().getTimezoneOffset();
     try {
-      return await this.request<BackendAnalytics>(
+      const data = await this.request<BackendAnalytics & Partial<AnalyticsBreakdown>>(
         `/sites/${siteId}/analytics?range=${range}&tz_offset=${offset}`,
       );
+      return {
+        ...data,
+        sources: data.sources ?? [],
+        devices: data.devices ?? [],
+        top_referrers: data.top_referrers ?? [],
+        retention: data.retention ?? [],
+      };
     } catch (err) {
       if (err instanceof ApiError && (err.problem.status === 404 || err.problem.status === 503)) {
         return null;

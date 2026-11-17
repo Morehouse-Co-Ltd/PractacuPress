@@ -17,6 +17,7 @@ import (
 	"errors"
 	"html"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -353,6 +354,13 @@ func Build(ctx context.Context, source Source, request Request) (Channel, error)
 		if item.Status != content.StatusPublished || item.ID == "" {
 			continue
 		}
+		// A trashed item is invisible on every surface, and a feed is a machine
+		// readable listing: the service already excludes it, and this second check
+		// keeps a future visibility change from advertising deleted content to
+		// subscribers whose reader never shows them the correction.
+		if item.DeletedAt != nil {
+			continue
+		}
 		// Password and members-only items are direct-link-only; a feed must never
 		// disclose them even if a future visibility change widened the listing.
 		if item.AccessMode != "" && item.AccessMode != content.AccessPublic {
@@ -420,9 +428,17 @@ func lookupAuthor(ctx context.Context, lookup AuthorLookup, siteID, userID strin
 	return strings.TrimSpace(member.DisplayName)
 }
 
-// itemURL builds the public address of one content item. The route shape mirrors
-// the frontend: /a/{id} for articles and /p/{id} for posts.
+// itemURL builds the public address of one content item.
+//
+// The route shape mirrors the frontend and the sitemap (J5): /a/{slug} for articles and
+// /p/{slug} for posts, with the id as the fallback for content that never got a slug.
+// An author supplied canonical URL wins over both, because the author declared it to be
+// the authoritative address for this entry.
 func itemURL(origin string, item content.Content) string {
+	if canonical := strings.TrimSpace(item.CanonicalURL); canonical != "" {
+		return canonical
+	}
+
 	prefix := ""
 	switch item.Kind {
 	case content.KindArticle:
@@ -432,7 +448,15 @@ func itemURL(origin string, item content.Content) string {
 	default:
 		return ""
 	}
-	return strings.TrimRight(origin, "/") + prefix + item.ID
+
+	key := strings.TrimSpace(item.Slug)
+	if key == "" {
+		key = item.ID
+	}
+	if key == "" {
+		return ""
+	}
+	return strings.TrimRight(origin, "/") + prefix + url.PathEscape(key)
 }
 
 // fullText returns the sanitized body when the owner enabled full text, otherwise
