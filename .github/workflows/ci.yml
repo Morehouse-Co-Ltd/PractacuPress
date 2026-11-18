@@ -7,7 +7,7 @@
 #
 # The Go job runs on both target families (Windows is the primary distribution
 # target, Linux is what Docker deploys), the web job matches the Node version in
-# deploy/docker/web.Dockerfile, and the migrations job uses disposable MySQL and
+# deploy/docker/api.Dockerfile, and the migrations job uses disposable MySQL and
 # PostgreSQL service containers to exercise the reviewed SQL change sets up and
 # down.
 
@@ -69,12 +69,12 @@ jobs:
           powershell -ExecutionPolicy Bypass -File scripts/verify.ps1 -Task go 2>&1 | Tee-Object -FilePath .ci-logs/go-windows.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # apps/launcher has its own go.mod, so the root `./...` above never builds
+      # launcher has its own go.mod, so the root `./...` above never builds
       # or tests it. Run its gate where it can actually compile (Windows).
       - name: Verify launcher module (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        working-directory: apps/launcher
+        working-directory: launcher
         timeout-minutes: 10
         run: |
           go build ./...
@@ -106,7 +106,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Verify web
         timeout-minutes: 20

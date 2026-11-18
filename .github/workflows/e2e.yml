@@ -44,10 +44,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Install web dependencies
-        working-directory: apps/web
+        working-directory: web
         run: npm ci --no-audit --no-fund
 
       - name: Build security service
@@ -60,7 +60,7 @@ jobs:
           cargo build --release --manifest-path services/security/Cargo.toml
 
       - name: Ensure a headless browser
-        working-directory: apps/web
+        working-directory: web
         run: |
           if command -v google-chrome >/dev/null 2>&1; then
             google-chrome --version

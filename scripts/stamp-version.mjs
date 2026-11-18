@@ -2,10 +2,10 @@
 /**
  * Stamp a release version into the built frontend manifest.
  *
- *   node scripts/stamp-version.mjs --dist apps/web/dist --version v1.2.3
- *   node scripts/stamp-version.mjs --dist apps/web/dist --version v1.2.4-beta1
+ *   node scripts/stamp-version.mjs --dist web/dist --version v1.2.3
+ *   node scripts/stamp-version.mjs --dist web/dist --version v1.2.4-beta1
  *
- * `apps/web/public/version.json` is the source manifest used by the launcher's
+ * `web/public/version.json` is the source manifest used by the launcher's
  * "check for updates" screen and by the site footer. A release build must not keep
  * the repository's development version, otherwise every downloaded package claims
  * to be the same old build.

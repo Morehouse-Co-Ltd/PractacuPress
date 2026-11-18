@@ -1,6 +1,6 @@
 # Migrations
 
-`apps/api/cmd/migrate` applies the Ent schema additively. Dropping columns and
+`cmd/migrate` applies the Ent schema additively. Dropping columns and
 dropping indexes are both disabled, so a misconfigured deployment cannot destroy
 data.
 
@@ -9,7 +9,7 @@ data.
 ```powershell
 $env:DATABASE_DRIVER = 'sqlite'
 $env:DATABASE_DSN    = 'file:./data/practacu.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)'
-go run ./apps/api/cmd/migrate
+go run ./cmd/migrate
 ```
 
 The command is idempotent: running it twice is safe and is expected by deploy
@@ -17,7 +17,7 @@ scripts.
 
 ## Production
 
-Production change sets are generated from `apps/api/ent/schema` with Atlas and
+Production change sets are generated from `ent/schema` with Atlas and
 reviewed as SQL before being applied, per dialect. Ent depends on
 `ariga.io/atlas`, so no separate CLI install is required to generate them:
 
@@ -125,7 +125,7 @@ sqlite3 data/practacu.db \
 Only the PostgreSQL script can be re-run: it uses `ADD COLUMN IF NOT EXISTS` and
 `CREATE INDEX IF NOT EXISTS`. MySQL and SQLite have neither for a column, so their
 scripts are applied exactly once, which is what the separate migration step in
-[Production](#production) provides. That step is *not* `apps/api/cmd/migrate`: that
+[Production](#production) provides. That step is *not* `cmd/migrate`: that
 command reconciles the Ent model additively and idempotently, so on a development
 database it also produces these columns, after which the versioned script would be a
 no-op on PostgreSQL and a duplicate-column error on MySQL and SQLite. Run one path per

@@ -21,9 +21,9 @@
 
 # Dependencies and generated caches
 node_modules/
-/apps/web/dist/
-/apps/web/.runtime/
-/apps/launcher/web/dist/
+/web/dist/
+/web/.runtime/
+/launcher/web/dist/
 .DS_Store
 Thumbs.db
 
@@ -36,7 +36,7 @@ target/
 
 # 本地临时产物（冒烟测试打包输出）
 .tmp/
-apps/web/.tmp/
+web/.tmp/
 
 # 扩展打包产物（scripts/package-extension.ps1 输出）与示例的 WASM 构建产物
 /dist/
@@ -60,5 +60,5 @@ plugins/examples/**/backend/*.wasm
 /docs/
 
 # Generated frontend embedded into the Go API; only the marker is committed.
-/apps/api/internal/web/dist/*
-!/apps/api/internal/web/dist/.gitkeep
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep

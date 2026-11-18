@@ -43,7 +43,7 @@ run_go() {
   "$go_bin" "${test_args[@]}"
 }
 
-# apps/launcher is a separate module and only builds on Windows (its process and
+# launcher is a separate module and only builds on Windows (its process and
 # console helpers are windows-only). Git Bash on Windows can run it; Linux skips.
 run_launcher() {
   case "$(uname -s)" in
@@ -51,7 +51,7 @@ run_launcher() {
     *) log "launcher: Windows-only module, skipped on $(uname -s)"; return ;;
   esac
   (
-    cd apps/launcher
+    cd launcher
     log "launcher go build ./..."
     "$go_bin" build ./...
     log "launcher go vet ./..."
@@ -69,14 +69,14 @@ run_launcher() {
 run_web() {
   local install_mode="${PP_WEB_INSTALL:-auto}"
   (
-    cd apps/web
+    cd web
     if [[ "$install_mode" == "ci" || ( "$install_mode" == "auto" && ! -d node_modules ) ]]; then
-      log "npm ci (apps/web)"
+      log "npm ci (web)"
       "$npm_bin" ci --no-audit --no-fund
     elif [[ "$install_mode" == "skip" ]]; then
       log "npm install skipped by PP_WEB_INSTALL=skip"
     else
-      log "using existing apps/web/node_modules"
+      log "using existing web/node_modules"
     fi
 
     log "npm run typecheck"
@@ -96,9 +96,9 @@ run_web() {
 run_migrate_twice() {
   local dialect="$1" dsn="$2"
   log "cmd/migrate $dialect (first run)"
-  "$go_bin" run ./apps/api/cmd/migrate -driver "$dialect" -dsn "$dsn"
+  "$go_bin" run ./cmd/migrate -driver "$dialect" -dsn "$dsn"
   log "cmd/migrate $dialect (second run, must be idempotent)"
-  "$go_bin" run ./apps/api/cmd/migrate -driver "$dialect" -dsn "$dsn"
+  "$go_bin" run ./cmd/migrate -driver "$dialect" -dsn "$dsn"
 }
 
 run_migrations() {

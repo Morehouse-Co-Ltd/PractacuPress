@@ -35,12 +35,12 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 
 ---
 
-**Layers**: every backend capability is exposed over REST (OpenAPI 3.1) and WebSocket; `apps/web` is the frontend, admin console and first-run wizard implemented against that same contract.
+**Layers**: every backend capability is exposed over REST (OpenAPI 3.1) and WebSocket; `web` is the frontend, admin console and first-run wizard implemented against that same contract.
 
-- **Go API** (`apps/api`): identity, sites, content, community, media, notifications, direct messages, event catch-up
+- **Go API** (`cmd/server` + `internal/`): identity, sites, content, community, media, notifications, direct messages, event catch-up
 - **Rust security service** (`services/security`): Argon2id password hashing, content sanitization, upload inspection
 - **Contract** (`packages/contracts`): OpenAPI 3.1 and protobuf
-- **React frontend** (`apps/web`): site frontend, admin console, seven-step setup wizard (including high-risk action protection), email-or-username sign-in (centered form over a themed background), theme library and page composition (independently per desktop / tablet / phone, with per-block corner radius, shadow and crop plus a button block), article writing (mind maps / logic charts / statistical charts / fishbone diagrams), custom pages, extension system (built-in extensions plus zip import: browser-only extensions and Go/WASM backend extensions; the performance panel is itself a built-in extension), site updates (display name / current version compared with the repository version.json / manual or automatic checks / GitHub or mirror update-source dropdown / manual build switching with no downtime), access limits, domains and SSL certificates plus the served port, performance settings and loading animations, and a performance panel with ring gauges for this app's and other processes' CPU / memory / disk use
+- **React frontend** (`web`): site frontend, admin console, seven-step setup wizard (including high-risk action protection), email-or-username sign-in (centered form over a themed background), theme library and page composition (independently per desktop / tablet / phone, with per-block corner radius, shadow and crop plus a button block), article writing (mind maps / logic charts / statistical charts / fishbone diagrams), custom pages, extension system (built-in extensions plus zip import: browser-only extensions and Go/WASM backend extensions; the performance panel is itself a built-in extension), site updates (display name / current version compared with the repository version.json / manual or automatic checks / GitHub or mirror update-source dropdown / manual build switching with no downtime), access limits, domains and SSL certificates plus the served port, performance settings and loading animations, and a performance panel with ring gauges for this app's and other processes' CPU / memory / disk use
 - **High-risk action re-authentication**: deleting or editing accounts, resetting two-factor authentication, overwriting a site import, and deleting sensitive words / IP rules ask for the password again once protection is on. Verification follows the **browser session**: the first high-risk action after opening the browser asks for the password, repeated actions in the same session verify once (page refreshes do not ask again; closing the browser clears it). The fifth setup step enables it and lets you use the account password or a dedicated security password (changeable later in Site settings → High-risk action protection).
 
 ### Writing and reading
@@ -48,7 +48,7 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 - **Writing**: the editor has a toolbar for headings, columns, images (with media-library upload), video cards, embedded-link cards, links, tables, galleries, callouts, quotes, dividers and icons; the preview sits on the right, and the word count is measured on the rendered plain text. Global shortcuts are `Shift+K` for the command palette, `Shift+S` for search, `Shift+D` to toggle light/dark and `Shift+H` to go home.
 - **Markdown**: the server first converts Markdown to HTML with goldmark (GFM: tables, strikethrough, task lists, images, autolinks), then hands it to the security service for allow-list sanitization — so `headings`, `tables` and `images` are real tags in a real deployment, not literals. Blocks inserted from the writing toolbar are HTML the allow-list preserves (columns are carried by `table.pp-columns`, and video is a cover card rather than an iframe).
 - **Search**: the site header has a permanent search box that queries as you type (220 ms debounce, top 6 results), `/` focuses it, Enter opens the full result page; narrow screens keep only the magnifier.
-- **SEO**: title templates, description, keywords, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site-verification meta, a site-wide noindex switch, and a downloadable `sitemap.xml` / `robots.txt`. For the limits, see the notes in [Admin → SEO](apps/web/src/pages/admin/Seo.tsx): tags are written into `<head>` by the frontend, so social crawlers that do not execute JS only ever see the defaults from `index.html`.
+- **SEO**: title templates, description, keywords, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site-verification meta, a site-wide noindex switch, and a downloadable `sitemap.xml` / `robots.txt`. For the limits, see the notes in [Admin → SEO](web/src/pages/admin/Seo.tsx): tags are written into `<head>` by the frontend, so social crawlers that do not execute JS only ever see the defaults from `index.html`.
 - **Themes**: Admin → Theme settings switches colours, typography and single-column / cards / two-column layout together as a single "big theme". Built in: the original (paper-white, single column), Daylight (white daily front page, single-row pill tabs, full-bleed article cover, single-column article) and Night Flight (warm dark, two columns). The theme picker can import a JSON theme, export the current one, save it as a custom theme, and delete custom themes. Page composition, appearance (brand / footer) and loading animation share one navigation group; switching themes only replaces the default components while the home page still uses the default composition. Every part of the footer (brand title / subtitle / blurb, status chips, columns and their items, copyright and bottom note) can be customised item by item under Theme settings → Navigation and footer. The top navigation is fully configurable too: each tab can take a built-in icon and a left/right position, tabs reorder freely, and up to 8 second-level entries can hang off a tab — rendered either as a capsule bar under the header or folded into a dropdown. The top-left of the header (Night Flight) and the area above the footer bar can carry a row of configurable software / social shortcut links (GitHub, X, Mastodon, RSS, email, any website). Theme fine-tuning adds softening and transitions: background glow, component blending, transition duration and header blur, all of which degrade automatically when the system requests reduced motion. Night Flight's home article cards can further switch between "Cover on top" (the default) and "Blurred background" (the cover fills the whole card with a gaussian blur while the title and summary sit on a frosted panel inside); this only changes presentation, never the content or its order.
 - **Access and performance**: Admin → Access limits constrains page switches, page requests and concurrent pages per browser, and generates Nginx `limit_req` / `limit_conn` plus API `.env` snippets. Access and domains sets the primary domain, the alias allow-list, SSL certificates (Let's Encrypt / manual), CORS, cookie scope and trusted proxies; with no primary domain configured, production only allows direct access by public IP. Performance tuning reduces first-screen reads, coalesces duplicate requests and lazy-loads media, and generates gateway compression/caching plus API timeout and database pool parameters. Storage policies start from a global local directory or S3-compatible object storage (AWS, MinIO, Alibaba OSS, Tencent COS) and can then be overridden per purpose: article media, site images, user avatars and user data/attachments may each pick a local directory or a bucket/prefix, emitting `STORAGE_<SCOPE>_*` server snippets. Loading animation builds the frontend loading screen. All of these settings live in the local installation config; server parameters take effect once the snippet is deployed and the service restarted.
 - **One-click reset**: page composition can restore the default components for the current home page or a custom page (title, path and publish state unchanged); Appearance can reset brand copy, home/page composition, loading animation, performance, access limits and access/domains by scope; Theme settings can restore the current theme definition or fall back to the original theme.
@@ -224,8 +224,8 @@ sudo apt-get install -y nodejs
 ```bash
 cd practacu-press                      # repository root (git clone or unzip first)
 
-# 1) Frontend: build once; the output is plain static files in apps/web/dist
-cd apps/web && npm ci && npm run build && cd ../..
+# 1) Frontend: build once; the output is plain static files in web/dist
+cd web && npm ci && npm run build && cd ../..
 
 # 2) Rust security service (optional; if you skip it, do not start it below)
 cd services/security && cargo build --release && cd ../..
@@ -255,7 +255,7 @@ source the file again in each one:
 ```bash
 # once: create tables + default site
 source ~/.practacu-env.sh
-go run ./apps/api/cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
+go run ./cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
 
 # terminal A: Rust security service (listens on 127.0.0.1:9001 by default)
 source ~/.practacu-env.sh
@@ -263,7 +263,7 @@ source ~/.practacu-env.sh
 
 # terminal B: Go API (listens on 127.0.0.1:8080)
 source ~/.practacu-env.sh
-go run ./apps/api/cmd/server
+go run ./cmd/server
 ```
 
 Confirm the API is ready (both return 200; `readyz` waits for the security service):
@@ -273,8 +273,8 @@ curl -fsS http://127.0.0.1:8080/healthz
 curl -fsS http://127.0.0.1:8080/readyz
 ```
 
-> Release packages and Docker images copy `apps/web/dist` into
-> `apps/api/internal/web/dist` before compiling, so one API process serves both the
+> Release packages and Docker images copy `web/dist` into
+> `internal/web/dist` before compiling, so one API process serves both the
 > frontend and `/api`. A plain source `go run` is API-only by default; to test the
 > single-binary shape locally, run `make embed-web` (or
 > `node scripts/sync-web-embed.mjs`) first.
@@ -283,7 +283,7 @@ Run the frontend with the dev server, which proxies `/api`, `/healthz`, `/readyz
 local 8080 API:
 
 ```bash
-cd apps/web
+cd web
 npm run dev -- --port 5173
 ```
 
@@ -291,18 +291,17 @@ Open **http://127.0.0.1:5173/?mode=live** and complete the seven-step wizard; **
 creates is the platform administrator**. (Vite wants port 80 by default, which a non-root user on Linux
 cannot bind, so 5173 is passed explicitly.)
 
-> For single-domain self-hosting without the dev server: let Nginx (or similar) serve `apps/web/dist` and
-> reverse-proxy `/api`, `/healthz`, `/readyz`, `/plugins`, `/sitemap.xml` and `/robots.txt` to
-> `127.0.0.1:8080` (see `deploy/production/nginx.conf` and the
-> [production deployment profile](docs/deployment/production-profile.md)). `npm start` only serves static
-> files and does not proxy the API, and its default port (8080) collides with the API — do not run it in
-> that setup.
+> For single-domain self-hosting without the dev server: run `make embed-web` to embed the SPA in the
+> API, then let Nginx (or similar) reverse-proxy `/` and `/api` to the API port (see
+> `deploy/production/nginx.conf` and the [production deployment profile](docs/deployment/production-profile.md)).
+> `npm start` only serves static files and does not proxy the API, and its default port (8080) collides with
+> the API — do not run it in that setup.
 
 ### Windows launcher
 
 Run **`启动.bat`** in the repository root (or double-click it):
 
-- on first run it executes `npm install` automatically when `apps/web/node_modules` is missing;
+- on first run it executes `npm install` automatically when `web/node_modules` is missing;
 - it starts the Go API and SQLite in a dedicated window, plus the Rust security service when available;
 - it starts the Vite frontend in a dedicated window (`http://127.0.0.1:5173`, proxying `/api` to 8080);
 - the browser opens `http://127.0.0.1:5173/?mode=live`: an existing real installation goes straight into the site, otherwise you enter the **real environment** setup wizard with 8080 auto-detected — it will not silently fall back to demo data;
@@ -347,9 +346,9 @@ $env:SECURITY_GRPC_ADDR='127.0.0.1:9001'; $env:STORAGE_DIR='./data/media'
 # Do not enable this for server deployments.
 $env:PP_DESKTOP='true'
 
-go run ./apps/api/cmd/seed  -driver sqlite -dsn $env:DATABASE_DSN
-go run ./apps/api/cmd/migrate                      # tables only, no site
-go run ./apps/api/cmd/server
+go run ./cmd/seed  -driver sqlite -dsn $env:DATABASE_DSN
+go run ./cmd/migrate                      # tables only, no site
+go run ./cmd/server
 ```
 
 The Rust side:
@@ -362,7 +361,7 @@ rustup run stable-x86_64-pc-windows-msvc cargo run --release
 ### Frontend
 
 ```powershell
-cd apps/web
+cd web
 npm install
 npm run build
 npm start
@@ -370,7 +369,7 @@ npm start
 
 `http://localhost:8080` (port 8080 by default). Admin → Site settings → Access & domains → Port changes the port; the server starts listening on the new port immediately and remembers the choice. **`npm start` only serves static files and does not proxy the API**, and its default port is 8080 too, so to run it alongside the local API use dev mode instead: `npm run dev` (the dev server uses 80 and leaves 8080 to the API) proxies `/api`, `/healthz`, `/readyz` and `/plugins` to `127.0.0.1:8080`; on Linux a non-root user cannot bind port 80, so add `-- --port 5173`. Alternatively let Nginx serve the static build (see Linux from source above).
 
-The first visit opens the setup wizard; with no backend you can choose demo data to explore the complete frontend and admin console. Details in the [frontend guide](apps/web/README.md).
+The first visit opens the setup wizard; with no backend you can choose demo data to explore the complete frontend and admin console. Details in the [frontend guide](web/README.md).
 
 ### Windows one-click package
 
@@ -381,7 +380,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 The packaging script checks the toolchain and then runs the whole pipeline:
 
-1. build the frontend (`apps/web`, running `npm ci` automatically when `node_modules` is missing);
+1. build the frontend (`web`, running `npm ci` automatically when `node_modules` is missing);
 2. compile the Rust security service (`services/security`, release);
 3. sync the frontend output into the launcher's `go:embed` directory;
 4. compile the Go launcher and the Go API (Windows target architecture: x64 or arm64, pure Go);
@@ -462,17 +461,18 @@ Public sites are readable without authentication: `Invoke-RestMethod http://127.
 ## Repository layout
 
 ```
-apps/api/
-  cmd/{server,migrate,seed}        process entry points and ops commands
-  ent/schema/                      persistence models (Ent)
-  internal/
-    auth/ site/ content/           feature modules (domain + service + handler)
-    community/ messaging/ notifications/ moderation/ media/
-    outbox/                        reliable events and retries
-    platform/{config,logging,errors,page}
-    infrastructure/                Ent repositories, storage adapters, Rust gRPC client
-    transport/{http/gin,ws}        HTTP middleware and WebSocket
-apps/web/                          React frontend, admin console and setup wizard
+cmd/{server,migrate,seed,backup,media-gc,searchindex}  process entry points and ops commands
+ent/schema/                      persistence models (Ent)
+internal/
+  auth/ site/ content/           feature modules (domain + service + handler)
+  community/ messaging/ notifications/ moderation/ media/
+  outbox/                        reliable events and retries
+  platform/{config,logging,errors,page}
+  infrastructure/                Ent repositories, storage adapters, Rust gRPC client
+  transport/{http/gin,ws}        HTTP middleware and WebSocket
+  web/                           go:embed SPA and static handler
+web/                          React frontend, admin console and setup wizard
+launcher/                     Windows launcher (separate Go module, go:embed)
 services/security/                 Rust security service (tonic)
 packages/contracts/                OpenAPI and protobuf (generated code lives here too)
 docs/superpowers/                  design specs, implementation plans, reviews, delivery status
@@ -500,7 +500,7 @@ The S3 adapter is skipped by default and needs a real endpoint (MinIO / moto / A
 python -m moto.server -p 9100
 $env:S3_TEST_ENDPOINT='http://127.0.0.1:9100'
 $env:AWS_ACCESS_KEY_ID='test'; $env:AWS_SECRET_ACCESS_KEY='testsecret'
-go test ./apps/api/internal/media/ -run TestS3 -v
+go test ./internal/media/ -run TestS3 -v
 ```
 
 ---

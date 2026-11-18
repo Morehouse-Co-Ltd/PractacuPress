@@ -3,7 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1 -SkipWebBuild
 #
-# The script delegates to apps/web/e2e/harness.mjs, which:
+# The script delegates to web/e2e/harness.mjs, which:
 #   - builds the Go API and the Rust security service (binary must exist),
 #   - creates a fresh SQLite database under .tmp/e2e/data,
 #   - builds the web app and serves it with the same-origin /api proxy,
@@ -13,7 +13,7 @@
 #         .tmp/e2e/logs (API, security and web server logs).
 #
 # Optional switches map to the harness environment variables:
-#   -SkipWebBuild   reuse apps/web/dist (PP_E2E_SKIP_WEB_BUILD=1)
+#   -SkipWebBuild   reuse web/dist (PP_E2E_SKIP_WEB_BUILD=1)
 #   -SkipSecurity   do not start the Rust service (PP_E2E_SKIP_SECURITY=1)
 
 param(
@@ -36,7 +36,7 @@ if ($ApiPort -gt 0) { $env:PP_E2E_API_PORT = [string]$ApiPort }
 if ($SecurityPort -gt 0) { $env:PP_E2E_SECURITY_PORT = [string]$SecurityPort }
 if ($WebPort -gt 0) { $env:PP_E2E_WEB_PORT = [string]$WebPort }
 
-& $nodeCommand.Source 'apps\web\e2e\harness.mjs'
+& $nodeCommand.Source 'web\e2e\harness.mjs'
 $code = $LASTEXITCODE
 if ($code -ne 0) {
     Write-Host ''

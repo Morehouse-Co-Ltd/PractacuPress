@@ -8,13 +8,13 @@
 # without a second image.
 
 # The frontend is part of the API image: Go's //go:embed cannot read outside its
-# package, so the build stage first produces apps/web/dist and copies it into
-# apps/api/internal/web/dist before compiling. One container now serves both the
+# package, so the build stage first produces web/dist and copies it into
+# internal/web/dist before compiling. One container now serves both the
 # SPA and the API, with no separate Nginx container in the default stack.
 FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
 
 WORKDIR /web
-COPY apps/web ./
+COPY web ./
 
 ARG VERSION=development
 ENV VERSION=$VERSION
@@ -48,18 +48,20 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Only the packages the binaries import. The web app itself is copied in from the
 # web stage above; docs and tests never enter this layer.
-COPY apps/api ./apps/api
+COPY cmd ./cmd
+COPY ent ./ent
+COPY internal ./internal
 COPY packages ./packages
-COPY --from=web /web/dist ./apps/api/internal/web/dist
+COPY --from=web /web/dist ./internal/web/dist
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/api ./apps/api/cmd/server \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/migrate ./apps/api/cmd/migrate \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/seed ./apps/api/cmd/seed \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/backup ./apps/api/cmd/backup \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/media-gc ./apps/api/cmd/media-gc \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/searchindex ./apps/api/cmd/searchindex
+    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/api ./cmd/server \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/migrate ./cmd/migrate \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/seed ./cmd/seed \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/backup ./cmd/backup \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/media-gc ./cmd/media-gc \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/searchindex ./cmd/searchindex
 
 FROM alpine:3.24 AS runtime
 

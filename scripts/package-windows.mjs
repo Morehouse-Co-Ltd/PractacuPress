@@ -7,10 +7,10 @@
  *   node scripts/package-windows.mjs --arch arm64 --version v1.0.1-beta1
  *
  * 默认流程（每一步失败都会立刻停下并打印原因）：
- *   1. 构建前端（apps/web → dist），缺少 node_modules 时自动安装依赖
+ *   1. 构建前端（web → dist），缺少 node_modules 时自动安装依赖
  *   2. 编译 Rust 安全服务（services/security，release）
  *   3. 把前端产物同步进启动器的 go:embed 目录
- *   4. 编译 Go 启动器（apps/launcher）与 Go API（Windows，目标架构）
+ *   4. 编译 Go 启动器（launcher）与 Go API（Windows，目标架构）
  *   5. 组装干净的分发目录（exe + README.txt + VERSION）
  *   6. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/healthz、/readyz、
  *      注册、文章创建（Rust 清洗）与发布（仅本机架构可执行时）
@@ -19,7 +19,7 @@
  * 常用参数：
  *   --arch amd64|arm64   目标架构（默认当前 Node 架构）
  *   --version <tag>      发布版本（写入 VERSION 与 web/version.json）
- *   --skip-web           复用 apps/web/dist（CI 已单独构建时）
+ *   --skip-web           复用 web/dist（CI 已单独构建时）
  *   --skip-security      不编译也不附带 Rust 安全服务（发布与上传会 fail-closed）
  *   --skip-smoke         跳过自检（不推荐；跨架构构建会自动跳过）
  *   --no-zip             只生成 release/PractacuPress 目录，不压缩
@@ -49,8 +49,8 @@ import { deflateRawSync } from 'node:zlib';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const webDir = path.join(root, 'apps', 'web');
-const launcherDir = path.join(root, 'apps', 'launcher');
+const webDir = path.join(root, 'web');
+const launcherDir = path.join(root, 'launcher');
 const distDir = path.join(webDir, 'dist');
 const embedDir = path.join(launcherDir, 'web', 'dist');
 const tmpRoot = path.join(root, '.tmpbuild', 'tmp');
@@ -127,12 +127,12 @@ async function main() {
 
   step('构建前端');
   if (options.skipWeb) {
-    requireFile(path.join(distDir, 'index.html'), '--skip-web 但 apps/web/dist 不存在；先运行 npm run build');
-    console.log('  复用 apps/web/dist');
+    requireFile(path.join(distDir, 'index.html'), '--skip-web 但 web/dist 不存在；先运行 npm run build');
+    console.log('  复用 web/dist');
   } else {
     ensureWebDeps();
     runShell('npm run build', webDir, 'npm run build');
-    requireFile(path.join(distDir, 'index.html'), '前端构建完成但没有 apps/web/dist/index.html');
+    requireFile(path.join(distDir, 'index.html'), '前端构建完成但没有 web/dist/index.html');
     console.log('  dist/index.html 已生成');
   }
   stampWebVersion(distDir);
@@ -159,7 +159,7 @@ async function main() {
 
   step('把前端产物同步进 Go API（go:embed）');
   syncEmbeddedWeb({ root, dist: distDir });
-  console.log('  apps/api/internal/web/dist');
+  console.log('  internal/web/dist');
 
   step(`编译 Windows 启动器（${ARCH}）`);
   const launcherExe = path.join(stagingDir, 'PractacuPress.exe');
@@ -177,7 +177,7 @@ async function main() {
   const apiExe = path.join(stagingDir, 'PractacuPressAPI.exe');
   run(
     go,
-    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', apiExe, './apps/api/cmd/server'],
+    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', apiExe, './cmd/server'],
     root,
     goEnv,
     'go build api',
@@ -313,7 +313,7 @@ function printHelp() {
 参数：
   --arch amd64|arm64   目标架构（默认当前 Node 架构）
   --version <tag>      发布版本（写入 VERSION 与 web/version.json）
-  --skip-web           复用 apps/web/dist
+  --skip-web           复用 web/dist
   --skip-security      不编译也不附带 Rust 安全服务
   --skip-smoke         跳过打包后的自检（跨架构构建会自动跳过）
   --no-zip             只生成 release/PractacuPress 目录
@@ -431,7 +431,7 @@ function runShell(command, cwd, label) {
 
 function ensureWebDeps() {
   if (fs.existsSync(path.join(webDir, 'node_modules'))) return;
-  console.log('  没有 apps/web/node_modules，先安装前端依赖（首次打包需要联网）');
+  console.log('  没有 web/node_modules，先安装前端依赖（首次打包需要联网）');
   if (fs.existsSync(path.join(webDir, 'package-lock.json'))) {
     runShell('npm ci --no-audit --no-fund', webDir, 'npm ci');
   } else {

@@ -98,7 +98,7 @@ try {
     }
 
     Write-Host '> applying schema and seeding the default site'
-    & $go run ./apps/api/cmd/seed -driver sqlite -dsn $dsn | Out-Null
+    & $go run ./cmd/seed -driver sqlite -dsn $dsn | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "seed failed with exit code $LASTEXITCODE" }
 
     if (-not $SkipSecurity) {
@@ -171,7 +171,7 @@ try {
     # would leave the compiled child alive when only the wrapper is stopped.
     Write-Host '> building the API'
     $apiExe = Join-Path $DataDir 'practacu-api.exe'
-    & $go build -o $apiExe ./apps/api/cmd/server
+    & $go build -o $apiExe ./cmd/server
     if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
 
     Write-Host '> starting the API'

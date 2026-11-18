@@ -8,7 +8,7 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 | 编号 | 问题 | 本仓库的处置 |
 | --- | --- | --- |
 | V-17 | `docker-compose.yml` 默认是开发形态 | 新增 `docker-compose.prod.yml`（production 语义 + 持久私钥 + Secure Cookie）、宿主机 TLS 反代模板 `deploy/production/nginx.conf` |
-| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头（API 同时服务内嵌前端）；启动器 `apps/launcher/main.go` 与宿主机 TLS 模板各一份（TLS 层补 HSTS） |
+| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头（API 同时服务内嵌前端）；启动器 `launcher/main.go` 与宿主机 TLS 模板各一份（TLS 层补 HSTS） |
 | V-04 | 同机反代可绕过启动器回环校验改端口/读信息 | `/__pp/*` 现在要求「TCP 对端回环 **且** Host 回环」；反代模板显式 `location /__pp/ { return 404; }`；`/__pp/runtime` 只返回页面必需字段 |
 | V-18 | 启动器明文保存 JWT 私钥 | Windows 上用 DPAPI `CryptProtectData` 加密后写 `practacu-web.json`（`dpapi:` 前缀），旧明文文件读取时兼容并在下次写盘迁移 |
 
@@ -126,7 +126,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 需要 **base64 编码的 PKCS#8 Ed25519 私钥（单行）**，三种方式任选。
 
-**Go**（与启动器 `apps/launcher/state.go` 的生成逻辑一致；保存为 `genkey.go` 后
+**Go**（与启动器 `launcher/state.go` 的生成逻辑一致；保存为 `genkey.go` 后
 `go run genkey.go`）：
 
 ```go

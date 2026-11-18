@@ -65,9 +65,9 @@ databases, never at production. As a tripwire it refuses a MySQL/PostgreSQL DSN
 whose database name does not contain `test` unless `PP_TEST_ALLOW_DESTRUCTIVE=1`
 is set.
 
-## `apps/web/e2e` — real-browser delivery path
+## `web/e2e` — real-browser delivery path
 
-`apps/web/e2e` is the Playwright suite that drives the actual UI against a
+`web/e2e` is the Playwright suite that drives the actual UI against a
 throwaway full stack. It is the only test set here that needs a browser and a
 running API; the checks above stay network-free.
 
@@ -95,7 +95,7 @@ What one run covers, in order:
 powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 
 # or through npm
-cd apps/web
+cd web
 npm run e2e
 ```
 
@@ -104,7 +104,7 @@ npm run e2e
 bash scripts/e2e.sh
 ```
 
-Prerequisites: Go 1.26+, Node.js 22+, `npm install` in `apps/web`, the Rust
+Prerequisites: Go 1.26+, Node.js 22+, `npm install` in `web`, the Rust
 security service built once (`cargo build --release` in `services/security`; the
 harness reuses `target/release/practacu-security`), and Google Chrome (the
 default `PP_E2E_CHANNEL=chrome`; use `PP_E2E_CHANNEL=chromium` after
@@ -112,7 +112,7 @@ default `PP_E2E_CHANNEL=chrome`; use `PP_E2E_CHANNEL=chromium` after
 
 The harness builds the Go API, creates a fresh SQLite database under
 `.tmp/e2e/data`, starts the security service and API on free test ports, builds
-`apps/web/dist`, and serves it with `apps/web/e2e/server.mjs` — a production-like
+`web/dist`, and serves it with `web/e2e/server.mjs` — a production-like
 static server that proxies `/api`, `/healthz`, `/readyz`, `/sitemap.xml`,
 `/robots.txt` and `/feed*` to the API. Nothing outside `.tmp/e2e` is written, and
 the processes are stopped on exit.
@@ -121,7 +121,7 @@ Useful switches / variables:
 
 | Variable | Meaning |
 | --- | --- |
-| `PP_E2E_SKIP_WEB_BUILD=1` | reuse the current `apps/web/dist` |
+| `PP_E2E_SKIP_WEB_BUILD=1` | reuse the current `web/dist` |
 | `PP_E2E_CHANNEL=chrome\|msedge\|chromium` | browser channel (default `chrome`) |
 | `PP_E2E_API_PORT` / `PP_E2E_SECURITY_PORT` / `PP_E2E_WEB_PORT` | override the default test ports 18080 / 19001 / 18100 |
 | `PP_E2E_SKIP_SECURITY=1` | start without the Rust service (registration/login/publish then fail closed; debugging only) |
@@ -156,7 +156,7 @@ uploads `.tmp/e2e/artifacts/` and the raw log on every run.
   `PP_E2E_SECURITY_BIN` at the executable. Registration, login and publishing
   intentionally fail closed without it.
 - **`browserType.launch: Chromium distribution 'chrome' is not found`**: install
-  Chrome, or run `npx playwright install chromium` in `apps/web` and set
+  Chrome, or run `npx playwright install chromium` in `web` and set
   `PP_E2E_CHANNEL=chromium`.
 - **Tests 2–6 were skipped after a failure**: they share the one-time install
   state on purpose; Playwright restarts the worker after a failed test. Re-run

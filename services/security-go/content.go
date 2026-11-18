@@ -61,12 +61,12 @@ var voidTags = map[string]struct{}{
 // The list is derived from what the content pipeline actually emits:
 //
 //   - language-*: goldmark renders fenced code as
-//     <pre><code class="language-…"></pre> (apps/api/internal/content/render.go,
+//     <pre><code class="language-…"></pre> (internal/content/render.go,
 //     pinned by TestRenderMarkdownProducesRealTags and
 //     TestDiagramFenceSurvivesMarkdownRendering; article diagrams ride on
 //     language-pp-diagram).
 //   - pp-*: the rich-text block snippets stored as HTML by the editor
-//     (apps/web/src/lib/richBlocks.ts and apps/web/src/lib/markdown.ts).
+//     (web/src/lib/richBlocks.ts and web/src/lib/markdown.ts).
 //
 // Everything else is dropped, which is the SEC-11 fix: a stored
 // <p class="btn btn-danger"> can no longer borrow the site's own button styling
@@ -106,7 +106,7 @@ var allowedSchemes = map[string]struct{}{
 //
 // format is one of "markdown", "html" or "plain". Markdown does not mean the
 // service parses a Markdown dialect: the Go API renders Markdown to HTML before
-// it calls the security service (apps/api/internal/content/render.go), so
+// it calls the security service (internal/content/render.go), so
 // "markdown" and "html" are sanitized identically, exactly like the Rust
 // service.
 func Sanitize(format, source string) (Sanitized, error) {

@@ -12,15 +12,15 @@ $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
     Write-Host '== Go plugin host tests =='
-    go test ./apps/api/internal/plugins/... -count=1
+    go test ./internal/plugins/... -count=1
     if ($LASTEXITCODE -ne 0) { throw 'plugin host tests failed' }
 
     Write-Host '== Router integration + contract tests =='
-    go test ./apps/api/internal/transport/http/gin/ -count=1
+    go test ./internal/transport/http/gin/ -count=1
     if ($LASTEXITCODE -ne 0) { throw 'router tests failed' }
 
     Write-Host '== Web typecheck =='
-    Push-Location 'apps/web'
+    Push-Location 'web'
     try {
         node node_modules/typescript/bin/tsc --noEmit
         if ($LASTEXITCODE -ne 0) { throw 'web typecheck failed' }

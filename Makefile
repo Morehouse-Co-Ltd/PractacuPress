@@ -3,7 +3,7 @@
 
 GO ?= go
 NPM ?= npm
-PKG := ./apps/api/...
+PKG := ./...
 
 .PHONY: build test vet generate migrate tidy smoke \
 	web-install web-typecheck web-build web-test web-dev web-start web-package package package-linux \
@@ -20,36 +20,36 @@ vet:
 	$(GO) vet $(PKG)
 
 generate:
-	$(GO) generate ./apps/api/ent/...
+	$(GO) generate ./ent/...
 
 migrate:
-	$(GO) run ./apps/api/cmd/migrate
+	$(GO) run ./cmd/migrate
 
 tidy:
 	$(GO) mod tidy
 
 web-install:
-	cd apps/web && $(NPM) ci --no-audit --no-fund
+	cd web && $(NPM) ci --no-audit --no-fund
 
 web-typecheck:
-	cd apps/web && $(NPM) run typecheck
+	cd web && $(NPM) run typecheck
 
 web-build:
-	cd apps/web && $(NPM) run build
+	cd web && $(NPM) run build
 
-# Copy the built SPA into apps/api/internal/web/dist before a plain `go build`.
+# Copy the built SPA into internal/web/dist before a plain `go build`.
 # Release/package scripts do this automatically; this target is for local runs.
 embed-web: web-build
 	node scripts/sync-web-embed.mjs
 
 web-test:
-	cd apps/web && $(NPM) test
+	cd web && $(NPM) test
 
 web-dev:
-	cd apps/web && $(NPM) run dev
+	cd web && $(NPM) run dev
 
 web-start:
-	cd apps/web && $(NPM) start
+	cd web && $(NPM) start
 
 web-package:
 	node scripts/package-windows.mjs
@@ -75,19 +75,19 @@ verify-go:
 	$(GO) vet ./...
 	$(GO) test -count=1 ./...
 
-# apps/launcher is its own Go module and only builds on Windows. The root
+# launcher is its own Go module and only builds on Windows. The root
 # `./...` above never compiles it, so it needs this separate gate (CI runs it on
 # windows-latest; Linux/macOS developers skip it).
 verify-launcher:
-	cd apps/launcher && $(GO) build ./... && $(GO) vet ./... && $(GO) test -count=1 ./...
+	cd launcher && $(GO) build ./... && $(GO) vet ./... && $(GO) test -count=1 ./...
 
 verify-web: web-install web-typecheck web-build web-test
 	node --test scripts/release-version.test.mjs
 
 verify-migrations: migrations-test
 	@mkdir -p .tmp/verify
-	$(GO) run ./apps/api/cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
-	$(GO) run ./apps/api/cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
+	$(GO) run ./cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
+	$(GO) run ./cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
 
 verify-config: config-test
 	@command -v docker >/dev/null 2>&1 && docker compose -f docker-compose.yml config -q \

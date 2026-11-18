@@ -14,12 +14,12 @@ import (
 func TestFrontendIsEmbedded(t *testing.T) {
 	root := repoRoot(t)
 
-	embedSource, err := os.ReadFile(filepath.Join(root, "apps", "api", "internal", "web", "embed.go"))
+	embedSource, err := os.ReadFile(filepath.Join(root, "internal", "web", "embed.go"))
 	if err != nil {
 		t.Fatalf("read embed.go: %v", err)
 	}
 	if !strings.Contains(string(embedSource), "//go:embed all:dist") {
-		t.Error("apps/api/internal/web/embed.go does not embed all:dist")
+		t.Error("internal/web/embed.go does not embed all:dist")
 	}
 
 	dockerfile, err := os.ReadFile(filepath.Join(root, "deploy", "docker", "api.Dockerfile"))
@@ -29,9 +29,9 @@ func TestFrontendIsEmbedded(t *testing.T) {
 	text := string(dockerfile)
 	for _, want := range []string{
 		"AS web",
-		"COPY apps/web ./",
+		"COPY web ./",
 		"npm run build",
-		"COPY --from=web /web/dist ./apps/api/internal/web/dist",
+		"COPY --from=web /web/dist ./internal/web/dist",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("api.Dockerfile is missing %q", want)

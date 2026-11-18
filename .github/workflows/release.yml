@@ -100,24 +100,24 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Build and stamp the release manifest
         run: |
           set -euo pipefail
-          cd apps/web
+          cd web
           npm ci --no-audit --no-fund
           npm run build
           cd ../..
           node scripts/stamp-version.mjs \
-            --dist apps/web/dist \
+            --dist web/dist \
             --version "${{ needs.version.outputs.version }}"
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v7.0.2
         with:
           name: web-dist
-          path: apps/web/dist/
+          path: web/dist/
           if-no-files-found: error
           retention-days: 3
 
@@ -242,7 +242,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: web-dist
-          path: apps/web/dist
+          path: web/dist
 
       - name: Build security service (x86_64 and aarch64)
         working-directory: services/security
@@ -341,7 +341,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: web-dist
-          path: apps/web/dist
+          path: web/dist
 
       - name: Build Windows package
         shell: pwsh
@@ -392,7 +392,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: web-dist
-          path: apps/web/dist
+          path: web/dist
 
       - name: Build security service (both architectures)
         working-directory: services/security

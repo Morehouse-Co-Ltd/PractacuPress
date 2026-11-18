@@ -175,13 +175,13 @@ $env:DATABASE_DRIVER='sqlite'; $env:DATABASE_DSN='file:./data/practacu.db'
 $env:SECURITY_GRPC_ADDR='127.0.0.1:9001'; $env:STORAGE_DIR='./data/media'
 $env:PP_DESKTOP='true'      # 首个注册账户成为平台管理员；服务器部署不要打开
 
-go run ./apps/api/cmd/seed -driver sqlite -dsn $env:DATABASE_DSN
-go run ./apps/api/cmd/migrate
-go run ./apps/api/cmd/server
+go run ./cmd/seed -driver sqlite -dsn $env:DATABASE_DSN
+go run ./cmd/migrate
+go run ./cmd/server
 ```
 
 ```powershell
-cd apps/web; npm install; npm run build; npm start   # http://localhost
+cd web; npm install; npm run build; npm start   # http://localhost
 ```
 
 ```powershell
@@ -196,7 +196,7 @@ powershell -ExecutionPolicy Bypass -File scripts\test.ps1   # go build + vet + t
 cd services/security; cargo test                            # Rust（需 MSVC 工具链）
 ```
 
-完整步骤、配置项与打包参数见 [根目录 README](../README.md) 与 [前端说明](../apps/web/README.md)。
+完整步骤、配置项与打包参数见 [根目录 README](../README.md) 与 [前端说明](../web/README.md)。
 
 ## 8. 现状与已知限制
 
@@ -233,18 +233,18 @@ cd services/security; cargo test                            # Rust（需 MSVC �
 ## 9. 目录结构
 
 ```text
-apps/api/           Go API
-  cmd/{server,migrate,seed}     进程入口与运维命令
-  ent/schema/                   持久化模型（Ent）
-  internal/
-    auth/ site/ content/        业务模块（domain + service + handler）
-    community/ messaging/ notifications/ moderation/ media/ search/
-    outbox/                     可靠事件与重试
-    platform/{config,logging,errors,page,mailer}/
-    infrastructure/             Ent 仓储、存储适配器、Rust gRPC 客户端
-    transport/{http/gin,ws}     HTTP 中间件与 WebSocket
-apps/web/           React 前台、管理后台与八步安装引导
-apps/launcher/      Windows 一键启动器（go:embed + 同源反代）
+cmd/{server,migrate,seed,backup,media-gc,searchindex}  进程入口与运维命令
+ent/schema/                   持久化模型（Ent）
+internal/
+  auth/ site/ content/        业务模块（domain + service + handler）
+  community/ messaging/ notifications/ moderation/ media/ search/
+  outbox/                     可靠事件与重试
+  platform/{config,logging,errors,page,mailer}/
+  infrastructure/             Ent 仓储、存储适配器、Rust gRPC 客户端
+  transport/{http/gin,ws}     HTTP 中间件与 WebSocket
+  web/                        内嵌 SPA 的 go:embed 与静态处理器
+web/           React 前台、管理后台与八步安装引导
+launcher/      Windows 一键启动器（go:embed + 同源反代）
 services/security/  Rust 安全服务（tonic）
 packages/contracts/ OpenAPI 3.1 与 protobuf，含生成代码
 docs/               设计稿、实施计划、评审报告、交付状态
@@ -254,7 +254,7 @@ scripts/            dev / test / gen / package
 ## 10. 文档与参与
 
 - [根目录 README](../README.md)——功能全景、启动、配置、已知限制
-- [前端说明](../apps/web/README.md)——路由、主题、页面编排、打包
+- [前端说明](../web/README.md)——路由、主题、页面编排、打包
 - [产品与技术设计](superpowers/specs/2026-10-18-practacu-press-design.md)
 - [计划评审与可行性](superpowers/reviews/2026-10-18-practacu-press-plan-review.md)
 - [当前实现与文档差异](superpowers/reports/2026-11-07-documentation-reality-check.md)
@@ -421,9 +421,9 @@ Prerequisites: Go 1.26+, Node.js 22+. Rust is optional — the API still starts 
 
 ```powershell
 # manual
-go run ./apps/api/cmd/seed -driver sqlite -dsn $env:DATABASE_DSN
-go run ./apps/api/cmd/server
-cd apps/web; npm install; npm run build; npm start
+go run ./cmd/seed -driver sqlite -dsn $env:DATABASE_DSN
+go run ./cmd/server
+cd web; npm install; npm run build; npm start
 
 # tests
 powershell -ExecutionPolicy Bypass -File scripts\test.ps1
@@ -433,7 +433,7 @@ cd services/security; cargo test
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-Full steps, configuration and packaging flags: [README](../README.md) and the [frontend guide](../apps/web/README.md).
+Full steps, configuration and packaging flags: [README](../README.md) and the [frontend guide](../web/README.md).
 
 ## License
 

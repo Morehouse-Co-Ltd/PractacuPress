@@ -21,7 +21,7 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 set +e
-node apps/web/e2e/harness.mjs
+node web/e2e/harness.mjs
 code=$?
 set -e
 

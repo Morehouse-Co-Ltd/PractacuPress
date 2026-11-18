@@ -178,17 +178,17 @@ function walk(target, list = []) {
 // ---- 1. 前端 --------------------------------------------------------------
 function buildWeb() {
   if (SKIP_WEB) {
-    if (!fs.existsSync(path.join(ROOT, 'apps', 'web', 'dist', 'index.html'))) {
-      fail('--skip-web 但 apps/web/dist 不存在；先运行 npm run build');
+    if (!fs.existsSync(path.join(ROOT, 'web', 'dist', 'index.html'))) {
+      fail('--skip-web 但 web/dist 不存在；先运行 npm run build');
     }
-    ok('复用 apps/web/dist');
+    ok('复用 web/dist');
     return;
   }
   log('构建前端');
   const temp = path.join(ROOT, '.tmp', 'eb');
   fs.mkdirSync(temp, { recursive: true });
   run(npmCommand(), ['run', 'build'], {
-    cwd: path.join(ROOT, 'apps', 'web'),
+    cwd: path.join(ROOT, 'web'),
     // Windows 上 esbuild 会写系统临时目录，项目里偶尔被 ACL 拦；指到工作区内更稳。
     env: { TMP: temp, TEMP: temp, TMPDIR: temp },
   });
@@ -198,14 +198,14 @@ function buildWeb() {
 function buildGo(binDir) {
   const go = goCommand();
   log(`构建 Go 二进制（linux/${ARCH}，纯静态，内嵌前端）`);
-  syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'apps', 'web', 'dist') });
+  syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
   const targets = [
-    { pkg: './apps/api/cmd/server', name: 'practacu-api' },
-    { pkg: './apps/api/cmd/migrate', name: 'practacu-migrate' },
-    { pkg: './apps/api/cmd/seed', name: 'practacu-seed' },
-    { pkg: './apps/api/cmd/backup', name: 'practacu-backup' },
-    { pkg: './apps/api/cmd/media-gc', name: 'practacu-media-gc' },
-    { pkg: './apps/api/cmd/searchindex', name: 'practacu-searchindex' },
+    { pkg: './cmd/server', name: 'practacu-api' },
+    { pkg: './cmd/migrate', name: 'practacu-migrate' },
+    { pkg: './cmd/seed', name: 'practacu-seed' },
+    { pkg: './cmd/backup', name: 'practacu-backup' },
+    { pkg: './cmd/media-gc', name: 'practacu-media-gc' },
+    { pkg: './cmd/searchindex', name: 'practacu-searchindex' },
   ];
   for (const target of targets) {
     const out = path.join(binDir, target.name);
@@ -272,7 +272,7 @@ function copySecurity(binDir) {
 // builds fall back to the frontend manifest plus the commit.
 function packageVersion() {
   if (RELEASE_VERSION) return RELEASE_VERSION;
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'apps', 'web', 'package.json'), 'utf8'));
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'web', 'package.json'), 'utf8'));
   const git = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
   const commit = git.status === 0 ? git.stdout.trim() : 'unknown';
   return `${pkg.version}+${commit}`;
@@ -315,8 +315,8 @@ function assemble(securityPresent) {
   rmrf(builtBin);
   fs.mkdirSync(builtBin, { recursive: true });
   // Stamp the source dist before embedding it: building the Go binary copies this
-  // tree into apps/api/internal/web/dist, and the package no longer ships web/.
-  stampWebVersion(path.join(ROOT, 'apps', 'web', 'dist'));
+  // tree into internal/web/dist, and the package no longer ships web/.
+  stampWebVersion(path.join(ROOT, 'web', 'dist'));
   buildGo(builtBin);
   const binaries = [
     'practacu-api',

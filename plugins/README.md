@@ -1,7 +1,7 @@
 # pp 插件 / 扩展源目录
 
 这个目录放扩展（插件）源码示例。可安装的扩展包由它打包而来；同样的目录结构也用于
-`apps/api/internal/plugins/testdata/hello/` 的宿主测试夹具。
+`internal/plugins/testdata/hello/` 的宿主测试夹具。
 
 ``` 
 <plugin-id>/

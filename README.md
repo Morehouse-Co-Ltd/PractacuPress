@@ -34,12 +34,12 @@
 
 ---
 
-**技术分层**：后端所有能力通过 REST（OpenAPI 3.1）与 WebSocket 暴露；`apps/web` 是按同一份契约实现的前台、管理后台与首次安装引导。
+**技术分层**：后端所有能力通过 REST（OpenAPI 3.1）与 WebSocket 暴露；`web` 是按同一份契约实现的前台、管理后台与首次安装引导。
 
-- **Go API**（`apps/api`）：身份、站点、内容、社区、媒体、通知、私信、事件补偿
+- **Go API**（`cmd/server` + `internal/`）：身份、站点、内容、社区、媒体、通知、私信、事件补偿
 - **Rust 安全服务**（`services/security`）：Argon2id 密码哈希、内容清洗、上传检查
 - **契约**（`packages/contracts`）：OpenAPI 3.1 与 protobuf
-- **React 前端**（`apps/web`）：站点前台、管理后台、八步安装引导（含高威胁操作保护与前后台字号设置）、邮箱或用户名登录（登录表单居中 + 主题背景）、主题库与页面编排（可按桌面 / 平板 / 手机独立编排，组件可设圆角、阴影、裁剪等外观，含按钮组件）、文章写作（可插思维导图 / 逻辑图 / 统计图 / 鱼骨图）、自定义页面、扩展系统（内置扩展 + 导入 zip：纯前端扩展与 Go/WASM 后端扩展；性能面板即内置扩展）、站点更新（显示名称 / 当前版本与仓库 version.json 对比 / 手动或自动检查 / GitHub 或镜像更新源下拉 / 手动切换构建且不停机）、访问限制、访问与域名（含 SSL 证书与访问端口）、性能设置与加载动画、性能面板（圆环显示本软件与其他软件的 CPU / 内存 / 磁盘占用，可选模块）
+- **React 前端**（`web`）：站点前台、管理后台、八步安装引导（含高威胁操作保护与前后台字号设置）、邮箱或用户名登录（登录表单居中 + 主题背景）、主题库与页面编排（可按桌面 / 平板 / 手机独立编排，组件可设圆角、阴影、裁剪等外观，含按钮组件）、文章写作（可插思维导图 / 逻辑图 / 统计图 / 鱼骨图）、自定义页面、扩展系统（内置扩展 + 导入 zip：纯前端扩展与 Go/WASM 后端扩展；性能面板即内置扩展）、站点更新（显示名称 / 当前版本与仓库 version.json 对比 / 手动或自动检查 / GitHub 或镜像更新源下拉 / 手动切换构建且不停机）、访问限制、访问与域名（含 SSL 证书与访问端口）、性能设置与加载动画、性能面板（圆环显示本软件与其他软件的 CPU / 内存 / 磁盘占用，可选模块）
 - **高威胁操作二次验证**：删除 / 编辑账户、重置两步验证、覆盖导入站点数据、删除敏感词与 IP 规则等操作，开启保护后必须再次输入密码。验证按**浏览器会话**生效：每打开一次浏览器，第一次高危操作需要验证；同一次浏览器会话内反复操作只验证一次（刷新页面不重复询问，关闭浏览器后重新验证）。安装引导第 5 步可开启保护并选择“账户登录密码”或另设专用安全密码（之后可在「站点设置 → 高威胁操作保护」修改）。
 
 ### 写作与阅读
@@ -57,7 +57,7 @@
 - **SEO**：标题模板、描述、关键词、canonical、Open Graph / Twitter、JSON-LD
   （WebSite、SearchAction、Article、BreadcrumbList、Person）、站长验证 meta、全站 noindex 开关，
   以及后台可下载的 `sitemap.xml` / `robots.txt`。边界见
-  [管理后台 → SEO](apps/web/src/pages/admin/Seo.tsx) 里的说明：标签由前端写入 `<head>`，
+  [管理后台 → SEO](web/src/pages/admin/Seo.tsx) 里的说明：标签由前端写入 `<head>`，
   不执行 JS 的社交抓取器只能看到 `index.html` 的默认值。
 - **主题**：后台「主题设置」把配色、排版与单栏/卡片/双栏版式作为一套「大主题」整体切换。
   内置原版（纸白单栏）、白昼（白底日报）与夜航（暖黑暗色双栏）；主题选择区可导入 / 导出
@@ -99,7 +99,7 @@
 
 实现上中文原文就是翻译键：`t('站点设置')` 在中文下原样返回，在英文下查字典。
 好处是中文输出逐字不变，改文案不需要同步维护两套键名。英文文案按**源文件**拆成
-`apps/web/src/lib/i18n/dict/fragments/*.ts` 片段，新增页面只需要加自己的片段。
+`web/src/lib/i18n/dict/fragments/*.ts` 片段，新增页面只需要加自己的片段。
 
 后端错误提示（Go 返回的中文 message）在英文界面下按 `problem.code` 翻译，
 未收录的错误码回退服务端原文，不会出现空白提示。
@@ -107,7 +107,7 @@
 自查与验收：
 
 ```powershell
-cd apps/web
+cd web
 npm run i18n:audit                 # 未迁移文案与覆盖率
 npx vitest run src/lib/i18n        # 缺译 / 英文含中文 / 占位符一致性
 npm run build
@@ -278,8 +278,8 @@ sudo apt-get install -y nodejs
 ```bash
 cd practacu-press                      # 仓库根目录（git clone 或解压后进入）
 
-# 1) 前端：构建一次，产物是 apps/web/dist 里的纯静态文件
-cd apps/web && npm ci && npm run build && cd ../..
+# 1) 前端：构建一次，产物是 web/dist 里的纯静态文件
+cd web && npm ci && npm run build && cd ../..
 
 # 2) Rust 安全服务（可选；跳过时下面别启动它）
 cd services/security && cargo build --release && cd ../..
@@ -306,7 +306,7 @@ mkdir -p data/media
 ```bash
 # 只做一次：建表 + 默认站点
 source ~/.practacu-env.sh
-go run ./apps/api/cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
+go run ./cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
 
 # 终端 A：Rust 安全服务（默认监听 127.0.0.1:9001）
 source ~/.practacu-env.sh
@@ -314,7 +314,7 @@ source ~/.practacu-env.sh
 
 # 终端 B：Go API（监听 127.0.0.1:8080）
 source ~/.practacu-env.sh
-go run ./apps/api/cmd/server
+go run ./cmd/server
 ```
 
 确认 API 就绪（两个都返回 200；`readyz` 会等安全服务连上）：
@@ -324,7 +324,7 @@ curl -fsS http://127.0.0.1:8080/healthz
 curl -fsS http://127.0.0.1:8080/readyz
 ```
 
-> 发布包与 Docker 镜像会自动把 `apps/web/dist` 同步进 `apps/api/internal/web/dist`
+> 发布包与 Docker 镜像会自动把 `web/dist` 同步进 `internal/web/dist`
 > 再编译，所以单个 API 进程同时提供前端与 `/api`。源码直接 `go run` 时默认只有
 > API；要本地验证单二进制形态，先执行 `make embed-web`（或
 > `node scripts/sync-web-embed.mjs`）再启动。
@@ -332,23 +332,20 @@ curl -fsS http://127.0.0.1:8080/readyz
 前端用开发服务器：它会把 `/api`、`/healthz`、`/readyz`、`/plugins` 代理到本机 8080。
 
 ```bash
-cd apps/web
+cd web
 npm run dev -- --port 5173
 ```
 
 打开 **http://127.0.0.1:5173/?mode=live** 走完八步安装引导；**引导里创建的第一个账户就是平台管理员**。
 （Vite 配置默认想监听 80，Linux 上非 root 绑不上会自动顺延，所以这里显式指定 5173。）
 
-> 单域名自托管、不用开发服务器时：用 Nginx 之类的反向代理托管 `apps/web/dist`，并把 `/api`、
-> `/healthz`、`/readyz`、`/plugins`、`/sitemap.xml`、`/robots.txt` 反代到 `127.0.0.1:8080`
-> （模板见 `deploy/production/nginx.conf` 与 [生产部署 profile](docs/deployment/production-profile.md)）。
-> `npm start` 只托管静态文件、自己不代理 API，默认端口也是 8080，会和 API 撞车——那种部署里不要跑它。
+> 单域名自托管、不用开发服务器时：先 `make embed-web` 把前端编进 API，再用 Nginx 之类的反向代理把 `/` 与 `/api` 都转到 API 端口（模板见 `deploy/production/nginx.conf` 与 [生产部署 profile](docs/deployment/production-profile.md)）。`npm start` 只托管静态文件、自己不代理 API，默认端口也是 8080，会和 API 撞车——那种部署里不要跑它。
 
 ### Windows 启动器
 
 在仓库根目录运行 **`启动.bat`**（或双击）：
 
-- 首次运行会在缺少 `apps/web/node_modules` 时自动执行 `npm install`；
+- 首次运行会在缺少 `web/node_modules` 时自动执行 `npm install`；
 - 在独立窗口启动 Go API、SQLite、可用时启动 Rust 安全服务；
 - 在独立窗口启动 Vite 前端（`http://127.0.0.1:5173`，自动代理 `/api` 到 8080）；
 - 浏览器打开 `http://127.0.0.1:5173/?mode=live`：已有真实安装会直接进入站点，否则进入
@@ -395,9 +392,9 @@ $env:SECURITY_GRPC_ADDR='127.0.0.1:9001'; $env:STORAGE_DIR='./data/media'
 # 本地单站点安装：首个注册账户成为平台管理员；服务器部署不要打开这一项。
 $env:PP_DESKTOP='true'
 
-go run ./apps/api/cmd/seed  -driver sqlite -dsn $env:DATABASE_DSN
-go run ./apps/api/cmd/migrate                      # 只建表，不建站点
-go run ./apps/api/cmd/server
+go run ./cmd/seed  -driver sqlite -dsn $env:DATABASE_DSN
+go run ./cmd/migrate                      # 只建表，不建站点
+go run ./cmd/server
 ```
 
 Rust 侧：
@@ -410,7 +407,7 @@ rustup run stable-x86_64-pc-windows-msvc cargo run --release
 ### 前端
 
 ```powershell
-cd apps/web
+cd web
 npm install
 npm run build
 npm start
@@ -423,7 +420,7 @@ npm start
 `-- --port 5173`。也可以把静态站交给 Nginx 反代（见上面的 Linux 源码运行）。
 
 首次打开会进入安装引导；没有后端时可选「演示数据」直接体验完整前台与后台。
-细节见[前端说明](apps/web/README.md)。
+细节见[前端说明](web/README.md)。
 
 ### Windows 一键启动包（一键打包）
 
@@ -434,7 +431,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 打包脚本会检查工具链，然后自动完成整套流程：
 
-1. 构建前端（`apps/web`，缺少 `node_modules` 时自动 `npm ci`）；
+1. 构建前端（`web`，缺少 `node_modules` 时自动 `npm ci`）；
 2. 编译 Rust 安全服务（`services/security`，release）；
 3. 把前端产物同步进启动器的 `go:embed` 目录；
 4. 编译 Go 启动器与 Go API（Windows 目标架构：x64 或 arm64，纯 Go）；
@@ -520,17 +517,18 @@ Invoke-RestMethod http://127.0.0.1:8080/api/v1/articles -Method Post `
 ## 目录结构
 
 ```
-apps/api/
-  cmd/{server,migrate,seed}        进程入口与运维命令
-  ent/schema/                      持久化模型（Ent）
-  internal/
-    auth/ site/ content/           业务模块（domain + service + handler）
-    community/ messaging/ notifications/ moderation/ media/
-    outbox/                        可靠事件与重试
-    platform/{config,logging,errors,page}
-    infrastructure/                Ent 仓储、存储适配器、Rust gRPC 客户端
-    transport/{http/gin,ws}        HTTP 中间件与 WebSocket
-apps/web/                          React 前台、管理后台与安装引导
+cmd/{server,migrate,seed,backup,media-gc,searchindex}  进程入口与运维命令
+ent/schema/                      持久化模型（Ent）
+internal/
+  auth/ site/ content/           业务模块（domain + service + handler）
+  community/ messaging/ notifications/ moderation/ media/
+  outbox/                        可靠事件与重试
+  platform/{config,logging,errors,page}
+  infrastructure/                Ent 仓储、存储适配器、Rust gRPC 客户端
+  transport/{http/gin,ws}        HTTP 中间件与 WebSocket
+  web/                           内嵌 SPA 的 go:embed 与静态文件处理器
+web/                          React 前台、管理后台与安装引导
+launcher/                     Windows 一键启动器（独立 Go module，go:embed）
 services/security/                 Rust 安全服务（tonic）
 packages/contracts/                OpenAPI 与 protobuf（生成代码也在这里）
 docs/superpowers/                  设计稿、实施计划、评审报告、交付状态
@@ -554,7 +552,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 # 报告与截图：.tmp\e2e\artifacts\
 ```
 
-前置：Chrome（默认 `PP_E2E_CHANNEL=chrome`）、`apps/web` 已 `npm install`、
+前置：Chrome（默认 `PP_E2E_CHANNEL=chrome`）、`web` 已 `npm install`、
 Rust 安全服务已 `cargo build --release`。细节见 [tests/README.md](tests/README.md)；
 CI 里是独立的可选工作流 `.github/workflows/e2e.yml`，不阻塞基础 CI。
 
@@ -571,7 +569,7 @@ S3 适配器默认跳过，需要真实端点（MinIO / moto / AWS）：
 python -m moto.server -p 9100
 $env:S3_TEST_ENDPOINT='http://127.0.0.1:9100'
 $env:AWS_ACCESS_KEY_ID='test'; $env:AWS_SECRET_ACCESS_KEY='testsecret'
-go test ./apps/api/internal/media/ -run TestS3 -v
+go test ./internal/media/ -run TestS3 -v
 ```
 
 ---

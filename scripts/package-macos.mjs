@@ -111,11 +111,11 @@ function securityBinary() {
 
 function main() {
   if (!SKIP_WEB) {
-    run('npm', ['run', 'build'], { cwd: path.join(ROOT, 'apps', 'web') });
-  } else if (!fs.existsSync(path.join(ROOT, 'apps', 'web', 'dist', 'index.html'))) {
-    fail('--skip-web 但 apps/web/dist 不存在');
+    run('npm', ['run', 'build'], { cwd: path.join(ROOT, 'web') });
+  } else if (!fs.existsSync(path.join(ROOT, 'web', 'dist', 'index.html'))) {
+    fail('--skip-web 但 web/dist 不存在');
   }
-  stampWebVersion(path.join(ROOT, 'apps', 'web', 'dist'));
+  stampWebVersion(path.join(ROOT, 'web', 'dist'));
 
   rmrf(STAGE_ROOT);
   fs.mkdirSync(PACKAGE, { recursive: true });
@@ -127,15 +127,15 @@ function main() {
 
   const binDir = path.join(PACKAGE, 'bin');
   fs.mkdirSync(binDir, { recursive: true });
-  syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'apps', 'web', 'dist') });
+  syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
   const go = goCommand();
   const targets = [
-    { pkg: './apps/api/cmd/server', name: 'practacu-api' },
-    { pkg: './apps/api/cmd/migrate', name: 'practacu-migrate' },
-    { pkg: './apps/api/cmd/seed', name: 'practacu-seed' },
-    { pkg: './apps/api/cmd/backup', name: 'practacu-backup' },
-    { pkg: './apps/api/cmd/media-gc', name: 'practacu-media-gc' },
-    { pkg: './apps/api/cmd/searchindex', name: 'practacu-searchindex' },
+    { pkg: './cmd/server', name: 'practacu-api' },
+    { pkg: './cmd/migrate', name: 'practacu-migrate' },
+    { pkg: './cmd/seed', name: 'practacu-seed' },
+    { pkg: './cmd/backup', name: 'practacu-backup' },
+    { pkg: './cmd/media-gc', name: 'practacu-media-gc' },
+    { pkg: './cmd/searchindex', name: 'practacu-searchindex' },
   ];
   for (const target of targets) {
     const out = path.join(binDir, target.name);

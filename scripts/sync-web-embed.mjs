@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Copy apps/web/dist into apps/api/internal/web/dist so a plain `go build`
+ * Copy web/dist into internal/web/dist so a plain `go build`
  * includes the SPA. Release/package scripts call the same helper automatically.
  *
  *   node scripts/sync-web-embed.mjs
@@ -12,7 +12,7 @@ import { syncEmbeddedWeb } from './lib/embed-web.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const index = process.argv.indexOf('--dist');
-const dist = index >= 0 ? process.argv[index + 1] : path.join(root, 'apps', 'web', 'dist');
+const dist = index >= 0 ? process.argv[index + 1] : path.join(root, 'web', 'dist');
 
 try {
   const target = syncEmbeddedWeb({ root, dist });

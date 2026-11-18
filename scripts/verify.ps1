@@ -80,10 +80,10 @@ function Invoke-GoTask {
 }
 
 function Invoke-LauncherTask {
-    # apps/launcher is a separate Go module (its own go.mod), so the root
+    # launcher is a separate Go module (its own go.mod), so the root
     # `go build ./...` never compiles or tests it. Packaging builds it, which is
     # why a broken launcher used to pass every local gate.
-    Push-Location (Join-Path $root 'apps\launcher')
+    Push-Location (Join-Path $root 'launcher')
     try {
         Write-Step 'launcher: go build ./...'
         Invoke-Go @('build', './...')
@@ -107,17 +107,17 @@ function Invoke-WebTask {
     $installMode = $env:PP_WEB_INSTALL
     if (-not $installMode) { $installMode = 'auto' }
 
-    Push-Location (Join-Path $root 'apps\web')
+    Push-Location (Join-Path $root 'web')
     try {
         if ($installMode -eq 'ci' -or ($installMode -eq 'auto' -and -not (Test-Path 'node_modules'))) {
-            Write-Step 'npm ci (apps/web)'
+            Write-Step 'npm ci (web)'
             Invoke-Native $npm @('ci', '--no-audit', '--no-fund')
         }
         elseif ($installMode -eq 'skip') {
             Write-Step 'npm install skipped by PP_WEB_INSTALL=skip'
         }
         else {
-            Write-Step 'using existing apps/web/node_modules'
+            Write-Step 'using existing web/node_modules'
         }
 
         Write-Step 'npm run typecheck'
@@ -143,9 +143,9 @@ function Invoke-MigrateTwice {
         [string]$Dsn
     )
     Write-Step "cmd/migrate $Dialect (first run)"
-    Invoke-Go @('run', './apps/api/cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
+    Invoke-Go @('run', './cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
     Write-Step "cmd/migrate $Dialect (second run, must be idempotent)"
-    Invoke-Go @('run', './apps/api/cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
+    Invoke-Go @('run', './cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
 }
 
 function Invoke-MigrationsTask {

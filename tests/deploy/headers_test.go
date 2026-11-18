@@ -48,11 +48,11 @@ func repoRoot(t *testing.T) string {
 // launcher-only drift stayed green.
 func TestTemplatesAllowTheEditorsOwnFrames(t *testing.T) {
 	root := repoRoot(t)
-	launcherPolicy, err := launcherCSP(filepath.Join(root, "apps", "launcher", "main.go"))
+	launcherPolicy, err := launcherCSP(filepath.Join(root, "launcher", "main.go"))
 	if err != nil {
 		t.Fatalf("read launcher policy: %v", err)
 	}
-	apiPolicy, err := apiCSP(filepath.Join(root, "apps", "api", "internal", "transport", "http", "gin", "middleware", "security_headers.go"))
+	apiPolicy, err := apiCSP(filepath.Join(root, "internal", "transport", "http", "gin", "middleware", "security_headers.go"))
 	if err != nil {
 		t.Fatalf("read API policy: %v", err)
 	}
@@ -65,8 +65,8 @@ func TestTemplatesAllowTheEditorsOwnFrames(t *testing.T) {
 		file   string
 		policy string
 	}{
-		{file: "apps/launcher/main.go", policy: launcherPolicy},
-		{file: "apps/api/internal/transport/http/gin/middleware/security_headers.go", policy: apiPolicy},
+		{file: "launcher/main.go", policy: launcherPolicy},
+		{file: "internal/transport/http/gin/middleware/security_headers.go", policy: apiPolicy},
 	}
 
 	for _, template := range templates {

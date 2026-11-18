@@ -21,17 +21,17 @@ if (-not (Test-Path $go)) { $go = 'go' }
 
 $scratch = Join-Path $env:TEMP 'pp-entgen'
 if (Test-Path $scratch) { Remove-Item $scratch -Recurse -Force }
-New-Item -ItemType Directory -Force -Path (Join-Path $scratch 'apps\api\ent') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $scratch 'ent') | Out-Null
 
 Copy-Item (Join-Path $repo 'go.mod') $scratch -Force
 Copy-Item (Join-Path $repo 'go.sum') $scratch -Force
-Copy-Item (Join-Path $repo 'apps\api\ent\schema') (Join-Path $scratch 'apps\api\ent') -Recurse -Force
-Copy-Item (Join-Path $repo 'apps\api\ent\generate.go') (Join-Path $scratch 'apps\api\ent') -Force
+Copy-Item (Join-Path $repo 'ent\schema') (Join-Path $scratch 'ent') -Recurse -Force
+Copy-Item (Join-Path $repo 'ent\generate.go') (Join-Path $scratch 'ent') -Force
 
 Push-Location $scratch
 try {
     Write-Host '> ent generate (scratch module)'
-    & $go generate ./apps/api/ent/...
+    & $go generate ./ent/...
     if ($LASTEXITCODE -ne 0) { throw "ent generate failed with exit code $LASTEXITCODE" }
 } finally {
     Pop-Location
@@ -39,8 +39,8 @@ try {
 
 # Copy the finished tree in, excluding the hand written schema package and the
 # generator stub, which must stay exactly as they are.
-$source = Join-Path $scratch 'apps\api\ent'
-$target = Join-Path $repo 'apps\api\ent'
+$source = Join-Path $scratch 'ent'
+$target = Join-Path $repo 'ent'
 
 $copied = 0
 Get-ChildItem $source -Recurse -File | ForEach-Object {

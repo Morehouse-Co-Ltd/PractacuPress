@@ -218,8 +218,8 @@ func TestWebJob(t *testing.T) {
 			if scalar(lookup(with, "cache")) != "npm" {
 				t.Error("setup-node must cache npm")
 			}
-			if !strings.Contains(scalar(lookup(with, "cache-dependency-path")), "apps/web/package-lock.json") {
-				t.Error("setup-node cache-dependency-path must point at apps/web/package-lock.json")
+			if !strings.Contains(scalar(lookup(with, "cache-dependency-path")), "web/package-lock.json") {
+				t.Error("setup-node cache-dependency-path must point at web/package-lock.json")
 			}
 			hasNodeSetup = true
 		}
