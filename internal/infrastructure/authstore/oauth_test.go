@@ -20,8 +20,8 @@ import (
 	"github.com/practacu/practacu-press/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/internal/site"
 
-	"github.com/practacu/practacu-press/ent/sitemember"
-	"github.com/practacu/practacu-press/ent/useridentity"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
+	"github.com/practacu/practacu-press/internal/ent/useridentity"
 )
 
 // oauthHarness wires the real Ent store and the real state store to a throwaway
@@ -76,7 +76,7 @@ func applyOAuthStateMigration(t *testing.T, pool *sql.DB) {
 	path := filepath.Join(
 		filepath.Dir(file),
 		"..", "..", "..",
-		"migrations", "sqlite", "20261118000000_oauth_state.up.sql",
+		"internal", "migrations", "sqlite", "20261118000000_oauth_state.up.sql",
 	)
 	script, err := os.ReadFile(path)
 	require.NoError(t, err, "the oauth_states migration must exist")

@@ -14,7 +14,7 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/config"
 	"github.com/practacu/practacu-press/internal/platform/fieldcrypto"
 
-	"github.com/practacu/practacu-press/ent/useridentity"
+	"github.com/practacu/practacu-press/internal/ent/useridentity"
 )
 
 func testCipher(t *testing.T) *fieldcrypto.Cipher {

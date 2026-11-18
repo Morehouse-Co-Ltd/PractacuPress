@@ -6,9 +6,9 @@ import (
 
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/permissiongroup"
-	"github.com/practacu/practacu-press/ent/sitemember"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/permissiongroup"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
 )
 
 // ListPermissionGroups returns the capability groups of a site.

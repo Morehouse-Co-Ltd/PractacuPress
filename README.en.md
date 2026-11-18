@@ -8,14 +8,14 @@
 
 > **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
 > A Go API with in-process security checks, and a React frontend plus admin — all aligned by one
-> OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, launcher and
-> container installs share the same configuration.
+> OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, portable
+> package and container installs share the same configuration.
 
 ## Why Practacu Press
 
 | | |
 | --- | --- |
-| **Small footprint** | The Windows launcher is 8.3 MB and **embeds the entire frontend**; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The default container deployment is one image: the API with the frontend and security checks embedded. |
+| **Small footprint** | The single API binary **embeds the entire frontend**; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The default container deployment is one image: the API with the frontend and security checks embedded. |
 | **Fast** | Requests pass through exactly one layer (Gin); Ent-generated code talks straight to `database/sql`; the pool and SQLite's WAL / busy_timeout are configured by the server itself. The frontend is a static single-page app with **no Node at runtime** and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets, while first-screen request coalescing and media lazy-loading are configurable in the admin. |
 | **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API with embedded frontend and in-process security) in one command. Backup means copying the `data/` directory. |
 | **Easy to make your own** | 3 built-in themes + 8 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 124 paths / 148 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
@@ -28,7 +28,7 @@
 - **Security**: Argon2id, HTML allow-list sanitization and upload inspection run in the API process; failures fail closed by design. The local authorized security audit report is in [`docs/security/2026-11-14-security-audit.md`](docs/security/2026-11-14-security-audit.md)
 - **Multi-site**: single-site out of the box; isolate content, members, themes, review rules and permissions per site when you need to
 
-**Platform and license**: Windows / Linux, via source, the Windows launcher or Docker Compose; SQLite, MySQL and PostgreSQL are supported.
+**Platform and license**: Windows / Linux, via source, the Windows portable package or Docker Compose; SQLite, MySQL and PostgreSQL are supported.
 **AGPL-3.0** — commercial use is fine, but modified versions and network services must stay open source with the attribution preserved.
 
 A longer introduction (architecture, stack, engineering trade-offs, current status and limitations) is in **[docs/introduction.md](docs/introduction.md#english)**.
@@ -39,7 +39,7 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 
 - **Go API** (`cmd/server` + `internal/`): identity, sites, content, community, media, notifications, direct messages, event catch-up
 - **Built-in security** (`internal/security`): Argon2id password hashing, content sanitization, upload inspection
-- **Contract** (`packages/contracts`): OpenAPI 3.1 and protobuf
+- **Contract** (`internal/packages/contracts`): OpenAPI 3.1
 - **React frontend** (`web`): site frontend, admin console, seven-step setup wizard (including high-risk action protection), email-or-username sign-in (centered form over a themed background), theme library and page composition (independently per desktop / tablet / phone, with per-block corner radius, shadow and crop plus a button block), article writing (mind maps / logic charts / statistical charts / fishbone diagrams), custom pages, extension system (built-in extensions plus zip import: browser-only extensions and Go/WASM backend extensions; the performance panel is itself a built-in extension), site updates (display name / current version compared with the repository version.json / manual or automatic checks / GitHub or mirror update-source dropdown / manual build switching with no downtime), access limits, domains and SSL certificates plus the served port, performance settings and loading animations, and a performance panel with ring gauges for this app's and other processes' CPU / memory / disk use
 - **High-risk action re-authentication**: deleting or editing accounts, resetting two-factor authentication, overwriting a site import, and deleting sensitive words / IP rules ask for the password again once protection is on. Verification follows the **browser session**: the first high-risk action after opening the browser asks for the password, repeated actions in the same session verify once (page refreshes do not ask again; closing the browser clears it). The fifth setup step enables it and lets you use the account password or a dedicated security password (changeable later in Site settings → High-risk action protection).
 
@@ -57,7 +57,7 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 
 ## Installation
 
-Three ways in: **Docker** (recommended for Linux and servers), the **Windows launcher** (least work on a desktop), and **from source** (any platform; Go 1.26+ and Node.js 22+ for the frontend, security checks are compiled into the API).
+Three ways in: **Docker** (recommended for Linux and servers), the **Windows portable package** (least work on a desktop), and **from source** (any platform; Go 1.26+ and Node.js 22+ for the frontend, security checks are compiled into the API).
 
 ### Docker (Linux / servers)
 
@@ -124,7 +124,7 @@ Open **http://localhost:8080** and complete the seven-step wizard; **the first a
 - **What runs**: `api` (one Go binary with the embedded SPA and security checks, serving `/api`, static assets and the SPA fallback). Only `api` is published to the host; there is no separate web/Nginx or security container.
 - **Loopback by default**: the mapping is `127.0.0.1:8080:8080`, so an unfinished install cannot be claimed by the public internet. After setup, use `.env.prod` plus a host TLS proxy; do not expose an unfinished instance on `0.0.0.0:8080`.
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
-- **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows launcher (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
+- **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows package (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
 - **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`; the image also ships `backup`, `media-gc` and `searchindex`.
 - **Production deployment**: the same `docker-compose.yml` with `--env-file .env.prod` provides production semantics, a persistent JWT signing key and Secure cookies; `deploy/production/nginx.conf` handles TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [docs/deployment/production-profile.md](docs/deployment/production-profile.md).
 - **Build one image**: `docker build -f deploy/docker/api.Dockerfile .`.
@@ -292,16 +292,15 @@ cannot bind, so 5173 is passed explicitly.)
 > `npm start` only serves static files and does not proxy the API, and its default port (8080) collides with
 > the API — do not run it in that setup.
 
-### Windows launcher
+### Windows local start
 
 Run **`启动.bat`** in the repository root (or double-click it):
 
 - on first run it executes `npm install` automatically when `web/node_modules` is missing;
 - it starts the Go API and SQLite in a dedicated window;
 - it starts the Vite frontend in a dedicated window (`http://127.0.0.1:5173`, proxying `/api` to 8080);
-- the browser opens `http://127.0.0.1:5173/?mode=live`: an existing real installation goes straight into the site, otherwise you enter the **real environment** setup wizard with 8080 auto-detected — it will not silently fall back to demo data;
-- one-click start runs the API in desktop mode: the first account created in the wizard is the platform administrator. If an old database has members but no administrator, startup promotes the earliest active member so the installation can be completed;
-- the browser opens automatically once everything is ready;
+- the browser opens `http://127.0.0.1:5173/?mode=live`: an existing real installation goes straight into the site, otherwise you enter the **real environment** setup wizard with 8080 auto-detected;
+- the API runs in desktop mode: the first account created in the wizard is the platform administrator;
 - if the API or the frontend is already running, they are reused rather than started twice on the same port.
 
 To check the environment without starting anything:
@@ -357,7 +356,7 @@ npm start
 
 The first visit opens the setup wizard; with no backend you can choose demo data to explore the complete frontend and admin console. Details in the [frontend guide](web/README.md).
 
-### Windows one-click package
+### Windows portable package
 
 ```powershell
 # Double-click 打包.bat in the repository root, or:
@@ -367,53 +366,36 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 The packaging script checks the toolchain and then runs the whole pipeline:
 
 1. build the frontend (`web`, running `npm ci` automatically when `node_modules` is missing);
-2. compile the security checks and frontend into the Go API;
-3. sync the frontend output into the launcher's `go:embed` directory;
-4. compile the Go launcher and the Go API (Windows target architecture: x64 or arm64, pure Go);
-5. assemble a clean distribution directory and **actually boot the artifact on a temporary port to self-test it**:
-   static site and SPA fallback, `/__pp/runtime`, `/api/healthz`, `/api/readyz`, registration, article creation
-   (verifying that the built-in sanitizer strips `<script>`) and publishing;
-6. compress to zip and sync `release/PractacuPress` (preserving any existing `data/` and
-   `practacu-web.json`).
+2. sync it into `internal/web/dist` and compile the Windows API (x64 or arm64, pure Go);
+3. assemble `.env`, `启动.cmd`, `data/`, `VERSION` and `README.txt`;
+4. **actually boot the artifact on a temporary port to self-test it**: home page, SPA fallback,
+   `/api/healthz`, `/api/readyz`, registration, article creation (verifying that the built-in sanitizer
+   strips `<script>`) and publishing;
+5. compress to zip and sync `release/PractacuPress` (preserving any existing `data/` and `.env`).
 
 Any failing step stops immediately and prints the reason; a failing self-test never produces a new package.
 
 Artifacts:
 
-- `release/PractacuPress/PractacuPress.exe`: the native launcher, double-click to run, **no Node installation required**;
-- `release/PractacuPress/PractacuPressAPI.exe`: the Go API, started by the launcher in real-environment mode;
-
-- `release/PractacuPress-Windows-<x64|arm64>.zip` (plus a matching `.sha256`): the whole folder zipped —
-  unzip and double-click the exe. The archive contains only the binaries, `VERSION` and `README.txt`,
-  never the development machine's `data/`.
+- `release/PractacuPress/PractacuPressAPI.exe`: one Go binary with the site, admin console, setup wizard and security checks embedded;
+- `release/PractacuPress/启动.cmd`: starts it and opens `http://127.0.0.1:8080`;
+- `release/PractacuPress-Windows-<x64|arm64>.zip` (plus a matching `.sha256`): the whole folder zipped.
 
 Common `scripts/package.ps1` parameters:
 
 | Parameter | Meaning |
 | --- | --- |
 | `-Arch amd64\|arm64` | Target architecture (defaults to the current machine; arm64 is built natively on a Windows arm64 runner) |
-
-| `-SkipSmoke` | Skip the post-packaging self-test (not recommended; the self-test is what keeps existing behaviour intact) |
+| `-SkipSmoke` | Skip the post-packaging self-test (not recommended) |
 | `-NoZip` | Only produce the `release/PractacuPress` directory |
 | `-ReleaseDir <dir>` | Use a different output directory |
 | `-Port <port>` | Pin the self-test port (a free port is chosen automatically by default) |
 
 CI can call the underlying script directly (same pipeline):
 `node scripts\package-windows.mjs --arch amd64|arm64 [--skip-smoke] [--no-zip] [--release-dir <dir>]`.
-The launcher serves the site on port 8080 by default and opens the browser; if 8080 is taken it tries 8081 and 8082, then falls back to the standard HTTP port 80, and shows the actual address in its window. Changing Admin → Site settings → Access & domains → Port writes to `practacu-web.json` next to the exe, and the next start reuses it. The site only listens on the loopback address, closing the window stops it, and the API it started exits with it.
 
-Both setup-wizard modes work out of the box:
-
-- **Demo data**: writes only to the browser's `localStorage`, no service required;
-- **Real environment**: the launcher already runs the API behind the same origin and the wizard connects automatically, with no address to type. The database is `data/practacu.db` next to the exe (pure-Go SQLite); the first start creates the tables and the default site, and the first account created in the wizard is the platform administrator. `/api`, `/api/healthz` and `/api/readyz` are reverse-proxied to the local API by the launcher, so there is no cross-origin configuration and cookies and WebSocket are treated as same-origin.
-
-> The launcher serves over **http**. Absolute links such as notification mail and third
-> party login callbacks assume https when `PUBLIC_BASE_URL` is unset, so set it in the
-> launcher environment before starting: `PUBLIC_BASE_URL=http://127.0.0.1:<port>` (use
-> the actual address shown in the window). The last setup-wizard step shows the exact
-> line. Password reset links fall back to the current request origin.
-
-Real-environment data all lives in `data/`: `practacu.db`, `media/`, `api.log`, `api.err.log` — close the window and copy the folder to back it up. When the exe directory is not writable it falls back to `%LOCALAPPDATA%\PractacuPress\data`. To force a frontend-only session, run `PractacuPress.exe --mode demo`.
+After unzipping, double-click `启动.cmd` (or run `PractacuPressAPI.exe` in that directory) and open
+`http://127.0.0.1:8080`. The database, media and backups live in `data/` next to it.
 
 ---
 
@@ -443,7 +425,7 @@ Public sites are readable without authentication: `Invoke-RestMethod http://127.
 
 ```
 cmd/{server,migrate,seed,backup,media-gc,searchindex}  process entry points and ops commands
-ent/schema/                      persistence models (Ent)
+internal/ent/schema/             persistence models (Ent)
 internal/
   auth/ site/ content/           feature modules (domain + service + handler)
   community/ messaging/ notifications/ moderation/ media/
@@ -452,10 +434,12 @@ internal/
   infrastructure/                Ent repositories, storage adapters, securityclient
   transport/{http/gin,ws}        HTTP middleware and WebSocket
   web/                           go:embed SPA and static handler
+  security/                      password hashing, content sanitization, upload inspection
+  packages/contracts/            OpenAPI contract
+  migrations/                    reviewed SQL change sets
+  tests/                         CI / deploy / migration checks
+  plugins/                       plugin host and examples
 web/                          React frontend, admin console and setup wizard
-launcher/                     Windows launcher (separate Go module, go:embed)
-internal/security/                  password hashing, content sanitization, upload inspection
-packages/contracts/                OpenAPI and protobuf (generated code lives here too)
 docs/superpowers/                  design specs, implementation plans, reviews, delivery status
 scripts/                           dev / test / gen scripts
 ```
@@ -509,8 +493,8 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 
 > **When `PUBLIC_BASE_URL` is unset the server assumes https wherever no request
 > context exists.** Third party login callbacks are built from the site domain as
-> `https://`, and notification mail depends on it for its in-site link. A desktop
-> launcher, a local `http://localhost` site or any other http deployment must set it
+> `https://`, and notification mail depends on it for its in-site link. A desktop mode,
+> a local `http://localhost` site or any other http deployment must set it
 > explicitly, for example `PUBLIC_BASE_URL=http://127.0.0.1:80` (use the site's real
 > port); otherwise those links point at an https address that does not exist. The API
 > logs a warning at startup, and the last setup-wizard step shows the exact line to
@@ -525,7 +509,7 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | MySQL / PostgreSQL | No dialect dependency in the code, but **neither database is available on this machine, so it is unverified in practice** — needs a CI matrix |
 | Docker | Ships a single-image `docker-compose.yml` (API with embedded frontend and security checks); the image and compose stack have been built and run for real (health, auth, upload, backup), while the host TLS proxy remains untested |
 | Linux package | Ships `PractacuPress-Linux-{x64,arm64}.tar.gz` plus `.deb`/`.rpm` for both architectures (prebuilt binaries + `install.sh` wizard + systemd/Nginx templates); cross-compilation and package contents are checked, but **the installer has not been run on a real Linux host** (bash syntax, rendered templates and `nginx -t` pass) |
-| Windows installer (MSI) | Not implemented; Windows ships as a launcher plus a zip |
+| Windows installer (MSI) | Not implemented; Windows ships as an API zip |
 | Multi-replica WebSocket | Tickets and the hub live in process memory; multiple replicas need shared storage |
 | Rate limiting | In-process fixed window, counted per replica; real DDoS/CC protection needs a reverse proxy or edge WAF |
 | Browser-side access limits | Only constrain visitors using this site's scripts; IP-level request/concurrency limits are enforced by Nginx/Cloudflare, the admin only generates snippets |

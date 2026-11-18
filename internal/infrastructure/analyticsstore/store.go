@@ -9,8 +9,8 @@ import (
 
 	"github.com/practacu/practacu-press/internal/analytics"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/pageview"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/pageview"
 )
 
 // Store is the Ent backed implementation of analytics.Repository.

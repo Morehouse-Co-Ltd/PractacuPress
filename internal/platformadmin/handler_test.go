@@ -26,9 +26,9 @@ import (
 	ginrouter "github.com/practacu/practacu-press/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/middleware"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	"github.com/practacu/practacu-press/ent/sitecustomization"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	"github.com/practacu/practacu-press/internal/ent/sitecustomization"
 )
 
 // dynamicTXT answers the challenge the way a correctly configured DNS zone would:

@@ -13,7 +13,7 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/identitycrypto"
 	"github.com/practacu/practacu-press/internal/site"
 
-	"github.com/practacu/practacu-press/ent/useridentity"
+	"github.com/practacu/practacu-press/internal/ent/useridentity"
 )
 
 func sealedStoreSetup(t *testing.T) (*sitestore.Store, *db.DB, *fieldcrypto.Cipher) {

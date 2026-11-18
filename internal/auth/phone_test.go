@@ -26,7 +26,7 @@ import (
 	apperr "github.com/practacu/practacu-press/internal/platform/errors"
 	"github.com/practacu/practacu-press/internal/platform/sms"
 
-	entuseridentity "github.com/practacu/practacu-press/ent/useridentity"
+	entuseridentity "github.com/practacu/practacu-press/internal/ent/useridentity"
 )
 
 // Phone code login tests (contract A).

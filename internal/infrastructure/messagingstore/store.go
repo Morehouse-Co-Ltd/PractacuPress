@@ -12,10 +12,10 @@ import (
 	"github.com/practacu/practacu-press/internal/messaging"
 	"github.com/practacu/practacu-press/internal/platform/fieldcrypto"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/conversation"
-	"github.com/practacu/practacu-press/ent/conversationmember"
-	"github.com/practacu/practacu-press/ent/message"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/conversation"
+	"github.com/practacu/practacu-press/internal/ent/conversationmember"
+	"github.com/practacu/practacu-press/internal/ent/message"
 )
 
 // Store is the Ent backed messaging repository.

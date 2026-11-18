@@ -43,29 +43,6 @@ run_go() {
   "$go_bin" "${test_args[@]}"
 }
 
-# launcher is a separate module and only builds on Windows (its process and
-# console helpers are windows-only). Git Bash on Windows can run it; Linux skips.
-run_launcher() {
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) ;;
-    *) log "launcher: Windows-only module, skipped on $(uname -s)"; return ;;
-  esac
-  (
-    cd launcher
-    log "launcher go build ./..."
-    "$go_bin" build ./...
-    log "launcher go vet ./..."
-    "$go_bin" vet ./...
-    local test_args=(test)
-    if [[ "${PP_TEST_RACE:-0}" == "1" ]]; then
-      test_args+=(-race)
-    fi
-    test_args+=(-count=1 "./...")
-    log "launcher go ${test_args[*]}"
-    "$go_bin" "${test_args[@]}"
-  )
-}
-
 run_web() {
   local install_mode="${PP_WEB_INSTALL:-auto}"
   (
@@ -104,7 +81,7 @@ run_migrate_twice() {
 run_migrations() {
   log "reviewed migration pairs and SQL up/down round trip"
   # SQLite always runs; MySQL/PostgreSQL run when their DSNs are exported.
-  "$go_bin" test -v -count=1 ./tests/migrations/...
+  "$go_bin" test -v -count=1 ./internal/tests/migrations/...
 
   local tmp="${PP_VERIFY_TMP_DIR:-.tmp/verify}"
   mkdir -p "$tmp"
@@ -134,19 +111,12 @@ run_migrations() {
 
 run_config() {
   log "migration pairs, workflows, Compose files and scripts"
-  "$go_bin" test -v -count=1 ./tests/ci/...
+  "$go_bin" test -v -count=1 ./internal/tests/ci/...
 
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    log "docker compose config (default profile)"
+    log "docker compose config (single compose file)"
     docker compose -f docker-compose.yml config -q
 
-    log "docker compose config (production overlay)"
-    # The production overlay requires three persistent keys; placeholders only
-    # validate that the merged file resolves.
-    AUTH_JWT_ED25519_PRIVATE_KEY=ci-placeholder \
-      FIELD_ENCRYPTION_KEY=ci-placeholder \
-      BACKUP_ENCRYPTION_KEY=ci-placeholder \
-      docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
   else
     log "docker not available: compose config skipped"
     log "(workflow/Compose YAML and script checks above are Docker-independent)"
@@ -155,19 +125,18 @@ run_config() {
 
 case "$task" in
   go) run_go ;;
-  launcher) run_launcher ;;
+
   web) run_web ;;
   migrations) run_migrations ;;
   config) run_config ;;
   all)
     run_go
-    run_launcher
     run_web
     run_migrations
     run_config
     ;;
   *)
-    echo "unknown task: $task (want go|launcher|web|migrations|config|all)" >&2
+    echo "unknown task: $task (want go|web|migrations|config|all)" >&2
     exit 2
     ;;
 esac

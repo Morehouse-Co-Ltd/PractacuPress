@@ -49,9 +49,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Only the packages the binaries import. The web app itself is copied in from the
 # web stage above; docs and tests never enter this layer.
 COPY cmd ./cmd
-COPY ent ./ent
 COPY internal ./internal
-COPY packages ./packages
 COPY --from=web /web/dist ./internal/web/dist
 
 RUN --mount=type=cache,target=/go/pkg/mod \

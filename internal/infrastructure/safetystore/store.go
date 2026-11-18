@@ -7,10 +7,10 @@ import (
 
 	"github.com/practacu/practacu-press/internal/safety"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/sensitiveword"
-	"github.com/practacu/practacu-press/ent/siteiprule"
-	"github.com/practacu/practacu-press/ent/sitesafetysetting"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/sensitiveword"
+	"github.com/practacu/practacu-press/internal/ent/siteiprule"
+	"github.com/practacu/practacu-press/internal/ent/sitesafetysetting"
 )
 
 // Store is the Ent backed implementation of safety.Repository.

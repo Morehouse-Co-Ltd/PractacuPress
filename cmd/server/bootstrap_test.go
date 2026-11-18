@@ -37,7 +37,7 @@ func TestBootstrapDesktopCreatesOneSiteAndReusesIt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 
-	// Restarting the launcher must not create a second site: resolution falls back to
+	// Restarting the desktop install must not create a second site: resolution falls back to
 	// the single site only when there is exactly one.
 	second, err := bootstrapDesktop(ctx, handle, silentLogger())
 	require.NoError(t, err)

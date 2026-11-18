@@ -206,7 +206,7 @@ func run() error {
 	securityClient := securityclient.NewLocal()
 	logger.Info("security checks run in-process", "argon2_concurrency", securityClient.Limits().Concurrency, "argon2_timeout", securityClient.Limits().Timeout)
 
-	// The Windows launcher starts this process against an empty SQLite file. Making
+	// The desktop install starts this process against an empty SQLite file. Making
 	// the database usable is part of startup there, not a separate operator step:
 	// without a site the setup wizard has nothing to configure.
 	if cfg.DesktopMode {
@@ -244,7 +244,7 @@ func run() error {
 	// Site resolution is always on: without it every request would fall back to a
 	// default site, which breaks tenant isolation the moment a second site exists.
 	// In production a single site without a domain only answers on a public IP
-	// literal; development, tests and the desktop launcher keep the permissive
+	// literal; development, tests and the desktop install keep the permissive
 	// fallback so localhost still works.
 	siteService, err := site.NewService(
 		sitestore.New(handle.Client, sitestore.WithFieldCipher(fieldCipher)),

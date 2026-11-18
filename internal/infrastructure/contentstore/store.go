@@ -9,10 +9,10 @@ import (
 	"github.com/practacu/practacu-press/internal/content"
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/contentitem"
-	"github.com/practacu/practacu-press/ent/contentrevision"
-	"github.com/practacu/practacu-press/ent/user"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/contentitem"
+	"github.com/practacu/practacu-press/internal/ent/contentrevision"
+	"github.com/practacu/practacu-press/internal/ent/user"
 )
 
 // Store is the Ent backed implementation of content.Repository.

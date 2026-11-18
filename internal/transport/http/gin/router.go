@@ -14,13 +14,13 @@ import (
 	"github.com/practacu/practacu-press/internal/feed"
 	"github.com/practacu/practacu-press/internal/media"
 	"github.com/practacu/practacu-press/internal/observability"
+	"github.com/practacu/practacu-press/internal/packages/contracts/openapi"
 	"github.com/practacu/practacu-press/internal/platform/config"
 	"github.com/practacu/practacu-press/internal/platform/errors"
 	"github.com/practacu/practacu-press/internal/plugins"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/apidocs"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/middleware"
 	"github.com/practacu/practacu-press/internal/web"
-	"github.com/practacu/practacu-press/packages/contracts/openapi"
 )
 
 // New builds the HTTP engine.
@@ -340,7 +340,7 @@ func New(deps Dependencies) *gin.Engine {
 			gin.WrapH(deps.Plugins.APIHandler("/api/v1/plugins/")),
 		)
 		// Browser bundles are versioned in the URL, so they are safe to cache
-		// immutably. They sit at the root because the launcher's CSP already allows
+		// immutably. They sit at the root because the desktop CSP already allows
 		// same-origin scripts and the SPA's base path is the document root.
 		r.GET("/plugins/:pluginID/:version/*path",
 			gin.WrapH(deps.Plugins.AssetHandler("/plugins/")),
@@ -430,7 +430,7 @@ func readyz(check func(context.Context) error) gin.HandlerFunc {
 //
 // The base document is embedded at build time, so the endpoint needs no
 // database, no filesystem and no session: it is the same bytes the contract
-// tests check against packages/contracts/openapi/openapi.yaml.
+// tests check against internal/packages/contracts/openapi/openapi.yaml.
 func openAPIDocument(provider *plugins.Host) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var document []byte

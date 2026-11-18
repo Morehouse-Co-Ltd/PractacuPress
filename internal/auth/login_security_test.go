@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	entuser "github.com/practacu/practacu-press/ent/user"
+	entuser "github.com/practacu/practacu-press/internal/ent/user"
 )
 
 // TestLoginUnknownAccountRunsDummyVerification is the V-13 regression. An unknown

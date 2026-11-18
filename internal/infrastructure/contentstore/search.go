@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/contentitem"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/contentitem"
 	"github.com/practacu/practacu-press/internal/content"
 	"github.com/practacu/practacu-press/internal/platform/page"
 )

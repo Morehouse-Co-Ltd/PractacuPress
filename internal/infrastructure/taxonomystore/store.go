@@ -6,9 +6,9 @@ import (
 
 	"github.com/practacu/practacu-press/internal/taxonomy"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/contentitem"
-	"github.com/practacu/practacu-press/ent/taxonomyterm"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/contentitem"
+	"github.com/practacu/practacu-press/internal/ent/taxonomyterm"
 )
 
 // Store is the Ent backed implementation of taxonomy.Repository.

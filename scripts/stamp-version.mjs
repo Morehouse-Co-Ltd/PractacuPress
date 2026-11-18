@@ -5,10 +5,8 @@
  *   node scripts/stamp-version.mjs --dist web/dist --version v1.2.3
  *   node scripts/stamp-version.mjs --dist web/dist --version v1.2.4-beta1
  *
- * `web/public/version.json` is the source manifest used by the launcher's
- * "check for updates" screen and by the site footer. A release build must not keep
- * the repository's development version, otherwise every downloaded package claims
- * to be the same old build.
+ * `web/public/version.json` is the source manifest used by the site footer.
+ * A release build must not keep the repository's development version.
  */
 import fs from 'node:fs';
 import path from 'node:path';

@@ -8,12 +8,12 @@ import (
 	"github.com/practacu/practacu-press/internal/audit"
 	"github.com/practacu/practacu-press/internal/platform/page"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/auditlog"
-	"github.com/practacu/practacu-press/ent/comment"
-	"github.com/practacu/practacu-press/ent/contentitem"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	"github.com/practacu/practacu-press/ent/user"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/auditlog"
+	"github.com/practacu/practacu-press/internal/ent/comment"
+	"github.com/practacu/practacu-press/internal/ent/contentitem"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	"github.com/practacu/practacu-press/internal/ent/user"
 )
 
 // Store is the Ent backed implementation of audit.Repository and audit.Recorder.

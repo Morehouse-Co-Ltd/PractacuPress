@@ -47,7 +47,7 @@ import (
 	"github.com/practacu/practacu-press/internal/transport/ws"
 )
 
-const docPath = "packages/contracts/openapi/openapi.yaml"
+const docPath = "internal/packages/contracts/openapi/openapi.yaml"
 
 type document struct {
 	Paths      map[string]map[string]operation `yaml:"paths"`

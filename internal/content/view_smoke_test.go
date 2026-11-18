@@ -18,7 +18,7 @@ import (
 	apperr "github.com/practacu/practacu-press/internal/platform/errors"
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
 )
 
 // viewSmoke is the end-to-end check of the read counter and the leaderboard: a real

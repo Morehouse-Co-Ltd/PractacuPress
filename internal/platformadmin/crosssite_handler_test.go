@@ -25,7 +25,7 @@ import (
 	ginrouter "github.com/practacu/practacu-press/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/middleware"
 
-	entgen "github.com/practacu/practacu-press/ent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
 )
 
 // The cross-site console is exercised against a real SQLite database: it reads across

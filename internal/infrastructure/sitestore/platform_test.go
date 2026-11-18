@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/practacu/practacu-press/ent/sitecustomization"
-	"github.com/practacu/practacu-press/ent/sitemember"
+	"github.com/practacu/practacu-press/internal/ent/sitecustomization"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
 	"github.com/practacu/practacu-press/internal/platformadmin"
 	"github.com/practacu/practacu-press/internal/site"
 )

@@ -18,7 +18,7 @@ func TestSchemaVersionMatchesNewestMigration(t *testing.T) {
 		t.Fatal("cannot locate this test file")
 	}
 	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
-	dir := filepath.Join(root, "migrations", "sqlite")
+	dir := filepath.Join(root, "internal", "migrations", "sqlite")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)

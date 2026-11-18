@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	entredirect "github.com/practacu/practacu-press/ent/redirect"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	entredirect "github.com/practacu/practacu-press/internal/ent/redirect"
 
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/redirect"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/siteconfig"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/siteconfig"
 	"github.com/practacu/practacu-press/internal/site"
 )
 

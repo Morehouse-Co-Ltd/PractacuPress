@@ -7,10 +7,10 @@ package sitestore
 import (
 	"context"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	"github.com/practacu/practacu-press/ent/sitecustomization"
-	"github.com/practacu/practacu-press/ent/sitemember"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	"github.com/practacu/practacu-press/internal/ent/sitecustomization"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
 	"github.com/practacu/practacu-press/internal/platformadmin"
 	"github.com/practacu/practacu-press/internal/site"
 )

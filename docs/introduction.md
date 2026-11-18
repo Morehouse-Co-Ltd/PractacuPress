@@ -2,7 +2,7 @@
 
 > **一套自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
 > Go API（内嵌前端与安全检查）+ React 前台与后台，三端用同一份 OpenAPI 3.1 契约对齐；
-> Windows 与 Linux 都是一等公民，源码、启动器、容器三种装法共用一套配置。
+> Windows 与 Linux 都是一等公民，源码、Windows 便携包、容器三种装法共用一套配置。
 
 **中文** · [English](#english)
 
@@ -37,7 +37,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 | 优势 | 具体是什么 |
 | --- | --- |
-| **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。默认容器部署只有一个镜像：API（内嵌前端与安全检查）。 |
+| **占地少** | 单文件 API 内嵌整套前端；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。默认容器部署只有一个镜像：API（内嵌前端与安全检查）。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 八步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
 | **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 83 条路径 / 100 个操作）之后，换前端按契约写即可。 |
@@ -90,8 +90,8 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 - **八步安装引导**：欢迎 → 连接后端 → 数据库 → 管理员 → 安全 → 默认站点 → 字体大小 → 检查与完成。
 - **两种模式任选**：**演示数据**只写浏览器 `localStorage`，不需要任何服务；**真实环境**自动连上同源 API，不用填地址。
-- **Windows 一键启动器**：前端经 `go:embed` 打进 exe，默认 80 端口，被占用自动退到 8080；`/api`、`/healthz`、`/readyz` 由启动器同源反向代理，因此没有跨域配置，Cookie 与 WebSocket 天然同源；后台改端口会立即生效并迁移浏览器数据。
-- **一键打包**：`打包.bat` 走完构建前端 → 编译 Go 与内嵌 → 编译启动器 → **在临时端口真启动产物做自检** → 出 zip 与 sha256，自检不通过不产出新包。
+- **Windows 便携包**：前端经 `go:embed` 打进 API，启动后同源提供 `/` 与 `/api`；双击 `启动.cmd` 即可运行并在 `127.0.0.1:8080` 完成安装。
+- **一键打包**：`打包.bat` 走完构建前端 → 编译 Go 与内嵌 → **在临时端口真启动产物做自检** → 出 zip 与 sha256，自检不通过不产出新包。
 
 ## 4. 架构
 
@@ -109,7 +109,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
     └───────────┬──────────────────────────────────┬───────────────┘
                 │ Ent + database/sql               │ securityclient
                 ▼                                  ▼
-    SQLite / MySQL / PostgreSQL        内置安全检查（tonic）
+    SQLite / MySQL / PostgreSQL        内置安全检查（Go）
     （SQLite 为纯 Go 驱动）             Argon2id · HTML 白名单清洗 · 上传检查
 ```
 
@@ -127,15 +127,15 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | 数据库 | SQLite（纯 Go 驱动）/ MySQL / PostgreSQL |
 | 安全检查 | Go · x/crypto/argon2 · x/net/html 白名单清洗 · 上传魔数检查 |
 | 前端 | React 19 · Vite 7 · TypeScript 5.9 · React Router 7（零 UI 框架依赖） |
-| 契约 | OpenAPI 3.1（**83 条路径 / 100 个操作**；站点根路径的 sitemap / robots 与内置文档页不在契约内）+ protobuf（`security.proto`） |
+| 契约 | OpenAPI 3.1（**83 条路径 / 100 个操作**；站点根路径的 sitemap / robots 与内置文档页不在契约内） |
 | 实时 | WebSocket（`coder/websocket`）+ outbox 事件补偿 |
-| 桌面分发 | Go 启动器（`go:embed` 内嵌前端 + 同源反向代理 + 子进程管理） |
+| 桌面分发 | Go API（`go:embed` 内嵌前端 + 进程内安全检查） |
 
 ## 6. 工程亮点
 
 挑几个"做了但看代码才知道"的地方：
 
-- **契约先行**：`packages/contracts/openapi/openapi.yaml` 是唯一事实来源，前端只依赖公开 REST 接口。契约有测试守着，不是写完就烂在仓库里。
+- **契约先行**：`internal/packages/contracts/openapi/openapi.yaml` 是唯一事实来源，前端只依赖公开 REST 接口。契约有测试守着，不是写完就烂在仓库里。
 - **认证细节**：Ed25519 签名的 JWT（15 分钟）+ refresh 令牌轮换。**检测到 refresh 重放就吊销整族会话**，并发刷新用条件更新避免竞态；refresh 走 HttpOnly Cookie + CSRF 双提交，响应体里永远不出现 refresh token；未知邮箱与密码错误返回同一个错误，防账号枚举。
 - **两阶段上传**：声明 → 传字节 → 扫描 → `clean` 才可下载。存储键**不含用户提供的文件名**（路径穿越无从谈起），MIME 走闭集白名单（拒绝 svg / html / exe），流式写入超限即截断——不会多写一个字节；被拒绝的资源一律返回 404，连"它存在"都不透露。
 - **权限在服务端强制**：4 角色 × 4 动作矩阵，跨站操作直接拒绝；前端隐藏按钮只改善体验，不承担安全控制。
@@ -157,7 +157,7 @@ docker compose up -d --build
 
 > 默认 API 镜像及 compose 栈已经在本机 Docker 中实际构建并启动验证（API healthy，注册/登录、上传扫描、备份与 RSS/sitemap 链路均跑通）；宿主机 TLS 反代仍需在预发环境验证。
 
-### Windows 启动器
+### Windows 本地启动
 
 **前提**：Go 1.26+、Node.js 22+；安全检查已编译进 API。
 
@@ -217,7 +217,7 @@ powershell -ExecutionPolicy Bypass -File scripts\test.ps1   # go build + vet + t
 | 项 | 说明 |
 | --- | --- |
 | Docker | 已提供 `docker-compose.yml`（单 API，前端与安全检查内嵌）；默认镜像与 compose 栈已实机构建运行，注册/登录、上传与备份链路已验证 |
-| Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
+| Windows 安装包（MSI） | 未实现；Windows 通过 API zip 分发 |
 | 多副本部署 | WebSocket 票据与 hub 在进程内存，限流是进程内固定窗口；多副本需要共享存储与边缘限流 |
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx / Cloudflare 执行，后台只生成片段 |
 | 域名别名 | 服务端按 Host 解析单一站点，别名域名需要反向代理改写 Host（生成的片段已包含） |
@@ -233,7 +233,7 @@ powershell -ExecutionPolicy Bypass -File scripts\test.ps1   # go build + vet + t
 
 ```text
 cmd/{server,migrate,seed,backup,media-gc,searchindex}  进程入口与运维命令
-ent/schema/                   持久化模型（Ent）
+internal/ent/schema/          持久化模型（Ent）
 internal/
   auth/ site/ content/        业务模块（domain + service + handler）
   community/ messaging/ notifications/ moderation/ media/ search/
@@ -242,10 +242,12 @@ internal/
   infrastructure/             Ent 仓储、存储适配器、securityclient
   transport/{http/gin,ws}     HTTP 中间件与 WebSocket
   web/                        内嵌 SPA 的 go:embed 与静态处理器
+  security/                   内置安全检查
+  packages/contracts/         OpenAPI 3.1 契约
+  migrations/                 SQL 变更集
+  tests/                      CI / 部署 / 迁移测试
+  plugins/                    插件宿主与示例
 web/           React 前台、管理后台与八步安装引导
-launcher/      Windows 一键启动器（go:embed + 同源反代）
-internal/security/  内置安全检查
-packages/contracts/ OpenAPI 3.1 与 protobuf，含生成代码
 docs/               设计稿、实施计划、评审报告、交付状态
 scripts/            dev / test / gen / package
 ```
@@ -302,7 +304,7 @@ openapi  websocket  self-hosted-blog
 
 > **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
 > A Go API, a in-process security checks, and a React frontend + admin, all aligned by one
-> OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, launcher and
+> OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, portable and
 > container installs share the same configuration.
 
 **Practacu Press** is a self-hosted, community-oriented content management system that puts three things in one product: **writing**, **community**, and **site operations**.
@@ -325,7 +327,7 @@ Most options force a trade-off: blog engines write well but have no community; f
 
 | Advantage | What it means here |
 | --- | --- |
-| **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the in-process security checks is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is one image: the API with the frontend and security checks embedded. |
+| **Small footprint** | The single API binary embeds the whole frontend; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is one image: the API with the frontend and security checks embedded. |
 | **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
 | **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
 | **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts where every block can set its own corner radius, shadow, crop, background, padding and border, with a built-in button block; mind maps, logic charts, statistical charts and fishbone diagrams can be inserted while writing; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (currently 83 paths / 100 operations; site-root sitemap / robots and the built-in docs page are outside the contract). |
@@ -343,7 +345,7 @@ Practacu Press aims for all three at low deployment cost:
 - **Community** — articles and posts, threaded comments, likes, bookmarks, follows, DM conversations, in-app notifications, reports and moderation. A 5-state / 5-action review state machine, with per-site publishing policy; authors cannot approve their own work.
 - **Realtime** — WebSocket upgrades with a **one-time ticket** (60 s, single use, stored hashed) so access tokens never land in URLs, plus a REST catch-up endpoint (`GET /events`) for reconnects.
 - **Admin** — 3 built-in themes (paper single-column; "Daylight" white card-based editorial; "Night Flight" warm-dark two-column) with 8 colour presets and JSON import/export; no-code page composition **independently per desktop / tablet / phone**; fully configurable navigation and footer; access limits, domains and TLS, performance and storage settings that emit ready-to-deploy Nginx and `.env` snippets; members and 4-role permissions; media library, review queue, taxonomy, analytics, built-in extensions.
-- **Delivery** — seven-step first-run wizard (demo data in `localStorage`, or a real backend found automatically); a Windows launcher that embeds the frontend via `go:embed`, proxies `/api`, `/healthz` and `/readyz` on the same origin, and falls back from port 80 to 8080 when busy; and a packaging script that **actually boots the artifact on a temporary port** and smoke-tests registration, article creation (verifying `<script>` is stripped) and publishing before producing a zip.
+- **Delivery** — an eight-step first-run wizard (demo data in `localStorage`, or a real backend found automatically); a Windows API package that embeds the frontend via `go:embed` and serves `/api` on the same origin; and a packaging script that **actually boots the artifact on a temporary port** and smoke-tests registration, article creation (verifying `<script>` is stripped) and publishing before producing a zip.
 
 ## Architecture
 
@@ -356,7 +358,7 @@ Go API — modular monolith (Gin)
   moderation · media · search · analytics · taxonomy · outbox
         │ Ent + database/sql                    │ securityclient
         ▼                                       ▼
-SQLite (pure Go) / MySQL / PostgreSQL     in-process security checks (tonic)
+SQLite (pure Go) / MySQL / PostgreSQL     in-process security checks (Go)
                                           Argon2id · HTML allow-list · upload inspection
 ```
 
@@ -364,7 +366,7 @@ Three decisions worth calling out:
 
 1. **A modular monolith, not premature microservices.** Review, permissions, comments, notifications and audit are deeply transactional. Modules keep hard boundaries (`Handler → Service → Domain → Repository interface`, with Ent, storage and security clients in `infrastructure`) while local installs avoid distributed overhead. `outbox`, internal interfaces and the security package keep the seams open.
 2. **Security primitives live in one Go package.** Password hashing (Argon2id), HTML sanitization and upload inspection are exactly the details that are easiest to get wrong and least affordable to get wrong — so they live in `internal/security`, called through `securityclient`, not scattered through business code.
-3. **Fail closed, deliberately.** If the security service is unreachable, **publishing and upload completion return 503** instead of skipping the check. Browsing, drafting and analytics keep working — the degraded surface is explicit, not accidental.
+3. **Fail closed, deliberately.** If a security check fails, **publishing and upload completion return 503** instead of skipping the check. Browsing, drafting and analytics keep working — the degraded surface is explicit, not accidental.
 
 ## Stack
 
@@ -374,13 +376,13 @@ Three decisions worth calling out:
 | Database | SQLite (pure Go) / MySQL / PostgreSQL |
 | Security | Go · x/crypto/argon2 · x/net/html allow-list · upload magic checks |
 | Frontend | React 19 · Vite 7 · TypeScript 5.9 · React Router 7 (no UI framework) |
-| Contract | OpenAPI 3.1 (**83 paths / 100 operations**; site-root sitemap / robots and the built-in docs page are outside the contract) + protobuf |
+| Contract | OpenAPI 3.1 (**83 paths / 100 operations**; site-root sitemap / robots and the built-in docs page are outside the contract) |
 | Realtime | WebSocket (`coder/websocket`) + outbox catch-up |
-| Desktop | Go launcher (`go:embed` + same-origin reverse proxy) |
+| Desktop | Go API (`go:embed` embedded frontend + in-process security) |
 
 ## Engineering details
 
-- **Contract first.** `packages/contracts/openapi/openapi.yaml` is the single source of truth and is covered by tests; the frontend only depends on public REST.
+- **Contract first.** `internal/packages/contracts/openapi/openapi.yaml` is the single source of truth and is covered by tests; the frontend only depends on public REST.
 - **Auth.** Ed25519-signed JWTs (15 min) with rotating refresh tokens: **a replayed refresh token revokes the entire token family**, concurrent refreshes are settled with conditional updates, refresh lives in an HttpOnly cookie with double-submit CSRF, the response body never carries the refresh token, and unknown emails fail identically to wrong passwords.
 - **Two-phase uploads.** Declare → send bytes → scan → downloadable only when `clean`. Storage keys never contain a user-supplied filename, MIME types come from a closed allow-list, oversize streams are truncated by `io.CopyN` (not one extra byte written), and rejected assets return `404` — not even their existence is disclosed.
 - **Server-side permissions.** A 4-role × 4-action matrix, with cross-site operations rejected outright.
@@ -409,7 +411,7 @@ Open `http://localhost:8080` and finish the seven-step wizard — the first acco
 
 > The API (frontend embedded) and security-service images plus the compose stack have been built and started for real (both services healthy; registration/login, media upload with the security-service scan, an instance backup and the RSS/sitemap paths were exercised). The host TLS proxy still needs a staging run.
 
-### Windows launcher
+### Windows local start
 
 Prerequisites: Go 1.26+, Node.js 22+. Security checks are compiled into the API.
 

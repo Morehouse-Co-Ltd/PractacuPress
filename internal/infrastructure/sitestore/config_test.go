@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/practacu/practacu-press/ent/auditlog"
+	"github.com/practacu/practacu-press/internal/ent/auditlog"
 	"github.com/practacu/practacu-press/internal/site"
 )
 

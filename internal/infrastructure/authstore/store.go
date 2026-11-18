@@ -16,15 +16,15 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/identitycrypto"
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/recoverycode"
-	"github.com/practacu/practacu-press/ent/session"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	"github.com/practacu/practacu-press/ent/sitemember"
-	"github.com/practacu/practacu-press/ent/twofactor"
-	entuser "github.com/practacu/practacu-press/ent/user"
-	"github.com/practacu/practacu-press/ent/useridentity"
-	"github.com/practacu/practacu-press/ent/verificationtoken"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/recoverycode"
+	"github.com/practacu/practacu-press/internal/ent/session"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
+	"github.com/practacu/practacu-press/internal/ent/twofactor"
+	entuser "github.com/practacu/practacu-press/internal/ent/user"
+	"github.com/practacu/practacu-press/internal/ent/useridentity"
+	"github.com/practacu/practacu-press/internal/ent/verificationtoken"
 )
 
 // ProviderEmail is the identity provider used by email and password accounts.

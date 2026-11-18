@@ -7,8 +7,8 @@ import (
 
 	"github.com/practacu/practacu-press/internal/outbox"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/outboxevent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/outboxevent"
 )
 
 // Store is the Ent backed implementation of outbox.Repository.

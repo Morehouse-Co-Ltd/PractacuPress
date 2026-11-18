@@ -17,7 +17,7 @@ const searchUpdateColumns = "site_id, kind, status, access_mode, author_id, " +
 	"category_id, tags, created_at_ns, search_title, search_summary, search_body, " +
 	"tokens_title, tokens_summary, tokens_body"
 
-// searchSchemaStatements mirrors migrations/*/20261115000000_content_search.up.sql.
+// searchSchemaStatements mirrors internal/migrations/*/20261115000000_content_search.up.sql.
 //
 // It runs with IF NOT EXISTS, so the reviewed migration stays the source of
 // truth for production and this is only the developer/test safety net (Ent's

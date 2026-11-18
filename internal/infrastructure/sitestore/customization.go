@@ -3,8 +3,8 @@ package sitestore
 import (
 	"context"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/sitecustomization"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/sitecustomization"
 	"github.com/practacu/practacu-press/internal/site"
 )
 

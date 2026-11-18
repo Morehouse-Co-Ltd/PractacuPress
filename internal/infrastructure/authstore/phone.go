@@ -10,8 +10,8 @@ import (
 	"github.com/practacu/practacu-press/internal/auth"
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/phonecode"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/phonecode"
 )
 
 // Phone code login persistence (contract A).

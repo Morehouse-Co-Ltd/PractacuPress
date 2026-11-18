@@ -24,7 +24,7 @@ import (
 	ginrouter "github.com/practacu/practacu-press/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/middleware"
 
-	"github.com/practacu/practacu-press/ent/sitemember"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
 )
 
 type harness struct {

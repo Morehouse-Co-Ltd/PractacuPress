@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	entgen "github.com/practacu/practacu-press/ent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
 	"github.com/practacu/practacu-press/internal/infrastructure/newsletterstore"
 	"github.com/practacu/practacu-press/internal/newsletter"
 	"github.com/practacu/practacu-press/internal/platform/emailgateway"

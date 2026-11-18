@@ -5,18 +5,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/practacu/practacu-press/ent/contentitem"
-	"github.com/practacu/practacu-press/ent/mediaasset"
-	"github.com/practacu/practacu-press/ent/mediaquotaguard"
-	"github.com/practacu/practacu-press/ent/mediaupload"
-	"github.com/practacu/practacu-press/ent/predicate"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	"github.com/practacu/practacu-press/ent/sitemember"
+	"github.com/practacu/practacu-press/internal/ent/contentitem"
+	"github.com/practacu/practacu-press/internal/ent/mediaasset"
+	"github.com/practacu/practacu-press/internal/ent/mediaquotaguard"
+	"github.com/practacu/practacu-press/internal/ent/mediaupload"
+	"github.com/practacu/practacu-press/internal/ent/predicate"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
 	"github.com/practacu/practacu-press/internal/media"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
 )
 
 // Store is the Ent backed implementation of media.Repository.

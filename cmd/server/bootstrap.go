@@ -7,15 +7,15 @@ import (
 
 	"entgo.io/ent/dialect/sql/schema"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	entmember "github.com/practacu/practacu-press/ent/sitemember"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	entmember "github.com/practacu/practacu-press/internal/ent/sitemember"
 	"github.com/practacu/practacu-press/internal/infrastructure/db"
 )
 
 // Desktop install defaults.
 //
-// The launcher ships an empty SQLite file, so the very first start has to produce a
+// The desktop install ships an empty SQLite file, so the very first start has to produce a
 // database the setup wizard can talk to: tables first, then exactly one site. The
 // wizard updates that site instead of creating one, which is what keeps the desktop
 // path zero configuration.
@@ -28,7 +28,7 @@ const (
 // returns the site id to use as the request default.
 //
 // It is additive and idempotent: the schema step never drops columns or indexes,
-// and an existing site is reused untouched, so restarting the launcher is safe.
+// and an existing site is reused untouched, so restarting the desktop install is safe.
 func bootstrapDesktop(ctx context.Context, handle *db.DB, logger *slog.Logger) (string, error) {
 	if err := handle.Client.Schema.Create(ctx,
 		schema.WithDropColumn(false),

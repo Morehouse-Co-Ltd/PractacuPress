@@ -21,7 +21,6 @@ func TestDefaultAppNamesCoversBuildSpellings(t *testing.T) {
 	want := map[string]string{
 		"practacu-api":     "api", // scripts/dev.ps1
 		"practacupressapi": "api", // packaged PractacuPressAPI.exe
-		"practacupress":    "launcher",
 	}
 	for exe, role := range want {
 		if got := names[exe]; got != role {
@@ -232,8 +231,7 @@ func TestNormalizeProcessName(t *testing.T) {
 
 func TestClassifyProcess(t *testing.T) {
 	names := normalizeAppNames(map[string]string{
-		"practacu-api":  "api",
-		"practacupress": "launcher",
+		"practacu-api": "api",
 	})
 	// Both spellings are always configured, and the same cases are asserted on every
 	// platform: the classification must not depend on the host that runs the test.
@@ -246,7 +244,6 @@ func TestClassifyProcess(t *testing.T) {
 		want    string
 	}{
 		{"practacu-api.exe", `C:\Users\owner\Practacu Press\data\practacu-api.exe`, "", "api"},
-		{"PractacuPress.exe", `C:\Users\owner\Practacu Press\PractacuPress.exe`, "", "launcher"},
 		{"node.exe", `C:\Program Files\nodejs\node.exe`, `node "C:\Users\owner\Practacu Press\web\node_modules\vite\bin\vite.js"`, "web"},
 		{"esbuild.exe", `C:\Users\owner\AppData\Local\npm-cache\esbuild.exe`, `esbuild --service --cwd C:\Users\owner\Practacu Press\web`, "app"},
 		// A terminal or automation host that merely mentions the directory is not us.

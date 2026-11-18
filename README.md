@@ -8,13 +8,13 @@
 
 > **自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
 > Go API（内嵌前端与安全检查）+ React 前台与后台，由同一份 OpenAPI 3.1 契约对齐；
-> Windows 与 Linux 都是一等公民，源码、启动器、容器三种装法共用一套配置。
+> Windows 与 Linux 都是一等公民，源码、容器、Windows 便携包三种装法共用一套配置。
 
 ## 为什么是它
 
 | | |
 | --- | --- |
-| **占地少** | Windows 启动器 8.3 MB，**内嵌整套前端**；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。默认容器部署只有两个镜像：API（内嵌前端与安全检查）。 |
+| **占地少** | 单文件 API **内嵌整套前端**；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。默认容器部署只有两个镜像：API（内嵌前端与安全检查）。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，**运行时不依赖 Node**，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 八步安装引导自带健康检查，装完即用：`docker compose up -d` 或 `启动.bat` 一条命令起全栈（API 已内嵌前端与安全检查）。备份就是把 `data/` 目录整体复制走。 |
 | **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**，每个组件可单独设置圆角、阴影、裁剪、背景、内边距与描边，内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图，随文章发布并按主题重绘；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（当前契约 124 条路径 / 148 个操作，含健康检查与安装状态；站点根路径的 sitemap / robots 与内置 `/api/v1/docs` 不在契约内）后面，想换前端按契约写就行。 |
@@ -27,7 +27,7 @@
 - **安全**：Argon2id（12–128 位、弱口令黑名单）、HTML 白名单清洗、上传检查都在 API 进程内完成；失败时按设计 fail-closed。静态数据另有字段级 AES-256-GCM 加密（登录邮箱 / 手机号 / 私信正文）、整库备份加密（`.ppbak`）与 Windows DPAPI 私钥保护。本地授权安全审计报告见 [`docs/security/2026-11-14-security-audit.md`](docs/security/2026-11-14-security-audit.md)
 - **多站点**：单站点开箱即用；需要时按站点隔离内容、成员、主题、审核规则与权限边界
 
-**平台与许可**：Windows / Linux 皆可（源码、Windows 启动器、Docker Compose）；数据库支持 SQLite、MySQL、PostgreSQL。
+**平台与许可**：Windows / Linux 皆可（源码、Windows 便携包、Docker Compose）；数据库支持 SQLite、MySQL、PostgreSQL。
 **AGPL-3.0**——可商用，但修改版与网络服务必须同样开源并保留署名。
 
 完整介绍（架构、技术栈、工程取舍、现状与限制）见 **[docs/introduction.md](docs/introduction.md)**　·　English: **[Introduction](docs/introduction.md#english)**
@@ -38,7 +38,7 @@
 
 - **Go API**（`cmd/server` + `internal/`）：身份、站点、内容、社区、媒体、通知、私信、事件补偿
 - **内置安全检查**（`internal/security`）：Argon2id 密码哈希、内容清洗、上传检查
-- **契约**（`packages/contracts`）：OpenAPI 3.1 与 protobuf
+- **契约**（`internal/packages/contracts`）：OpenAPI 3.1
 - **React 前端**（`web`）：站点前台、管理后台、八步安装引导（含高威胁操作保护与前后台字号设置）、邮箱或用户名登录（登录表单居中 + 主题背景）、主题库与页面编排（可按桌面 / 平板 / 手机独立编排，组件可设圆角、阴影、裁剪等外观，含按钮组件）、文章写作（可插思维导图 / 逻辑图 / 统计图 / 鱼骨图）、自定义页面、扩展系统（内置扩展 + 导入 zip：纯前端扩展与 Go/WASM 后端扩展；性能面板即内置扩展）、站点更新（显示名称 / 当前版本与仓库 version.json 对比 / 手动或自动检查 / GitHub 或镜像更新源下拉 / 手动切换构建且不停机）、访问限制、访问与域名（含 SSL 证书与访问端口）、性能设置与加载动画、性能面板（圆环显示本软件与其他软件的 CPU / 内存 / 磁盘占用，可选模块）
 - **高威胁操作二次验证**：删除 / 编辑账户、重置两步验证、覆盖导入站点数据、删除敏感词与 IP 规则等操作，开启保护后必须再次输入密码。验证按**浏览器会话**生效：每打开一次浏览器，第一次高危操作需要验证；同一次浏览器会话内反复操作只验证一次（刷新页面不重复询问，关闭浏览器后重新验证）。安装引导第 5 步可开启保护并选择“账户登录密码”或另设专用安全密码（之后可在「站点设置 → 高威胁操作保护」修改）。
 
@@ -122,7 +122,7 @@ node scripts/e2e-i18n.mjs          # 中英切换、刷新保持、零残留中�
 
 ## 安装
 
-三种装法任选：**Docker**（Linux / 服务器推荐）、**Windows 启动器**（本机最省事）、**源码**（任意平台，需要 Go 1.26+，前端需要 Node.js 22+；安全检查已编译进 API，无需额外服务）。
+三种装法任选：**Docker**（Linux / 服务器推荐）、**Windows 便携包**（本机最省事）、**源码**（任意平台，需要 Go 1.26+，前端需要 Node.js 22+；安全检查已编译进 API，无需额外服务）。
 
 ### Docker 部署（Linux / 服务器）
 
@@ -187,7 +187,7 @@ curl -fsS http://127.0.0.1:8080/api/healthz
 - **组成**：`api`（Go 二进制，内嵌 SPA，同时提供 `/api`、静态资源与 SPA 回退）。只有 `api` 映射到宿主机；没有独立的 web/Nginx 容器，也没有安全服务容器。
 - **默认只绑回环**：API 端口写成 `127.0.0.1:8080:8080`，避免还没装完的实例被公网抢先注册成管理员。装完后复制 `deploy/production/env.prod.example` 为 `.env.prod`，用 `docker compose --env-file .env.prod up -d --build` 切生产，并在前面加一层 TLS 反代；不要把未安装完的实例直接改成 `0.0.0.0:8080`。
 - **数据**：命名卷 `practacu-data` 里是 `practacu.db` 与 `media/`。`docker compose down` 不删数据，`down -v` 才删。想直接用宿主机目录，把 compose 里的卷换成 `./data:/data` 并先 `mkdir -p data && sudo chown 10001:10001 data`。
-- **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 启动器一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。Docker 端口映射会隐藏客户端地址，所以默认开启 `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定；它只在回环端口上安全，完成安装后可设为 `0`。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
+- **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 便携包一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。Docker 端口映射会隐藏客户端地址，所以默认开启 `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定；它只在回环端口上安全，完成安装后可设为 `0`。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
 - **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`，镜像里还带有 `backup`、`media-gc`、`searchindex`。
 - **生产部署**：同一份 `docker-compose.yml` 配合 `--env-file .env.prod` 提供 production 语义、持久 JWT 私钥与 Secure Cookie；`deploy/production/nginx.conf` 负责 TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
 - **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`。
@@ -331,7 +331,7 @@ npm run dev -- --port 5173
 
 > 单域名自托管、不用开发服务器时：先 `make embed-web` 把前端编进 API，再用 Nginx 之类的反向代理把 `/` 与 `/api` 都转到 API 端口（模板见 `deploy/production/nginx.conf` 与 [生产部署 profile](docs/deployment/production-profile.md)）。`npm start` 只托管静态文件、自己不代理 API，默认端口也是 8080，会和 API 撞车——那种部署里不要跑它。
 
-### Windows 启动器
+### Windows 本地启动
 
 在仓库根目录运行 **`启动.bat`**（或双击）：
 
@@ -339,10 +339,8 @@ npm run dev -- --port 5173
 - 在独立窗口启动 Go API 与 SQLite；
 - 在独立窗口启动 Vite 前端（`http://127.0.0.1:5173`，自动代理 `/api` 到 8080）；
 - 浏览器打开 `http://127.0.0.1:5173/?mode=live`：已有真实安装会直接进入站点，否则进入
-  **真实环境**安装引导并自动探测本机 8080，不会默认切到演示数据；
-- 一键启动以桌面模式运行 API：安装引导里创建的第一个账户就是平台管理员；
-  如果旧数据库已有成员但没有管理员，启动时会自动提升最早的活动成员，修复无法完成安装的情况；
-- 等待就绪后自动打开浏览器；
+  **真实环境**安装引导并自动探测本机 8080；
+- 以桌面模式运行 API：安装引导里创建的第一个账户就是平台管理员；
 - 如果 API 或前端已经在运行，会直接复用，不会重复占端口。
 
 只检查环境、不启动服务：
@@ -402,7 +400,7 @@ npm start
 首次打开会进入安装引导；没有后端时可选「演示数据」直接体验完整前台与后台。
 细节见[前端说明](web/README.md)。
 
-### Windows 一键启动包（一键打包）
+### Windows 便携包（一键打包）
 
 ```powershell
 # 双击仓库根目录的 打包.bat，或者：
@@ -412,32 +410,26 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 打包脚本会检查工具链，然后自动完成整套流程：
 
 1. 构建前端（`web`，缺少 `node_modules` 时自动 `npm ci`）；
-2. 把安全检查与前端一起编译进 Go API；
-3. 把前端产物同步进启动器的 `go:embed` 目录；
-4. 编译 Go 启动器与 Go API（Windows 目标架构：x64 或 arm64，纯 Go）；
-5. 组装干净的分发目录，**在临时端口实际启动打包产物做自检**：
-   静态站与 SPA 回退、`/__pp/runtime`、`/api/healthz`、`/api/readyz`、注册、文章创建
-   （验证内置清洗移除 `<script>`）与发布；
-6. 压缩成 zip，并同步 `release/PractacuPress`（保留用户已有的 `data/` 与
-   `practacu-web.json`）。
+2. 把前端同步进 API 的 `internal/web/dist`，并编译 Windows API（x64 或 arm64，纯 Go）；
+3. 组装 `.env`、`启动.cmd`、`data/`、`VERSION` 与 `README.txt`；
+4. **在临时端口实际启动打包产物做自检**：首页、SPA 回退、`/api/healthz`、`/api/readyz`、
+   注册、文章创建（验证内置清洗移除 `<script>`）与发布；
+5. 压缩成 zip，并同步 `release/PractacuPress`（保留用户已有的 `data/` 与 `.env`）。
 
 任何一步失败都会立刻停下并打印原因；自检不通过不会产出新包。
 
 产物：
 
-- `release/PractacuPress/PractacuPress.exe`：原生启动器，双击即用，**不需要安装 Node**；
-- `release/PractacuPress/PractacuPressAPI.exe`：Go API，由启动器在真实环境下自动拉起；
-
-- `release/PractacuPress-Windows-<x64|arm64>.zip`（及同名 `.sha256`）：整个文件夹的压缩包，
-  解压后双击 exe 即可。压缩包里只有程序、`VERSION` 与 `README.txt`，不会带开发机的 `data/`。
+- `release/PractacuPress/PractacuPressAPI.exe`：单文件 Go API，内嵌前台、后台、安装引导与安全检查；
+- `release/PractacuPress/启动.cmd`：双击启动并打开 `http://127.0.0.1:8080`；
+- `release/PractacuPress-Windows-<x64|arm64>.zip`（及同名 `.sha256`）：整个文件夹的压缩包。
 
 `scripts/package.ps1` 的常用参数：
 
 | 参数 | 说明 |
 | --- | --- |
 | `-Arch amd64\|arm64` | 目标架构（默认当前机器；arm64 包由 Windows arm64 runner 原生构建） |
-
-| `-SkipSmoke` | 跳过打包后的自检（不推荐，自检是“保持原有功能”的保障） |
+| `-SkipSmoke` | 跳过打包后的自检（不推荐） |
 | `-NoZip` | 只生成 `release/PractacuPress` 目录 |
 | `-ReleaseDir <目录>` | 换输出目录 |
 | `-Port <端口>` | 自检固定端口（默认自动挑空闲端口） |
@@ -445,27 +437,8 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 CI 可以直接调用底层脚本（与上面是同一套流程）：
 `node scripts\package-windows.mjs --arch amd64|arm64 [--skip-smoke] [--no-zip] [--release-dir <目录>]`。
 
-
-启动器默认在 8080 端口提供站点并自动打开浏览器；8080 被占用时依次改用 8081、8082，都不行再退回标准 80 端口，窗口里会显示实际地址。
-后台「站点设置 → 访问与域名 → 访问端口」的修改会写进 exe 同目录的 `practacu-web.json`，下次启动沿用。
-站点只监听本机回环地址，关闭窗口即停止，拉起的 API 也会一并退出。
-
-安装引导里的两种运行方式都能直接用：
-
-- **演示数据**：只写浏览器 `localStorage`，不需要任何服务；
-- **真实环境**：启动器已在同源后面跑好 API，引导自动连上，不用填地址。数据库是
-  exe 同目录 `data/practacu.db`（纯 Go SQLite），第一次启动自动建表并创建默认站点，
-  引导里创建的第一个账户就是平台管理员。`/api`、`/api/healthz`、`/api/readyz` 由启动器
-  反向代理到本机 API，因此没有跨域配置，Cookie 与 WebSocket 也按同源处理。
-
-> 启动器通过 **http** 访问。通知邮件和第三方登录回调等绝对链接在未设置
-> `PUBLIC_BASE_URL` 时按 https 推导，所以需要它们时，先在启动器的环境里显式设置
-> `PUBLIC_BASE_URL=http://127.0.0.1:<端口>`（端口用窗口里显示的实际地址）再启动；
-> 安装引导最后一步会给出当前地址对应的那一行。找回密码链接会退回当前请求地址。
-
-真实环境的数据都在 `data/`：`practacu.db`、`media/`、`api.log`、`api.err.log`，
-关掉窗口后整体复制即可备份。exe 目录不可写时改用 `%LOCALAPPDATA%\PractacuPress\data`。
-需要强制只用前端可以运行 `PractacuPress.exe --mode demo`。
+解压后双击 `启动.cmd`，或在该目录运行 `PractacuPressAPI.exe`，然后打开
+`http://127.0.0.1:8080`。数据库、媒体与备份都在同目录 `data/`。
 
 ---
 
@@ -495,7 +468,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/v1/articles -Method Post `
 
 ```
 cmd/{server,migrate,seed,backup,media-gc,searchindex}  进程入口与运维命令
-ent/schema/                      持久化模型（Ent）
+internal/ent/schema/             持久化模型（Ent）
 internal/
   auth/ site/ content/           业务模块（domain + service + handler）
   community/ messaging/ notifications/ moderation/ media/
@@ -505,9 +478,11 @@ internal/
   security/                      Argon2id、内容清洗与上传检查（进程内）
   transport/{http/gin,ws}        HTTP 中间件与 WebSocket
   web/                           内嵌 SPA 的 go:embed 与静态文件处理器
+  packages/contracts/            OpenAPI 契约
+  migrations/                    SQL 变更集
+  tests/                         CI / 部署 / 迁移测试
+  plugins/                       插件宿主与示例
 web/                          React 前台、管理后台与安装引导
-launcher/                     Windows 一键启动器（独立 Go module，go:embed）
-packages/contracts/                OpenAPI 契约（生成代码也在这里）
 docs/superpowers/                  设计稿、实施计划、评审报告、交付状态
 scripts/                           dev / test / gen 脚本
 ```
@@ -530,7 +505,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 ```
 
 前置：Chrome（默认 `PP_E2E_CHANNEL=chrome`）、`web` 已 `npm install`、
-安全检查已编译进 API。细节见 [tests/README.md](tests/README.md)；
+安全检查已编译进 API。细节见 [tests/README.md](internal/tests/README.md)；
 CI 里是独立的可选工作流 `.github/workflows/e2e.yml`，不阻塞基础 CI。
 
 S3 适配器默认跳过，需要真实端点（MinIO / moto / AWS）：
@@ -574,7 +549,7 @@ go test ./internal/media/ -run TestS3 -v
 
 > **未设置 `PUBLIC_BASE_URL` 时，服务端会在没有请求上下文的地方按 https 推导绝对链接。**
 > 第三方登录回调按站点域名的 `https://` 拼接，通知邮件也依赖它决定能否放入站内链接；
-> 桌面启动器、本机 `http://localhost` 或其他 http 部署必须显式设置，例如
+> 桌面模式、本机 `http://localhost` 或其他 http 部署必须显式设置，例如
 > `PUBLIC_BASE_URL=http://127.0.0.1:80`（端口换成站点实际端口），否则这些链接会指向
 > 不存在的 https 地址。API 启动时会在日志里为此打一条 warning；安装向导最后一步也会
 > 给出要粘贴的那一行。
@@ -588,7 +563,7 @@ go test ./internal/media/ -run TestS3 -v
 | MySQL / PostgreSQL | 代码层无方言依赖，但**本机没有这两个数据库，未实跑验证**，需在 CI 上跑矩阵 |
 | Docker | 已提供 `docker-compose.yml`（单 API，前端与安全检查内嵌）；已实机构建，compose 栈、注册/登录、上传与备份已跑通（宿主机 TLS 反代未实跑） |
 | Linux 安装包 | 发布 `PractacuPress-Linux-{x64,arm64}.tar.gz` 以及各自架构的 `.deb` / `.rpm`（预编译二进制 + `install.sh` 向导 + systemd/Nginx 模板）；交叉编译与包内容已校验，**安装脚本尚未在真实 Linux 主机上实跑**（bash 语法、模板渲染与 `nginx -t` 已通过） |
-| Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
+| Windows 安装包（MSI） | 未实现；Windows 通过 API zip 分发 |
 | WebSocket 多副本 | 票据与 hub 在进程内存，多副本部署需要共享存储 |
 | 限流 | 进程内固定窗口，多副本下是每副本独立计数；真正的 DDoS/CC 防护需要反向代理或边缘 WAF |
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx/Cloudflare 配置执行，后台只生成片段 |

@@ -12,7 +12,7 @@ import (
 	"github.com/practacu/practacu-press/internal/infrastructure/sitestore"
 	"github.com/practacu/practacu-press/internal/site"
 
-	"github.com/practacu/practacu-press/ent/auditlog"
+	"github.com/practacu/practacu-press/internal/ent/auditlog"
 )
 
 func newStore(t *testing.T) (*sitestore.Store, *db.DB) {

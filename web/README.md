@@ -1,7 +1,7 @@
 # Practacu Press 前端
 
 React 19 + Vite + TypeScript 单页应用，严格按
-[`packages/contracts/openapi/openapi.yaml`](../packages/contracts/openapi/openapi.yaml)（v0.1.0）
+[`internal/packages/contracts/openapi/openapi.yaml`](../internal/packages/contracts/openapi/openapi.yaml)（v0.1.0）
 和设计文档第 7、11 章实现。包含**站点前台**、**管理后台**和**首次打开安装引导**。
 
 内置 **3 套大主题**（原版：纸白单栏 / 白昼：白底日报 / 夜航：暖黑暗色双栏）与 **8 套配色预设**
@@ -48,29 +48,20 @@ npm run dev -- --port 5173  # 80 被占用时换一个端口
 要求 Node 22+。生产部署时也可以用 Nginx 托管 `dist/`，把 `/api` 与健康检查转发到 Go API；
 这时端口由反向代理决定，后台面板会提示当前不是内置静态服务。
 
-### Windows 一键启动包（一键打包）
+### Windows 便携包（一键打包）
 
 ```powershell
 # 在仓库根目录双击 打包.bat，或者：
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-脚本会自动构建前端、把 `dist` 内嵌进启动器、编译 Go 启动器与 API，
-然后在临时端口启动产物做自检（静态站、`/__pp/runtime`、注册、文章创建与 Go 内置清洗、发布），
+脚本会自动构建前端、把它同步进 API 的 `internal/web/dist`，编译 Go API，
+然后在临时端口启动产物做自检（首页与 SPA、`/api/healthz`、注册、文章创建与 Go 内置清洗、发布），
 最后生成 `release/PractacuPress-Windows-x64.zip` 并同步 `release/PractacuPress`。
-解压后双击 `PractacuPress.exe` 即启动，不需要安装 Node。启动器（`launcher`）把 `dist`
-内嵌进 exe，并实现与 `scripts/serve.mjs` 相同的 `/__pp/runtime` 运行时接口，
-所以后台改端口、数据迁移都能照常用。
 
-
-压缩包只包含程序与 `README.txt`，不会把开发机的 `data/` 带进去。
-
-包里同时带有 `PractacuPressAPI.exe`（Go API）。启动器默认会把它拉起来，在同一端口上
-反向代理 `/api`、`/api/healthz`、`/api/readyz`，因此安装引导里的「真实环境」不需要填地址，
-也没有跨域问题。API 使用 exe 同目录 `data/practacu.db`（纯 Go SQLite），首次启动自动
-建表、建默认站点，引导里创建的第一个账户即平台管理员。`/__pp/runtime` 会附带
-`runtime_mode` 与 `api` 状态，引导据此判断本机后端是否由启动器托管。
-`PractacuPress.exe --mode demo` 可以强制只用静态前端。
+解压后双击 `启动.cmd`（或运行 `PractacuPressAPI.exe`），浏览器打开
+`http://127.0.0.1:8080`。单个 API 同时提供前台、后台、安装引导与 `/api`，
+不需要 Node 或额外服务；数据库与媒体在 `data/`。
 
 ---
 
@@ -93,20 +84,19 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 选择「真实环境」后不需要填写 API 地址。引导会按顺序探测：
 
 1. 同源接口（`/api/healthz`、`/api/readyz`），适合反代同域部署、`npm run dev`（Vite 已代理到 8080）
-   与 Windows 一键包（启动器已把本机 API 代理到同源）；
+   与 Windows 便携包（API 同源提供页面与接口）；
 2. `http://127.0.0.1:8080` 与 `http://localhost:8080`，适合手动启动的本地开发。
 
 探测同时校验 `/api/healthz` 与 `/api/readyz` 的 JSON 形状，SPA 的 HTML 回退不会被误判为健康。
 连上后会跳过数据库步骤（数据库由服务端配置），直接进入管理员账户。
 
-- 启动器托管 API 时，选项会直接标明「本机 API 已就绪」，失败提示会区分
-  「API 没起来」与「启动器没带 API」，不再展示 `go run` 命令。
+- API 已就绪时选项会直接标明「本机 API 已就绪」，失败时不再展示 `go run` 命令。
 - 启动后端后点「重试」即可，不需要再输入地址。
 - 后端不在同源、也不在本机 8080 时，才需要展开「手动指定地址」。
 - 完全没有后端时，可以一键「先以演示数据继续」，不会卡在安装里。
 - 已启动但仍失败，通常是跨域：开发用 `npm run dev`，生产把前端与 API 放在同一域名下。
 
-真实环境的「访问域名」可以留空：生产环境此时只允许公网 IP 直接访问（本机开发与桌面启动器
+真实环境的「访问域名」可以留空：生产环境此时只允许公网 IP 直接访问（本机开发与桌面模式
 仍可用 localhost）。在「站点设置 → 访问与域名」里设置主域名会同时写入已验证时间，并可一起
 配置 Let's Encrypt 或手动 SSL 证书、别名与 HTTPS 跳转；只保存部署意图，证书与 Nginx 片段仍需
 部署到服务器。
@@ -115,7 +105,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 - 浏览器**不能**修改服务端进程的环境变量。演示模式的数据库步骤只生成可粘贴的 `DATABASE_DRIVER` /
   `DATABASE_DSN` 片段，实际连接以服务端为准；真实环境不再询问这些值。
-- 真实环境通过 http 访问时（桌面启动器、本机 `localhost`、内网地址），检查步骤会给出当前地址对应的
+- 真实环境通过 http 访问时（桌面模式、本机 `localhost`、内网地址），检查步骤会给出当前地址对应的
   `PUBLIC_BASE_URL`：未设置时服务端按 https 推导第三方登录回调等绝对链接，需要把这一行加进
   API 的环境变量后重启。
 - 安装引导仍然操作“默认站点”：连接真实后端时注册管理员、读取 `/me` 与默认站点，再用
@@ -482,7 +472,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 ## 契约对齐与仍有边界
 
-前端按 `packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 83 条路径 / 100 个操作）实现。
+前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 83 条路径 / 100 个操作）实现。
 下面按“已实现（不再是缺口）”“仅演示模式 / 前端本地策略”“已知限制”三档记录；判断以代码与契约为准，
 不把演示效果写成服务端能力。
 
@@ -508,7 +498,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | 站点形态 | `site_kind`（个人博客 / 社区站点）仍在本地安装配置；它会影响前端入口与成员提升策略，服务端按固定四级角色授权 |
 | 权限组 | `permissions.ts` 的能力矩阵是前端策略层；服务端只认 `platform_admin / site_admin / editor / member` 四级角色 |
 | 手机验证码与第三方登录 | 只记录开关与非机密参数并生成服务端 `.env`，没有短信或 OAuth 端点；演示模式会模拟入口，真实登录仍需服务端实现 |
-| 访问端口与运行时接口 | `npm start` / 启动器的端口与 `/__pp/runtime` 不属于 API 契约，只用于本地静态服务 |
+| 访问端口 | `npm start` 只用于本地静态预览，端口不属于 API 契约 |
 | 访问限制 | 生成 Nginx `limit_req` / `limit_conn` 片段，是否生效取决于部署；浏览器端限制只约束本站脚本 |
 
 ### 已知限制

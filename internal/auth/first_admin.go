@@ -19,7 +19,7 @@ type FirstAdminFunc func(*gin.Context) bool
 //
 // This is the API side of the "expose first, install later" fix: a fresh install that
 // is reachable over the network must not let whoever connects first become the
-// platform administrator. The desktop launcher binds loopback and proxies to the API,
+// platform administrator. Desktop mode binds loopback and serves the API directly,
 // so its setup wizard still works; a reverse proxy that publishes a not yet claimed
 // instance leaves registration possible for plain members but not for the owner role.
 //
@@ -70,7 +70,7 @@ func isLoopbackPeer(remoteAddr string) bool {
 
 // isLoopbackHost reports whether a Host header value names this machine.
 //
-// The port is ignored: the launcher, a reverse proxy and the API itself may each
+// The port is ignored: a reverse proxy and the API itself may each
 // rewrite it.
 func isLoopbackHost(hostPort string) bool {
 	host := hostOnly(hostPort)

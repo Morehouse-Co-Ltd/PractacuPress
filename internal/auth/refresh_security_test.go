@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	entsession "github.com/practacu/practacu-press/ent/session"
+	entsession "github.com/practacu/practacu-press/internal/ent/session"
 	"github.com/practacu/practacu-press/internal/auth"
 )
 

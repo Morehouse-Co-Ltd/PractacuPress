@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/sitecustomization"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/sitecustomization"
 )
 
 // designCacheTTL bounds how stale "is this asset in the site design" may be. The

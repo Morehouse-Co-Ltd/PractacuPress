@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/practacu/practacu-press/packages/contracts/openapi"
+	"github.com/practacu/practacu-press/internal/packages/contracts/openapi"
 	"gopkg.in/yaml.v3"
 )
 

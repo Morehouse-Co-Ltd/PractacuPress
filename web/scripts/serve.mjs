@@ -2,7 +2,7 @@
 /**
  * Practacu Press 静态站点服务器。
  *
- * - 默认监听 8080 端口（启动器与生产打包也用这个默认值）；
+ * - 默认监听 8080 端口（生产打包也用这个默认值）；
  * - 端口可以在管理后台「站点设置 → 访问端口」里热切换，不需要重启进程；
  * - 选定的端口写入 web/.runtime/web.json，下次启动沿用。
  *
@@ -15,7 +15,7 @@
  * 这里会明确返回 JSON 404，避免 SPA 的 HTML 回退被误判成后端可用。
  *
  * 另外提供 `GET /__pp/update`：服务端读取版本清单（`version.json`）并与本机版本比较。
- * 它和启动器的同名接口行为一致，这样 `npm start` 起的站点也能检查更新。
+ * 这样 `npm start` 起的站点也能检查更新。
  *
  * 内容页元数据（Beta 1.2）：`/a/:id`、`/p/:id` 的 HTML 请求不再直接返回裸外壳，
  * 而是先向 API 取一次内容元数据，把 title / description / Open Graph / canonical
@@ -195,7 +195,7 @@ function normalizePort(value) {
 /** 构建产物里的版本清单；`public/version.json` 会被原样复制进 dist。 */
 const LOCAL_MANIFEST = 'version.json';
 
-/** 默认更新源：仓库里的清单（与启动器、前端下拉栏里的第一项一致）。 */
+/** 默认更新源：仓库里的清单（与前端下拉栏里的第一项一致）。 */
 const DEFAULT_UPDATE_SOURCE =
   'https://raw.githubusercontent.com/practacu/practacu-press/main/web/public/version.json';
 
@@ -803,7 +803,7 @@ async function handle(req, res) {
     // 静态服务没有“把另一份构建换上来”的能力：它按磁盘目录直接读文件。
     sendJson(res, 501, {
       code: 'not_implemented',
-      message: '静态服务不支持在线切换版本；请用 Windows 启动器运行站点后再手动更新。',
+      message: '静态服务不支持在线切换版本；请用 Windows 便携包运行站点后再手动更新。',
     });
     return;
   }

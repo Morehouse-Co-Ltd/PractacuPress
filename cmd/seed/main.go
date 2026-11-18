@@ -13,8 +13,8 @@ import (
 
 	"entgo.io/ent/dialect/sql/schema"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	entsite "github.com/practacu/practacu-press/ent/site"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
 	"github.com/practacu/practacu-press/internal/infrastructure/db"
 )
 

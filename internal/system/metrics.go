@@ -142,15 +142,14 @@ type SamplerConfig struct {
 // DefaultAppNames returns the executable names this installation ships.
 //
 // The API binary is built under different names depending on how the installation
-// runs: the development launcher builds practacu-api.exe, the packaged release ships
-// PractacuPressAPI.exe, and a plain `go build` may leave server.exe. The current
-// process is additionally recognised by pid (see roleOf) so every spelling is
-// attributed to "api" instead of falling through to "app".
+// runs: the packaged release ships PractacuPressAPI.exe, and a plain `go build` may
+// leave server.exe. The current process is additionally recognised by pid (see
+// roleOf) so every spelling is attributed to "api" instead of falling through to
+// "app".
 func DefaultAppNames() map[string]string {
 	return map[string]string{
 		"practacu-api":     "api",
 		"practacupressapi": "api",
-		"practacupress":    "launcher",
 	}
 }
 

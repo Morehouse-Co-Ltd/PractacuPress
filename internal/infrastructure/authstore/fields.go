@@ -9,8 +9,8 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/fieldcrypto"
 	"github.com/practacu/practacu-press/internal/platform/identitycrypto"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/useridentity"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/useridentity"
 )
 
 // ProviderPhone is the identity provider used by phone code login.

@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/practacu/practacu-press/ent/auditlog"
+	"github.com/practacu/practacu-press/internal/ent/auditlog"
 	"github.com/practacu/practacu-press/internal/community"
 	"github.com/practacu/practacu-press/internal/content"
 	"github.com/practacu/practacu-press/internal/feed"

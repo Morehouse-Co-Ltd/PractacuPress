@@ -16,7 +16,7 @@
 #   PP_MIGRATE_POSTGRES_DSN=... disposable PostgreSQL for `cmd/migrate` idempotency
 
 param(
-    [ValidateSet('go', 'launcher', 'web', 'migrations', 'config', 'all')]
+    [ValidateSet('go', 'web', 'migrations', 'config', 'all')]
     [string]$Task = 'all'
 )
 
@@ -79,30 +79,6 @@ function Invoke-GoTask {
     Invoke-Go $testArguments
 }
 
-function Invoke-LauncherTask {
-    # launcher is a separate Go module (its own go.mod), so the root
-    # `go build ./...` never compiles or tests it. Packaging builds it, which is
-    # why a broken launcher used to pass every local gate.
-    Push-Location (Join-Path $root 'launcher')
-    try {
-        Write-Step 'launcher: go build ./...'
-        Invoke-Go @('build', './...')
-
-        Write-Step 'launcher: go vet ./...'
-        Invoke-Go @('vet', './...')
-
-        $testArguments = @('test')
-        if ($env:PP_TEST_RACE -eq '1') { $testArguments += '-race' }
-        $testArguments += '-count=1'
-        $testArguments += './...'
-        Write-Step ('launcher: go ' + ($testArguments -join ' '))
-        Invoke-Go $testArguments
-    }
-    finally {
-        Pop-Location
-    }
-}
-
 function Invoke-WebTask {
     $installMode = $env:PP_WEB_INSTALL
     if (-not $installMode) { $installMode = 'auto' }
@@ -151,7 +127,7 @@ function Invoke-MigrateTwice {
 function Invoke-MigrationsTask {
     Write-Step 'reviewed migration pairs and SQL up/down round trip'
     # SQLite always runs; MySQL/PostgreSQL run when their DSNs are exported.
-    Invoke-Go @('test', '-v', '-count=1', './tests/migrations/...')
+    Invoke-Go @('test', '-v', '-count=1', './internal/tests/migrations/...')
 
     $tmp = Join-Path $root '.tmp\verify'
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -188,7 +164,7 @@ function Invoke-MigrationsTask {
 
 function Invoke-ConfigTask {
     Write-Step 'migration pairs, workflows, Compose files and scripts'
-    Invoke-Go @('test', '-v', '-count=1', './tests/ci/...')
+    Invoke-Go @('test', '-v', '-count=1', './internal/tests/ci/...')
 
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if (-not $docker) {
@@ -209,7 +185,6 @@ function Invoke-ConfigTask {
 }
 
 if ($Task -in @('go', 'all')) { Invoke-GoTask }
-if ($Task -in @('launcher', 'all')) { Invoke-LauncherTask }
 if ($Task -in @('web', 'all')) { Invoke-WebTask }
 if ($Task -in @('migrations', 'all')) { Invoke-MigrationsTask }
 if ($Task -in @('config', 'all')) { Invoke-ConfigTask }

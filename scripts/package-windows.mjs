@@ -8,9 +8,9 @@
  *
  * 默认流程（每一步失败都会立刻停下并打印原因）：
  *   1. 构建前端（web → dist），缺少 node_modules 时自动安装依赖
- *   2. 把前端产物同步进启动器的 go:embed 目录
- *   3. 编译 Go 启动器（launcher）与 Go API（Windows，目标架构）
- *   4. 组装干净的分发目录（exe + README.txt + VERSION）
+ *   2. 把前端产物同步进 API 的 go:embed 目录
+ *   3. 编译 Go API（Windows，目标架构）
+ *   4. 组装干净的分发目录（PractacuPressAPI.exe + README.txt + VERSION）
  *   5. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/api/healthz、/api/readyz、
  *      注册、文章创建（Go 内嵌安全清洗）与发布（仅本机架构可执行时）
  *   6. 压缩成 release/PractacuPress-Windows-<x64|arm64>.zip
@@ -47,9 +47,7 @@ import { syncEmbeddedWeb } from './lib/embed-web.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webDir = path.join(root, 'web');
-const launcherDir = path.join(root, 'launcher');
 const distDir = path.join(webDir, 'dist');
-const embedDir = path.join(launcherDir, 'web', 'dist');
 const tmpRoot = path.join(root, '.tmpbuild', 'tmp');
 
 const options = parseOptions(process.argv.slice(2));
@@ -115,27 +113,9 @@ async function main() {
   stampWebVersion(distDir);
 
 
-  step('把前端产物同步进启动器（go:embed）');
-  rmrf(embedDir);
-  fs.mkdirSync(embedDir, { recursive: true });
-  fs.cpSync(distDir, embedDir, { recursive: true });
-  console.log(`  ${countFiles(embedDir)} 个文件`);
-
   step('把前端产物同步进 Go API（go:embed）');
   syncEmbeddedWeb({ root, dist: distDir });
   console.log('  internal/web/dist');
-
-  step(`编译 Windows 启动器（${ARCH}）`);
-  const launcherExe = path.join(stagingDir, 'PractacuPress.exe');
-  run(
-    go,
-    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', launcherExe, '.'],
-    launcherDir,
-    goEnv,
-    'go build launcher',
-  );
-  requireFile(launcherExe, '启动器没有编译出来');
-  console.log(`  PractacuPress.exe  ${formatSize(fs.statSync(launcherExe).size)}`);
 
   step(`编译 Go API（windows/${ARCH}）`);
   const apiExe = path.join(stagingDir, 'PractacuPressAPI.exe');
@@ -152,6 +132,10 @@ async function main() {
   step('写入发布说明');
   writeReleaseReadme();
   fs.writeFileSync(path.join(stagingDir, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
+  writeLocalEnv();
+  writeStartScript();
+  fs.mkdirSync(path.join(stagingDir, 'data', 'media'), { recursive: true });
+  fs.mkdirSync(path.join(stagingDir, 'data', 'backups'), { recursive: true });
 
   if (options.skipSmoke || !NATIVE_ARCH) {
     console.log('\n注意：已跳过运行自检（--skip-smoke 或跨架构构建）。');
@@ -170,13 +154,13 @@ async function main() {
   }
 
   if (NATIVE_ARCH) {
-    step('同步 release/PractacuPress（保留 data/ 与 practacu-web.json）');
+    step('同步 release/PractacuPress（保留 data/）');
     try {
       syncPackageDir();
     } catch (err) {
       throw new Error(
         `写入 ${hostPackageDir} 失败（${err.code || err.message}）。` +
-          '如果旧版 PractacuPress.exe 正在运行，请先关闭它再重试；本次 zip 已经生成。',
+          '如果旧版 PractacuPressAPI.exe 正在运行，请先关闭它再重试；本次 zip 已经生成。',
       );
     }
     console.log(`  ${hostPackageDir}`);
@@ -188,8 +172,7 @@ async function main() {
 
   step('完成');
   console.log(`  架构       windows/${ARCH}`);
-  if (NATIVE_ARCH) console.log(`  启动器     ${path.join(hostPackageDir, 'PractacuPress.exe')}`);
-  if (NATIVE_ARCH) console.log(`  API        ${path.join(hostPackageDir, 'PractacuPressAPI.exe')}`);
+  if (NATIVE_ARCH) console.log(`  程序       ${path.join(hostPackageDir, 'PractacuPressAPI.exe')}`);
   if (zipResult) {
     console.log(`  压缩包     ${zipResult.path}`);
     console.log(`  大小       ${formatSize(zipResult.size)}`);
@@ -401,6 +384,36 @@ function stampWebVersion(dir) {
   );
 }
 
+function writeLocalEnv() {
+  const env = [
+    '# Local Windows package / 本地 Windows 包',
+    'APP_ENV=development',
+    'PP_DESKTOP=true',
+    'HTTP_ADDR=127.0.0.1:8080',
+    'DATABASE_DRIVER=sqlite',
+    'DATABASE_DSN=file:./data/practacu.db',
+    'STORAGE_DRIVER=local',
+    'STORAGE_DIR=./data/media',
+    'BACKUP_DIR=./data/backups',
+    'PUBLIC_BASE_URL=http://127.0.0.1:8080',
+    '',
+  ].join('\r\n');
+  fs.writeFileSync(path.join(stagingDir, '.env'), env, 'utf8');
+  console.log('  .env');
+}
+
+function writeStartScript() {
+  const script = [
+    '@echo off',
+    'chcp 65001 >nul',
+    'cd /d "%~dp0"',
+    'start "" "http://127.0.0.1:8080"',
+    'PractacuPressAPI.exe',
+    '',
+  ].join('\r\n');
+  fs.writeFileSync(path.join(stagingDir, '启动.cmd'), script, 'utf8');
+  console.log('  启动.cmd');
+}
 function writeReleaseReadme() {
   const templatePath = path.join(root, 'scripts', 'release-readme.txt');
   if (!fs.existsSync(templatePath)) throw new Error(`缺少发布说明模板：${templatePath}`);
@@ -559,7 +572,7 @@ function writeZip(file, folder, sourceDir) {
 function syncPackageDir() {
   fs.mkdirSync(hostPackageDir, { recursive: true });
   for (const name of fs.readdirSync(hostPackageDir)) {
-    if (name === 'data' || name === 'practacu-web.json') continue;
+    if (name === 'data' || name === '.env') continue;
     rmrf(path.join(hostPackageDir, name));
   }
   for (const name of fs.readdirSync(stagingDir)) {
@@ -574,12 +587,13 @@ function syncPackageDir() {
 /* ------------------------------------------------------------------ */
 
 async function smokeTest(builtDir) {
-  step('自检：启动打包产物，验证站点、API 与内容清洗');
+  step('自检：启动 API，验证站点、API 与内容清洗');
   const smokeRoot = path.join(root, '.tmpbuild', 'smoke', `run-${Date.now()}`);
   const copyDir = path.join(smokeRoot, 'PractacuPress');
   fs.mkdirSync(smokeRoot, { recursive: true });
   fs.cpSync(builtDir, copyDir, { recursive: true });
   const dataDir = path.join(copyDir, 'data');
+  fs.mkdirSync(dataDir, { recursive: true });
   if (options.port) {
     const available = await isPortFree(options.port);
     if (!available) {
@@ -587,12 +601,29 @@ async function smokeTest(builtDir) {
     }
   }
   const port = options.port || (await findFreePort());
-  const exe = path.join(copyDir, 'PractacuPress.exe');
+  const exe = path.join(copyDir, 'PractacuPressAPI.exe');
   const base = `http://127.0.0.1:${port}`;
+  const dbPath = path.join(dataDir, 'practacu.db').replaceAll('\\', '/');
 
-  const child = spawn(exe, ['--port', String(port), '--no-browser', '--mode', 'live'], {
+  const child = spawn(exe, [], {
     cwd: copyDir,
-    env: { ...baseEnv },
+    env: {
+      ...baseEnv,
+      APP_ENV: 'development',
+      PP_DESKTOP: 'true',
+      HTTP_ADDR: `127.0.0.1:${port}`,
+      DATABASE_DRIVER: 'sqlite',
+      DATABASE_DSN: `file:${dbPath}`,
+      STORAGE_DRIVER: 'local',
+      STORAGE_DIR: path.join(dataDir, 'media'),
+      BACKUP_DIR: path.join(dataDir, 'backups'),
+      PUBLIC_BASE_URL: base,
+      COOKIE_SECURE: 'false',
+      RATE_LIMIT_PER_MINUTE: '100000',
+      AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE: '1000',
+      NO_PROXY: 'localhost,127.0.0.1',
+      no_proxy: 'localhost,127.0.0.1',
+    },
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -604,17 +635,12 @@ async function smokeTest(builtDir) {
   child.on('exit', (code, signal) => { exited = true; exitText = `code=${code} signal=${signal}`; });
 
   try {
-    const runtime = await waitFor(async () => {
-      if (exited) throw fatal(`启动器提前退出（${exitText}）：\n${tail(output)}`);
-      const response = await httpJSON(`${base}/__pp/runtime`);
-      return response && response.body && response.body.name === 'practacu-press' ? response.body : null;
-    }, 120000, 400, '启动器 /__pp/runtime');
-
-    check(runtime.dist_ready === true, '站点文件没有内嵌进启动器');
-    check(runtime.runtime_mode === 'live', `运行方式应为 live，实际是 ${runtime.runtime_mode}`);
-    check(runtime.api && runtime.api.managed === true, '本机 API 没有由启动器托管');
-    check(runtime.api.ready === true, '本机 API 没有就绪');
-    console.log('  ✓ /__pp/runtime：live，API 就绪');
+    await waitFor(async () => {
+      if (exited) throw fatal(`API 提前退出（${exitText}）：\n${tail(output)}`);
+      const health = await httpJSON(`${base}/api/healthz`);
+      return health.status === 200 && health.body && health.body.status === 'ok';
+    }, 120000, 400, 'API /api/healthz');
+    console.log('  ✓ API 启动');
 
     const index = await httpText(`${base}/`);
     check(index.status === 200, `首页返回 ${index.status}`);
@@ -656,35 +682,34 @@ async function smokeTest(builtDir) {
         source_body: '<h1>Hello</h1><script>alert(1)</script>',
       }),
     });
-
     check(draft.status === 201, `创建文章失败（HTTP ${draft.status}）：${draft.text.slice(0, 300)}`);
     const rendered = String((draft.body && draft.body.rendered_html) || '');
     check(/<h1[^>]*>\s*Hello\s*<\/h1>/i.test(rendered), 'Markdown/HTML 渲染不正确');
     check(!/<script/i.test(rendered), 'Go 安全清洗没有移除 <script>');
     console.log('  ✓ 文章创建 + Go 内容清洗');
 
-      const published = await httpJSON(`${base}/api/v1/articles/${draft.body.id}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: '{}',
-      });
-      check(
-        published.status === 200 && published.body && published.body.status === 'published',
-        `发布失败（HTTP ${published.status}）：${published.text.slice(0, 300)}`,
-      );
-      console.log('  ✓ 文章发布');
+    const published = await httpJSON(`${base}/api/v1/articles/${draft.body.id}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    check(
+      published.status === 200 && published.body && published.body.status === 'published',
+      `发布失败（HTTP ${published.status}）：${published.text.slice(0, 300)}`,
+    );
+    console.log('  ✓ 文章发布');
 
-      const list = await httpJSON(`${base}/api/v1/articles?limit=5`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      check(
-        list.status === 200 &&
-          list.body &&
-          Array.isArray(list.body.items) &&
-          list.body.items.some((item) => item.id === draft.body.id),
-        '文章列表里找不到刚发布的文章',
-      );
-      console.log('  ✓ 文章列表');
+    const list = await httpJSON(`${base}/api/v1/articles?limit=5`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    check(
+      list.status === 200 &&
+        list.body &&
+        Array.isArray(list.body.items) &&
+        list.body.items.some((item) => item.id === draft.body.id),
+      '文章列表里找不到刚发布的文章',
+    );
+    console.log('  ✓ 文章列表');
 
     check(fs.existsSync(path.join(dataDir, 'practacu.db')), '没有生成 data/practacu.db');
     console.log('  ✓ data/practacu.db 已生成');
@@ -694,7 +719,6 @@ async function smokeTest(builtDir) {
     rmrf(smokeRoot);
   }
 }
-
 function fatal(message) {
   const error = new Error(message);
   error.fatal = true;

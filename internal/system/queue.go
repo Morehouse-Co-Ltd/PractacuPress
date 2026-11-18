@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	"github.com/practacu/practacu-press/ent/emaillog"
-	"github.com/practacu/practacu-press/ent/outboxevent"
-	"github.com/practacu/practacu-press/ent/predicate"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	"github.com/practacu/practacu-press/internal/ent/emaillog"
+	"github.com/practacu/practacu-press/internal/ent/outboxevent"
+	"github.com/practacu/practacu-press/internal/ent/predicate"
 )
 
 // Queue monitoring (Beta 1.2 contract K).

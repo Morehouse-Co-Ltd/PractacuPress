@@ -8,9 +8,7 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 | 编号 | 问题 | 本仓库的处置 |
 | --- | --- | --- |
 | V-17 | `docker-compose.yml` 默认是开发形态 | 单份 compose 通过 `--env-file .env.prod` 切换 production 语义、持久私钥与 Secure Cookie；宿主机 TLS 反代模板为 `deploy/production/nginx.conf` |
-| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头（API 同时服务内嵌前端）；启动器 `launcher/main.go` 与宿主机 TLS 模板各一份（TLS 层补 HSTS） |
-| V-04 | 同机反代可绕过启动器回环校验改端口/读信息 | `/__pp/*` 现在要求「TCP 对端回环 **且** Host 回环」；反代模板显式 `location /__pp/ { return 404; }`；`/__pp/runtime` 只返回页面必需字段 |
-| V-18 | 启动器明文保存 JWT 私钥 | Windows 上用 DPAPI `CryptProtectData` 加密后写 `practacu-web.json`（`dpapi:` 前缀），旧明文文件读取时兼容并在下次写盘迁移 |
+| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头，宿主机 TLS 模板再补 HSTS |
 
 > **验证状态**：默认 API 镜像（内嵌前端与安全检查）已在本机 Docker 中实际构建并起栈验证
 > （API healthy，`/api/healthz`、`/api/readyz`、`/api/v1/setup/status`、RSS/Atom/sitemap/robots、
@@ -125,7 +123,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 需要 **base64 编码的 PKCS#8 Ed25519 私钥（单行）**，三种方式任选。
 
-**Go**（与启动器 `launcher/state.go` 的生成逻辑一致；保存为 `genkey.go` 后
+**Go**（保存为 `genkey.go` 后
 `go run genkey.go`）：
 
 ```go
@@ -168,8 +166,7 @@ openssl pkey -in jwt_keys.pem -outform DER -out jwt_key.der
 [Convert]::ToBase64String([IO.File]::ReadAllBytes('jwt_key.der'))
 ```
 
-把输出填进 `.env.prod` 的 `AUTH_JWT_ED25519_PRIVATE_KEY=`。同一份密钥也可以直接给
-Windows 启动器形态使用（`.env.prod` 与启动器不共用文件系统，手动填入各自环境）。
+把输出填进 `.env.prod` 的 `AUTH_JWT_ED25519_PRIVATE_KEY=`。
 
 > 密钥轮换 = 全员强制重新登录。生成后请纳入密码管理器/受控备份；
 > 泄露即等于可以伪造任意角色 token。
@@ -301,34 +298,7 @@ docker compose --env-file .env.prod logs -f api
 2. 多租户的成员/管理员预置目前需要数据库运维或后续版本的管理控制台支持；
 3. 若只是单站点自托管，**推荐按 §3 的两阶段流程**，不要打开 `PP_DESKTOP` 上生产。
 
-## 10. Windows 启动器形态的加固（V-04 / V-18）
-
-- **签名私钥**：`practacu-web.json` 里的 `jwt_key` 现在是 DPAPI 密文
-  （`dpapi:` 前缀），只有写入它的 Windows 用户能解密。旧版本留下的明文
-  `base64` 私钥仍可读取，并在下一次写盘时自动迁移为密文。
-  - 换 Windows 用户、重装系统或拷贝到另一台机器后无法解密 → 启动器会生成新密钥，
-    所有已登录会话失效，需要重新登录。
-  - 备份/分发安装目录时仍建议排除 `practacu-web.json`（虽然已是密文，但仍可被
-    同一用户解密）。
-- **安装目录 ACL**：DPAPI 之外建议把安装目录收紧为当前用户与 SYSTEM 可读：
-  `icacls "安装目录" /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F" /grant:r "SYSTEM:(OI)(CI)F"`
-  （执行前确认目录归属；这不在启动器代码里自动做）。
-- **不要把启动器端口反代到公网**。如果必须放在同机 Nginx 后面：
-  - 反代必须显式 `location /__pp/ { return 404; }`（`deploy/production/nginx.conf`
-    已包含）；**这是唯一可靠的边界**，原因见下面第 4 条；
-  - 启动器自身已经要求 `/__pp/*` 的 TCP 对端与 Host 都是回环，非回环 Host 一律
-    403 `permission_denied`；
-  - 带 `X-Forwarded-For` / `X-Forwarded-Host` / `X-Forwarded-Proto` / `X-Real-IP` /
-    `Forwarded` 的请求也会被拒绝——反代通常会加这些头，而本机浏览器不会；
-  - `/__pp/runtime` 只返回 `mode/runtime_mode/name/port/origin/dist_ready/api`，
-    不再暴露安装路径、日志路径、内部 API 地址与 PID。
-  - **残余风险（必须知道）**：如果反代既把 Host 改写成 `127.0.0.1:端口`、又
-    不添加任何转发头（例如最裸的 `proxy_pass http://127.0.0.1:8080;`：
-    默认 Host 是 `$proxy_host`，默认不加 `X-Forwarded-*`），启动器在协议层无法
-    区分它和本机浏览器。因此生产反代**必须**按模板写
-    `location /__pp/ { return 404; }`，只在启动器代码里做校验不足以覆盖所有反代配置。
-
-## 11. 未验证项与已知限制
+## 10. 未验证项与已知限制
 
 - **宿主机 TLS 反代未实跑**：API 容器栈已实际构建并启动验证；`deploy/production/nginx.conf` 只做了语法与逐行核对，证书路径、HSTS 与真实客户端 IP 请在预发环境验证。
 - **Docker 单主机首管理员**：端口映射会隐藏客户端地址，默认 compose 用

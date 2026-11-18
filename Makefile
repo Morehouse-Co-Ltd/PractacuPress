@@ -8,7 +8,7 @@ PKG := ./...
 .PHONY: build test vet generate migrate tidy smoke \
 	web-install web-typecheck web-build web-test web-dev web-start web-package package package-linux \
 	embed-web \
-	migrations-test config-test verify verify-go verify-launcher verify-web verify-migrations verify-config ci
+	migrations-test config-test verify verify-go verify-web verify-migrations verify-config ci
 
 build:
 	$(GO) build $(PKG)
@@ -20,7 +20,7 @@ vet:
 	$(GO) vet $(PKG)
 
 generate:
-	$(GO) generate ./ent/...
+	$(GO) generate ./internal/ent/...
 
 migrate:
 	$(GO) run ./cmd/migrate
@@ -64,22 +64,16 @@ package-linux:
 	node scripts/package-linux.mjs
 
 migrations-test:
-	$(GO) test -v -count=1 ./tests/migrations/...
+	$(GO) test -v -count=1 ./internal/tests/migrations/...
 
 config-test:
-	$(GO) test -v -count=1 ./tests/ci/...
+	$(GO) test -v -count=1 ./internal/tests/ci/...
 
 # Full local gate, matching .github/workflows/ci.yml.
 verify-go:
 	$(GO) build ./...
 	$(GO) vet ./...
 	$(GO) test -count=1 ./...
-
-# launcher is its own Go module and only builds on Windows. The root
-# `./...` above never compiles it, so it needs this separate gate (CI runs it on
-# windows-latest; Linux/macOS developers skip it).
-verify-launcher:
-	cd launcher && $(GO) build ./... && $(GO) vet ./... && $(GO) test -count=1 ./...
 
 verify-web: web-install web-typecheck web-build web-test
 	node --test scripts/release-version.test.mjs

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	entgen "github.com/practacu/practacu-press/ent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
 	"github.com/practacu/practacu-press/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/internal/infrastructure/platformstore"
 	"github.com/practacu/practacu-press/internal/platform/page"

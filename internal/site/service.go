@@ -101,7 +101,7 @@ type Option func(*Service)
 //
 // It exists because the domain-less fallback would otherwise answer on any hostname,
 // including localhost and private addresses, which is exactly the accidental exposure
-// production must not have. Development, tests and the desktop launcher leave it off.
+// production must not have. Development, tests and the desktop install leave it off.
 func RequirePublicAddress(required bool) Option {
 	return func(s *Service) { s.requirePublicAddress = required }
 }

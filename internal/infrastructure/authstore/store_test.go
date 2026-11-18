@@ -14,7 +14,7 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/config"
 	"github.com/practacu/practacu-press/internal/site"
 
-	"github.com/practacu/practacu-press/ent/sitemember"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
 )
 
 // harness wires the real Ent store, a real SQLite database and the real token

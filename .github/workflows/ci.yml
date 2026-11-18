@@ -69,21 +69,6 @@ jobs:
           powershell -ExecutionPolicy Bypass -File scripts/verify.ps1 -Task go 2>&1 | Tee-Object -FilePath .ci-logs/go-windows.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # launcher has its own go.mod, so the root `./...` above never builds
-      # or tests it. Run its gate where it can actually compile (Windows).
-      - name: Verify launcher module (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        working-directory: launcher
-        timeout-minutes: 10
-        run: |
-          go build ./...
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go vet ./...
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test -count=1 ./...
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Upload failure logs
         if: failure()
         uses: actions/upload-artifact@v7.0.2

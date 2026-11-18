@@ -17,12 +17,12 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/errors"
 
 	// The generated package is also named ent, so it is aliased here.
-	entgen "github.com/practacu/practacu-press/ent"
+	entgen "github.com/practacu/practacu-press/internal/ent"
 )
 
 // SchemaVersion identifies the reviewed migration level this binary expects.
 //
-// It mirrors the newest file in migrations/<dialect>/; the backup manifest stores
+// It mirrors the newest file in internal/migrations/<dialect>/; the backup manifest stores
 // it so a restore can refuse a package produced by a newer schema and report when
 // an older one needed the additive migration pass.
 const SchemaVersion = "20261121000000"

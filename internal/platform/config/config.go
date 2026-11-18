@@ -178,7 +178,7 @@ type Config struct {
 	// DefaultSiteID is used when host resolution is not configured, which is the
 	// Windows single site deployment mode.
 	DefaultSiteID string
-	// DesktopMode enables the zero configuration bootstrap the Windows launcher
+	// DesktopMode enables the zero configuration bootstrap the desktop install
 	// relies on: the schema is applied at startup, a single site is created when the
 	// database is empty, and the first registered account owns it.
 	DesktopMode bool
@@ -370,7 +370,7 @@ func Load() (Config, error) {
 		cfg.HTTPAddr = "127.0.0.1:8080"
 	}
 
-	// The API is meant to be reached only from this machine: the desktop launcher
+	// The API is meant to be reached only from this machine: the desktop install
 	// proxies it under the same origin, so there is no reason to expose the port to
 	// the LAN. A wildcard or LAN address is usually a typo or an accidental exposure,
 	// therefore it fails fast unless the operator opts in explicitly.

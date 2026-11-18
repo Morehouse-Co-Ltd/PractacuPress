@@ -23,7 +23,6 @@
 node_modules/
 /web/dist/
 /web/.runtime/
-/launcher/web/dist/
 .DS_Store
 Thumbs.db
 

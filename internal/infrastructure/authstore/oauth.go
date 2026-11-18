@@ -33,10 +33,10 @@ import (
 	"github.com/practacu/practacu-press/internal/auth"
 	"github.com/practacu/practacu-press/internal/site"
 
-	entgen "github.com/practacu/practacu-press/ent"
-	entsite "github.com/practacu/practacu-press/ent/site"
-	"github.com/practacu/practacu-press/ent/sitemember"
-	entuser "github.com/practacu/practacu-press/ent/user"
+	entgen "github.com/practacu/practacu-press/internal/ent"
+	entsite "github.com/practacu/practacu-press/internal/ent/site"
+	"github.com/practacu/practacu-press/internal/ent/sitemember"
+	entuser "github.com/practacu/practacu-press/internal/ent/user"
 )
 
 var _ auth.OAuthAccountStore = (*Store)(nil)

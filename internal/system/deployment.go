@@ -50,7 +50,7 @@ type EffectiveDomains struct {
 	//
 	// It is always false, and that is the truth rather than a placeholder: the process
 	// listens on plain HTTP by design (see the loopback rule in platform/config) and
-	// TLS is terminated by whatever sits in front of it, usually the desktop launcher
+	// TLS is terminated by whatever sits in front of it, usually a reverse proxy
 	// or a reverse proxy. The `domains.https_only` switch in the site configuration
 	// therefore cannot be applied here; the settings page has to say so instead of
 	// showing the stored switch as if it were in force.

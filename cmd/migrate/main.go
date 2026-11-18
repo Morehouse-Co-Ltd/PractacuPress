@@ -2,7 +2,7 @@
 //
 // It is additive on purpose: dropping columns or indexes is refused, so a mistyped
 // deployment cannot silently destroy data. Production change sets are generated
-// and reviewed instead of applied by this command (see migrations/README.md).
+// and reviewed instead of applied by this command (see internal/migrations/README.md).
 package main
 
 import (
