@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 
 	"github.com/practacu/practacu-press/internal/analytics"
 	"github.com/practacu/practacu-press/internal/audit"
@@ -82,6 +83,62 @@ const (
 	shutdownTimeout = 10 * time.Second
 )
 
+// loadDotEnv reads the nearest .env from the working directory up to the module
+// root (the directory with go.mod). A missing file is normal (Docker injects
+// variables directly); a malformed file is a startup error so a typo cannot
+// silently fall back to another environment. Existing process variables always
+// win, so `APP_ENV=... go run ./cmd/server` and Compose keep precedence.
+func loadDotEnv() (string, error) {
+	path := findDotEnv()
+	if path == "" {
+		return "", nil
+	}
+	if err := godotenv.Load(path); err != nil {
+		return "", fmt.Errorf("load %s: %w", path, err)
+	}
+	return path, nil
+}
+
+func findDotEnv() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		candidate := filepath.Join(dir, ".env")
+		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+			return candidate
+		}
+		// Do not climb past the module root: a stray ~/.env must not configure
+		// the server.
+		if _, moduleErr := os.Stat(filepath.Join(dir, "go.mod")); moduleErr == nil {
+			return ""
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func findModuleRoot() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		if _, moduleErr := os.Stat(filepath.Join(dir, "go.mod")); moduleErr == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
 func main() {
 	if err := run(); err != nil {
 		logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
@@ -91,15 +148,42 @@ func main() {
 }
 
 func run() error {
+	// Local runs (GoLand, `go run ./cmd/server`) do not inherit a shell that
+	// exported .env. Load it before config validates anything. godotenv does not
+	// overwrite variables that are already set, so Docker/Compose and an explicit
+	// `APP_ENV=... go run ...` keep precedence.
+	dotenvPath, err := loadDotEnv()
+	if err != nil {
+		return err
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	logger := logging.New(cfg)
+	if dotenvPath != "" {
+		logger.Info("loaded environment file", "path", dotenvPath)
+	}
+	frontendWarning := false
+	if !web.Available() && cfg.AppEnv == config.EnvDevelopment {
+		// `go run` and GoLand compile the binary in place, so the embed directory
+		// may only contain .gitkeep. Prefer a built web/dist on disk in development;
+		// a release/package build still uses the embedded copy.
+		if root := findModuleRoot(); root != "" {
+			dir := filepath.Join(root, "web", "dist")
+			if dirErr := web.UseDir(dir); dirErr != nil {
+				logger.Warn("frontend is not embedded and web/dist is not built; only the API will be served "+
+					"(run `npm run build` in web/ or `make embed-web`)", "dir", dir)
+				frontendWarning = true
+			} else {
+				logger.Info("serving frontend from disk (development)", "dir", dir)
+			}
+		}
+	}
 	warnUnsetPublicBaseURL(cfg, logger)
-	if !web.Available() {
-		logger.Warn("frontend is not embedded in this binary; only the API will be served " +
-			"(run node scripts/sync-web-embed.mjs or use a release build)")
+	if !web.Available() && !frontendWarning {
+		logger.Warn("frontend is not available; only the API will be served")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -1346,7 +1430,11 @@ func dialSecurity(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				"service", service, "addr", addr, "error", err)
 			return nil
 		}
-		if pingErr := client.Ping(dialCtx); pingErr != nil {
+		// Do not let an absent optional service hold the whole API startup for the
+		// full dial deadline. The client reconnects in the background anyway.
+		pingCtx, cancelPing := context.WithTimeout(dialCtx, 3*time.Second)
+		defer cancelPing()
+		if pingErr := client.Ping(pingCtx); pingErr != nil {
 			logger.Warn("security service did not answer at startup; calls will fail closed or use the fallback",
 				"service", service, "addr", addr, "error", pingErr)
 		} else {
@@ -1355,8 +1443,30 @@ func dialSecurity(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		return client
 	}
 
-	goClient := dial("go", cfg.SecurityGoGRPCAddr)
-	rustClient := dial("rust", cfg.SecurityGRPCAddr)
+	type dialed struct {
+		service string
+		client  *securityclient.GRPC
+	}
+	results := make(chan dialed, 2)
+	for _, endpoint := range []struct{ service, addr string }{
+		{"go", cfg.SecurityGoGRPCAddr},
+		{"rust", cfg.SecurityGRPCAddr},
+	} {
+		endpoint := endpoint
+		go func() {
+			results <- dialed{service: endpoint.service, client: dial(endpoint.service, endpoint.addr)}
+		}()
+	}
+	var goClient, rustClient *securityclient.GRPC
+	for range 2 {
+		result := <-results
+		switch result.service {
+		case "go":
+			goClient = result.client
+		case "rust":
+			rustClient = result.client
+		}
+	}
 
 	closeAll := func() {
 		if goClient != nil {

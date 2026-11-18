@@ -9,12 +9,19 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"os"
+	"path"
+	"sync"
 )
 
 //go:embed all:dist
 var embedded embed.FS
 
-var dist fs.FS
+var (
+	distMu    sync.RWMutex
+	dist      fs.FS
+	localDist fs.FS
+)
 
 func init() {
 	sub, err := fs.Sub(embedded, "dist")
@@ -26,12 +33,46 @@ func init() {
 	dist = sub
 }
 
-// Dist returns the embedded frontend tree.
-func Dist() fs.FS { return dist }
+// Dist returns the active frontend tree: the embedded build when present, or a
+// development-only directory registered with UseDir.
+func Dist() fs.FS {
+	distMu.RLock()
+	defer distMu.RUnlock()
+	if hasIndex(dist) {
+		return dist
+	}
+	if localDist != nil {
+		return localDist
+	}
+	return dist
+}
 
-// Available reports whether a real frontend was embedded. A fresh checkout only
-// has dist/.gitkeep, which is enough to compile but cannot serve the SPA.
+// UseDir registers a built frontend on disk for local development. Production
+// builds always use the embedded copy; this keeps `go run` usable in GoLand
+// without recompiling the binary after every frontend build.
+func UseDir(dir string) error {
+	info, err := os.Stat(path.Join(dir, "index.html"))
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return &os.PathError{Op: "open", Path: path.Join(dir, "index.html"), Err: os.ErrInvalid}
+	}
+	distMu.Lock()
+	localDist = os.DirFS(dir)
+	distMu.Unlock()
+	return nil
+}
+
+// Available reports whether a frontend can be served.
 func Available() bool {
-	info, err := fs.Stat(dist, "index.html")
+	return hasIndex(Dist())
+}
+
+func hasIndex(fsys fs.FS) bool {
+	if fsys == nil {
+		return false
+	}
+	info, err := fs.Stat(fsys, "index.html")
 	return err == nil && !info.IsDir()
 }

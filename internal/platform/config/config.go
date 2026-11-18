@@ -365,7 +365,7 @@ func Load() (Config, error) {
 
 	switch cfg.AppEnv {
 	case "":
-		return Config{}, &Error{Code: "missing_app_env", Detail: "APP_ENV is required"}
+		return Config{}, &Error{Code: "missing_app_env", Detail: "APP_ENV is required (set it in the environment or in .env at the repository root)"}
 	case EnvDevelopment, EnvTest, EnvProduction:
 	default:
 		return Config{}, &Error{

@@ -16,7 +16,7 @@ import (
 // anything that is not a static file or an SPA navigation, so the caller can fall
 // back to the API's JSON 404.
 func Serve(c *gin.Context) bool {
-	return ServeFS(c, dist)
+	return ServeFS(c, Dist())
 }
 
 // CanServe reports whether the path would be handled by the embedded frontend,

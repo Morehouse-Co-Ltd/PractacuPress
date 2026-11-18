@@ -301,6 +301,8 @@ source ~/.practacu-env.sh
 mkdir -p data/media
 ```
 
+> **GoLand / 本机直接运行**：把 `.env.example` 复制为仓库根目录的 `.env`，Run Configuration 的 Working directory 保持仓库根目录，直接运行 `cmd/server` 即可。服务会从当前目录向上找到最近的 `.env`（到 `go.mod` 为止）并加载；已经存在的环境变量优先级更高。安全服务没启动时 API 仍能启动，但发布文章和完成上传会按设计返回 503；完整本地栈请用 `启动.bat` / `scripts\dev.ps1`。如果要在单进程里看到前端，先执行 `make embed-web`。
+
 建库并创建默认站点（只需一次）。新开的终端不会继承环境变量，所以下面每个终端都先 `source` 一次：
 
 ```bash

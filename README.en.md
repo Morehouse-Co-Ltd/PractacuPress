@@ -249,6 +249,13 @@ source ~/.practacu-env.sh
 mkdir -p data/media
 ```
 
+> **GoLand / direct local run**: copy `.env.example` to `.env` in the repository root, keep the Run
+> Configuration working directory at that root, and run `cmd/server` directly. The server loads the
+> nearest `.env` from the working directory up to `go.mod`; variables already present in the
+> environment win. The API still starts without the security service, but publishing and uploads
+> return 503 by design; for the full local stack use `启动.bat` / `scripts\dev.ps1`. To see the
+> frontend in the single process, run `make embed-web` first.
+
 Create the database and the default site (once). A new terminal does not inherit the environment, so
 source the file again in each one:
 
