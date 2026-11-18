@@ -14,11 +14,17 @@ export function AutoSaveStatus({
   state,
   error,
   className = '',
+  live = true,
 }: {
   state: AutoSaveState;
   /** 状态为 error 时展示的原因；没有时回退到通用文案。 */
   error?: string;
   className?: string;
+  /**
+   * 同一个页面可能同时显示顶部和底部的状态条。只让其中一条成为 live region，
+   * 否则屏幕阅读器会把每次自动保存播报两遍。
+   */
+  live?: boolean;
 }) {
   const t = useT();
   const label =
@@ -34,8 +40,9 @@ export function AutoSaveStatus({
   return (
     <span
       className={`autosave-status is-${state} tiny faint${className ? ` ${className}` : ''}`}
-      role="status"
-      aria-live="polite"
+      role={live ? 'status' : undefined}
+      aria-live={live ? 'polite' : 'off'}
+      aria-atomic={live ? true : undefined}
     >
       <span className="autosave-dot" aria-hidden="true" />
       {label}

@@ -90,7 +90,17 @@ func New(deps Dependencies) *gin.Engine {
 	if deps.Config.RateLimitPerMinute > 0 {
 		r.Use(middleware.RateLimit(
 			middleware.NewMemoryRateLimitStore(nil),
-			middleware.Policy{Limit: deps.Config.RateLimitPerMinute, Window: time.Minute},
+			middleware.Policy{
+				Limit:  deps.Config.RateLimitPerMinute,
+				Window: time.Minute,
+				// The embedded frontend is served by this same process. Charging
+				// index.html and every hashed asset to the API budget means a few
+				// reloads can exhaust the window and the browser gets a JSON 429
+				// instead of the SPA. API routes keep the full limiter.
+				Skip: func(c *gin.Context) bool {
+					return web.CanServe(web.Dist(), c.Request.Method, c.Request.URL.Path)
+				},
+			},
 		))
 	}
 

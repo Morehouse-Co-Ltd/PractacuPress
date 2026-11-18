@@ -213,7 +213,7 @@ func TestWebJob(t *testing.T) {
 		if strings.HasPrefix(uses, "actions/setup-node@") {
 			with := lookup(step, "with")
 			if got := scalar(lookup(with, "node-version")); got != "22" {
-				t.Errorf("setup-node node-version = %q, want 22 (matches deploy/docker/web.Dockerfile)", got)
+				t.Errorf("setup-node node-version = %q, want 22 (matches deploy/docker/api.Dockerfile)", got)
 			}
 			if scalar(lookup(with, "cache")) != "npm" {
 				t.Error("setup-node must cache npm")
@@ -345,7 +345,7 @@ func TestComposeConfiguration(t *testing.T) {
 	if services == nil {
 		t.Fatal("docker-compose.yml has no services")
 	}
-	for _, service := range []string{"api", "security", "web"} {
+	for _, service := range []string{"api", "security"} {
 		if lookup(services, service) == nil {
 			t.Errorf("docker-compose.yml has no %s service", service)
 		}
@@ -357,17 +357,11 @@ func TestComposeConfiguration(t *testing.T) {
 	} else if !scalarsContain(test, "healthz") {
 		t.Error("api healthcheck does not probe /healthz")
 	}
-	if lookup(lookup(services, "web"), "depends_on") == nil {
-		t.Error("web service does not depend on api")
-	}
-	if profiles := lookup(lookup(services, "web"), "profiles"); !scalarsContain(profiles, "static") {
-		t.Error("web service must be opt-in via the static profile (API serves the embedded SPA by default)")
+	if lookup(lookup(services, "api"), "depends_on") == nil {
+		t.Error("api service does not depend on security")
 	}
 	if ports := lookup(lookup(services, "api"), "ports"); ports == nil || !scalarsContain(ports, "8080") {
 		t.Error("api service must publish the embedded frontend/API on 8080")
-	}
-	if lookup(lookup(services, "api"), "depends_on") == nil {
-		t.Error("api service does not depend on security")
 	}
 
 	// Every build context must point at a Dockerfile that exists in the repo.
@@ -382,7 +376,7 @@ func TestComposeConfiguration(t *testing.T) {
 	if prodServices == nil {
 		t.Fatal("docker-compose.prod.yml has no services")
 	}
-	for _, service := range []string{"api", "security", "web"} {
+	for _, service := range []string{"api", "security"} {
 		if lookup(prodServices, service) == nil {
 			t.Errorf("docker-compose.prod.yml does not override the %s service", service)
 		}

@@ -57,7 +57,6 @@ func TestTemplatesAllowTheEditorsOwnFrames(t *testing.T) {
 		t.Fatalf("read API policy: %v", err)
 	}
 	templates := []string{
-		filepath.Join(root, "deploy", "docker", "nginx.conf"),
 		filepath.Join(root, "deploy", "production", "nginx.conf"),
 		filepath.Join(root, "deploy", "linux", "nginx", "locations.conf.in"),
 	}

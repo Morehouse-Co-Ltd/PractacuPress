@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -409,6 +410,26 @@ func TestRateLimitZeroLimitDisables(t *testing.T) {
 	store := NewMemoryRateLimitStore(nil)
 	allowed, _ := store.Allow("k", 0, time.Minute)
 	require.True(t, allowed)
+}
+
+// TestRateLimitSkipDoesNotConsume keeps the SPA document and its assets out of
+// the API budget: the process serves both, but a page load must not be able to
+// exhaust the API limiter and turn the next navigation into a JSON 429.
+func TestRateLimitSkipDoesNotConsume(t *testing.T) {
+	store := NewMemoryRateLimitStore(nil)
+	r := newEngine(RequestID(), ErrorHandler(nil), RateLimit(store, Policy{
+		Limit:  1,
+		Window: time.Minute,
+		Skip:   func(c *gin.Context) bool { return strings.HasPrefix(c.Request.URL.Path, "/assets/") },
+	}))
+	r.GET("/api/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.NoRoute(func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	for i := 0; i < 3; i++ {
+		require.Equal(t, http.StatusOK, serve(r, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)).Code)
+	}
+	require.Equal(t, http.StatusOK, serve(r, httptest.NewRequest(http.MethodGet, "/api/x", nil)).Code)
+	require.Equal(t, http.StatusTooManyRequests, serve(r, httptest.NewRequest(http.MethodGet, "/api/x", nil)).Code)
 }
 
 // TestRateLimitStoreIsBounded guards the memory ceiling: a flood of unique keys

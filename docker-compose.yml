@@ -106,28 +106,8 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # 可选：独立 Nginx 静态站。默认不启动（profile），因为 API 镜像已经内嵌前端。
-  # 只有需要 CDN、独立缓存或兼容旧三容器部署时才启用：
-  #   docker compose --profile static up -d
-  web:
-    profiles: ["static"]
-    build:
-      context: .
-      dockerfile: deploy/docker/web.Dockerfile
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    networks: [internal]
-    ports:
-      # 与 API 的 8080 分开，避免 profile 启用时端口冲突。
-      - "127.0.0.1:${PP_STATIC_PORT:-8081}:80"
-    stop_grace_period: 20s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+  # 前端已编进 API 镜像（go:embed），所以这里没有独立的 web/Nginx 容器。
+  # 需要 TLS、CDN 或额外缓存时，在宿主机/边缘反代 127.0.0.1:8080。
 
 networks:
   internal:

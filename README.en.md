@@ -111,7 +111,7 @@ The repository ships `docker-compose.yml`. By default it starts only the API (wi
 docker compose up -d --build
 ```
 
-The first build pulls base images and compiles the API and security-service images (the optional `web` profile adds a third); allow a few minutes on a slow network.
+The first build pulls base images and compiles the API and security-service images; allow a few minutes on a slow network.
 Then check health:
 
 ```bash
@@ -121,13 +121,13 @@ curl -fsS http://127.0.0.1:8080/healthz
 
 Open **http://localhost:8080** and complete the seven-step wizard; **the first account it creates is the platform administrator**.
 
-- **What runs**: `api` (one Go binary with the embedded SPA, serving `/api`, static assets and the SPA fallback) and `security` (Rust gRPC). Only `api` is published to the host by default; `web` is an optional static Nginx image started only with `docker compose --profile static up -d`.
+- **What runs**: `api` (one Go binary with the embedded SPA, serving `/api`, static assets and the SPA fallback) and `security` (Rust gRPC). Only `api` is published to the host; there is no separate web/Nginx container.
 - **Loopback by default**: the mapping is `127.0.0.1:8080:8080`, so an unfinished install cannot be claimed by the public internet. After setup, prefer the production overlay plus a host TLS proxy; do not expose an unfinished instance on `0.0.0.0:8080`.
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
 - **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows launcher (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
 - **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`; the image also ships `backup`, `media-gc` and `searchindex`.
 - **Production deployment**: `docker-compose.prod.yml` + `deploy/production/nginx.conf` provide production semantics, a persistent JWT signing key, Secure cookies, TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [docs/deployment/production-profile.md](docs/deployment/production-profile.md).
-- **Build one image**: `docker build -f deploy/docker/api.Dockerfile .`; use `security.Dockerfile` for the security service and `web.Dockerfile` only for an optional static site.
+- **Build one image**: `docker build -f deploy/docker/api.Dockerfile .`; use `security.Dockerfile` for the security service.
 
 > The default API (embedded frontend) and security-service images and the compose stack have been built and started for real: both services report healthy, and `/healthz`, `/readyz`, RSS/Atom/sitemap/robots, first-admin registration and login, media upload (including the security-service scan) and a whole-instance backup were exercised. `docker compose config` passes. The host TLS proxy still needs a staging run to validate certificates and HSTS.
 
@@ -181,13 +181,13 @@ Pushing a commit whose message contains a version (`v1.0.0` stable, `v1.0.1-beta
 upper- or lower-case `v`) triggers [.github/workflows/release.yml](.github/workflows/release.yml):
 it creates a GitHub Release with Windows x64/arm64 portable zips, Linux x86_64/aarch64 tar.gz,
 deb and rpm, macOS x86_64/arm64 tar.gz and `SHA256SUMS`, and pushes the api / security
-(plus optional static web) images for `linux/amd64,linux/arm64` to GHCR and Docker Hub. A beta only updates the version
+images for `linux/amd64,linux/arm64` to GHCR and Docker Hub. A beta only updates the version
 tag and `beta`; it never overwrites `latest`.
 
 - Repository secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the built-in
   `GITHUB_TOKEN`; Docker Hub is skipped when the username is empty).
-- Image names: `ghcr.io/<owner>/practacu-press-{api,web,security}:<tag>` and
-  `<dockerhub-user>/practacu-press-{api,web,security}:<tag>`.
+- Image names: `ghcr.io/<owner>/practacu-press-{api,security}:<tag>` and
+  `<dockerhub-user>/practacu-press-{api,security}:<tag>`.
 - Run published images with
   `PP_IMAGE_PREFIX=ghcr.io/<owner> PP_VERSION=v1.0.0 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d`.
 - You can also dispatch the workflow manually with a version, or push a `v*` / `V*` tag. Full

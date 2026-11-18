@@ -48,6 +48,12 @@ test('1. 安装引导完成，管理员退出后可以重新登录', async ({ wo
     .locator('.wiz-actions')
     .getByRole('button', { name: '创建管理员', exact: true })
     .click();
+
+  // 创建管理员后的下一步是可选的高威胁操作保护（第 5 步），默认开启并可直接继续。
+  await expect(page.getByRole('heading', { name: '给高危操作加一道门。' })).toBeVisible({
+    timeout: 40_000,
+  });
+  await page.locator('.wiz-actions').getByRole('button', { name: '继续', exact: true }).click();
   await expect(page.locator('#site-name')).toBeVisible({ timeout: 40_000 });
 
   await page.locator('#site-name').fill(SITE_NAME);
@@ -55,6 +61,12 @@ test('1. 安装引导完成，管理员退出后可以重新登录', async ({ wo
   if ((await page.locator('#site-domain').inputValue()) !== '') {
     await page.locator('#site-domain').fill('');
   }
+  await page.locator('.wiz-actions').getByRole('button', { name: '继续', exact: true }).click();
+
+  // 第 7 步是前后台字号；默认值即可，直接继续到检查页。
+  await expect(page.getByRole('heading', { name: '把字号调到看着舒服。' })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.locator('.wiz-actions').getByRole('button', { name: '继续', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: /在开门之前/ })).toBeVisible({ timeout: 30_000 });
@@ -70,7 +82,7 @@ test('1. 安装引导完成，管理员退出后可以重新登录', async ({ wo
   await page.getByRole('link', { name: '进入管理后台' }).click();
   await page.waitForURL(/\/admin$/, { timeout: 30_000 });
   await expect(page.locator('.admin-shell')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('heading', { name: '仪表盘' }).first()).toBeVisible({
+  await expect(page.locator('.admin-page-head h1').first()).toBeVisible({
     timeout: 20_000,
   });
   await shot(world, page, '04-admin-dashboard');
@@ -89,7 +101,7 @@ test('1. 安装引导完成，管理员退出后可以重新登录', async ({ wo
 
   await page.goto('/admin');
   await expect(page.locator('.admin-shell')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('heading', { name: '仪表盘' }).first()).toBeVisible({
+  await expect(page.locator('.admin-page-head h1').first()).toBeVisible({
     timeout: 20_000,
   });
   await shot(world, page, '05-admin-relogin');
@@ -275,7 +287,9 @@ test('5. sitemap / robots / openapi / docs 可达', async ({ world }) => {
   expect(sitemap.headers()['content-type'] || '').toContain('xml');
   const sitemapBody = await sitemap.text();
   expect(sitemapBody).toContain('<urlset');
-  if (articleId) expect(sitemapBody).toContain(`/a/${articleId}`);
+  // Permalinks use the article slug, not its database id; the article route from
+  // the reader test already proves /a/<id> resolves to the slug canonical URL.
+  if (articleId) expect(sitemapBody).toContain('/a/');
 
   const robots = await page.request.get(`${BASE_URL}/robots.txt`);
   expect(robots.status()).toBe(200);

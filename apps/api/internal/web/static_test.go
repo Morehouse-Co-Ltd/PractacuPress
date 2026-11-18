@@ -136,3 +136,31 @@ func TestServeWithoutFrontendDoesNotInventAnIndex(t *testing.T) {
 		t.Fatalf("status = %d, want 404 for an API-only build", response.Code)
 	}
 }
+
+func TestCanServeKeepsApiOwnedPathsOutOfTheStaticHandler(t *testing.T) {
+	fsys := testFS()
+	for _, target := range []string{"/", "/assets/app-abc.js", "/admin/posts"} {
+		if !CanServe(fsys, http.MethodGet, target) {
+			t.Errorf("CanServe(%q) = false, want true", target)
+		}
+	}
+	for _, target := range []string{
+		"/api/v1/setup/status",
+		"/healthz",
+		"/readyz",
+		"/plugins/demo/1/app.js",
+		"/__pp/state",
+		"/sitemap.xml",
+		"/robots.txt",
+		"/rss.xml",
+		"/atom.xml",
+		"/feed.xml",
+		"/category/news/rss.xml",
+		"/tag/go/atom.xml",
+		"/missing.js",
+	} {
+		if CanServe(fsys, http.MethodGet, target) {
+			t.Errorf("CanServe(%q) = true, want false", target)
+		}
+	}
+}

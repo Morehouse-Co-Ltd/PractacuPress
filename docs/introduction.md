@@ -21,7 +21,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | 形态 | 怎么用 | 适合 |
 | --- | --- | --- |
 | **桌面形态** | 运行 `PractacuPress.exe`（或双击），本机 80 端口起站点，数据留在 exe 同目录的 `data/` | 个人写作、内网小社区、演示交付 |
-| **容器形态** | `docker compose up -d` 起三个容器：API、安全服务、Nginx 静态站 | Linux 服务器、单机自托管的公网站点 |
+| **容器形态** | `docker compose up -d` 起两个容器：API（已用 `go:embed` 内嵌前端）、Rust 安全服务 | Linux 服务器、单机自托管的公网站点 |
 | **服务器形态** | Go API + 前端静态资源 + Rust 安全服务，接 SQLite / MySQL / PostgreSQL | 公网多站点、SaaS 多租户 |
 
 以及两种运行模式：
@@ -313,7 +313,7 @@ Same codebase, three shapes:
 | Shape | How it runs | Good for |
 | --- | --- | --- |
 | **Desktop** | Run `PractacuPress.exe` (or double-click it). The site serves on port 80 and data stays in `data/` next to the exe. | Personal writing, internal communities, demos |
-| **Container** | `docker compose up -d` starts three containers: API, security service and an Nginx static site. | Linux servers, single-host self-hosting |
+| **Container** | `docker compose up -d` starts two containers: the API (frontend embedded with `go:embed`) and the Rust security service. | Linux servers, single-host self-hosting |
 | **Server** | Go API + static frontend + Rust security service, on SQLite / MySQL / PostgreSQL. | Public multi-site deployments, multi-tenant SaaS |
 
 And two modes: **single-site** (one site, no "tenant" concepts to learn) or **multi-site SaaS** (each site has its own content, members, theme, review rules and permission boundary).
@@ -326,7 +326,7 @@ Most options force a trade-off: blog engines write well but have no community; f
 
 | Advantage | What it means here |
 | --- | --- |
-| **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is three images. |
+| **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is two images: API (frontend embedded) and security service. |
 | **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
 | **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
 | **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts where every block can set its own corner radius, shadow, crop, background, padding and border, with a built-in button block; mind maps, logic charts, statistical charts and fishbone diagrams can be inserted while writing; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (currently 83 paths / 100 operations; site-root sitemap / robots and the built-in docs page are outside the contract). |
@@ -408,7 +408,7 @@ docker compose up -d --build     # API + security service + Nginx static site
 
 Open `http://localhost:8080` and finish the seven-step wizard — the first account becomes the platform administrator. The port is bound to loopback by default, and data lives in the named volume `practacu-data`. Full details in the [README](../README.md).
 
-> The three images and the compose stack have been built and started for real (three healthy containers; registration/login, media upload with the security-service scan, an instance backup and the RSS/sitemap paths were exercised). The host TLS proxy still needs a staging run.
+> The API (frontend embedded) and security-service images plus the compose stack have been built and started for real (both services healthy; registration/login, media upload with the security-service scan, an instance backup and the RSS/sitemap paths were exercised). The host TLS proxy still needs a staging run.
 
 ### Windows launcher
 

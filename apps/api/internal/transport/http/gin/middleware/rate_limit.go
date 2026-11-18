@@ -110,6 +110,11 @@ type Policy struct {
 	Window time.Duration
 	// Key defaults to the client IP.
 	Key func(*gin.Context) string
+	// Skip bypasses the tier for requests that are not API traffic (static SPA
+	// documents and content-hashed assets). Without it, loading the app itself
+	// consumes the API budget and a hard refresh eventually returns a JSON 429
+	// instead of index.html.
+	Skip func(*gin.Context) bool
 }
 
 // RateLimit rejects requests that exceed the policy.
@@ -124,6 +129,10 @@ func RateLimit(store RateLimitStore, policy Policy) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		if policy.Skip != nil && policy.Skip(c) {
+			c.Next()
+			return
+		}
 		allowed, retryAfter := store.Allow(keyOf(c), policy.Limit, window)
 		if allowed {
 			c.Next()

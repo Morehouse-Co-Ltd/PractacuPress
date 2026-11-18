@@ -66,15 +66,6 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # 静态站 profile（可选）：端口继承 docker-compose.yml 的 PP_STATIC_PORT，
-  # 默认不启动。宿主机 TLS 反代应回源到 API 的 127.0.0.1:8080。
-  web:
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-
   security:
     logging:
       driver: json-file

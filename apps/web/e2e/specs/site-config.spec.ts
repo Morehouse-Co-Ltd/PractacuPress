@@ -91,7 +91,7 @@ test('站点级配置：后台入口真实生效，换设备的访客拿到服�
 
     await page.locator('#setting-admin-path').fill('/manage');
     // 站点设置改成自动保存：停止输入后写入服务端，成功时状态条变成「已自动保存」。
-    await expect(page.locator('.autosave-status')).toContainText('已自动保存', {
+    await expect(page.locator('.autosave-status').first()).toContainText('已自动保存', {
       timeout: 30_000,
     });
     // 保存成功后地址栏立刻改到新入口，站长不会被踢出后台。

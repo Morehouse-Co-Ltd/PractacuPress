@@ -1042,7 +1042,7 @@ export function SettingsPage() {
 
           {/* 「保存修改」按钮已移除：角标会说明停止输入后的自动保存进度。 */}
           <div className="row gap-8">
-            <AutoSaveStatus state={autoSaveState} error={autoSaveError} />
+            <AutoSaveStatus state={autoSaveState} error={autoSaveError} live={false} />
           </div>
 
         </div>

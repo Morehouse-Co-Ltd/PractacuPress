@@ -19,22 +19,41 @@ func Serve(c *gin.Context) bool {
 	return ServeFS(c, dist)
 }
 
+// CanServe reports whether the path would be handled by the embedded frontend,
+// without writing a response. The rate limiter uses it to keep page loads and
+// hashed assets out of the API request budget.
+func CanServe(fsys fs.FS, method, requestPath string) bool {
+	_, ok := resolveTarget(fsys, method, requestPath)
+	return ok
+}
+
 // ServeFS is Serve with an injectable filesystem, used by tests.
 func ServeFS(c *gin.Context, fsys fs.FS) bool {
-	if fsys == nil || (c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead) {
+	target, ok := resolveTarget(fsys, c.Request.Method, c.Request.URL.Path)
+	if !ok {
 		return false
 	}
+	return serveFile(c, fsys, target.name, target.urlPath)
+}
 
-	requestPath := c.Request.URL.Path
+type staticTarget struct {
+	name    string
+	urlPath string
+}
+
+func resolveTarget(fsys fs.FS, method, requestPath string) (staticTarget, bool) {
+	if fsys == nil || (method != http.MethodGet && method != http.MethodHead) {
+		return staticTarget{}, false
+	}
 	if requestPath == "" {
 		requestPath = "/"
 	}
 	if strings.ContainsAny(requestPath, "\\\x00") {
-		return false
+		return staticTarget{}, false
 	}
 	for _, segment := range strings.Split(requestPath, "/") {
 		if segment == ".." {
-			return false
+			return staticTarget{}, false
 		}
 	}
 
@@ -43,15 +62,15 @@ func ServeFS(c *gin.Context, fsys fs.FS) bool {
 		clean = "/" + clean
 	}
 	if reserved(clean) {
-		return false
+		return staticTarget{}, false
 	}
 
 	rel := strings.TrimPrefix(clean, "/")
 	if rel == "" {
-		return serveIndex(c, fsys)
+		return indexTarget(fsys)
 	}
 	if !fs.ValidPath(rel) {
-		return false
+		return staticTarget{}, false
 	}
 
 	info, err := fs.Stat(fsys, rel)
@@ -61,28 +80,28 @@ func ServeFS(c *gin.Context, fsys fs.FS) bool {
 			// index.html when the build actually has one.
 			index := path.Join(rel, "index.html")
 			if nested, nestedErr := fs.Stat(fsys, index); nestedErr == nil && !nested.IsDir() {
-				return serveFile(c, fsys, index, "/index.html")
+				return staticTarget{name: index, urlPath: "/index.html"}, true
 			}
-			return false
+			return staticTarget{}, false
 		}
-		return serveFile(c, fsys, rel, clean)
+		return staticTarget{name: rel, urlPath: clean}, true
 	}
 
 	// Missing files with an extension are real 404s. Falling back to index.html for
 	// them would turn a typo /assets/app.js into an HTML response with a JS MIME
 	// type, which is exactly the kind of error a cache then keeps serving.
 	if path.Ext(clean) != "" {
-		return false
+		return staticTarget{}, false
 	}
-	return serveIndex(c, fsys)
+	return indexTarget(fsys)
 }
 
-func serveIndex(c *gin.Context, fsys fs.FS) bool {
+func indexTarget(fsys fs.FS) (staticTarget, bool) {
 	info, err := fs.Stat(fsys, "index.html")
 	if err != nil || info.IsDir() {
-		return false
+		return staticTarget{}, false
 	}
-	return serveFile(c, fsys, "index.html", "/index.html")
+	return staticTarget{name: "index.html", urlPath: "/index.html"}, true
 }
 
 func serveFile(c *gin.Context, fsys fs.FS, name, urlPath string) bool {
@@ -148,11 +167,21 @@ func contentType(name string) string {
 	return "application/octet-stream"
 }
 
-// reserved paths belong to the API, the control plane or monitoring. They must
-// never fall through to index.html, even when the route does not exist.
+// reserved paths belong to the API, the control plane, monitoring or per-site
+// crawler/feed handlers. They must never fall through to index.html, even when
+// the route does not exist.
 func reserved(urlPath string) bool {
 	for _, prefix := range []string{"/api", "/healthz", "/readyz", "/plugins", "/__pp", "/metrics"} {
 		if urlPath == prefix || strings.HasPrefix(urlPath, prefix+"/") {
+			return true
+		}
+	}
+	switch urlPath {
+	case "/sitemap.xml", "/robots.txt", "/rss.xml", "/atom.xml", "/feed.xml":
+		return true
+	}
+	if strings.HasPrefix(urlPath, "/category/") || strings.HasPrefix(urlPath, "/tag/") {
+		if strings.HasSuffix(urlPath, "/rss.xml") || strings.HasSuffix(urlPath, "/atom.xml") {
 			return true
 		}
 	}

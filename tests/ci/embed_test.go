@@ -45,4 +45,7 @@ func TestFrontendIsEmbedded(t *testing.T) {
 	if !strings.Contains(string(compose), `"127.0.0.1:${PP_HTTP_PORT:-8080}:8080"`) {
 		t.Error("compose must publish the API (which serves the embedded SPA) on 8080")
 	}
+	if strings.Contains(string(compose), "web:") {
+		t.Error("compose must not define a separate web service; the API serves the embedded SPA")
+	}
 }
