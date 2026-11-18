@@ -8,7 +8,7 @@ priority: optional
 maintainer: Practacu Press <maintainers@practacu.press>
 description: |-
   Self-hosted multi-site publishing platform.
-  Ships the Go API, the Rust security service and the prebuilt frontend, plus
+  Ships the Go API with in-process security checks and the prebuilt frontend, plus
   the systemd and Nginx templates used by the installer.
 vendor: Practacu Press
 homepage: https://github.com/practacu/practacu-press

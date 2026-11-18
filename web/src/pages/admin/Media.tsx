@@ -284,7 +284,7 @@ export function MediaPage() {
       <div className="admin-page-head">
         <div>
           <h1>{t('媒体库')}</h1>
-          <p>{t('两步上传：先开会话，再传字节，最后由 Rust 安全服务检查。只有 clean 的文件可以被引用。')}</p>
+          <p>{t('两步上传：先开会话，再传字节，最后由 内置安全清洗检查。只有 clean 的文件可以被引用。')}</p>
         </div>
         <div className="admin-page-actions">
           <Button variant="secondary" size="sm" icon="refresh" loading={loaded.loading} onClick={loaded.reload}>

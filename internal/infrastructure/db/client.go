@@ -304,7 +304,7 @@ func (d *DB) ConfigurePool(maxOpen, maxIdle int, lifetime time.Duration) {
 	}
 }
 
-// Ping reports whether the database is reachable. It backs GET /readyz.
+// Ping reports whether the database is reachable. It backs GET /api/readyz.
 func (d *DB) Ping(ctx context.Context) error { return d.sqlDB.PingContext(ctx) }
 
 // Driver returns the canonical driver name.

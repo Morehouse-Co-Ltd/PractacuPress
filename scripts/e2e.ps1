@@ -3,24 +3,18 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1 -SkipWebBuild
 #
-# The script delegates to web/e2e/harness.mjs, which:
-#   - builds the Go API and the Rust security service (binary must exist),
-#   - creates a fresh SQLite database under .tmp/e2e/data,
-#   - builds the web app and serves it with the same-origin /api proxy,
-#   - runs Playwright headless with Chromium/Chrome.
+# The script delegates to web/e2e/harness.mjs, which builds the Go API, creates a
+# fresh SQLite database under .tmp/e2e/data, builds the web app, serves it with a
+# same-origin /api proxy, and runs Playwright headless with Chromium/Chrome.
+#
+# Security checks are compiled into the API; there is no sidecar to start.
 #
 # Output: .tmp/e2e/artifacts (HTML/JSON report, screenshots, failed traces),
-#         .tmp/e2e/logs (API, security and web server logs).
-#
-# Optional switches map to the harness environment variables:
-#   -SkipWebBuild   reuse web/dist (PP_E2E_SKIP_WEB_BUILD=1)
-#   -SkipSecurity   do not start the Rust service (PP_E2E_SKIP_SECURITY=1)
+#         .tmp/e2e/logs (API and web server logs).
 
 param(
     [switch]$SkipWebBuild,
-    [switch]$SkipSecurity,
     [int]$ApiPort = 0,
-    [int]$SecurityPort = 0,
     [int]$WebPort = 0
 )
 
@@ -31,9 +25,7 @@ $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
 if (-not $nodeCommand) { throw 'node was not found; install Node.js 22 or newer' }
 
 if ($SkipWebBuild) { $env:PP_E2E_SKIP_WEB_BUILD = '1' }
-if ($SkipSecurity) { $env:PP_E2E_SKIP_SECURITY = '1' }
 if ($ApiPort -gt 0) { $env:PP_E2E_API_PORT = [string]$ApiPort }
-if ($SecurityPort -gt 0) { $env:PP_E2E_SECURITY_PORT = [string]$SecurityPort }
 if ($WebPort -gt 0) { $env:PP_E2E_WEB_PORT = [string]$WebPort }
 
 & $nodeCommand.Source 'web\e2e\harness.mjs'

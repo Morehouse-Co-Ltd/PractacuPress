@@ -16,7 +16,7 @@ import (
 // Password length bounds. They are enforced before hashing so an oversized
 // input cannot be used to burn CPU.
 //
-// They match services/security/src/password.rs exactly: the bounds are counted
+// The bounds are counted
 // in Unicode code points, not bytes.
 const (
 	MinPasswordLength = 8
@@ -31,12 +31,12 @@ const (
 // checks.
 const MaxEncodedPasswordLength = 1024
 
-// Argon2id PHC parameters shared with the Rust implementation.
+// Argon2id PHC parameters shared with the reference implementation.
 //
 // The defaults follow the OWASP recommendation (64 MiB, 3 iterations, 2 lanes)
 // and are kept in one place so a change is visible and can be paired with a
 // policy version bump. HashPassword always emits these parameters; verification
-// reads the parameters stored in the PHC string, exactly like the Rust
+// reads the parameters stored in the PHC string, exactly like the reference
 // implementation.
 const (
 	argonSaltLength = 16
@@ -58,7 +58,7 @@ var (
 
 // maxVerifyMemoryKiB bounds the Argon2 memory a stored PHC string may ask for.
 //
-// The Rust service hands the parsed parameters to Argon2 without a cap (the
+// The previous sidecar hands the parsed parameters to Argon2 without a cap (the
 // transport deadline limits the caller, not the blocking hash). Go cannot abort
 // an allocation the same way, so a pathological hash is treated as a mismatch
 // instead of asking the runtime for an unbounded buffer. 1 GiB is 16x the
@@ -77,7 +77,7 @@ type Argon2Params struct {
 
 // DefaultArgon2Params is the cost the service uses for new hashes.
 //
-// Kept identical to Params2::default() in the Rust implementation.
+// Kept identical to Params2::default() in the reference implementation.
 var DefaultArgon2Params = Argon2Params{
 	MemoryKiB:   64 * 1024,
 	Iterations:  3,
@@ -178,14 +178,14 @@ func VerifyPassword(plain, encoded string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 
-	// Matches the Rust implementation's observable behaviour for every hash
+	// Matches the reference implementation's observable behaviour for every hash
 	// this project can produce. The differences (Argon2i/Argon2d hashes and
 	// Argon2 v0x10 hashes) are documented in
 	// docs/security/go-security-service.md and never occur for stored accounts.
 	if hash.algorithm != "argon2id" || hash.version != argon2.Version {
 		return false, nil
 	}
-	// argon2 requires at least 8 salt bytes. The Rust hash parser accepts the
+	// argon2 requires at least 8 salt bytes. The reference hash parser accepts the
 	// string and reports the mismatch from inside the hash routine; the answer
 	// the caller sees is the same false.
 	if len(hash.salt) < 8 {
@@ -198,7 +198,7 @@ func VerifyPassword(plain, encoded string) (bool, error) {
 		return false, nil
 	}
 	if len(hash.key) != argonKeyLength {
-		// The Rust verifier always derives the default 32-byte key, so a hash
+		// The reference verifier always derives the default 32-byte key, so a hash
 		// with another length can never match there either.
 		return false, nil
 	}
@@ -227,7 +227,7 @@ type phcHash struct {
 //
 // The structural checks mirror password_hash::PasswordHash::new: six
 // $-separated fields, a valid identifier, a numeric version, valid base64 salt
-// and key. Parameter values are parsed leniently because the Rust hash parser
+// and key. Parameter values are parsed leniently because the reference hash parser
 // is lenient too: a structurally valid string with bogus m/t/p values reaches
 // the verifier and produces a mismatch, not an unusable-hash error.
 func parsePHC(encoded string) (phcHash, error) {
@@ -287,7 +287,7 @@ func validPHCIdent(s string) bool {
 
 // parsePHCParams parses the m,t,p parameter string.
 //
-// Unknown parameters (keyid, data, ...) are ignored, which mirrors the Rust
+// Unknown parameters (keyid, data, ...) are ignored, which mirrors the reference
 // parser accepting them and then computing with a different Argon2 variant that
 // this implementation cannot reproduce; the resulting parameters are treated as
 // invalid below so the answer is a mismatch.

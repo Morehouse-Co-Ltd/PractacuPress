@@ -10,7 +10,7 @@ import react from '@vitejs/plugin-react';
 const WEB_PORT = 80;
 const API_ORIGIN = 'http://127.0.0.1:8080';
 
-// 开发时把 /api、/healthz、/readyz 代理到本地 Go API，生产由反向代理承担。
+// 开发时把 /api 代理到本地 Go API，生产由反向代理承担。
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -39,8 +39,6 @@ export default defineConfig({
       // 扩展前端 bundle / CSS 由 API 提供（/plugins/<id>/<version>/...）。
       // 与生产反向代理保持一致：扩展资源必须和页面同源，否则浏览器会拒绝加载。
       '/plugins': { target: API_ORIGIN, changeOrigin: false },
-      '/healthz': { target: API_ORIGIN, changeOrigin: false },
-      '/readyz': { target: API_ORIGIN, changeOrigin: false },
     },
   },
   preview: {

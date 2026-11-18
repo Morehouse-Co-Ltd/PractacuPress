@@ -171,7 +171,7 @@ func contentType(name string) string {
 // crawler/feed handlers. They must never fall through to index.html, even when
 // the route does not exist.
 func reserved(urlPath string) bool {
-	for _, prefix := range []string{"/api", "/healthz", "/readyz", "/plugins", "/__pp", "/metrics"} {
+	for _, prefix := range []string{"/api", "/plugins", "/__pp", "/metrics", "/healthz", "/readyz"} {
 		if urlPath == prefix || strings.HasPrefix(urlPath, prefix+"/") {
 			return true
 		}

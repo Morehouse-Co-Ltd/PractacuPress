@@ -41,7 +41,7 @@ npm run dev                 # 默认 http://localhost（80）
 npm run dev -- --port 5173  # 80 被占用时换一个端口
 ```
 
-开发服务器会把 `/api`、`/healthz`、`/readyz` 代理到 `http://127.0.0.1:8080`（Go API）。
+开发服务器会把 `/api`、`/api/healthz`、`/api/readyz` 代理到 `http://127.0.0.1:8080`（Go API）。
 它自己的端口在启动时确定，后台的端口面板会给出重启命令，不会假装能热切换。
 80 被占用时 Vite 会自动顺延到下一个空闲端口，并以终端输出为准。
 
@@ -55,18 +55,18 @@ npm run dev -- --port 5173  # 80 被占用时换一个端口
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-脚本会自动构建前端、编译 Rust 安全服务、把 `dist` 内嵌进启动器、编译 Go 启动器与 API，
-然后在临时端口启动产物做自检（静态站、`/__pp/runtime`、注册、文章创建与 Rust 清洗、发布），
+脚本会自动构建前端、把 `dist` 内嵌进启动器、编译 Go 启动器与 API，
+然后在临时端口启动产物做自检（静态站、`/__pp/runtime`、注册、文章创建与 Go 内置清洗、发布），
 最后生成 `release/PractacuPress-Windows-x64.zip` 并同步 `release/PractacuPress`。
 解压后双击 `PractacuPress.exe` 即启动，不需要安装 Node。启动器（`launcher`）把 `dist`
 内嵌进 exe，并实现与 `scripts/serve.mjs` 相同的 `/__pp/runtime` 运行时接口，
 所以后台改端口、数据迁移都能照常用。
 
-没有 Rust 工具链时可以加 `-SkipSecurity` 打一个不带安全服务的包（发布与上传会返回 503）。
+
 压缩包只包含程序与 `README.txt`，不会把开发机的 `data/` 带进去。
 
 包里同时带有 `PractacuPressAPI.exe`（Go API）。启动器默认会把它拉起来，在同一端口上
-反向代理 `/api`、`/healthz`、`/readyz`，因此安装引导里的「真实环境」不需要填地址，
+反向代理 `/api`、`/api/healthz`、`/api/readyz`，因此安装引导里的「真实环境」不需要填地址，
 也没有跨域问题。API 使用 exe 同目录 `data/practacu.db`（纯 Go SQLite），首次启动自动
 建表、建默认站点，引导里创建的第一个账户即平台管理员。`/__pp/runtime` 会附带
 `runtime_mode` 与 `api` 状态，引导据此判断本机后端是否由启动器托管。
@@ -86,17 +86,17 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | 4 管理员 | 第一个平台管理员账户 | 11.1.3、7.3 |
 | 5 默认站点 | 名称、域名、站点形态（个人博客 / 社区站点）、访客与发布模式、slug | 11.1.4、7.4 |
 | 6 登录方式 | 直接开关并配置手机验证码、Google、GitHub、微信；生成服务端 `.env` | 11.1.6、7.3 |
-| 7 检查与完成 | 就绪、数据、安全服务、站点、OpenAPI；显示地址 | 11.3、7.1 |
+| 7 检查与完成 | 就绪、数据、内置安全检查、站点、OpenAPI；显示地址 | 11.3、7.1 |
 
 ### 真实环境：零输入自动连接
 
 选择「真实环境」后不需要填写 API 地址。引导会按顺序探测：
 
-1. 同源接口（`/healthz`、`/readyz`），适合反代同域部署、`npm run dev`（Vite 已代理到 8080）
+1. 同源接口（`/api/healthz`、`/api/readyz`），适合反代同域部署、`npm run dev`（Vite 已代理到 8080）
    与 Windows 一键包（启动器已把本机 API 代理到同源）；
 2. `http://127.0.0.1:8080` 与 `http://localhost:8080`，适合手动启动的本地开发。
 
-探测同时校验 `/healthz` 与 `/readyz` 的 JSON 形状，SPA 的 HTML 回退不会被误判为健康。
+探测同时校验 `/api/healthz` 与 `/api/readyz` 的 JSON 形状，SPA 的 HTML 回退不会被误判为健康。
 连上后会跳过数据库步骤（数据库由服务端配置），直接进入管理员账户。
 
 - 启动器托管 API 时，选项会直接标明「本机 API 已就绪」，失败提示会区分
@@ -405,7 +405,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | `chen@practacu.local` | 成员 |
 | `su@practacu.local` | 成员 |
 
-**连接已有后端**：填写 API 地址（留空表示同源），要求 `/healthz` 返回 ok、`/readyz` 返回 ready。
+**连接已有后端**：填写 API 地址（留空表示同源），要求 `/api/healthz` 返回 ok、`/api/readyz` 返回 ready。
 跨域部署需要在服务端设置 `CORS_ALLOWED_ORIGINS` 并允许凭据；推荐用反向代理把前后端放在同一域名下。
 
 ---
@@ -686,5 +686,5 @@ $env:TMP = (Resolve-Path .tmp\eb).Path; $env:TEMP = $env:TMP; $env:TMPDIR = $env
 npm run build
 ```
 
-**未验证**：本机没有启动 Go/Rust 服务，因此 live 模式只覆盖了连接失败、接口契约与类型检查，
+**未验证**：本机没有启动 Go 服务，因此 live 模式只覆盖了连接失败、接口契约与类型检查，
 没有对真实 API 做端到端回归。使用前请先按根目录 README 启动后端并执行迁移。

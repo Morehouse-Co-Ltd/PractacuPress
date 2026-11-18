@@ -93,7 +93,7 @@ func TestPlainTextIsEscaped(t *testing.T) {
 	require.NotContains(t, out.HTML, "<script>")
 	require.Contains(t, out.HTML, "&lt;script&gt;")
 	// Violations are recorded against the escaped input the sanitizer sees, so
-	// escaped markup is not reported (same as the Rust implementation).
+	// escaped markup is not reported (same as the reference implementation).
 	require.Empty(t, out.Violations)
 }
 
@@ -105,7 +105,7 @@ func TestPlainFormatWrapsInParagraph(t *testing.T) {
 
 func TestMarkdownIsTreatedAsHTML(t *testing.T) {
 	// The Go API renders Markdown before calling this service, so "markdown" is
-	// already HTML. The Rust service behaves the same way.
+	// already HTML. The previous sidecar behaves the same way.
 	out, err := Sanitize("markdown", "<h1>Title</h1>")
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Title</h1>", out.HTML)

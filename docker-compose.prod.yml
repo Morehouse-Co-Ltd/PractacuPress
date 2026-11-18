@@ -65,10 +65,3 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-
-  security:
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"

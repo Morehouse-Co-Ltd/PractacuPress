@@ -345,7 +345,7 @@ func TestComposeConfiguration(t *testing.T) {
 	if services == nil {
 		t.Fatal("docker-compose.yml has no services")
 	}
-	for _, service := range []string{"api", "security"} {
+	for _, service := range []string{"api"} {
 		if lookup(services, service) == nil {
 			t.Errorf("docker-compose.yml has no %s service", service)
 		}
@@ -355,10 +355,7 @@ func TestComposeConfiguration(t *testing.T) {
 	if test := lookup(lookup(api, "healthcheck"), "test"); test == nil {
 		t.Error("api service has no healthcheck")
 	} else if !scalarsContain(test, "healthz") {
-		t.Error("api healthcheck does not probe /healthz")
-	}
-	if lookup(lookup(services, "api"), "depends_on") == nil {
-		t.Error("api service does not depend on security")
+		t.Error("api healthcheck does not probe /api/healthz")
 	}
 	if ports := lookup(lookup(services, "api"), "ports"); ports == nil || !scalarsContain(ports, "8080") {
 		t.Error("api service must publish the embedded frontend/API on 8080")
@@ -376,7 +373,7 @@ func TestComposeConfiguration(t *testing.T) {
 	if prodServices == nil {
 		t.Fatal("docker-compose.prod.yml has no services")
 	}
-	for _, service := range []string{"api", "security"} {
+	for _, service := range []string{"api"} {
 		if lookup(prodServices, service) == nil {
 			t.Errorf("docker-compose.prod.yml does not override the %s service", service)
 		}

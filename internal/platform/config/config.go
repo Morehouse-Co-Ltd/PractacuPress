@@ -106,12 +106,6 @@ type Config struct {
 	DatabaseDriver string
 	// DatabaseDSN is passed to the driver untouched.
 	DatabaseDSN string
-	// SecurityGRPCAddr is the Rust security service gRPC endpoint.
-	SecurityGRPCAddr string
-	// SecurityGoGRPCAddr is the Go security service gRPC endpoint. When both
-	// addresses are set the API prefers the Go service and falls back to the
-	// Rust one on a transport failure; when only one is set it is used alone.
-	SecurityGoGRPCAddr string
 
 	// CORSAllowedOrigins lists browser origins allowed to call the API. Empty
 	// means cross origin browser access is disabled, which is the safe default.
@@ -328,7 +322,7 @@ const (
 	// than any endpoint here needs and far less than forever.
 	DefaultHTTPRequestTimeout = 30 * time.Second
 	// DefaultMaxRequestBodyBytes caps ordinary JSON bodies. The largest legitimate one
-	// is a 200k character article source (the security service's own ceiling), which is
+	// is a 200k character article source (the security package's own ceiling), which is
 	// under a megabyte as UTF-8, so four is generous. Upload routes carry their own,
 	// larger limit derived from the media module's attachment ceiling.
 	DefaultMaxRequestBodyBytes = 4 << 20
@@ -355,12 +349,10 @@ func (e *Error) Error() string { return e.Code + ": " + e.Detail }
 // Load reads the environment, validates it and returns a Config.
 func Load() (Config, error) {
 	cfg := Config{
-		AppEnv:             env("APP_ENV"),
-		HTTPAddr:           env("HTTP_ADDR"),
-		DatabaseDriver:     env("DATABASE_DRIVER"),
-		DatabaseDSN:        env("DATABASE_DSN"),
-		SecurityGRPCAddr:   env("SECURITY_GRPC_ADDR"),
-		SecurityGoGRPCAddr: env("SECURITY_GO_GRPC_ADDR"),
+		AppEnv:         env("APP_ENV"),
+		HTTPAddr:       env("HTTP_ADDR"),
+		DatabaseDriver: env("DATABASE_DRIVER"),
+		DatabaseDSN:    env("DATABASE_DSN"),
 	}
 
 	switch cfg.AppEnv {
@@ -399,17 +391,8 @@ func Load() (Config, error) {
 		return Config{}, &Error{Code: "missing_database_dsn", Detail: "DATABASE_DSN is required"}
 	}
 
-	// At least one security backend is required. SECURITY_GO_GRPC_ADDR is the
-	// Go service (preferred); SECURITY_GRPC_ADDR is the Rust service (fallback
-	// and the only backend on deployments that have not rolled the Go service
-	// out yet). The error code keeps the historical name so existing runbooks
-	// and operators still recognise it.
-	if cfg.SecurityGRPCAddr == "" && cfg.SecurityGoGRPCAddr == "" {
-		return Config{}, &Error{
-			Code:   "missing_security_grpc_addr",
-			Detail: "SECURITY_GRPC_ADDR or SECURITY_GO_GRPC_ADDR is required",
-		}
-	}
+	// Security checks (Argon2id, HTML sanitization, upload inspection) are
+	// compiled into the API process; there is no security endpoint to require.
 
 	cfg.CORSAllowedOrigins = envList("CORS_ALLOWED_ORIGINS")
 	cfg.CORSCredentials = envBool("CORS_ALLOW_CREDENTIALS")

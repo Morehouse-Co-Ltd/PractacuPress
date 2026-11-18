@@ -1,6 +1,6 @@
 # Practacu Press —— Docker 自托管部署（单站点）
 #
-#   docker compose up -d --build      构建并启动（security + api，前端已内嵌）
+#   docker compose up -d --build      构建并启动（单 API，前端与安全检查均内嵌）
 #   docker compose exec api migrate   仅建表（可选，默认启动时自动建表）
 #   docker compose logs -f            看日志
 #   docker compose down               停止
@@ -22,22 +22,6 @@
 name: practacu-press
 
 services:
-  # Rust 安全服务：Argon2id 密码哈希、HTML 白名单清洗、上传检查。
-  # 只在内部网络可达，不映射到宿主机。
-  security:
-    build:
-      context: .
-      dockerfile: deploy/docker/security.Dockerfile
-    restart: unless-stopped
-    # 停止时先让 gRPC 排空在途请求；镜像内已处理 SIGTERM。
-    stop_grace_period: 20s
-    networks: [internal]
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-
   # Go API + 内嵌前端：容器内监听 0.0.0.0:8080，本身同时提供 SPA 与 /api。
   # 默认栈不再需要独立的 web/Nginx 容器；需要静态 Nginx/CDN 时可显式启用
   # 下面的 static profile。
@@ -48,9 +32,6 @@ services:
       args:
         VERSION: ${PP_VERSION:-development}
     restart: unless-stopped
-    depends_on:
-      security:
-        condition: service_healthy
     networks: [internal]
     ports:
       - "127.0.0.1:${PP_HTTP_PORT:-8080}:8080"
@@ -79,7 +60,6 @@ services:
       BACKUP_DIR: /data/backups
       MEDIA_DEFAULT_USER_QUOTA_BYTES: ${MEDIA_DEFAULT_USER_QUOTA_BYTES:-536870912}
       MEDIA_DEFAULT_SITE_QUOTA_BYTES: ${MEDIA_DEFAULT_SITE_QUOTA_BYTES:-10737418240}
-      SECURITY_GRPC_ADDR: security:9001
       # 让 API 信任 Nginx 传来的 X-Forwarded-*，限流与日志才能拿到真实客户端 IP。
       TRUSTED_PROXIES: ${PP_DOCKER_SUBNET:-172.28.0.0/16}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-240}
@@ -93,7 +73,7 @@ services:
     volumes:
       - practacu-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/healthz"]
       interval: 15s
       timeout: 3s
       retries: 5

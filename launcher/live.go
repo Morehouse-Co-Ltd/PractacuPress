@@ -20,13 +20,9 @@ import (
 
 // Binaries the launcher looks for next to itself.
 const (
-	apiBinaryName      = "PractacuPressAPI.exe"
-	securityBinaryName = "practacu-security.exe"
-
-	apiPortStart      = 8791
-	securityPortStart = 9001
-	apiReadyTimeout   = 45 * time.Second
-	securityWaitLimit = 12 * time.Second
+	apiBinaryName   = "PractacuPressAPI.exe"
+	apiPortStart    = 8791
+	apiReadyTimeout = 45 * time.Second
 )
 
 // Runtime modes printed in the banner and reported by /__pp/runtime.
@@ -43,22 +39,19 @@ const (
 // launcher origin, so cookies, CSRF double submit and the WebSocket ticket flow all
 // behave exactly as they do behind a reverse proxy in production.
 type liveRuntime struct {
-	apiPort      int
-	securityPort int
-	baseURL      *url.URL
-	proxy        *httputil.ReverseProxy
-	ready        atomic.Bool
-	pid          int
-	security     bool
-	dataDir      string
-	logPath      string
-	errPath      string
+	apiPort int
+	baseURL *url.URL
+	proxy   *httputil.ReverseProxy
+	ready   atomic.Bool
+	pid     int
+	dataDir string
+	logPath string
+	errPath string
 
-	mu          sync.Mutex
-	apiCmd      *exec.Cmd
-	securityCmd *exec.Cmd
-	job         *childJob
-	stopped     bool
+	mu      sync.Mutex
+	apiCmd  *exec.Cmd
+	job     *childJob
+	stopped bool
 }
 
 type liveOptions struct {
@@ -106,23 +99,8 @@ func findAPIBinary(explicit string) string {
 	return ""
 }
 
-func findSecurityBinary() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	candidate := filepath.Join(filepath.Dir(exe), securityBinaryName)
-	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-		return candidate
-	}
-	return ""
-}
-
-// startLive brings the API up behind the launcher.
-//
-// The security service is started first when the package ships it: the API dials it
-// once at startup and never retries, so a service that comes up later would leave
-// publishing and uploads failing closed for the whole session.
+// startLive brings the API up behind the launcher. Security checks are compiled
+// into the API now, so only one child process is needed.
 func startLive(opts liveOptions) (*liveRuntime, error) {
 	if opts.apiBinary == "" {
 		return nil, errors.New("没有找到 " + apiBinaryName)
@@ -142,18 +120,6 @@ func startLive(opts liveOptions) (*liveRuntime, error) {
 		logPath: filepath.Join(opts.dataDir, "api.log"),
 		errPath: filepath.Join(opts.dataDir, "api.err.log"),
 		job:     newChildJob(),
-	}
-
-	if securityBinary := findSecurityBinary(); securityBinary != "" {
-		if port, startErr := live.startSecurity(securityBinary); startErr != nil {
-			fmt.Printf("  安全服务未能启动（%s），发布与上传会被拒绝。\n", shortErr(startErr))
-		} else {
-			live.securityPort = port
-			live.security = true
-		}
-	}
-	if live.securityPort == 0 {
-		live.securityPort = pickFreePort(securityPortStart)
 	}
 
 	apiPort, portErr := pickFreePortStrict(apiPortStart)
@@ -186,7 +152,6 @@ func apiEnv(live *liveRuntime, signingKey string) []string {
 		"HTTP_ADDR=" + net.JoinHostPort("127.0.0.1", strconv.Itoa(live.apiPort)),
 		"DATABASE_DRIVER=sqlite",
 		"DATABASE_DSN=" + sqliteDSN(filepath.Join(live.dataDir, "practacu.db")),
-		"SECURITY_GRPC_ADDR=" + net.JoinHostPort("127.0.0.1", strconv.Itoa(live.securityPort)),
 		"STORAGE_DRIVER=local",
 		"STORAGE_DIR=" + filepath.Join(live.dataDir, "media"),
 		"BACKUP_DIR=" + filepath.Join(live.dataDir, "backups"),
@@ -236,7 +201,7 @@ func (l *liveRuntime) startAPI(binary string, env []string) error {
 		_ = errFile.Close()
 	}()
 
-	if err := waitForReady(l.baseURL.String()+"/readyz", apiReadyTimeout, exited); err != nil {
+	if err := waitForReady(l.baseURL.String()+"/api/readyz", apiReadyTimeout, exited); err != nil {
 		tail := tailFile(l.errPath, 12)
 		if tail == "" {
 			tail = tailFile(l.logPath, 12)
@@ -251,52 +216,6 @@ func (l *liveRuntime) startAPI(binary string, env []string) error {
 	return nil
 }
 
-func (l *liveRuntime) startSecurity(binary string) (int, error) {
-	port, err := pickFreePortStrict(securityPortStart)
-	if err != nil {
-		return 0, err
-	}
-
-	logFile, err := os.OpenFile(filepath.Join(l.dataDir, "security.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return 0, err
-	}
-
-	cmd := exec.Command(binary)
-	cmd.Dir = l.dataDir
-	cmd.Env = append(os.Environ(), "SECURITY_GRPC_BIND="+net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.SysProcAttr = hiddenWindow()
-
-	if err := cmd.Start(); err != nil {
-		_ = logFile.Close()
-		return 0, err
-	}
-	l.job.assign(cmd.Process)
-
-	l.mu.Lock()
-	l.securityCmd = cmd
-	l.mu.Unlock()
-	go func() {
-		_ = cmd.Wait()
-		_ = logFile.Close()
-	}()
-
-	deadline := time.Now().Add(securityWaitLimit)
-	for time.Now().Before(deadline) {
-		conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 300*time.Millisecond)
-		if dialErr == nil {
-			_ = conn.Close()
-			return port, nil
-		}
-		time.Sleep(150 * time.Millisecond)
-	}
-
-	l.stopSecurity()
-	return 0, errors.New("安全服务在超时时间内没有开始监听")
-}
-
 // stop terminates the child processes. It is safe to call twice.
 func (l *liveRuntime) stop() {
 	if l == nil {
@@ -309,20 +228,10 @@ func (l *liveRuntime) stop() {
 	}
 	l.stopped = true
 	api := l.apiCmd
-	security := l.securityCmd
 	l.mu.Unlock()
 
 	l.ready.Store(false)
 	killProcess(api)
-	killProcess(security)
-}
-
-func (l *liveRuntime) stopSecurity() {
-	l.mu.Lock()
-	cmd := l.securityCmd
-	l.securityCmd = nil
-	l.mu.Unlock()
-	killProcess(cmd)
 }
 
 func killProcess(cmd *exec.Cmd) {
@@ -334,8 +243,7 @@ func killProcess(cmd *exec.Cmd) {
 	_ = cmd.Process.Kill()
 }
 
-// newAPIProxy forwards /api, /healthz, /readyz and the generated crawler files to
-// the child API.
+// newAPIProxy forwards /api and the generated crawler files to the child API.
 //
 // The Host header is left untouched on purpose: the API resolves the site by
 // hostname, and the browser-facing host is exactly the one the operator installed.
@@ -376,9 +284,7 @@ func newAPIProxy(base *url.URL) *httputil.ReverseProxy {
 // serves the frontend half of extensions: those bundles are same-origin classic
 // scripts, so they must come from the API rather than the embedded asset folder.
 func isAPIPath(path string) bool {
-	if path == "/healthz" ||
-		path == "/readyz" ||
-		path == "/sitemap.xml" ||
+	if path == "/sitemap.xml" ||
 		path == "/robots.txt" ||
 		path == "/rss.xml" ||
 		path == "/atom.xml" ||
@@ -420,7 +326,7 @@ func waitForReady(url string, timeout time.Duration, exited <-chan error) error 
 			if res.StatusCode == http.StatusOK && strings.Contains(string(body), `"ready"`) {
 				return nil
 			}
-			lastErr = fmt.Errorf("/readyz 返回 %d", res.StatusCode)
+			lastErr = fmt.Errorf("/api/readyz 返回 %d", res.StatusCode)
 		} else {
 			lastErr = err
 		}

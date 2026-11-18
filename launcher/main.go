@@ -309,14 +309,6 @@ func printBanner(a *app, target string, port int, preferred int) {
 		fmt.Println("   运行方式   真实环境（Go API + SQLite，同源代理）")
 		fmt.Printf("   数据目录   %s\n", a.live.dataDir)
 		fmt.Printf("   本机 API   127.0.0.1:%d", a.live.apiPort)
-		if a.live.security {
-			fmt.Println(" · 安全服务已启动")
-		} else {
-			fmt.Println(" · 未附带安全服务")
-		}
-		if !a.live.security {
-			fmt.Println("   提示       发布文章与完成上传需要安全服务；缺少时会被拒绝")
-		}
 		if strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")) == "" {
 			fmt.Println("   提示       未设置 PUBLIC_BASE_URL：绝对链接默认按 https 推导")
 			fmt.Printf("              需要通知邮件或第三方登录时，先设置 PUBLIC_BASE_URL=%s 再启动\n", originForPort(port))
@@ -592,9 +584,8 @@ func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
 	api := map[string]any{"managed": false, "ready": false}
 	if live != nil {
 		api = map[string]any{
-			"managed":  true,
-			"ready":    live.ready.Load(),
-			"security": live.security,
+			"managed": true,
+			"ready":   live.ready.Load(),
 		}
 	} else if liveErr != "" {
 		// The detailed error is written to the launcher console; the API string can

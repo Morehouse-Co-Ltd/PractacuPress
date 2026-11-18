@@ -14,7 +14,7 @@ info:
     - Every error is `application/problem+json` with a stable `code`.
 servers:
   - url: /api/v1
-    description: Versioned API root. Health endpoints sit outside this prefix.
+    description: Versioned API root. Health probes use /api/healthz and /api/readyz; crawler files and feeds stay at the site root.
 security:
   - bearerAuth: []
 tags:
@@ -35,7 +35,7 @@ tags:
   - name: feeds
 
 paths:
-  /healthz:
+  /api/healthz:
     get:
       tags: [system]
       summary: Liveness probe
@@ -54,7 +54,7 @@ paths:
                 properties:
                   status: { type: string, const: ok }
 
-  /readyz:
+  /api/readyz:
     get:
       tags: [system]
       summary: Readiness probe

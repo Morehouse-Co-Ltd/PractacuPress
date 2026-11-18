@@ -5,11 +5,9 @@
  *
  *   node scripts/package-linux.mjs --arch amd64
  *   node scripts/package-linux.mjs --arch arm64 --skip-web --version v1.0.1-beta1
- *   node scripts/package-linux.mjs --skip-security --allow-degraded
  *
  * What it does
  *   1. builds the frontend (unless --skip-web) and the Go binaries with GOOS=linux;
- *   2. picks up the Rust security binary for the target architecture (or --security);
  *   3. assembles PractacuPress-Linux-<arch>/ from deploy/linux templates + artifacts;
  *   4. runs static self-checks (ELF arch, frontend presence, LF-only scripts);
  *   5. writes a deterministic-ish tar.gz (ustar + gzip) and its sha256.
@@ -41,11 +39,8 @@ const option = (name, fallback = '') => {
 };
 
 const SKIP_WEB = flag('--skip-web');
-const SKIP_SECURITY = flag('--skip-security');
-const ALLOW_DEGRADED = flag('--allow-degraded');
 const ARCH = option('--arch', 'amd64');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
-const SECURITY_OVERRIDE = option('--security', '');
 const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
 
 if (!['amd64', 'arm64'].includes(ARCH)) {
@@ -216,57 +211,6 @@ function buildGo(binDir) {
   }
 }
 
-// ---- 3. Rust 安全服务 -----------------------------------------------------
-function findSecurityBinary() {
-  const candidates = [];
-  if (SECURITY_OVERRIDE) candidates.push(path.resolve(SECURITY_OVERRIDE));
-  const triples = ARCH === 'amd64'
-    ? ['x86_64-unknown-linux-musl', 'x86_64-unknown-linux-gnu']
-    : ['aarch64-unknown-linux-musl', 'aarch64-unknown-linux-gnu'];
-  for (const triple of triples) {
-    candidates.push(path.join(ROOT, 'services', 'security', 'target', triple, 'release', 'practacu-security'));
-  }
-  candidates.push(
-    path.join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security'),
-    path.join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security.exe'),
-  );
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
-    try {
-      const elf = readElf(candidate);
-      if (elf.magic === '\x7fELF' && elf.machine === ELF_MACHINE) return candidate;
-    } catch {
-      /* 继续找下一个 */
-    }
-  }
-  return '';
-}
-
-function copySecurity(binDir) {
-  if (SKIP_SECURITY) {
-    warn('已按 --skip-security 跳过安全服务：发布文章与完成上传会返回 503');
-    return false;
-  }
-  const found = findSecurityBinary();
-  if (!found) {
-    const message =
-      `找不到 ${ARCH} 版 practacu-security。先编译对应的 Rust 目标：\n` +
-      `  rustup target add ${ARCH === 'amd64' ? 'x86_64-unknown-linux-musl' : 'aarch64-unknown-linux-gnu'}\n` +
-      '  cd services/security && cargo build --release --locked [--target <triple>]\n' +
-      '或在 Linux 构建机上直接 cargo build --release。\n' +
-      '确实要打一个降级包（发布/上传不可用）时加 --allow-degraded。';
-    if (ALLOW_DEGRADED) {
-      warn(message);
-      return false;
-    }
-    fail(message);
-  }
-  const target = path.join(binDir, 'practacu-security');
-  copyFile(found, target, 0o755);
-  assertElf(target, 'practacu-security');
-  return true;
-}
-
 // ---- 4. 组装 --------------------------------------------------------------
 // Version stamped into the package. Release builds must pass --version; local
 // builds fall back to the frontend manifest plus the commit.
@@ -296,7 +240,7 @@ function stampWebVersion(webDir) {
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
 }
 
-function assemble(securityPresent) {
+function assemble() {
   log(`组装 ${PACKAGE}`);
   rmrf(STAGE_ROOT);
   fs.mkdirSync(PACKAGE, { recursive: true });
@@ -329,7 +273,6 @@ function assemble(securityPresent) {
   for (const name of binaries) {
     copyFile(path.join(builtBin, name), path.join(binDir, name), 0o755);
   }
-  const securityPresent2 = copySecurity(binDir);
 
   fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${packageVersion()}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
@@ -338,7 +281,6 @@ function assemble(securityPresent) {
   for (const entry of walk(PACKAGE)) {
     if (!entry.isDirectory) normalizeText(entry.full);
   }
-  return securityPresent2;
 }
 
 function selfCheck() {
@@ -379,9 +321,6 @@ function selfCheck() {
 
   assertElf(path.join(PACKAGE, 'bin', 'practacu-api'), 'bin/practacu-api');
   assertElf(path.join(PACKAGE, 'bin', 'practacu-seed'), 'bin/practacu-seed');
-  if (fs.existsSync(path.join(PACKAGE, 'bin', 'practacu-security'))) {
-    assertElf(path.join(PACKAGE, 'bin', 'practacu-security'), 'bin/practacu-security');
-  }
 }
 
 // ---- 5. tar.gz ------------------------------------------------------------
@@ -460,7 +399,7 @@ function writeArchive() {
 // ---- main -----------------------------------------------------------------
 log(`Practacu Press Linux 安装包（${PACKAGE_NAME}）`);
 buildWeb();
-assemble(true);
+assemble();
 selfCheck();
 writeArchive();
 printfSummary();

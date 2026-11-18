@@ -26,7 +26,7 @@ done
 
 [ "$(id -u)" -eq 0 ] || { echo "需要 root：请用 sudo ./uninstall.sh" >&2; exit 1; }
 
-for label in com.practacu.press-api com.practacu.press-security; do
+for label in com.practacu.press-api; do
     launchctl bootout "system/$label" 2>/dev/null || true
     rm -f "$LAUNCH_DIR/$label.plist"
 done

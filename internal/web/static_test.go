@@ -82,8 +82,8 @@ func TestServeRejectsApiAndMissingFiles(t *testing.T) {
 	for _, target := range []string{
 		"/api/v1/nope",
 		"/api",
-		"/healthz/nope",
-		"/readyz",
+		"/api/healthz/nope",
+		"/api/readyz",
 		"/plugins/nope.js",
 		"/__pp/state",
 		"/missing.js",
@@ -146,8 +146,8 @@ func TestCanServeKeepsApiOwnedPathsOutOfTheStaticHandler(t *testing.T) {
 	}
 	for _, target := range []string{
 		"/api/v1/setup/status",
-		"/healthz",
-		"/readyz",
+		"/api/healthz",
+		"/api/readyz",
 		"/plugins/demo/1/app.js",
 		"/__pp/state",
 		"/sitemap.xml",

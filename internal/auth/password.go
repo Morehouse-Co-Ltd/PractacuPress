@@ -13,9 +13,9 @@ import (
 
 // PasswordHasher hashes and verifies passwords.
 //
-// Password operations belong to the Rust security service in production. This
-// interface exists so the domain does not care which side performs them, and so a
-// development build can run without that service.
+// Production uses the in-process security package through NewSecurityPasswordHasher;
+// this interface keeps the domain independent of the implementation and lets tests
+// use a cheaper hasher.
 type PasswordHasher interface {
 	Hash(ctx context.Context, plain string) (string, error)
 	Verify(ctx context.Context, plain, encoded string) (bool, error)
@@ -65,8 +65,8 @@ type Argon2Params struct {
 // DefaultArgon2Params returns the development cost parameters.
 //
 // They follow the OWASP Argon2id baseline (64 MiB, 3 iterations, 2 lanes). The
-// production values are owned by the Rust service and carry a policy version, so
-// these exist only for local development and tests.
+// production hasher lives in internal/security and carries a policy version; these
+// exist only for local development and tests.
 func DefaultArgon2Params() Argon2Params {
 	return Argon2Params{
 		Memory:      64 * 1024,
@@ -79,7 +79,7 @@ func DefaultArgon2Params() Argon2Params {
 
 // NewArgon2idHasher builds a pure Go Argon2id hasher.
 //
-// It exists so development and tests do not require the Rust service. Production
+// It exists so development and tests do not need the full security client. Production
 // wiring must use NewSecurityPasswordHasher instead: keeping password handling in
 // one place is what makes its policy auditable.
 func NewArgon2idHasher(params Argon2Params) PasswordHasher {

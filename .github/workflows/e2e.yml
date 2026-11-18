@@ -2,7 +2,7 @@
 #
 # The main CI workflow stays fast and deterministic: this workflow is separate,
 # runs on a schedule or on demand, and is safe to re-run. It boots a throwaway
-# stack (fresh SQLite, Go API, Rust security service, production web build) and
+# stack (fresh SQLite, Go API with in-process security, production web build) and
 # drives the delivery path in headless Chrome with Playwright.
 #
 # Local equivalent:
@@ -49,15 +49,6 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: npm ci --no-audit --no-fund
-
-      - name: Build security service
-        timeout-minutes: 15
-        run: |
-          if ! command -v cargo >/dev/null 2>&1; then
-            rustup toolchain install stable --profile minimal
-            rustup default stable
-          fi
-          cargo build --release --manifest-path services/security/Cargo.toml
 
       - name: Ensure a headless browser
         working-directory: web

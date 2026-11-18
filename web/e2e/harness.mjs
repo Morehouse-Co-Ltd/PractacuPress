@@ -5,7 +5,7 @@
  * 它把一次真实交付的最小拓扑拉起来，然后跑 Playwright：
  *
  *   1. 在 .tmp/e2e/data 建一份全新的 SQLite 数据库；
- *   2. 编译并启动 Rust 安全服务（注册、登录、发布清洗都依赖它）；
+ *   2. 编译并启动 内置安全清洗（注册、登录、发布清洗都依赖它）；
  *   3. 编译并启动 Go API（PP_DESKTOP=true，空库自动建表并创建单站点）；
  *   4. 构建前端并启动 web/e2e/server.mjs（静态站 + 同源 /api 反代）；
  *   5. 运行 Playwright（chromium/chrome 无头，失败留截图与 trace）。
@@ -18,13 +18,11 @@
  * 环境变量：
  *   PP_E2E_CHANNEL=chrome|msedge|chromium   浏览器通道，默认 chrome（用系统 Chrome，不下载）
  *   PP_E2E_SKIP_WEB_BUILD=1                 复用已有 web/dist
- *   PP_E2E_SKIP_SECURITY=1                  不启动安全服务（只适合可跳过认证的调试）
- *   PP_E2E_SECURITY_BIN=<path>              指定安全服务可执行文件
  *   PP_E2E_GO=<path>                        指定 go 可执行文件
- *   PP_E2E_API_PORT / PP_E2E_SECURITY_PORT / PP_E2E_WEB_PORT  自定义端口
+ *   PP_E2E_API_PORT / PP_E2E_WEB_PORT  自定义端口
  *
  * 产物都在 .tmp/e2e/ 下：artifacts/（HTML 报告、JSON、截图、trace、video）、
- * logs/（go build、API、安全服务、静态服务器日志）、data/（SQLite 与媒体）。
+ * logs/（go build、API、静态服务器日志）、data/（SQLite 与媒体）。
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
@@ -42,11 +40,9 @@ const ARTIFACTS = join(E2E, 'artifacts');
 const BIN = join(E2E, 'bin');
 
 const API_PORT = Number(process.env.PP_E2E_API_PORT || 18080);
-const SEC_PORT = Number(process.env.PP_E2E_SECURITY_PORT || 19001);
 const WEB_PORT = Number(process.env.PP_E2E_WEB_PORT || 18100);
 const API_ORIGIN = `http://127.0.0.1:${API_PORT}`;
 const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
-const SKIP_SECURITY = process.env.PP_E2E_SKIP_SECURITY === '1';
 const SKIP_WEB_BUILD = process.env.PP_E2E_SKIP_WEB_BUILD === '1';
 
 const children = [];
@@ -71,16 +67,6 @@ function findGo() {
     if (probe.status === 0) return candidate;
   }
   fail('go not found; install Go 1.26+ or set PP_E2E_GO');
-}
-
-function findSecurity() {
-  const candidates = [
-    process.env.PP_E2E_SECURITY_BIN,
-    join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security.exe'),
-    join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security'),
-  ].filter(Boolean);
-  const found = candidates.find((candidate) => existsSync(candidate));
-  return found || '';
 }
 
 function npmInvocation(args) {
@@ -285,21 +271,9 @@ async function main() {
   mkdirSync(join(ARTIFACTS, 'screens'), { recursive: true });
 
   await assertFreePort(API_PORT, 'Go API', 'PP_E2E_API_PORT');
-  if (!SKIP_SECURITY) await assertFreePort(SEC_PORT, 'security service', 'PP_E2E_SECURITY_PORT');
   await assertFreePort(WEB_PORT, 'static web server', 'PP_E2E_WEB_PORT');
 
   const go = findGo();
-  const security = SKIP_SECURITY ? '' : findSecurity();
-  if (!SKIP_SECURITY && !security) {
-    fail(
-      'security service binary not found; run `cargo build --release` in services/security ' +
-        'or set PP_E2E_SECURITY_BIN',
-    );
-  }
-  if (SKIP_SECURITY) {
-    log('WARNING: security service skipped; registration/login/publish will fail closed');
-  }
-
   log('building Go API');
   const apiExe = join(BIN, process.platform === 'win32' ? 'practacu-api.exe' : 'practacu-api');
   const build = await runLogged('go-build', go, ['build', '-o', apiExe, './cmd/server'], ROOT);
@@ -322,17 +296,6 @@ async function main() {
     fail('PP_E2E_SKIP_WEB_BUILD=1 but web/dist/index.html is missing');
   }
 
-  if (!SKIP_SECURITY) {
-    log(`starting security service on 127.0.0.1:${SEC_PORT}`);
-    startService('security', security, [], {
-      cwd: ROOT,
-      env: { ...process.env, SECURITY_GRPC_BIND: `127.0.0.1:${SEC_PORT}` },
-    });
-    if (!(await waitTcp(SEC_PORT, 20000))) {
-      fail('security service did not open its gRPC port; see .tmp/e2e/logs/security.log');
-    }
-  }
-
   const sqlitePath = join(DATA, 'practacu.db').replaceAll('\\', '/');
   const apiEnv = {
     ...process.env,
@@ -340,7 +303,6 @@ async function main() {
     HTTP_ADDR: `127.0.0.1:${API_PORT}`,
     DATABASE_DRIVER: 'sqlite',
     DATABASE_DSN: `file:${sqlitePath}?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)`,
-    SECURITY_GRPC_ADDR: `127.0.0.1:${SEC_PORT}`,
     STORAGE_DRIVER: 'local',
     STORAGE_DIR: join(DATA, 'media'),
     PP_DESKTOP: 'true',
@@ -354,12 +316,12 @@ async function main() {
 
   log(`starting Go API on ${API_ORIGIN}`);
   startService('api', apiExe, [], { cwd: ROOT, env: apiEnv });
-  await waitHttp(`${API_ORIGIN}/healthz`, (response) => response.ok, 30000, 'GET /healthz');
+  await waitHttp(`${API_ORIGIN}/api/healthz`, (response) => response.ok, 30000, 'GET /api/healthz');
   await waitHttp(
-    `${API_ORIGIN}/readyz`,
+    `${API_ORIGIN}/api/readyz`,
     (response, body) => response.ok && body.includes('ready'),
     30000,
-    'GET /readyz',
+    'GET /api/readyz',
   );
 
   const setup = JSON.parse(await waitHttp(`${API_ORIGIN}/api/v1/setup/status`, (r) => r.ok, 10000));

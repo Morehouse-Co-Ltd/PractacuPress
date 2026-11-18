@@ -574,8 +574,8 @@ export class HttpBackend {
       });
     try {
       const [healthRes, readyRes] = await Promise.all([
-        call(`${this.origin}/healthz`),
-        call(`${this.origin}/readyz`),
+        call(`${this.origin}/api/healthz`),
+        call(`${this.origin}/api/readyz`),
       ]);
       const healthBody = await readJson(healthRes);
       const readyBody = await readJson(readyRes);

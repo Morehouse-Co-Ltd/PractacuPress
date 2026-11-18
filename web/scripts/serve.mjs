@@ -11,7 +11,7 @@
  *   npm start -- --port 9090   # 临时换一个端口
  *   PP_WEB_PORT=8081 npm start # 也可以用环境变量
  *
- * 只做静态文件与运行时端口接口；/api、/healthz、/readyz 仍然交给反向代理或 Go API，
+ * 只做静态文件与运行时端口接口；/api 仍然交给反向代理或 Go API，
  * 这里会明确返回 JSON 404，避免 SPA 的 HTML 回退被误判成后端可用。
  *
  * 另外提供 `GET /__pp/update`：服务端读取版本清单（`version.json`）并与本机版本比较。
@@ -813,10 +813,10 @@ async function handle(req, res) {
     return;
   }
 
-  if (pathname === '/healthz' || pathname === '/readyz' || pathname.startsWith('/api/')) {
+  if (pathname.startsWith('/api/')) {
     sendJson(res, 404, {
       code: 'not_found',
-      message: '静态服务不代理 API。请把 /api、/healthz、/readyz 交给反向代理或 Go API。',
+      message: '静态服务不代理 API。请把 /api 交给反向代理或 Go API。',
     });
     return;
   }

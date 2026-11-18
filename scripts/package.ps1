@@ -8,7 +8,6 @@
 #
 # 参数：
 #   -Arch            amd64 或 arm64（默认当前机器的 Node 架构）
-#   -SkipSecurity   不编译也不附带 Rust 安全服务（发布与上传会 fail-closed）
 #   -SkipSmoke      跳过打包后的自检
 #   -NoZip          只生成 release\PractacuPress 目录
 #   -ReleaseDir     输出目录，默认 <仓库>\release
@@ -18,7 +17,6 @@
 param(
     [ValidateSet('amd64', 'arm64')]
     [string]$Arch = '',
-    [switch]$SkipSecurity,
     [switch]$SkipSmoke,
     [switch]$NoZip,
     [string]$ReleaseDir = '',
@@ -74,28 +72,15 @@ if (-not $go) {
 }
 Write-Host "  Go      $(& $go version)"
 
-if (-not $SkipSecurity) {
-    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
-    $cargo = Get-Command cargo -ErrorAction SilentlyContinue
-    if (-not $rustup -and -not $cargo) {
-        Stop-WithError '没有找到 Rust 工具链。请安装 Rust：https://rustup.rs（安装后重开窗口），或者加 -SkipSecurity 跳过安全服务。'
-    }
-    Write-Host '  Rust    已找到（打包时自动编译 release 版本）'
-}
-else {
-    Write-Host '  Rust    跳过（-SkipSecurity：不编译也不附带安全服务）'
-}
-
 $nodeArgs = @('scripts/package-windows.mjs')
 if ($Arch) { $nodeArgs += @('--arch', $Arch) }
-if ($SkipSecurity) { $nodeArgs += '--skip-security' }
 if ($SkipSmoke) { $nodeArgs += '--skip-smoke' }
 if ($NoZip) { $nodeArgs += '--no-zip' }
 if ($ReleaseDir) { $nodeArgs += @('--release-dir', $ReleaseDir) }
 if ($Port -gt 0) { $nodeArgs += @('--port', [string]$Port) }
 $archLabel = if ($Arch -eq 'arm64') { 'arm64' } elseif ($Arch -eq 'amd64') { 'x64' } elseif ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 
-Write-Step '开始打包（首次编译 Rust 需要几分钟）'
+Write-Step '开始打包'
 $started = Get-Date
 & node @nodeArgs
 $code = $LASTEXITCODE
@@ -104,7 +89,7 @@ $elapsed = (Get-Date) - $started
 if ($code -ne 0) {
     Write-Host ''
     Write-Host "[失败] 打包没有完成（退出码 $code），耗时 $([int]$elapsed.TotalSeconds) 秒。" -ForegroundColor Red
-    Write-Host '       上面的日志里通常能找到原因；加 -SkipSecurity 可以先跳过 Rust 试试。' -ForegroundColor Yellow
+    Write-Host "       上面的日志里通常能找到原因。" -ForegroundColor Yellow
     exit $code
 }
 

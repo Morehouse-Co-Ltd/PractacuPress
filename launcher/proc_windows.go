@@ -10,7 +10,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// hiddenWindow keeps the child API and security service from opening their own
+// hiddenWindow keeps the child API from opening its own
 // console window; their output goes to files under the data directory instead.
 func hiddenWindow() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{HideWindow: true}

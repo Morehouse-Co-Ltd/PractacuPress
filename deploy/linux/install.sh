@@ -75,7 +75,7 @@ die()  { printf '%s[错误]%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
 on_error() {
     printf '\n%s[错误]%s 安装脚本在第 %s 行失败。已完成的步骤保留在磁盘上，修好问题后可以重跑。\n' \
         "$C_RED" "$C_RESET" "$1" >&2
-    printf '        查看日志：journalctl -u practacu-press-api -u practacu-press-security -n 80 --no-pager\n' >&2
+    printf '        查看日志：journalctl -u practacu-press-api -n 80 --no-pager\n' >&2
 }
 trap 'on_error "$LINENO"' ERR
 
@@ -363,7 +363,7 @@ write_env_file() {
     local tmp="$ENV_FILE.tmp"
     cat > "$tmp" <<EOF
 # Practacu Press 服务环境（由 install.sh 生成，含签名私钥，root 0600）
-# 改完执行：sudo systemctl restart practacu-press-api practacu-press-security
+# 改完执行：sudo systemctl restart practacu-press-api
 # 注意：APP_ENV=production 与 PP_DESKTOP=true 互斥；切换访问形态请用
 #       sudo $INSTALL_DIR/install.sh --finalize
 APP_ENV=$APP_ENV
@@ -373,8 +373,6 @@ DATABASE_DSN=file:$DATA_DIR/data/practacu.db
 STORAGE_DRIVER=local
 STORAGE_DIR=$DATA_DIR/data/media
 BACKUP_DIR=$DATA_DIR/data/backups
-SECURITY_GRPC_ADDR=127.0.0.1:9001
-SECURITY_GRPC_BIND=127.0.0.1:9001
 # Nginx 从本机回环转发，信任它送来的 X-Forwarded-*（真实客户端 IP）。
 TRUSTED_PROXIES=127.0.0.1/32
 PP_DESKTOP=$PP_DESKTOP
@@ -392,15 +390,7 @@ write_units() {
     render_template "$TEMPLATE_DIR/systemd/practacu-press-api.service.in" \
         "/etc/systemd/system/practacu-press-api.service" \
         "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "SERVICE_USER=$SERVICE_USER" "ENV_FILE=$ENV_FILE"
-    if [ -x "$INSTALL_DIR/bin/practacu-security" ]; then
-        render_template "$TEMPLATE_DIR/systemd/practacu-press-security.service.in" \
-            "/etc/systemd/system/practacu-press-security.service" \
-            "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "SERVICE_USER=$SERVICE_USER" "ENV_FILE=$ENV_FILE"
-        systemctl enable practacu-press-security >/dev/null
-    else
-        rm -f /etc/systemd/system/practacu-press-security.service
-        warn "包里没有 Linux 版安全服务（practacu-security）：站点仍可浏览/写作，但发布文章与完成上传会返回 503。"
-    fi
+    rm -f /etc/systemd/system/practacu-press-security.service
     systemctl daemon-reload
     systemctl enable practacu-press-api >/dev/null
 }
@@ -421,7 +411,6 @@ run_as_service() {
         STORAGE_DRIVER="local" \
         STORAGE_DIR="$DATA_DIR/data/media" \
         BACKUP_DIR="$DATA_DIR/data/backups" \
-        SECURITY_GRPC_ADDR="127.0.0.1:9001" \
         PP_DESKTOP="$PP_DESKTOP" \
         PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
         AUTH_JWT_ED25519_PRIVATE_KEY="$JWT_KEY" \
@@ -558,7 +547,6 @@ do_install() {
     if [ "$upgrading" = "yes" ]; then
         log "停止服务以便替换程序"
         systemctl stop practacu-press-api 2>/dev/null || true
-        systemctl stop practacu-press-security 2>/dev/null || true
     fi
 
     log "安装程序文件到 $INSTALL_DIR"
@@ -598,19 +586,16 @@ do_install() {
     seed_database
 
     log "启动服务"
-    if [ -f /etc/systemd/system/practacu-press-security.service ]; then
-        systemctl restart practacu-press-security
-    fi
     systemctl restart practacu-press-api
-    if ! wait_http "http://127.0.0.1:$API_PORT/healthz" 60; then
+    if ! wait_http "http://127.0.0.1:$API_PORT/api/healthz" 60; then
         systemctl status practacu-press-api --no-pager -n 20 >&2 || true
-        die "API 没有在 60 秒内通过 /healthz，请查看上面的状态或 journalctl -u practacu-press-api"
+        die "API 没有在 60 秒内通过 /api/healthz，请查看上面的状态或 journalctl -u practacu-press-api"
     fi
-    ok "API 已就绪：http://127.0.0.1:$API_PORT/healthz"
-    if wait_http "http://127.0.0.1:$API_PORT/readyz" 20; then
-        ok "就绪检查通过（/readyz）"
+    ok "API 已就绪：http://127.0.0.1:$API_PORT/api/healthz"
+    if wait_http "http://127.0.0.1:$API_PORT/api/readyz" 20; then
+        ok "就绪检查通过（/api/readyz）"
     else
-        warn "/readyz 尚未通过：通常是安全服务未启动。发布文章与上传会返回 503，其余功能可用。"
+        warn "/api/readyz 尚未通过：通常是数据库未迁移或数据目录权限不对。发布文章与上传会按设计 fail-closed。"
     fi
 
     if [ "$upgrading" = "yes" ] && [ "$MODE" != "setup" ]; then
@@ -700,10 +685,10 @@ finalize_lan() {
     nginx_reload
 
     systemctl restart practacu-press-api
-    wait_http "http://127.0.0.1:$API_PORT/healthz" 60 \
-        || die "API 重启后没有通过 /healthz，请查看 journalctl -u practacu-press-api"
-    if ! curl -fsS --max-time 5 -H "Host: $LAN_HOST" "http://127.0.0.1:$PUBLIC_PORT/healthz" >/dev/null 2>&1; then
-        warn "经 Nginx 的 /healthz 检查未通过：确认端口 $PUBLIC_PORT 未被其它站点占用、防火墙已放行。"
+    wait_http "http://127.0.0.1:$API_PORT/api/healthz" 60 \
+        || die "API 重启后没有通过 /api/healthz，请查看 journalctl -u practacu-press-api"
+    if ! curl -fsS --max-time 5 -H "Host: $LAN_HOST" "http://127.0.0.1:$PUBLIC_PORT/api/healthz" >/dev/null 2>&1; then
+        warn "经 Nginx 的 /api/healthz 检查未通过：确认端口 $PUBLIC_PORT 未被其它站点占用、防火墙已放行。"
     fi
 
     MODE="lan"
@@ -774,10 +759,10 @@ EOF
     nginx_reload
 
     systemctl restart practacu-press-api
-    wait_http "http://127.0.0.1:$API_PORT/healthz" 60 \
-        || die "API 以生产语义启动后没有通过 /healthz；查看 journalctl -u practacu-press-api（常见原因：JWT 私钥缺失或损坏）"
-    if ! curl -fsS --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/healthz" >/dev/null 2>&1; then
-        warn "本机经 HTTPS 的 /healthz 未通过（证书/DNS/防火墙）；用 curl --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/healthz 排查。"
+    wait_http "http://127.0.0.1:$API_PORT/api/healthz" 60 \
+        || die "API 以生产语义启动后没有通过 /api/healthz；查看 journalctl -u practacu-press-api（常见原因：JWT 私钥缺失或损坏）"
+    if ! curl -fsS --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/healthz" >/dev/null 2>&1; then
+        warn "本机经 HTTPS 的 /api/healthz 未通过（证书/DNS/防火墙）；用 curl --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/api/healthz 排查。"
     else
         ok "HTTPS 链路检查通过"
     fi
@@ -808,7 +793,7 @@ do_finalize() {
     load_jwt_key
     [ -n "$JWT_KEY" ] || die "环境文件里没有 JWT 私钥（$ENV_FILE）；请先重跑 sudo ./install.sh"
 
-    curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1 \
+    curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1 \
         || die "API 服务未运行：sudo systemctl start practacu-press-api 后重试"
     if ! check_admin_ready; then
         die "安装引导还没完成（没有管理员账户）。请先在浏览器里走完八步安装引导，再执行 --finalize。"
@@ -846,7 +831,7 @@ do_status() {
         printf '  反向代理：由你自行配置（API 在 127.0.0.1:%s）\n' "$API_PORT"
     fi
     printf '  API 健康：'
-    if curl -fsS --max-time 3 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1; then
+    if curl -fsS --max-time 3 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1; then
         printf '正常\n'
     else
         printf '不可达\n'

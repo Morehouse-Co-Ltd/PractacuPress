@@ -104,18 +104,15 @@ npm run e2e
 bash scripts/e2e.sh
 ```
 
-Prerequisites: Go 1.26+, Node.js 22+, `npm install` in `web`, the Rust
-security service built once (`cargo build --release` in `services/security`; the
-harness reuses `target/release/practacu-security`), and Google Chrome (the
-default `PP_E2E_CHANNEL=chrome`; use `PP_E2E_CHANNEL=chromium` after
+Prerequisites: Go 1.26+, Node.js 22+, `npm install` in `web`, and Google Chrome
+(the default `PP_E2E_CHANNEL=chrome`; use `PP_E2E_CHANNEL=chromium` after
 `npx playwright install chromium` if Chrome is unavailable).
 
 The harness builds the Go API, creates a fresh SQLite database under
-`.tmp/e2e/data`, starts the security service and API on free test ports, builds
-`web/dist`, and serves it with `web/e2e/server.mjs` — a production-like
-static server that proxies `/api`, `/healthz`, `/readyz`, `/sitemap.xml`,
-`/robots.txt` and `/feed*` to the API. Nothing outside `.tmp/e2e` is written, and
-the processes are stopped on exit.
+`.tmp/e2e/data`, starts the API on a free test port, builds `web/dist`, and serves
+it with `web/e2e/server.mjs` — a production-like static server that proxies
+`/api`, `/sitemap.xml`, `/robots.txt` and `/feed*` to the API. Nothing outside
+`.tmp/e2e` is written, and the processes are stopped on exit.
 
 Useful switches / variables:
 
@@ -123,8 +120,7 @@ Useful switches / variables:
 | --- | --- |
 | `PP_E2E_SKIP_WEB_BUILD=1` | reuse the current `web/dist` |
 | `PP_E2E_CHANNEL=chrome\|msedge\|chromium` | browser channel (default `chrome`) |
-| `PP_E2E_API_PORT` / `PP_E2E_SECURITY_PORT` / `PP_E2E_WEB_PORT` | override the default test ports 18080 / 19001 / 18100 |
-| `PP_E2E_SKIP_SECURITY=1` | start without the Rust service (registration/login/publish then fail closed; debugging only) |
+| `PP_E2E_API_PORT` / `PP_E2E_WEB_PORT` | override the default test ports 18080 / 18100 |
 
 Playwright uses one worker and one browser context per actor on purpose: the
 install is a one-time state transition, not an isolated unit. Screenshots of
@@ -143,18 +139,13 @@ requests in a minute. Production defaults are untouched.
 
 `.github/workflows/e2e.yml` is a separate, optional workflow
 (`workflow_dispatch` + a weekly schedule). It is deliberately not part of the
-required CI: it needs Chrome and a Rust build, while `ci.yml` stays fast. It
-uploads `.tmp/e2e/artifacts/` and the raw log on every run.
+required CI: it needs Chrome, while `ci.yml` stays fast. It uploads `.tmp/e2e/artifacts/` and the raw log on every run.
 
 ### Troubleshooting
 
 - **`npm ci` fails with `EPERM: unlink ... esbuild.exe` on Windows**: an already
   running `npm run dev` / Vite watcher is holding the binary. Stop it (or run
   `npm install` instead), then retry.
-- **`security service binary not found`**: run
-  `cargo build --release` in `services/security`, or point
-  `PP_E2E_SECURITY_BIN` at the executable. Registration, login and publishing
-  intentionally fail closed without it.
 - **`browserType.launch: Chromium distribution 'chrome' is not found`**: install
   Chrome, or run `npx playwright install chromium` in `web` and set
   `PP_E2E_CHANNEL=chromium`.

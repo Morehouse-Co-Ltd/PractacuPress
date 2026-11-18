@@ -18,7 +18,3 @@ services:
   api:
     image: ${PP_IMAGE_PREFIX:?set PP_IMAGE_PREFIX to ghcr.io/<owner> or a Docker Hub user}/practacu-press-api:${PP_VERSION:-latest}
     pull_policy: always
-
-  security:
-    image: ${PP_IMAGE_PREFIX:?set PP_IMAGE_PREFIX to ghcr.io/<owner> or a Docker Hub user}/practacu-press-security:${PP_VERSION:-latest}
-    pull_policy: always

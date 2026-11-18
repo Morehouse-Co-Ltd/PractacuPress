@@ -148,10 +148,9 @@ type SamplerConfig struct {
 // attributed to "api" instead of falling through to "app".
 func DefaultAppNames() map[string]string {
 	return map[string]string{
-		"practacu-api":      "api",
-		"practacupressapi":  "api",
-		"practacu-security": "security",
-		"practacupress":     "launcher",
+		"practacu-api":     "api",
+		"practacupressapi": "api",
+		"practacupress":    "launcher",
 	}
 }
 

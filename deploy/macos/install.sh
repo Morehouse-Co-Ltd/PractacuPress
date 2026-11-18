@@ -6,7 +6,7 @@
 #   sudo ./install.sh --no-nginx
 #
 # Installs the prebuilt binaries and frontend under /usr/local/practacu-press,
-# creates a launchd daemon for the API and the security service, and (when
+# creates a launchd daemon for the API and (when
 # Homebrew Nginx is already installed) renders a same-origin site on
 # 127.0.0.1:8080. The first-run wizard must be completed from this machine.
 #
@@ -78,7 +78,7 @@ log "创建数据与配置目录"
 mkdir -p /usr/local/etc /usr/local/var
 install -d -m 0750 -o "$RUN_USER" -g staff "$DATA_DIR" "$DATA_DIR/data" "$DATA_DIR/data/media" "$DATA_DIR/data/backups"
 install -d -m 0700 -o "$RUN_USER" -g staff "$ENV_ROOT"
-for log in api.log api.err.log security.log security.err.log; do
+for log in api.log api.err.log; do
     : > "$DATA_DIR/$log"
     chown "$RUN_USER":staff "$DATA_DIR/$log"
     chmod 0640 "$DATA_DIR/$log"
@@ -108,8 +108,6 @@ DATABASE_DSN=file:$DATA_DIR/data/practacu.db
 STORAGE_DRIVER=local
 STORAGE_DIR=$DATA_DIR/data/media
 BACKUP_DIR=$DATA_DIR/data/backups
-SECURITY_GRPC_ADDR=127.0.0.1:9001
-SECURITY_GRPC_BIND=127.0.0.1:9001
 TRUSTED_PROXIES=127.0.0.1/32
 PP_DESKTOP=true
 # 安装引导经本机 Nginx 反代到达 API；只放宽首个管理员判定。
@@ -140,29 +138,25 @@ brew_prefix() {
 
 log "注册 launchd 服务"
 install -d -m 0755 "$LAUNCH_DIR"
-render "$SELF_DIR/deploy/macos/com.practacu.press-security.plist.in" \
-    "$LAUNCH_DIR/com.practacu.press-security.plist" \
-    "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "ENV_FILE=$ENV_FILE" "RUN_USER=$RUN_USER"
 render "$SELF_DIR/deploy/macos/com.practacu.press-api.plist.in" \
     "$LAUNCH_DIR/com.practacu.press-api.plist" \
     "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "ENV_FILE=$ENV_FILE" "RUN_USER=$RUN_USER"
 chmod 0644 "$LAUNCH_DIR/com.practacu.press-"*.plist
 
-for label in com.practacu.press-security com.practacu.press-api; do
+for label in com.practacu.press-api; do
     launchctl bootout "system/$label" 2>/dev/null || true
 done
-launchctl bootstrap system "$LAUNCH_DIR/com.practacu.press-security.plist"
 launchctl bootstrap system "$LAUNCH_DIR/com.practacu.press-api.plist"
 
 log "等待 API 就绪"
 for _ in $(seq 1 60); do
-    if curl -fsS --max-time 2 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1; then
-        ok "API 已就绪：http://127.0.0.1:$API_PORT/healthz"
+    if curl -fsS --max-time 2 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1; then
+        ok "API 已就绪：http://127.0.0.1:$API_PORT/api/healthz"
         break
     fi
     sleep 1
 done
-if ! curl -fsS --max-time 2 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1; then
+if ! curl -fsS --max-time 2 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1; then
     warn "API 还没有通过健康检查，查看 $DATA_DIR/api.err.log 与 launchctl print system/com.practacu.press-api"
 fi
 

@@ -9,7 +9,7 @@
 # itself and needs no dot-sourcing.
 #
 # 1. Go on PATH is a 32-bit install; the repository targets windows/amd64.
-# 2. go/cargo do not read the WinINET proxy, so honour the system proxy here.
+# 2. go does not read the WinINET proxy, so honour the system proxy here.
 
 $goRoot = 'C:\Program Files\Go'
 if (Test-Path (Join-Path $goRoot 'bin\go.exe')) {

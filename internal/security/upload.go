@@ -106,7 +106,7 @@ func looksLikeMarkup(sample []byte) bool {
 	return false
 }
 
-// isASCIIWhitespace matches Rust's u8::is_ascii_whitespace: space, horizontal
+// isASCIIWhitespace matches reference's u8::is_ascii_whitespace: space, horizontal
 // tab, line feed, form feed and carriage return (not vertical tab).
 func isASCIIWhitespace(b byte) bool {
 	switch b {

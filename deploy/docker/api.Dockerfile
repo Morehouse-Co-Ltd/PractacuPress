@@ -87,8 +87,7 @@ ENV HTTP_ADDR=0.0.0.0:8080 \
     DATABASE_DSN=file:/data/practacu.db \
     STORAGE_DRIVER=local \
     STORAGE_DIR=/data/media \
-    BACKUP_DIR=/data/backups \
-    SECURITY_GRPC_ADDR=security:9001
+    BACKUP_DIR=/data/backups
 
 EXPOSE 8080
 STOPSIGNAL SIGTERM

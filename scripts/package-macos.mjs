@@ -3,11 +3,10 @@
  * Build the macOS package: release/PractacuPress-macOS-<arm64|x86_64>.tar.gz
  *
  *   node scripts/package-macos.mjs --arch arm64 --version v1.0.1-beta1
- *   node scripts/package-macos.mjs --arch amd64 --skip-web --security path/to/practacu-security
+ *   node scripts/package-macos.mjs --arch amd64 --skip-web
  *
  * Must run on macOS: it uses the native tar/shasum tools so executable bits and
- * code signing metadata survive, and the Rust security binary must be built by a
- * macOS toolchain (the CI job cross-builds both targets on one Apple Silicon runner).
+ * code signing metadata survive.
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -28,7 +27,6 @@ const option = (name, fallback = '') => {
 
 const ARCH = option('--arch', process.arch === 'arm64' ? 'arm64' : 'amd64');
 const SKIP_WEB = flag('--skip-web');
-const SECURITY = option('--security', '');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
 const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x86_64';
@@ -42,7 +40,7 @@ if (!['amd64', 'arm64'].includes(ARCH)) fail(`unsupported --arch ${ARCH}`);
 if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
   fail(`unsupported --version ${RELEASE_VERSION}`);
 }
-if (process.platform !== 'darwin') fail('macOS 包必须在 macOS 上构建（Rust 需要 macOS SDK）');
+if (process.platform !== 'darwin') fail('macOS 包必须在 macOS 上构建');
 
 function log(message) { console.log(`==> ${message}`); }
 function ok(message) { console.log(`  ✓ ${message}`); }
@@ -95,20 +93,6 @@ function stampWebVersion(dir) {
   }, null, 2)}\n`, 'utf8');
 }
 
-function securityBinary() {
-  if (SECURITY) return path.resolve(SECURITY);
-  const triples = ARCH === 'arm64'
-    ? ['aarch64-apple-darwin']
-    : ['x86_64-apple-darwin'];
-  for (const triple of triples) {
-    const candidate = path.join(ROOT, 'services', 'security', 'target', triple, 'release', 'practacu-security');
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  const host = path.join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security');
-  if (fs.existsSync(host)) return host;
-  fail('找不到 macOS 版 practacu-security；先运行 cargo build --release --target <triple>');
-}
-
 function main() {
   if (!SKIP_WEB) {
     run('npm', ['run', 'build'], { cwd: path.join(ROOT, 'web') });
@@ -143,7 +127,6 @@ function main() {
       env: { GOOS: 'darwin', GOARCH: ARCH, CGO_ENABLED: '0' },
     });
   }
-  copyFile(securityBinary(), path.join(binDir, 'practacu-security'), 0o755);
   fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
 

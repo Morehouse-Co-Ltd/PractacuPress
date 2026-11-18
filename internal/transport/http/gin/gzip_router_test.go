@@ -31,7 +31,7 @@ func gunzipBody(t *testing.T, body []byte, encoding string) string {
 func TestRouterCompressesJSON(t *testing.T) {
 	r := testRouter(t, Dependencies{})
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/healthz", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

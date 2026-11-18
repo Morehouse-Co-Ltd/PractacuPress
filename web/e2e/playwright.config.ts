@@ -45,6 +45,6 @@ export default defineConfig({
   ],
   metadata: {
     suite: 'browser-e2e-smoke',
-    api: 'Go API + Rust security service + SQLite',
+    api: 'Go API + built-in security checks + SQLite',
   },
 });

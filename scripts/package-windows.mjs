@@ -8,19 +8,17 @@
  *
  * 默认流程（每一步失败都会立刻停下并打印原因）：
  *   1. 构建前端（web → dist），缺少 node_modules 时自动安装依赖
- *   2. 编译 Rust 安全服务（services/security，release）
- *   3. 把前端产物同步进启动器的 go:embed 目录
- *   4. 编译 Go 启动器（launcher）与 Go API（Windows，目标架构）
- *   5. 组装干净的分发目录（exe + README.txt + VERSION）
- *   6. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/healthz、/readyz、
- *      注册、文章创建（Rust 清洗）与发布（仅本机架构可执行时）
- *   7. 压缩成 release/PractacuPress-Windows-<x64|arm64>.zip
+ *   2. 把前端产物同步进启动器的 go:embed 目录
+ *   3. 编译 Go 启动器（launcher）与 Go API（Windows，目标架构）
+ *   4. 组装干净的分发目录（exe + README.txt + VERSION）
+ *   5. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/api/healthz、/api/readyz、
+ *      注册、文章创建（Go 内嵌安全清洗）与发布（仅本机架构可执行时）
+ *   6. 压缩成 release/PractacuPress-Windows-<x64|arm64>.zip
  *
  * 常用参数：
  *   --arch amd64|arm64   目标架构（默认当前 Node 架构）
  *   --version <tag>      发布版本（写入 VERSION 与 web/version.json）
  *   --skip-web           复用 web/dist（CI 已单独构建时）
- *   --skip-security      不编译也不附带 Rust 安全服务（发布与上传会 fail-closed）
  *   --skip-smoke         跳过自检（不推荐；跨架构构建会自动跳过）
  *   --no-zip             只生成 release/PractacuPress 目录，不压缩
  *   --release-dir <目录>  输出目录（默认 <仓库>/release，也可用 PP_RELEASE_DIR）
@@ -35,8 +33,7 @@
  * 导致 “vite:esbuild-transpile remove ... Access is denied”。脚本把所有子进程的
  * TEMP/TMP 指到仓库内的 .tmpbuild/tmp，绕开系统临时目录的删除限制。
  *
- * 架构说明：Go 可以交叉编译；Rust 需要目标架构的工具链。CI 用 x64 与 arm64 的
- * Windows runner 原生构建，本地交叉打包 arm64 需要 arm64 MSVC 链接器。
+ * 架构说明：Go 可以交叉编译；CI 用 x64 与 arm64 的 Windows runner 原生构建。
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -63,25 +60,12 @@ if (options.help) {
 
 const HOST_ARCH = process.arch === 'arm64' ? 'arm64' : 'amd64';
 const ARCH = options.arch || HOST_ARCH;
+const NATIVE_ARCH = ARCH === HOST_ARCH;
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x64';
 const RELEASE_VERSION = String(options.version || '').replace(/^v/i, '');
 if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
   throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-betaN，收到 ${options.version}`);
 }
-const RUST_TARGET = ARCH === 'arm64' ? 'aarch64-pc-windows-msvc' : 'x86_64-pc-windows-msvc';
-const NATIVE_ARCH = ARCH === HOST_ARCH;
-// Always pass --target: on an arm64 runner rustup may still be the x64 host
-// toolchain, and building "native" would silently produce an x64 binary. The
-// explicit triple also makes the output path independent of the host.
-const securityExe = path.join(
-  root,
-  'services',
-  'security',
-  'target',
-  RUST_TARGET,
-  'release',
-  'practacu-security.exe',
-);
 
 const releaseDir = path.resolve(options.releaseDir || process.env.PP_RELEASE_DIR || path.join(root, 'release'));
 const stagingRoot = path.join(releaseDir, '.staging');
@@ -113,13 +97,6 @@ async function main() {
   console.log(`  Go      ${goVersion}  (${go})`);
   console.log(`  目标    windows/${ARCH}${NATIVE_ARCH ? '（本机）' : `（交叉，宿主机 ${HOST_ARCH}）`}`);
 
-  let cargo = null;
-  if (options.skipSecurity) {
-    console.log('  Rust    跳过（--skip-security：不编译也不附带安全服务）');
-  } else {
-    cargo = resolveCargo();
-    console.log(`  Rust    ${capture(cargo.cmd, [...cargo.prefix, '--version'])}`);
-  }
 
   fs.mkdirSync(releaseDir, { recursive: true });
   rmrf(stagingRoot);
@@ -137,19 +114,6 @@ async function main() {
   }
   stampWebVersion(distDir);
 
-  let securityBundled = false;
-  if (!options.skipSecurity) {
-    step(`编译 Rust 安全服务（windows/${ARCH}，release）`);
-    const cargoDir = path.join(root, 'services', 'security');
-    const cargoArgs = [...cargo.prefix, 'build', '--release', '--locked', '--target', RUST_TARGET];
-    run(cargo.cmd, cargoArgs, cargoDir, baseEnv, `cargo build --release --target ${RUST_TARGET}`);
-    requireFile(securityExe, `cargo build 成功但找不到 ${securityExe}`);
-    fs.copyFileSync(securityExe, path.join(stagingDir, 'practacu-security.exe'));
-    securityBundled = true;
-    console.log(`  practacu-security.exe  ${formatSize(fs.statSync(securityExe).size)}`);
-  } else {
-    console.log('  注意：这个包不包含安全服务，发布文章与完成上传会返回 503。');
-  }
 
   step('把前端产物同步进启动器（go:embed）');
   rmrf(embedDir);
@@ -192,7 +156,7 @@ async function main() {
   if (options.skipSmoke || !NATIVE_ARCH) {
     console.log('\n注意：已跳过运行自检（--skip-smoke 或跨架构构建）。');
   } else {
-    await smokeTest(stagingDir, securityBundled);
+    await smokeTest(stagingDir);
   }
 
   let zipResult = null;
@@ -226,7 +190,6 @@ async function main() {
   console.log(`  架构       windows/${ARCH}`);
   if (NATIVE_ARCH) console.log(`  启动器     ${path.join(hostPackageDir, 'PractacuPress.exe')}`);
   if (NATIVE_ARCH) console.log(`  API        ${path.join(hostPackageDir, 'PractacuPressAPI.exe')}`);
-  console.log(`  安全服务   ${securityBundled ? '已附带 practacu-security.exe' : '未附带（发布与上传会被拒绝）'}`);
   if (zipResult) {
     console.log(`  压缩包     ${zipResult.path}`);
     console.log(`  大小       ${formatSize(zipResult.size)}`);
@@ -242,7 +205,6 @@ async function main() {
 function parseOptions(argv) {
   const parsed = {
     help: false,
-    skipSecurity: false,
     skipSmoke: false,
     skipWeb: false,
     noZip: false,
@@ -258,9 +220,6 @@ function parseOptions(argv) {
       case '--help':
       case '-h':
         parsed.help = true;
-        break;
-      case '--skip-security':
-        parsed.skipSecurity = true;
         break;
       case '--skip-smoke':
         parsed.skipSmoke = true;
@@ -314,7 +273,6 @@ function printHelp() {
   --arch amd64|arm64   目标架构（默认当前 Node 架构）
   --version <tag>      发布版本（写入 VERSION 与 web/version.json）
   --skip-web           复用 web/dist
-  --skip-security      不编译也不附带 Rust 安全服务
   --skip-smoke         跳过打包后的自检（跨架构构建会自动跳过）
   --no-zip             只生成 release/PractacuPress 目录
   --release-dir <目录> 输出目录（默认 <仓库>/release，也可用 PP_RELEASE_DIR）
@@ -381,25 +339,6 @@ function resolveGo() {
   const found = spawnSync('where', ['go'], { encoding: 'utf8', env: baseEnv, windowsHide: true });
   if (found.status === 0 && found.stdout.trim()) return found.stdout.trim().split(/\r?\n/)[0].trim();
   throw new Error('没有找到 Go。请安装 Go 1.26+，并确保 go 在 PATH 里。');
-}
-
-function resolveCargo() {
-  // Use the host toolchain: on an arm64 runner that is already the right target;
-  // on x64 it compiles the native x64 security binary. Cross builds are handled by
-  // `cargo build --target <triple>` (CI uses native runners to avoid an MSVC ARM64
-  // linker dependency).
-  const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8', env: baseEnv, windowsHide: true });
-  if (cargo.status === 0) return { cmd: 'cargo', prefix: [] };
-  const rustup = spawnSync('rustup', ['run', 'stable', 'cargo', '--version'], {
-    encoding: 'utf8',
-    env: baseEnv,
-    windowsHide: true,
-  });
-  if (rustup.status === 0) return { cmd: 'rustup', prefix: ['run', 'stable', 'cargo'] };
-  throw new Error(
-    '没有找到可用的 Rust 工具链。请先安装 Rust（https://rustup.rs），' +
-      '或者加 --skip-security 打一个不带安全服务的包。',
-  );
 }
 
 function capture(command, args) {
@@ -634,8 +573,8 @@ function syncPackageDir() {
 /* 自检                                                                */
 /* ------------------------------------------------------------------ */
 
-async function smokeTest(builtDir, securityBundled) {
-  step('自检：启动打包产物，验证站点、API 与安全服务');
+async function smokeTest(builtDir) {
+  step('自检：启动打包产物，验证站点、API 与内容清洗');
   const smokeRoot = path.join(root, '.tmpbuild', 'smoke', `run-${Date.now()}`);
   const copyDir = path.join(smokeRoot, 'PractacuPress');
   fs.mkdirSync(smokeRoot, { recursive: true });
@@ -675,8 +614,7 @@ async function smokeTest(builtDir, securityBundled) {
     check(runtime.runtime_mode === 'live', `运行方式应为 live，实际是 ${runtime.runtime_mode}`);
     check(runtime.api && runtime.api.managed === true, '本机 API 没有由启动器托管');
     check(runtime.api.ready === true, '本机 API 没有就绪');
-    if (securityBundled) check(runtime.api.security === true, '安全服务没有启动');
-    console.log(`  ✓ /__pp/runtime：live，API 就绪${securityBundled ? '，安全服务已连接' : ''}`);
+    console.log('  ✓ /__pp/runtime：live，API 就绪');
 
     const index = await httpText(`${base}/`);
     check(index.status === 200, `首页返回 ${index.status}`);
@@ -691,11 +629,11 @@ async function smokeTest(builtDir, securityBundled) {
     check(spa.status === 200 && spa.text.includes('<div id="root">'), 'SPA 路由没有回退到 index.html');
     console.log('  ✓ SPA 路由回退');
 
-    const health = await httpJSON(`${base}/healthz`);
-    check(health.status === 200 && health.body && health.body.status === 'ok', '/healthz 不正常');
-    const ready = await httpJSON(`${base}/readyz`);
-    check(ready.status === 200 && ready.body && ready.body.status === 'ready', '/readyz 不正常');
-    console.log('  ✓ /healthz 与 /readyz');
+    const health = await httpJSON(`${base}/api/healthz`);
+    check(health.status === 200 && health.body && health.body.status === 'ok', '/api/healthz 不正常');
+    const ready = await httpJSON(`${base}/api/readyz`);
+    check(ready.status === 200 && ready.body && ready.body.status === 'ready', '/api/readyz 不正常');
+    console.log('  ✓ /api/healthz 与 /api/readyz');
 
     const email = `smoke+${Date.now()}@example.test`;
     const registered = await httpJSON(`${base}/api/v1/auth/register/email`, {
@@ -719,12 +657,11 @@ async function smokeTest(builtDir, securityBundled) {
       }),
     });
 
-    if (securityBundled) {
-      check(draft.status === 201, `创建文章失败（HTTP ${draft.status}）：${draft.text.slice(0, 300)}`);
-      const rendered = String((draft.body && draft.body.rendered_html) || '');
-      check(/<h1[^>]*>\s*Hello\s*<\/h1>/i.test(rendered), 'Markdown/HTML 渲染不正确');
-      check(!/<script/i.test(rendered), 'Rust 安全服务没有清除 <script>');
-      console.log('  ✓ 文章创建 + Rust 内容清洗');
+    check(draft.status === 201, `创建文章失败（HTTP ${draft.status}）：${draft.text.slice(0, 300)}`);
+    const rendered = String((draft.body && draft.body.rendered_html) || '');
+    check(/<h1[^>]*>\s*Hello\s*<\/h1>/i.test(rendered), 'Markdown/HTML 渲染不正确');
+    check(!/<script/i.test(rendered), 'Go 安全清洗没有移除 <script>');
+    console.log('  ✓ 文章创建 + Go 内容清洗');
 
       const published = await httpJSON(`${base}/api/v1/articles/${draft.body.id}/publish`, {
         method: 'POST',
@@ -748,11 +685,6 @@ async function smokeTest(builtDir, securityBundled) {
         '文章列表里找不到刚发布的文章',
       );
       console.log('  ✓ 文章列表');
-    } else {
-      // 没有安全服务时创建必须 fail-closed 返回 503，而不是静默成功。
-      check(draft.status === 503, `不带安全服务时创建文章应返回 503，实际是 ${draft.status}`);
-      console.log('  ✓ 安全服务缺失时按设计 fail-closed（503）');
-    }
 
     check(fs.existsSync(path.join(dataDir, 'practacu.db')), '没有生成 data/practacu.db');
     console.log('  ✓ data/practacu.db 已生成');

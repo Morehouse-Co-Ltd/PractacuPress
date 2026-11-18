@@ -31,14 +31,13 @@ PractacuPress-Linux-<x64|arm64>/
 │   ├── practacu-backup        整库备份 / 恢复 / 校验
 │   ├── practacu-media-gc      清理无引用的媒体对象
 │   ├── practacu-searchindex   重建全文搜索索引
-│   └── practacu-security      Rust 安全服务（Argon2id、HTML 白名单、上传检查）
 └── deploy/
     ├── systemd/*.service.in   systemd 单元模板（安装器渲染后写入 /etc/systemd/system）
     └── nginx/*.conf.in        Nginx 站点模板（安装器渲染后写入 /etc/nginx）
 ```
 
-包里的 Go 与 Rust 程序都是 **对应架构的 Linux 二进制**，目标机不需要安装
-Go / Node / Rust，也不需要 Docker。
+包里的程序都是 **对应架构的 Linux 二进制**，目标机不需要安装
+Go / Node，也不需要 Docker。
 
 ## 2. 前置条件
 
@@ -173,7 +172,6 @@ sudo /opt/practacu-press/install.sh --status
 | `/etc/practacu-press/practacu.env` | 服务环境变量（含 JWT 私钥，root 0600） |
 | `/etc/practacu-press/install.conf` | 安装记录：目录、端口、站点形态 |
 | `/etc/systemd/system/practacu-press-api.service` | Go API |
-| `/etc/systemd/system/practacu-press-security.service` | Rust 安全服务 |
 | `/etc/nginx/conf.d/practacu-press.conf` | Http / Https 站点（安装器生成） |
 | `/etc/nginx/practacu-press-locations.conf` | 全站反向代理规则（安装器生成） |
 | `/var/www/practacu-acme/` | certbot 的 HTTP-01 挑战目录 |
@@ -194,8 +192,8 @@ sudo journalctl -u practacu-press-api -f
 sudo journalctl -u practacu-press-security -f
 
 # 健康检查
-curl -fsS http://127.0.0.1:8081/healthz
-curl -fsS http://127.0.0.1:8081/readyz
+curl -fsS http://127.0.0.1:8081/api/healthz
+curl -fsS http://127.0.0.1:8081/api/readyz
 ```
 
 **备份**：数据都在 `/var/lib/practacu-press/data/`，停机或低峰期复制即可：
@@ -228,7 +226,7 @@ sudo ./install.sh
 ## 6. 安全说明
 
 - 安装引导与内网形态的监听范围由 Nginx 配置决定；公网形态只开放 80 / 443，
-  API 与安全服务始终只在回环上。
+  API 始终只在回环上。
 - 首个管理员只能从回环地址注册（产品 V-16 修复）；安装器不会提供绕过入口。
 - `/etc/practacu-press/practacu.env` 含 Ed25519 签名私钥，权限 0600，不要外传；
   丢失它等于所有会话失效（重新生成后全员重登）。
@@ -236,7 +234,7 @@ sudo ./install.sh
   **不要直接暴露到公网**。
 - 安全响应头（CSP、HSTS、X-Frame-Options 等）由 Nginx 统一下发，模板已包含。
 - 防火墙建议只放行需要的端口（80/443，或内网形态的 HTTP 端口），
-  API 端口（默认 8081）与安全服务端口（9001）不需要对外开放。
+  API 端口（默认 8081）不需要对外开放。
 
 ## 7. 故障排查
 
@@ -245,8 +243,8 @@ sudo ./install.sh
 | 安装脚本报端口被占用 | 换 `--api-port` / `--setup-port`，或停掉占用端口的服务后重跑 |
 | 浏览器打不开 `127.0.0.1:8080` | 确认 SSH 隧道方向正确；`ss -ltn \| grep 8080` 确认 Nginx 在听；看 `journalctl -u nginx` |
 | 安装引导里注册后不是管理员 | 必须通过回环访问（`http://127.0.0.1:8080` 或 SSH 隧道），不要用服务器 IP / 域名访问 |
-| `/readyz` 不通过、发布文章返回 503 | 安全服务没起来：`systemctl status practacu-press-security`、`journalctl -u practacu-press-security` |
-| 包里的安全服务缺失（安装时警告） | 站点可浏览/写作，但发布与上传按设计返回 503；换完整包重装即可 |
+| `/api/readyz` 不通过 | 查看 `journalctl -u practacu-press-api -n 100`；通常是数据库未迁移或数据目录权限不对 |
+| 发布文章/上传返回 503 | 查看 API 日志中的安全检查错误；内置检查失败时按设计 fail-closed |
 | `--finalize --mode public` 提示域名不能服务 | 先到管理后台完成域名设置与 DNS TXT 验证，确认 `curl -H 'Host: 域名' http://127.0.0.1:8081/api/v1/setup/status` 返回 `installed: true` |
 | certbot 申请失败 | 检查 DNS 是否指向本机、80 端口公网可达、云安全组与防火墙；也可手动 `certbot certonly --webroot -w /var/www/practacu-acme -d 域名` 后重跑 `--finalize` |
 | Nginx 配置检查失败 | `sudo nginx -t` 看具体行；安装器生成的文件在 `/etc/nginx/conf.d/practacu-press.conf` 与 `/etc/nginx/practacu-press-locations.conf` |
@@ -269,7 +267,7 @@ sudo /opt/practacu-press/uninstall.sh --purge   # 连数据、系统用户、环
 sha256sum -c PractacuPress-Linux-<x64|arm64>.tar.gz.sha256
 ```
 
-这个安装包由仓库里的 `scripts/package-linux.mjs` 生成（前端构建 + Go/Rust 交叉编译 +
+这个安装包由仓库里的 `scripts/package-linux.mjs` 生成（前端构建 + Go 交叉编译 +
 模板渲染 + 自检 + tar.gz）。修改 `deploy/linux/` 下的模板或安装器后重新打包（架构用
 `--arch amd64` 或 `--arch arm64`）：
 

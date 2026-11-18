@@ -1,13 +1,9 @@
-// Package securityclient is the contract to the security services.
+// Package securityclient is the in-process contract for password hashing,
+// content sanitization and upload inspection.
 //
-// The services own password hashing, content sanitization and upload
-// inspection. They never own users, articles or permissions: those stay in the
-// Go application.
-//
-// The Go API prefers the Go security service (services/security-go) and falls
-// back to the Rust service (services/security) when a call fails with a
-// transport or availability error; see Fallback. Callers only see this
-// interface, so which implementation answered is an infrastructure detail.
+// The implementation is a compiled-in Go package (internal/security). The
+// interface remains so callers do not depend on how the checks are executed, and
+// tests can still substitute a failing implementation.
 package securityclient
 
 import (
@@ -15,7 +11,8 @@ import (
 	"errors"
 )
 
-// ErrUnavailable means the security service could not be reached.
+// ErrUnavailable means the security implementation could not complete the call
+// (for example the Argon2 deadline expired).
 //
 // Callers must treat it as fail closed: an upload stays unscanned and content stays
 // unpublishable. Continuing as if the check had passed converts an outage into a
@@ -77,7 +74,7 @@ type ScanResult struct {
 	PolicyVersion string
 }
 
-// Client is the security service contract.
+// Client is the security contract.
 type Client interface {
 	HashPassword(ctx context.Context, plain string) (string, error)
 	VerifyPassword(ctx context.Context, plain, encoded string) (bool, error)

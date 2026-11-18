@@ -126,33 +126,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  rust:
-    name: Security service (Rust)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      # The Rust crate is what the Docker and Linux packages ship, but nothing in
-      # the Go/web gates compiles it. GitHub-hosted Ubuntu images provide cargo;
-      # the vendored protoc in build.rs means no system package is needed.
-      - name: Test security service
-        timeout-minutes: 25
-        run: |
-          set -o pipefail
-          mkdir -p .ci-logs
-          cargo test --locked --manifest-path services/security/Cargo.toml 2>&1 | tee .ci-logs/rust.log
-
-      - name: Upload failure logs
-        if: failure()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: rust-logs
-          path: .ci-logs/
-          if-no-files-found: ignore
-          retention-days: 14
-
   migrations:
     name: Migrations (SQLite, MySQL, PostgreSQL)
     runs-on: ubuntu-latest

@@ -1880,7 +1880,7 @@ function EditorWorkspace() {
                   )}
                   {!demo ? (
                     <p className="tiny faint" style={{ marginTop: 4 }}>
-                      {t('发布与上传会调用 Rust 安全服务；不可用时服务端返回 503，内容会保留但不会公开。')}
+                      {t('发布与上传会调用 内置安全清洗；不可用时服务端返回 503，内容会保留但不会公开。')}
                     </p>
                   ) : null}
                 </div>

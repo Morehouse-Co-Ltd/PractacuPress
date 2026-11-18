@@ -14,11 +14,11 @@ export const DEFAULT_SITE_PORT = 8080;
 export interface RuntimeApiInfo {
   /** 启动器是否托管了本机 API 进程。 */
   managed: boolean;
-  /** API 是否已通过 /readyz 检查。 */
+  /** API 是否已通过 /api/readyz 检查。 */
   ready: boolean;
   base?: string;
   pid?: number;
-  /** 随包附带了 Rust 安全服务并且已启动。 */
+  /** 随包附带了 内置安全清洗并且已启动。 */
   security?: boolean;
   data_dir?: string;
   log?: string;

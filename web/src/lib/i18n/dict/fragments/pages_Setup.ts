@@ -21,7 +21,7 @@ const fragment: Dictionary = {
   '迁移、健康检查': 'Migrations, health checks',
   '服务就绪': 'Service ready',
   '数据存储': 'Data storage',
-  '安全服务': 'Security service',
+  '内置安全检查': 'Built-in security checks',
   '站点可访问': 'Site reachable',
   'OpenAPI 文档': 'OpenAPI docs',
   '等待检查': 'Waiting for check',
@@ -61,8 +61,8 @@ const fragment: Dictionary = {
   '浏览器禁用了 localStorage。': 'The browser has disabled localStorage.',
   '演示数据可以持久化到本机。': 'Demo data can persist on this machine.',
   '无法持久化，刷新后会丢失。': 'Cannot persist; data is lost on refresh.',
-  '演示模式不调用 Rust 安全服务；真实发布与上传需要它可用。':
-    'Demo mode does not call the Rust security service; live publishing and uploads need it.',
+  '演示模式不调用 内置安全清洗；真实发布与上传需要它可用。':
+    'Demo mode does not call the built-in security checks; live publishing and uploads need it.',
   '演示站点将在此浏览器内立即生效。': 'The demo site takes effect in this browser immediately.',
   '接口契约版本 0.1.0（演示模式不提供在线文档）。':
     'Contract version 0.1.0 (demo mode offers no online docs).',
@@ -141,8 +141,8 @@ const fragment: Dictionary = {
   '这台机器的 data 目录被删除或重建过，浏览器里记着的安装配置已经对不上， 所以重新打开了安装引导。已有的内容需要从备份的 data 目录恢复。':
     'The data directory on this machine was deleted or rebuilt, so the saved install config in this browser no longer matches and the setup wizard reopened. Existing content has to be restored from a backed-up data directory.',
   '先决定这间房子接在哪里。': 'First decide where this house connects.',
-  '连接真实后端时，所有写入都会经过 Go API 与 Rust 安全服务；演示模式不需要启动任何服务，数据只保存在此浏览器。':
-    'With a live backend every write goes through the Go API and the Rust security service; demo mode needs no services and keeps data in this browser only.',
+  '连接真实后端时，所有写入都会经过 Go API 与 内置安全清洗；演示模式不需要启动任何服务，数据只保存在此浏览器。':
+    'With a live backend every write goes through the Go API and the built-in security checks; demo mode needs no services and keeps data in this browser only.',
   '演示数据（本地）': 'Demo data (local)',
   '无需后端。内置一组文章、成员、评论与通知，适合先看完整界面和审核流程。':
     'No backend needed. Ships with articles, members, comments, and notifications to explore the full interface and review flow.',
@@ -306,8 +306,10 @@ const fragment: Dictionary = {
   '的邮箱表单下方。演示模式可以模拟这些入口； 连接真实后端时，需要服务端实现对应的短信或 OAuth 端点——契约 v0.1.0 尚未包含它们。':
     'below the email form. Demo mode can simulate these entries; with a live backend the server must implement the matching SMS or OAuth endpoints — contract v0.1.0 does not include them yet.',
   '在开门之前，先绕房子走一圈。': 'Before opening the door, walk around the house.',
-  '检查只读取健康端点与公开接口，不会修改数据。安全服务没有独立探针，它由发布与上传流程 fail-closed 验证。':
-    'The checks only read health endpoints and public APIs and change no data. The security service has no standalone probe; the publish and upload flows verify it fail-closed.',
+  '安全检查已编译进 API 进程；发布与上传失败时按设计 fail-closed。':
+    'Security checks are compiled into the API process; publishing and uploads fail closed by design when a check fails.',
+  '检查只读取健康端点与公开接口，不会修改数据。安全检查已编译进 API 进程，发布与上传流程会验证它。':
+    'The checks only read health endpoints and public APIs and change no data. Security checks run inside the API process and are exercised by publishing and uploads.',
   '重新检查': 'Re-run checks',
   '演示模式': 'Demo mode',
   'http 访问要显式设置 PUBLIC_BASE_URL': 'An http site must set PUBLIC_BASE_URL explicitly',
@@ -383,7 +385,7 @@ const fragment: Dictionary = {
   '管理后台的菜单、表单与列表': 'Menus, forms and lists in the dashboard',
   '仪表盘 · 内容库 · 媒体库 · 站点设置':
     'Dashboard · Content · Media library · Site settings',
-  '两步上传：先开会话，再传字节，最后由安全服务检查。':
+  '两步上传：先开会话，再传字节，最后由内置安全检查。':
     'Two-step upload: open a session, send the bytes, then the security service checks them.',
   '只影响这台电脑上的管理后台，不影响访客看到的页面。':
     'Only affects the dashboard on this computer; visitors do not see this change.',

@@ -3,8 +3,8 @@ import type { Dictionary } from '../../plural';
 /** 来源：`web/src/pages/admin/Media.tsx` */
 const fragment: Dictionary = {
   媒体库: 'Media library',
-  '两步上传：先开会话，再传字节，最后由 Rust 安全服务检查。只有 clean 的文件可以被引用。':
-    'Two-step upload: open a session first, then send the bytes, and finally the Rust security service checks them. Only clean files can be referenced.',
+  '两步上传：先开会话，再传字节，最后由 内置安全清洗检查。只有 clean 的文件可以被引用。':
+    'Two-step upload: open a session first, then send the bytes, and finally the built-in security checks checks them. Only clean files can be referenced.',
   刷新列表: 'Refresh list',
   把文件拖到这里: 'Drag files here',
   '允许 {types}，单个文件上限 {limit}{demo}。':

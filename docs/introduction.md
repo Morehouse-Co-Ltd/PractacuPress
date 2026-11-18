@@ -1,7 +1,7 @@
 # Practacu Press 项目介绍
 
 > **一套自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
-> Go API + Rust 安全服务 + React 前台与后台，三端用同一份 OpenAPI 3.1 契约对齐；
+> Go API（内嵌前端与安全检查）+ React 前台与后台，三端用同一份 OpenAPI 3.1 契约对齐；
 > Windows 与 Linux 都是一等公民，源码、启动器、容器三种装法共用一套配置。
 
 **中文** · [English](#english)
@@ -21,8 +21,8 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | 形态 | 怎么用 | 适合 |
 | --- | --- | --- |
 | **桌面形态** | 运行 `PractacuPress.exe`（或双击），本机 80 端口起站点，数据留在 exe 同目录的 `data/` | 个人写作、内网小社区、演示交付 |
-| **容器形态** | `docker compose up -d` 起两个容器：API（已用 `go:embed` 内嵌前端）、Rust 安全服务 | Linux 服务器、单机自托管的公网站点 |
-| **服务器形态** | Go API + 前端静态资源 + Rust 安全服务，接 SQLite / MySQL / PostgreSQL | 公网多站点、SaaS 多租户 |
+| **容器形态** | `docker compose up -d` 起一个容器：API（已用 `go:embed` 内嵌前端与安全检查） | Linux 服务器、单机自托管的公网站点 |
+| **服务器形态** | Go API（内嵌前端与安全检查），接 SQLite / MySQL / PostgreSQL | 公网多站点、SaaS 多租户 |
 
 以及两种运行模式：
 
@@ -37,7 +37,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 | 优势 | 具体是什么 |
 | --- | --- |
-| **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。默认容器部署只有两个镜像：API（内嵌前端）与安全服务。 |
+| **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。默认容器部署只有一个镜像：API（内嵌前端与安全检查）。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 八步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
 | **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 83 条路径 / 100 个操作）之后，换前端按契约写即可。 |
@@ -51,14 +51,14 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 它大概适合三类人：
 
 - 想自建写作站或小社区、又不想维护一整套运维栈的人；
-- 想读一个横跨 Go / Rust / React 三语言、契约先行的完整工程的人；
+- 想读一个横跨 Go / React 两语言、契约先行的完整工程的人；
 - 想只按 OpenAPI 契约写自己前端（Web / 小程序 / 原生）的人——前端不是必需的。
 
 ## 3. 核心能力
 
 ### 3.1 写作与阅读
 
-- **双编辑模式**：富文本与 Markdown。Markdown 由服务端 goldmark 按 GFM 渲染（表格、删除线、任务列表、自动链接），再交给 Rust 安全服务按白名单清洗。
+- **双编辑模式**：富文本与 Markdown。Markdown 由服务端 goldmark 按 GFM 渲染（表格、删除线、任务列表、自动链接），再交给 内置安全检查按白名单清洗。
 - **编辑器工具栏**：标题、分栏、图片（含素材库上传）、视频卡片、嵌入网址卡片、链接、表格、图集、提示框、引用、分割线、图标与图表；右侧实时预览；字数按**渲染后的纯文本**统计。
 - **文章图表**：思维导图、逻辑图、统计图（柱状 / 折线 / 环形 / 饼图）与鱼骨图。规格以 `pp-diagram` 围栏随正文保存成 Markdown，阅读页按当前主题重绘成 SVG；不把 SVG 写进正文，因此服务端的 HTML 白名单不需要放宽。
 - **站内搜索**：头部常驻搜索框，输入即搜（防抖 220 ms，取前 6 条），`/` 聚焦，回车进入完整结果页；窄屏只留放大镜。
@@ -91,7 +91,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 - **八步安装引导**：欢迎 → 连接后端 → 数据库 → 管理员 → 安全 → 默认站点 → 字体大小 → 检查与完成。
 - **两种模式任选**：**演示数据**只写浏览器 `localStorage`，不需要任何服务；**真实环境**自动连上同源 API，不用填地址。
 - **Windows 一键启动器**：前端经 `go:embed` 打进 exe，默认 80 端口，被占用自动退到 8080；`/api`、`/healthz`、`/readyz` 由启动器同源反向代理，因此没有跨域配置，Cookie 与 WebSocket 天然同源；后台改端口会立即生效并迁移浏览器数据。
-- **一键打包**：`打包.bat` 走完构建前端 → 编译 Rust → 内嵌 → 编译启动器 → **在临时端口真启动产物做自检** → 出 zip 与 sha256，自检不通过不产出新包。
+- **一键打包**：`打包.bat` 走完构建前端 → 编译 Go 与内嵌 → 编译启动器 → **在临时端口真启动产物做自检** → 出 zip 与 sha256，自检不通过不产出新包。
 
 ## 4. 架构
 
@@ -107,17 +107,17 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
     │  notifications · moderation · media · search · analytics ·    │
     │  taxonomy · outbox                                           │
     └───────────┬──────────────────────────────────┬───────────────┘
-                │ Ent + database/sql               │ gRPC
+                │ Ent + database/sql               │ securityclient
                 ▼                                  ▼
-    SQLite / MySQL / PostgreSQL        Rust 安全服务（tonic）
+    SQLite / MySQL / PostgreSQL        内置安全检查（tonic）
     （SQLite 为纯 Go 驱动）             Argon2id · HTML 白名单清洗 · 上传检查
 ```
 
 三条决定这套结构的设计选择：
 
-1. **模块化单体，而不是一上来就微服务。** 文章审核、站点权限、评论、通知、审计之间存在大量事务关系。单体保留清晰模块边界（`Handler → Service → Domain → Repository 接口`，数据库/存储/gRPC 客户端都在 `infrastructure`），同时不用为本地安装付出分布式代价；`outbox`、内部 gRPC 与独立 Rust 服务则为将来拆分留了缝。
-2. **安全原语外置到 Rust。** 密码哈希（Argon2id）、HTML 白名单清洗、上传检查这些"细节最容易做错、又最不能做错"的部分不散落在业务代码里，而是收敛成一个独立的 gRPC 服务；Go 侧只调用，不实现。
-3. **fail-closed 优先于可用性。** 安全服务连不上时，**发布内容与完成上传返回 503**，而不是"跳过检查先放行"。站点浏览、写作、统计仍然可用——降级范围是显式设计过的。
+1. **模块化单体，而不是一上来就微服务。** 文章审核、站点权限、评论、通知、审计之间存在大量事务关系。单体保留清晰模块边界（`Handler → Service → Domain → Repository 接口`，数据库/存储/安全客户端都在 `infrastructure`），同时不用为本地安装付出分布式代价；`outbox`、内置安全包与清晰的模块边界为将来拆分留了缝。
+2. **安全原语集中在一个 Go 包。** 密码哈希（Argon2id）、HTML 白名单清洗、上传检查这些"细节最容易做错、又最不能做错"的部分收敛到 `internal/security`，业务代码只通过 `securityclient` 调用，不重复实现策略。
+3. **fail-closed 优先于可用性。** 安全检查失败时，**发布内容与完成上传返回错误**，而不是"跳过检查先放行"；站点浏览、写作、统计仍然可用。
 
 ## 5. 技术栈
 
@@ -125,7 +125,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | --- | --- |
 | 后端 | Go 1.26 · Gin · Ent（schema-as-code）· `database/sql` |
 | 数据库 | SQLite（纯 Go 驱动）/ MySQL / PostgreSQL |
-| 安全服务 | Rust · tonic（gRPC）· argon2 · ammonia（白名单清洗）· zeroize |
+| 安全检查 | Go · x/crypto/argon2 · x/net/html 白名单清洗 · 上传魔数检查 |
 | 前端 | React 19 · Vite 7 · TypeScript 5.9 · React Router 7（零 UI 框架依赖） |
 | 契约 | OpenAPI 3.1（**83 条路径 / 100 个操作**；站点根路径的 sitemap / robots 与内置文档页不在契约内）+ protobuf（`security.proto`） |
 | 实时 | WebSocket（`coder/websocket`）+ outbox 事件补偿 |
@@ -147,7 +147,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 ### Docker（Linux / 服务器）
 
-仓库自带 `docker-compose.yml`，默认只启动 API（已用 `go:embed` 内嵌前端）与安全服务：
+仓库自带 `docker-compose.yml`，默认只启动一个 API（已用 `go:embed` 内嵌前端与安全检查）：
 
 ```bash
 docker compose up -d --build
@@ -155,13 +155,13 @@ docker compose up -d --build
 
 打开 `http://localhost:8080` 走完八步安装引导，**第一个账户即平台管理员**。默认只绑 `127.0.0.1`；数据在命名卷 `practacu-data`（`practacu.db` 与 `media/`）。完整说明见 [README 的 Docker 章节](../README.md)。
 
-> 默认 API（内嵌前端）与安全服务镜像及 compose 栈已经在本机 Docker 中实际构建并启动验证（两容器 healthy，注册/登录、上传扫描、备份与 RSS/sitemap 链路均跑通）；宿主机 TLS 反代仍需在预发环境验证。
+> 默认 API 镜像及 compose 栈已经在本机 Docker 中实际构建并启动验证（API healthy，注册/登录、上传扫描、备份与 RSS/sitemap 链路均跑通）；宿主机 TLS 反代仍需在预发环境验证。
 
 ### Windows 启动器
 
-**前提**：Go 1.26+、Node.js 22+；Rust（MSVC 工具链）可选——没有安全服务时 API 会降级启动，但发布文章与完成上传会按设计返回 503。
+**前提**：Go 1.26+、Node.js 22+；安全检查已编译进 API。
 
-在仓库根目录运行 **`启动.bat`**（或双击）。它会按需 `npm install`，在独立窗口起 Go API 与 Rust 安全服务，再起 Vite 前端，最后打开 `http://127.0.0.1:5173/?mode=live`。
+在仓库根目录运行 **`启动.bat`**（或双击）。它会按需 `npm install`，在独立窗口起 Go API，再起 Vite 前端，最后打开 `http://127.0.0.1:5173/?mode=live`。
 
 ```bat
 启动.bat --check    :: 只检查环境、不启动服务
@@ -172,7 +172,7 @@ docker compose up -d --build
 ```powershell
 $env:APP_ENV='development'; $env:HTTP_ADDR='127.0.0.1:8080'
 $env:DATABASE_DRIVER='sqlite'; $env:DATABASE_DSN='file:./data/practacu.db'
-$env:SECURITY_GRPC_ADDR='127.0.0.1:9001'; $env:STORAGE_DIR='./data/media'
+$env:STORAGE_DIR='./data/media'
 $env:PP_DESKTOP='true'      # 首个注册账户成为平台管理员；服务器部署不要打开
 
 go run ./cmd/seed -driver sqlite -dsn $env:DATABASE_DSN
@@ -193,7 +193,6 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\test.ps1   # go build + vet + test
-cd services/security; cargo test                            # Rust（需 MSVC 工具链）
 ```
 
 完整步骤、配置项与打包参数见 [根目录 README](../README.md) 与 [前端说明](../web/README.md)。
@@ -217,7 +216,7 @@ cd services/security; cargo test                            # Rust（需 MSVC �
 
 | 项 | 说明 |
 | --- | --- |
-| Docker | 已提供 `docker-compose.yml`（API 内嵌前端 + 安全服务；静态站可选 profile）；默认两镜像与 compose 栈已实机构建运行，注册/登录、上传与备份链路已验证 |
+| Docker | 已提供 `docker-compose.yml`（单 API，前端与安全检查内嵌）；默认镜像与 compose 栈已实机构建运行，注册/登录、上传与备份链路已验证 |
 | Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | 多副本部署 | WebSocket 票据与 hub 在进程内存，限流是进程内固定窗口；多副本需要共享存储与边缘限流 |
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx / Cloudflare 执行，后台只生成片段 |
@@ -240,12 +239,12 @@ internal/
   community/ messaging/ notifications/ moderation/ media/ search/
   outbox/                     可靠事件与重试
   platform/{config,logging,errors,page,mailer}/
-  infrastructure/             Ent 仓储、存储适配器、Rust gRPC 客户端
+  infrastructure/             Ent 仓储、存储适配器、securityclient
   transport/{http/gin,ws}     HTTP 中间件与 WebSocket
   web/                        内嵌 SPA 的 go:embed 与静态处理器
 web/           React 前台、管理后台与八步安装引导
 launcher/      Windows 一键启动器（go:embed + 同源反代）
-services/security/  Rust 安全服务（tonic）
+internal/security/  内置安全检查
 packages/contracts/ OpenAPI 3.1 与 protobuf，含生成代码
 docs/               设计稿、实施计划、评审报告、交付状态
 scripts/            dev / test / gen / package
@@ -273,20 +272,20 @@ scripts/            dev / test / gen / package
 **中文**（约 80 字，可直接粘贴）：
 
 ```text
-自托管的社区型 CMS：占地少、跑得快、开箱即用、高度可定制。Go API + Rust 安全服务 + React 前后台，Windows / Linux 均可部署，OpenAPI 3.1 契约对齐。
+自托管的社区型 CMS：占地少、跑得快、开箱即用、高度可定制。Go API + 内置安全检查 + React 前后台，Windows / Linux 均可部署，OpenAPI 3.1 契约对齐。
 ```
 
 **English**（约 210 字符，GitHub 上限 350）：
 
 ```text
-A self-hosted community CMS: small footprint, fast, quick to set up and deeply customisable. Go API + Rust security service + React frontend/admin on Windows or Linux, aligned by an OpenAPI 3.1 contract.
+A self-hosted community CMS: small footprint, fast, quick to set up and deeply customisable. Go API + in-process security checks + React frontend/admin on Windows or Linux, aligned by an OpenAPI 3.1 contract.
 ```
 
 ### Topics
 
 ```text
 cms  content-management-system  community-platform  multi-tenant  self-hosted
-blog-engine  golang  go  gin  ent  rust  react  typescript  vite  sqlite
+blog-engine  golang  go  gin  ent  react  typescript  vite  sqlite
 openapi  websocket  self-hosted-blog
 ```
 
@@ -302,7 +301,7 @@ openapi  websocket  self-hosted-blog
 # English
 
 > **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
-> A Go API, a Rust security service, and a React frontend + admin, all aligned by one
+> A Go API, a in-process security checks, and a React frontend + admin, all aligned by one
 > OpenAPI 3.1 contract. Windows and Linux are both first-class, and source, launcher and
 > container installs share the same configuration.
 
@@ -313,8 +312,8 @@ Same codebase, three shapes:
 | Shape | How it runs | Good for |
 | --- | --- | --- |
 | **Desktop** | Run `PractacuPress.exe` (or double-click it). The site serves on port 80 and data stays in `data/` next to the exe. | Personal writing, internal communities, demos |
-| **Container** | `docker compose up -d` starts two containers: the API (frontend embedded with `go:embed`) and the Rust security service. | Linux servers, single-host self-hosting |
-| **Server** | Go API + static frontend + Rust security service, on SQLite / MySQL / PostgreSQL. | Public multi-site deployments, multi-tenant SaaS |
+| **Container** | `docker compose up -d` starts two containers: the API (frontend embedded with `go:embed`) and the in-process security checks. | Linux servers, single-host self-hosting |
+| **Server** | Go API + static frontend + in-process security checks, on SQLite / MySQL / PostgreSQL. | Public multi-site deployments, multi-tenant SaaS |
 
 And two modes: **single-site** (one site, no "tenant" concepts to learn) or **multi-site SaaS** (each site has its own content, members, theme, review rules and permission boundary).
 
@@ -326,7 +325,7 @@ Most options force a trade-off: blog engines write well but have no community; f
 
 | Advantage | What it means here |
 | --- | --- |
-| **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is two images: API (frontend embedded) and security service. |
+| **Small footprint** | The Windows launcher is 8.3 MB and embeds the whole frontend; the in-process security checks is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is one image: the API with the frontend and security checks embedded. |
 | **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
 | **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
 | **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts where every block can set its own corner radius, shadow, crop, background, padding and border, with a built-in button block; mind maps, logic charts, statistical charts and fishbone diagrams can be inserted while writing; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (currently 83 paths / 100 operations; site-root sitemap / robots and the built-in docs page are outside the contract). |
@@ -339,7 +338,7 @@ Practacu Press aims for all three at low deployment cost:
 
 ## Feature highlights
 
-- **Writing** — rich text and Markdown side by side; Markdown is rendered by goldmark (GFM) on the server, then sanitized against an allow-list in Rust. Toolbar blocks, live preview, and a word count measured on the *rendered* text. Mind maps, logic charts, statistical charts (bar / line / donut / pie) and fishbone diagrams are stored in the body as `pp-diagram` fenced blocks and redrawn as SVG on the reading page, so the server allow-list stays untouched.
+- **Writing** — rich text and Markdown side by side; Markdown is rendered by goldmark (GFM) on the server, then sanitized against an allow-list in-process. Toolbar blocks, live preview, and a word count measured on the *rendered* text. Mind maps, logic charts, statistical charts (bar / line / donut / pie) and fishbone diagrams are stored in the body as `pp-diagram` fenced blocks and redrawn as SVG on the reading page, so the server allow-list stays untouched.
 - **Reading** — header search that queries as you type (220 ms debounce, top 6 hits, `/` to focus, Enter for the full result page); SEO with title templates, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site verification, a global noindex switch, and downloadable `sitemap.xml` / `robots.txt`.
 - **Community** — articles and posts, threaded comments, likes, bookmarks, follows, DM conversations, in-app notifications, reports and moderation. A 5-state / 5-action review state machine, with per-site publishing policy; authors cannot approve their own work.
 - **Realtime** — WebSocket upgrades with a **one-time ticket** (60 s, single use, stored hashed) so access tokens never land in URLs, plus a REST catch-up endpoint (`GET /events`) for reconnects.
@@ -355,16 +354,16 @@ Browser (React 19 SPA: site / admin / setup wizard)
 Go API — modular monolith (Gin)
   auth · site · content · community · messaging · notifications
   moderation · media · search · analytics · taxonomy · outbox
-        │ Ent + database/sql                    │ gRPC
+        │ Ent + database/sql                    │ securityclient
         ▼                                       ▼
-SQLite (pure Go) / MySQL / PostgreSQL     Rust security service (tonic)
+SQLite (pure Go) / MySQL / PostgreSQL     in-process security checks (tonic)
                                           Argon2id · HTML allow-list · upload inspection
 ```
 
 Three decisions worth calling out:
 
-1. **A modular monolith, not premature microservices.** Review, permissions, comments, notifications and audit are deeply transactional. Modules keep hard boundaries (`Handler → Service → Domain → Repository interface`, with Ent, storage and gRPC clients in `infrastructure`) while local installs avoid distributed overhead. `outbox`, internal gRPC and the standalone Rust service keep the seams open.
-2. **Security primitives live in Rust.** Password hashing (Argon2id), HTML sanitization and upload inspection are exactly the details that are easiest to get wrong and least affordable to get wrong — so they are one gRPC service, not scattered business code.
+1. **A modular monolith, not premature microservices.** Review, permissions, comments, notifications and audit are deeply transactional. Modules keep hard boundaries (`Handler → Service → Domain → Repository interface`, with Ent, storage and security clients in `infrastructure`) while local installs avoid distributed overhead. `outbox`, internal interfaces and the security package keep the seams open.
+2. **Security primitives live in one Go package.** Password hashing (Argon2id), HTML sanitization and upload inspection are exactly the details that are easiest to get wrong and least affordable to get wrong — so they live in `internal/security`, called through `securityclient`, not scattered through business code.
 3. **Fail closed, deliberately.** If the security service is unreachable, **publishing and upload completion return 503** instead of skipping the check. Browsing, drafting and analytics keep working — the degraded surface is explicit, not accidental.
 
 ## Stack
@@ -373,7 +372,7 @@ Three decisions worth calling out:
 | --- | --- |
 | Backend | Go 1.26 · Gin · Ent · `database/sql` |
 | Database | SQLite (pure Go) / MySQL / PostgreSQL |
-| Security service | Rust · tonic (gRPC) · argon2 · ammonia · zeroize |
+| Security | Go · x/crypto/argon2 · x/net/html allow-list · upload magic checks |
 | Frontend | React 19 · Vite 7 · TypeScript 5.9 · React Router 7 (no UI framework) |
 | Contract | OpenAPI 3.1 (**83 paths / 100 operations**; site-root sitemap / robots and the built-in docs page are outside the contract) + protobuf |
 | Realtime | WebSocket (`coder/websocket`) + outbox catch-up |
@@ -412,7 +411,7 @@ Open `http://localhost:8080` and finish the seven-step wizard — the first acco
 
 ### Windows launcher
 
-Prerequisites: Go 1.26+, Node.js 22+. Rust is optional — the API still starts without the security service, but publishing and upload completion then return 503 by design.
+Prerequisites: Go 1.26+, Node.js 22+. Security checks are compiled into the API.
 
 ```bat
 启动.bat            :: starts everything, opens the browser
@@ -427,7 +426,6 @@ cd web; npm install; npm run build; npm start
 
 # tests
 powershell -ExecutionPolicy Bypass -File scripts\test.ps1
-cd services/security; cargo test
 
 # distributable Windows build (boots and smoke-tests the artifact)
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1

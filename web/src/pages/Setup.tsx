@@ -232,7 +232,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const [checks, setChecks] = useState<CheckItem[]>([
     { key: 'ready', label: t('服务就绪'), detail: t('等待检查'), status: 'wait' },
     { key: 'data', label: t('数据存储'), detail: t('等待检查'), status: 'wait' },
-    { key: 'security', label: t('安全服务'), detail: t('等待检查'), status: 'wait' },
+    { key: 'security', label: t('内置安全检查'), detail: t('等待检查'), status: 'wait' },
     { key: 'site', label: t('站点可访问'), detail: t('等待检查'), status: 'wait' },
     { key: 'openapi', label: t('OpenAPI 文档'), detail: t('等待检查'), status: 'wait' },
   ]);
@@ -743,7 +743,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     nextChecks.push({
       key: 'ready',
       label: t('服务就绪'),
-      detail: result ? `/healthz ${result.health} · /readyz ${result.ready}` : t('无法连接'),
+      detail: result ? `/api/healthz ${result.health} · /api/readyz ${result.ready}` : t('无法连接'),
       status: result?.ready === 'ready' ? 'ok' : 'fail',
     });
     nextChecks.push({
@@ -757,9 +757,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     });
     nextChecks.push({
       key: 'security',
-      label: t('安全服务'),
-      detail: t('没有独立的健康端点；发布与上传会 fail-closed，安全检查不可用时返回 503。'),
-      status: 'warn',
+      label: t('内置安全检查'),
+      detail: t('安全检查已编译进 API 进程；发布与上传失败时按设计 fail-closed。'),
+      status: 'ok',
     });
     try {
       const res = await fetch(`${normalizeOrigin(draft.apiBase)}/api/v1/articles?limit=1`, {
@@ -1922,7 +1922,7 @@ go run ./cmd/server`}</pre>
                         {t('仪表盘 · 内容库 · 媒体库 · 站点设置')}
                       </span>
                       <span style={{ fontSize: `${12 * draft.fonts.adminScale}px` }}>
-                        {t('两步上传：先开会话，再传字节，最后由安全服务检查。')}
+                        {t('两步上传：先开会话，再传字节，最后由内置安全检查。')}
                       </span>
                     </div>
                     <input
@@ -1988,7 +1988,7 @@ go run ./cmd/server`}</pre>
             <>
               <h1 className="wiz-title">{t('在开门之前，先绕房子走一圈。')}</h1>
               <p className="wiz-lede">
-                {t('检查只读取健康端点与公开接口，不会修改数据。安全服务没有独立探针，它由发布与上传流程 fail-closed 验证。')}
+                {t('检查只读取健康端点与公开接口，不会修改数据。安全检查已编译进 API 进程，发布与上传流程会验证它。')}
               </p>
 
               <div className="wiz-content">

@@ -1,8 +1,8 @@
 Practacu Press · Linux 安装包
 ================================
 
-这个目录装的是 Practacu Press 的 Linux 版本（x86_64 或 aarch64，取决于压缩包）：Go API、Rust 安全服务与
-前端（含八步安装引导）都在包里，目标机不需要 Go / Node / Rust，也不需要 Docker。
+这个目录装的是 Practacu Press 的 Linux 版本（x86_64 或 aarch64，取决于压缩包）：Go API、
+内嵌前端（含八步安装引导）与内置安全检查都在包里，目标机不需要 Go / Node，也不需要 Docker。
 
 三步装好
 --------
@@ -36,7 +36,6 @@ Practacu Press · Linux 安装包
 --------
   sudo /opt/practacu-press/install.sh --status          查看安装状态与访问地址
   sudo journalctl -u practacu-press-api -f              看 API 日志
-  sudo journalctl -u practacu-press-security -f         看安全服务日志
   sudo systemctl restart practacu-press-api             重启 API
   sudo /opt/practacu-press/install.sh                   升级（保留数据与密钥）
   sudo /opt/practacu-press/uninstall.sh                 卸载（保留数据）
@@ -50,14 +49,14 @@ Practacu Press · Linux 安装包
   · 备份＝复制整个 data 目录；也可以在后台「数据」页生成备份。
   · 升级前建议先备份。
 
-安全服务
---------
-  包里带 practacu-security（Argon2id 密码哈希、HTML 白名单清洗、上传检查）。
-  它没起来时站点仍可浏览/写作，但发布文章与完成上传会按设计返回 503
+内置安全检查
+------------
+  安全检查（Argon2id 密码哈希、HTML 白名单清洗、上传检查）已编译进 API。
+  检查失败时站点仍可浏览/写作，但发布文章与完成上传会按设计返回 503
   （fail-closed，不是故障）。
 
 排查
 ----
   · 页面打不开：确认 SSH 隧道、`ss -ltn | grep 8080`、`journalctl -u nginx`
-  · 服务不健康：`curl -fsS http://127.0.0.1:8081/healthz`、`/readyz`
+  · 服务不健康：`curl -fsS http://127.0.0.1:8081/api/healthz`、`/api/readyz`
   · 完整说明（含域名验证、证书、防火墙、升级与卸载）见 INSTALL.md

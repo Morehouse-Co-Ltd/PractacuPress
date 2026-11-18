@@ -29,7 +29,7 @@ type Sanitized struct {
 	Violations []string
 }
 
-// allowedTags is the allow-list from services/security/src/content.rs.
+// allowedTags is the allow-list used by the content policy.
 //
 // Anything else is dropped, keeping its text content.
 var allowedTags = map[string]struct{}{
@@ -42,7 +42,7 @@ var allowedTags = map[string]struct{}{
 
 // cleanContentTags have both their tag and their contents removed.
 //
-// This mirrors ammonia's default clean_content_tags, which the Rust service
+// This mirrors ammonia's default clean_content_tags, which the
 // inherits because it never overrides the set.
 var cleanContentTags = map[string]struct{}{
 	"script": {},
@@ -106,8 +106,8 @@ var allowedSchemes = map[string]struct{}{
 //
 // format is one of "markdown", "html" or "plain". Markdown does not mean the
 // service parses a Markdown dialect: the Go API renders Markdown to HTML before
-// it calls the security service (internal/content/render.go), so
-// "markdown" and "html" are sanitized identically, exactly like the Rust
+// it calls the security package (internal/content/render.go), so
+// "markdown" and "html" are sanitized identically, exactly like the reference
 // service.
 func Sanitize(format, source string) (Sanitized, error) {
 	if utf8.RuneCountInString(source) > MaxSourceChars {
@@ -129,7 +129,7 @@ func Sanitize(format, source string) (Sanitized, error) {
 		return Sanitized{}, err
 	}
 
-	// Like the Rust service, record violations against the string the sanitizer
+	// Like the previous sidecar, record violations against the string the sanitizer
 	// actually sees: for "plain" that is the escaped <p> wrapper, so escaped
 	// markup is not reported as a violation.
 	violations := recordViolations(input)
@@ -233,10 +233,10 @@ func writeSanitizedElement(builder *strings.Builder, node *html.Node) {
 	builder.WriteString(">")
 }
 
-// isAllowedAttribute mirrors the Rust allow-list.
+// isAllowedAttribute mirrors the reference allow-list.
 //
 // class, lang and title are generic attributes in ammonia's defaults (lang and
-// title are not overridden by the Rust builder); href is allowed on links and
+// title are not overridden by the reference builder); href is allowed on links and
 // src/alt/width/height on images.
 func isAllowedAttribute(tag, attribute string) bool {
 	switch attribute {
@@ -283,7 +283,7 @@ func isAllowedClass(token string) bool {
 	return false
 }
 
-// urlAllowed applies the Rust service's URL rules to one href/src value.
+// urlAllowed applies the previous sidecar's URL rules to one href/src value.
 //
 // An absolute URL survives only when its scheme is allow-listed; a relative URL
 // passes through unchanged because ammonia's url_relative policy is
@@ -304,7 +304,7 @@ func urlAllowed(raw string) bool {
 		return false
 	}
 
-	// Validate the absolute URL the same way the Rust service's URL parser
+	// Validate the absolute URL the same way the previous sidecar's URL parser
 	// does: a value with an allowed scheme but no parseable authority (for
 	// example "http://") is dropped instead of stored.
 	parsed, err := url.Parse(candidate)
@@ -415,7 +415,7 @@ func writeEscapedAttribute(builder *strings.Builder, value string) {
 // source, so the audit trail can show why content was modified rather than just
 // that it was.
 //
-// The markers and the lexicographically sorted output mirror the Rust
+// The markers and the lexicographically sorted output mirror the reference
 // implementation's BTreeSet.
 func recordViolations(source string) []string {
 	lowered := strings.ToLower(source)
@@ -442,9 +442,9 @@ func recordViolations(source string) []string {
 	return found
 }
 
-// escapeHTML escapes the five characters the Rust plain-format wrapper escapes
+// escapeHTML escapes the five characters the reference plain-format wrapper escapes
 // before the source is treated as HTML. Note that apostrophes are not escaped,
-// exactly like the Rust implementation.
+// exactly like the reference implementation.
 func escapeHTML(source string) string {
 	replacer := strings.NewReplacer(
 		"&", "&amp;",

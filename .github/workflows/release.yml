@@ -45,8 +45,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  # Keep the CI toolchain in step with deploy/docker/security.Dockerfile.
-  RUST_VERSION: 1.100.0
 
 jobs:
   version:
@@ -133,7 +131,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [api, security]
+        service: [api]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
@@ -228,30 +226,11 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Set up Rust targets
-        run: |
-          set -euo pipefail
-          rustup toolchain install "$RUST_VERSION" --profile minimal
-          rustup default "$RUST_VERSION"
-          rustup target add aarch64-unknown-linux-gnu
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu libc6-dev-arm64-cross
-
       - name: Download frontend
         uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
-
-      - name: Build security service (x86_64 and aarch64)
-        working-directory: services/security
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: |
-          set -euo pipefail
-          cargo build --release --locked
-          cargo build --release --locked --target aarch64-unknown-linux-gnu
 
       - name: Install nfpm
         run: |
@@ -271,13 +250,10 @@ jobs:
           for arch in amd64 arm64; do
             if [ "$arch" = "amd64" ]; then
               stage="$PWD/.tmp/linuxpkg/PractacuPress-Linux-x64"
-              security="services/security/target/release/practacu-security"
             else
               stage="$PWD/.tmp/linuxpkg/PractacuPress-Linux-arm64"
-              security="services/security/target/aarch64-unknown-linux-gnu/release/practacu-security"
             fi
-            node scripts/package-linux.mjs --arch "$arch" --skip-web --version "$VERSION" \
-              --security "$security" --out release
+            node scripts/package-linux.mjs --arch "$arch" --skip-web --version "$VERSION" --out release
             for packager in deb rpm; do
               NFPM_ARCH="$arch" NFPM_STAGE="$stage" \
                 nfpm package --config deploy/package/nfpm.yaml --packager "$packager" --target release
@@ -307,9 +283,7 @@ jobs:
         include:
           - runner: windows-2022
             arch: amd64
-          # Native arm64 build with the MSVC toolchain. The plain
-          # windows-11-arm image has no Visual Studio, and the Rust security
-          # service needs link.exe; the vs2026-arm image provides it.
+          # Native arm64 runner; the Windows package and API are pure Go.
           - runner: windows-11-vs2026-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
@@ -328,14 +302,6 @@ jobs:
         uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
-
-      - name: Ensure Rust toolchain
-        shell: pwsh
-        run: |
-          rustup toolchain install $env:RUST_VERSION --profile minimal
-          rustup default $env:RUST_VERSION
-          rustup target add aarch64-pc-windows-msvc
-          cargo --version
 
       - name: Download frontend
         uses: actions/download-artifact@v5
@@ -381,35 +347,19 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Set up Rust targets
-        run: |
-          set -euo pipefail
-          rustup toolchain install "$RUST_VERSION" --profile minimal
-          rustup default "$RUST_VERSION"
-          rustup target add x86_64-apple-darwin aarch64-apple-darwin
-
       - name: Download frontend
         uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
 
-      - name: Build security service (both architectures)
-        working-directory: services/security
-        run: |
-          set -euo pipefail
-          cargo build --release --locked --target aarch64-apple-darwin
-          cargo build --release --locked --target x86_64-apple-darwin
-
       - name: Assemble macOS packages
         env:
           VERSION: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          node scripts/package-macos.mjs --arch arm64 --skip-web --version "$VERSION" \
-            --security services/security/target/aarch64-apple-darwin/release/practacu-security
-          node scripts/package-macos.mjs --arch amd64 --skip-web --version "$VERSION" \
-            --security services/security/target/x86_64-apple-darwin/release/practacu-security
+          node scripts/package-macos.mjs --arch arm64 --skip-web --version "$VERSION"
+          node scripts/package-macos.mjs --arch amd64 --skip-web --version "$VERSION"
 
       - name: Upload macOS assets
         uses: actions/upload-artifact@v7.0.2

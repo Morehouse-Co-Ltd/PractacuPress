@@ -26,7 +26,7 @@ func TestRouterHealthz(t *testing.T) {
 	r := testRouter(t, Dependencies{})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/healthz", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"status":"ok"}`, w.Body.String())
@@ -38,7 +38,7 @@ func TestRouterHealthzIgnoresReadiness(t *testing.T) {
 	})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/healthz", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -47,7 +47,7 @@ func TestRouterReadyzDefault(t *testing.T) {
 	r := testRouter(t, Dependencies{})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/readyz", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"status":"ready"}`, w.Body.String())
@@ -59,7 +59,7 @@ func TestRouterReadyzUnready(t *testing.T) {
 	})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/readyz", nil))
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	require.JSONEq(t, `{"status":"unready"}`, w.Body.String())

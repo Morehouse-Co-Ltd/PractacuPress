@@ -81,7 +81,7 @@ func TestOriginForPortOmitsOnlyStandardHTTPPort(t *testing.T) {
 
 func TestIsAPIPath(t *testing.T) {
 	for _, path := range []string{
-		"/api", "/api/", "/api/v1/articles", "/healthz", "/readyz",
+		"/api", "/api/", "/api/v1/articles", "/api/healthz", "/api/readyz",
 		"/sitemap.xml", "/robots.txt",
 		"/rss.xml", "/atom.xml", "/feed.xml",
 		"/category/news/rss.xml", "/category/news/atom.xml",
@@ -400,7 +400,7 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
 		"X-Content-Type-Options":  "nosniff",
 	}
-	for _, target := range []string{"/", "/__pp/runtime", "/__pp/unknown", "/api/v1/articles", "/healthz"} {
+	for _, target := range []string{"/", "/__pp/runtime", "/__pp/unknown", "/api/v1/articles", "/api/healthz"} {
 		req := httptest.NewRequest(http.MethodGet, "http://localhost:18099"+target, nil)
 		req.Host = "localhost:18099"
 		req.RemoteAddr = "127.0.0.1:50000"

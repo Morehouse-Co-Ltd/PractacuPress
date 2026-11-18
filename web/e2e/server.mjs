@@ -6,7 +6,7 @@
  * 本文件是同一拓扑的最小实现，让浏览器测试跑在“接近生产”的同源布局上：
  *
  *   - 静态文件来自 web/dist（SPA 回退到 index.html）；
- *   - /api/*、/healthz、/readyz、/sitemap.xml、/robots.txt、/feed* 原样转给 API；
+ *   - /api/*、/sitemap.xml、/robots.txt、/feed* 原样转给 API；
  *   - Set-Cookie 等响应头原样回传（登录、CSRF、刷新 Cookie 都依赖它）；
  *   - WebSocket 升级也转发，避免前端因连不上实时通道而反复重试。
  *
@@ -56,8 +56,6 @@ function isProxied(pathname) {
   return (
     pathname === '/api' ||
     pathname.startsWith('/api/') ||
-    pathname === '/healthz' ||
-    pathname === '/readyz' ||
     pathname === '/sitemap.xml' ||
     pathname === '/robots.txt' ||
     pathname === '/feed.xml' ||
@@ -201,7 +199,7 @@ server.on('upgrade', (req, socket, head) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[e2e-web] serving ${DIST} on http://${HOST}:${PORT}`);
-  console.log(`[e2e-web] proxying /api, /healthz, /readyz, /sitemap.xml, /robots.txt -> ${API.origin}`);
+  console.log(`[e2e-web] proxying /api, /sitemap.xml, /robots.txt -> ${API.origin}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

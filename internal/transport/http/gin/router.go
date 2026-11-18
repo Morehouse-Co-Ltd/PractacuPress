@@ -114,8 +114,8 @@ func New(deps Dependencies) *gin.Engine {
 		panic(fmt.Sprintf("ginrouter: %v", err))
 	}
 
-	r.GET("/healthz", healthz)
-	r.GET("/readyz", readyz(deps.Readiness))
+	r.GET("/api/healthz", healthz)
+	r.GET("/api/readyz", readyz(deps.Readiness))
 	// Mounted on the engine rather than the versioned group on purpose: the group
 	// rejects a request before any handler when no site resolves, and "no site" is
 	// exactly what this endpoint has to report. The full path stays under /api/v1

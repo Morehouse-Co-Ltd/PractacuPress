@@ -22,18 +22,18 @@ func cheapHash(t *testing.T, plain string) string {
 	return encoded
 }
 
-func TestHashPasswordProducesRustCompatiblePHC(t *testing.T) {
+func TestHashPasswordProducesreferenceCompatiblePHC(t *testing.T) {
 	encoded, err := HashPassword("correct horse battery")
 	require.NoError(t, err)
 
 	require.True(t, strings.HasPrefix(encoded, "$argon2id$v=19$m=65536,t=3,p=2$"),
-		"the PHC prefix must match the Rust implementation: %s", encoded)
+		"the PHC prefix must match the reference implementation: %s", encoded)
 
 	parts := strings.Split(encoded, "$")
 	require.Len(t, parts, 6)
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	require.NoError(t, err)
-	require.Len(t, salt, 16, "Rust SaltString::generate uses a 16-byte salt")
+	require.Len(t, salt, 16, "reference SaltString::generate uses a 16-byte salt")
 	key, err := base64.RawStdEncoding.DecodeString(parts[5])
 	require.NoError(t, err)
 	require.Len(t, key, 32, "Argon2 defaults to a 32-byte output")
@@ -78,7 +78,7 @@ func TestHashPasswordEnforcesRuneLengthBounds(t *testing.T) {
 	require.True(t, strings.HasPrefix(atMax, "$argon2id$"))
 }
 
-func TestBoundsAreCountedInCodePointsLikeRust(t *testing.T) {
+func TestBoundsAreCountedInCodePointsLikereference(t *testing.T) {
 	// Eight CJK code points are 24 bytes: the byte length is over the byte
 	// budget but the character count is exactly the minimum.
 	eight := "密码密码密码密码"
@@ -135,9 +135,9 @@ func TestVerifyRejectsOversizedEncoded(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidHash)
 }
 
-func TestVerifyAcceptsRustArgon2CrateTestVector(t *testing.T) {
+func TestVerifyAcceptsreferenceArgon2CrateTestVector(t *testing.T) {
 	// From the argon2 crate's tests/phc_strings.rs (adapted from the reference
-	// implementation's test vectors). Rust's argon2 0.5 verifier accepts it, and
+	// implementation's test vectors). reference's argon2 0.5 verifier accepts it, and
 	// so must ours: this is the PHC compatibility contract.
 	const encoded = "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$CTFhFdXPJO1aFaMaO6Mm5c8y7cJHAph8ArZWb2GRPPc"
 
@@ -150,14 +150,14 @@ func TestVerifyAcceptsRustArgon2CrateTestVector(t *testing.T) {
 	require.False(t, matches)
 }
 
-func TestVerifyAcceptsCapturedRustServiceHash(t *testing.T) {
-	// Captured from the real Rust service (services/security) during the
+func TestVerifyAcceptsCapturedreferenceServiceHash(t *testing.T) {
+	// Captured from the previous sidecar during the
 	// Go-first rollout verification: HashPassword("correct horse battery").
 	const encoded = "$argon2id$v=19$m=65536,t=3,p=2$EYKj8Ww9yXvsPVGOTx4YPw$lxF+MwcGn7GR3zVB2apC0eY2fvde7NmbUwaKS6opg80"
 
 	matches, err := VerifyPassword("correct horse battery", encoded)
 	require.NoError(t, err)
-	require.True(t, matches, "hashes written by the Rust service must verify in Go")
+	require.True(t, matches, "hashes written by the previous sidecar must verify in Go")
 
 	matches, err = VerifyPassword("wrong password", encoded)
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestVerifyAcceptsCapturedRustServiceHash(t *testing.T) {
 }
 
 func TestVerifyTreatsUnsupportedHashesAsMismatch(t *testing.T) {
-	// The Rust verifier derives the default 32-byte key, so a hash with another
+	// The reference verifier derives the default 32-byte key, so a hash with another
 	// length can never match there either.
 	shortKey := "$argon2id$v=19$m=8192,t=1,p=1$c29tZXNhbHQ$" +
 		base64.RawStdEncoding.EncodeToString([]byte("0123456789abcdef"))
@@ -216,7 +216,7 @@ func TestHashPasswordWithInvalidParamsFails(t *testing.T) {
 	require.ErrorIs(t, err, ErrHashFailed)
 }
 
-func TestEncodedWithinBoundsMatchesRustRules(t *testing.T) {
+func TestEncodedWithinBoundsMatchesreferenceRules(t *testing.T) {
 	encoded := cheapHash(t, "correct horse battery")
 	require.True(t, EncodedWithinBounds(encoded))
 	require.False(t, EncodedWithinBounds(""))

@@ -100,8 +100,8 @@ const fragment: Dictionary = {
     'Published content cannot be edited directly; an editor archives it.',
   '当前没有可执行的流程动作。': 'No workflow action is available right now.',
   退回稿件: 'Send back',
-  '发布与上传会调用 Rust 安全服务；不可用时服务端返回 503，内容会保留但不会公开。':
-    'Publishing and uploads call the Rust security service; when it is unavailable the server returns 503, and the content is kept but not published.',
+  '发布与上传会调用 内置安全清洗；不可用时服务端返回 503，内容会保留但不会公开。':
+    'Publishing and uploads call the built-in security checks; when it is unavailable the server returns 503, and the content is kept but not published.',
   '保存草稿后，这里会出现提交审核、发布等流程动作。作者不能审核自己的稿件。':
     'After you save a draft, workflow actions such as submitting for review and publishing appear here. Authors cannot review their own drafts.',
   退回这份稿件: 'Send this draft back',

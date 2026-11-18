@@ -29,7 +29,7 @@ func TestRouterAssignsRequestID(t *testing.T) {
 	r := New(Dependencies{Config: config.Config{AppEnv: config.EnvTest}})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/healthz", nil))
 
 	require.Len(t, w.Header().Get(middleware.HeaderRequestID), 36)
 }
@@ -41,11 +41,11 @@ func TestRouterRateLimitApplies(t *testing.T) {
 	}})
 
 	first := httptest.NewRecorder()
-	r.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	r.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/api/healthz", nil))
 	require.Equal(t, http.StatusOK, first.Code)
 
 	second := httptest.NewRecorder()
-	r.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	r.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/api/healthz", nil))
 	require.Equal(t, http.StatusTooManyRequests, second.Code)
 	require.Equal(t, middlewareContentTypeProblem, second.Header().Get("Content-Type"))
 }
@@ -112,7 +112,7 @@ func TestRouterHealthzSkipsSiteResolution(t *testing.T) {
 	})
 	w := httptest.NewRecorder()
 
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/healthz", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Empty(t, resolver.calls, "health checks must not depend on site state")
