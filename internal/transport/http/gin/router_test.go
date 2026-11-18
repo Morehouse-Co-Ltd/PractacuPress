@@ -127,7 +127,7 @@ func TestRouterSetupStatusReportsTheResolvedInstall(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/setup/status", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.JSONEq(t, `{"installed":true,"has_admin":true,"site_id":"site_main","site_name":"Practacu Press","registration_open":true}`, w.Body.String())
+	require.JSONEq(t, `{"installed":true,"has_admin":true,"site_id":"site_main","site_name":"Practacu Press","registration_open":true,"public_base_url_configured":false}`, w.Body.String())
 	require.Equal(t, "example.com", report.host)
 }
 
@@ -141,7 +141,7 @@ func TestRouterSetupStatusIsReachableWithoutASite(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/setup/status", nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.JSONEq(t, `{"installed":false,"has_admin":false,"reason":"no_site"}`, w.Body.String())
+	require.JSONEq(t, `{"installed":false,"has_admin":false,"reason":"no_site","public_base_url_configured":false}`, w.Body.String())
 }
 
 func TestRouterSetupStatusWithoutReporter(t *testing.T) {

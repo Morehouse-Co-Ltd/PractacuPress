@@ -116,11 +116,15 @@ func New(deps Dependencies) *gin.Engine {
 
 	r.GET("/api/healthz", healthz)
 	r.GET("/api/readyz", readyz(deps.Readiness))
+	// Compatibility aliases for installs and reverse proxies created before the
+	// /api namespace was unified. New probes should use the /api paths.
+	r.GET("/healthz", healthz)
+	r.GET("/readyz", readyz(deps.Readiness))
 	// Mounted on the engine rather than the versioned group on purpose: the group
 	// rejects a request before any handler when no site resolves, and "no site" is
 	// exactly what this endpoint has to report. The full path stays under /api/v1
 	// so clients and the contract see one prefix.
-	r.GET("/api/v1/setup/status", setupStatus(deps.Install, trusted))
+	r.GET("/api/v1/setup/status", setupStatus(deps.Install, deps.Config.PublicBaseURL, trusted))
 
 	// The contract and its reference page are host independent, so they sit outside
 	// the site-resolving group. The document is embedded in the binary; the page is
@@ -500,7 +504,7 @@ func apiReferenceAsset(name, contentType string) gin.HandlerFunc {
 // would otherwise render an empty site and the wizard would be unreachable, so this
 // endpoint is the tie breaker. It is public: it exposes the site id and name, both
 // of which the page already renders, and nothing about members.
-func setupStatus(report InstallReporter, trusted middleware.TrustedProxies) gin.HandlerFunc {
+func setupStatus(report InstallReporter, publicBaseURL string, trusted middleware.TrustedProxies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if report == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -517,7 +521,7 @@ func setupStatus(report InstallReporter, trusted middleware.TrustedProxies) gin.
 			return
 		}
 
-		body := gin.H{"installed": status.Installed, "has_admin": status.HasAdmin}
+		body := gin.H{"installed": status.Installed, "has_admin": status.HasAdmin, "public_base_url_configured": publicBaseURL != ""}
 		if status.Installed {
 			// O-3: visitor-facing clients hide the register entry point when the site
 			// has closed self-service sign-ups. Only meaningful for an installed site.

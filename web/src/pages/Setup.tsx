@@ -209,6 +209,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   // 一键启动直接落在连接阶段；普通首次运行从欢迎页开始。
   const [step, setStep] = useState(forceLive ? 1 : 0);
   const [draft, setDraft] = useState<Draft>(loadDraft);
+  const [publicBaseURLConfigured, setPublicBaseURLConfigured] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   // 创建管理员时用一块不可关闭的遮罩说明“正在写入”，避免慢请求看起来像没反应。
@@ -303,6 +304,26 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       alive = false;
     };
   }, []);
+
+  // 服务端已配置 PUBLIC_BASE_URL 时不再显示“需要重启”的提示。
+  useEffect(() => {
+    let alive = true;
+    const base = normalizeOrigin(draft.apiBase);
+    fetch(`${base}/api/v1/setup/status`, {
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { public_base_url_configured?: boolean } | null) => {
+        if (alive) setPublicBaseURLConfigured(body?.public_base_url_configured === true);
+      })
+      .catch(() => {
+        /* The warning is informational; a failed probe must not block setup. */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [draft.apiBase]);
 
   // 引导自身的界面语言跟着草稿走：第 0 步切换后立刻生效，而不是等到安装完成。
   // 完成安装时同一个值会写进站点设计（见 setupCustomization）。
@@ -853,6 +874,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const httpPublicBaseURL = (() => {
     if (typeof window === 'undefined') return '';
     if (window.location.protocol !== 'http:') return '';
+    if (publicBaseURLConfigured) return '';
     return `PUBLIC_BASE_URL=${window.location.origin}`;
   })();
 

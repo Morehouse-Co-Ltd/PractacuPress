@@ -82,6 +82,34 @@ paths:
                 properties:
                   status: { type: string, const: unready }
 
+  /healthz:
+    get:
+      tags: [system]
+      deprecated: true
+      summary: Legacy liveness alias
+      description: Compatibility alias for /api/healthz. New probes should use the /api path.
+      security: []
+      servers:
+        - url: /
+      responses:
+        '200':
+          description: Process is alive
+
+  /readyz:
+    get:
+      tags: [system]
+      deprecated: true
+      summary: Legacy readiness alias
+      description: Compatibility alias for /api/readyz. New probes should use the /api path.
+      security: []
+      servers:
+        - url: /
+      responses:
+        '200':
+          description: Ready to serve traffic
+        '503':
+          description: A dependency is unavailable
+
   /openapi.json:
     get:
       tags: [system]
