@@ -60,13 +60,11 @@ if [ -n "$PKG_ARCH" ] && [ "$PKG_ARCH" != "$HOST_ARCH" ]; then
 fi
 
 [ -x "$SELF_DIR/bin/practacu-api" ] || die "安装包不完整：缺少 bin/practacu-api"
-[ -f "$SELF_DIR/web/index.html" ]   || die "安装包不完整：缺少 web/index.html"
 
 log "安装程序文件到 $INSTALL_DIR"
 install -d -m 0755 "$INSTALL_DIR"
-rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/web" "$INSTALL_DIR/deploy"
+rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/deploy"
 cp -a "$SELF_DIR/bin" "$INSTALL_DIR/bin"
-cp -a "$SELF_DIR/web" "$INSTALL_DIR/web"
 cp -a "$SELF_DIR/deploy" "$INSTALL_DIR/deploy"
 for name in INSTALL.md README.txt VERSION ARCH; do
     [ -f "$SELF_DIR/$name" ] && cp -a "$SELF_DIR/$name" "$INSTALL_DIR/$name"
@@ -181,7 +179,7 @@ if [ "$NGINX_ENABLED" = "yes" ]; then
             install -d -m 0755 "$DATA_DIR/acme"
             LOCATIONS_CONF="$NGINX_CONF_DIR/practacu-press-locations.conf"
             render "$SELF_DIR/deploy/linux/nginx/locations.conf.in" "$LOCATIONS_CONF" \
-                "WEB_ROOT=$INSTALL_DIR/web" "API_ADDR=127.0.0.1:$API_PORT" \
+                "API_ADDR=127.0.0.1:$API_PORT" \
                 "ACME_ROOT=$DATA_DIR/acme" "LOCATIONS_CONF=$LOCATIONS_CONF"
             render "$SELF_DIR/deploy/linux/nginx/site.conf.in" "$NGINX_CONF_DIR/servers/practacu-press.conf" \
                 "LISTEN=127.0.0.1:$SITE_PORT" "SERVER_NAME=_" "LOCATIONS_CONF=$LOCATIONS_CONF"
@@ -200,7 +198,7 @@ if [ "$NGINX_ENABLED" = "yes" ]; then
         fi
     else
         warn "没有找到 Nginx。先安装：brew install nginx，然后重新运行 sudo ./install.sh"
-        warn "或加 --no-nginx 自行用 Caddy/其他反代：/api、/healthz、/readyz、/plugins、/rss.xml、/sitemap.xml -> 127.0.0.1:$API_PORT，静态文件 $INSTALL_DIR/web"
+        warn "或加 --no-nginx 自行用 Caddy/其他反代：/ -> 127.0.0.1:$API_PORT（前端已内嵌在 API）"
     fi
 fi
 

@@ -25,14 +25,13 @@ PractacuPress-Linux-<x64|arm64>/
 ├── VERSION
 ├── ARCH                       本包的架构（amd64 / arm64）
 ├── bin/
-│   ├── practacu-api           Go API（静态链接，含 SQLite 驱动）
+│   ├── practacu-api           Go API（内嵌前端静态文件 + SQLite 驱动）
 │   ├── practacu-migrate       只应用数据库结构（升级/排障用）
 │   ├── practacu-seed          建表 + 创建默认站点（幂等）
 │   ├── practacu-backup        整库备份 / 恢复 / 校验
 │   ├── practacu-media-gc      清理无引用的媒体对象
 │   ├── practacu-searchindex   重建全文搜索索引
 │   └── practacu-security      Rust 安全服务（Argon2id、HTML 白名单、上传检查）
-├── web/                       前端静态文件（含八步安装引导）
 └── deploy/
     ├── systemd/*.service.in   systemd 单元模板（安装器渲染后写入 /etc/systemd/system）
     └── nginx/*.conf.in        Nginx 站点模板（安装器渲染后写入 /etc/nginx）
@@ -49,7 +48,7 @@ Go / Node / Rust，也不需要 Docker。
 | systemd | 安装器用 systemd 管理两个服务。容器环境请改用 Docker Compose。 |
 | root | 安装、切形态、卸载都需要 `sudo`。 |
 | curl、openssl | 缺失时安装器会尝试用 apt / dnf / yum / zypper / pacman 自动安装。 |
-| Nginx | 静态站与同源反向代理需要它；缺失时安装器会提示并尝试自动安装。也可以 `--no-nginx` 自备反代。 |
+| Nginx | TLS、域名与边缘反向代理需要它；缺失时安装器会提示并尝试自动安装。也可以 `--no-nginx` 自备反代。 |
 | 域名 + 证书（可选） | 只有「公网 HTTPS」形态需要。内网 / 单机形态不需要域名。 |
 
 服务器最低配置：1 核 / 1 GB 内存 / 1 GB 磁盘可跑；上传与备份占空间时按需加盘。
@@ -92,7 +91,7 @@ sudo ./install.sh
 | 系统用户 | `practacu` | 服务以这个用户运行 |
 | API 回环端口 | `8081` | 只监听 127.0.0.1，不对外 |
 | 安装引导端口 | `8080` | 只监听 127.0.0.1，装完后由 `--finalize` 接管 |
-| 是否安装/配置 Nginx | 是 | 选 n 则你需要自己把 `web/` 与 `/api` 反代到 API 端口 |
+| 是否安装/配置 Nginx | 是 | 选 n 则你需要自己把 `/` 与 `/api` 反代到 API 端口 |
 
 非交互安装（全部用默认值）：
 
@@ -176,7 +175,7 @@ sudo /opt/practacu-press/install.sh --status
 | `/etc/systemd/system/practacu-press-api.service` | Go API |
 | `/etc/systemd/system/practacu-press-security.service` | Rust 安全服务 |
 | `/etc/nginx/conf.d/practacu-press.conf` | Http / Https 站点（安装器生成） |
-| `/etc/nginx/practacu-press-locations.conf` | 静态站与反代规则（安装器生成） |
+| `/etc/nginx/practacu-press-locations.conf` | 全站反向代理规则（安装器生成） |
 | `/var/www/practacu-acme/` | certbot 的 HTTP-01 挑战目录 |
 
 两个 systemd 单元都启用了 `ProtectSystem=strict`、`PrivateTmp`、`NoNewPrivileges`，
@@ -252,7 +251,7 @@ sudo ./install.sh
 | certbot 申请失败 | 检查 DNS 是否指向本机、80 端口公网可达、云安全组与防火墙；也可手动 `certbot certonly --webroot -w /var/www/practacu-acme -d 域名` 后重跑 `--finalize` |
 | Nginx 配置检查失败 | `sudo nginx -t` 看具体行；安装器生成的文件在 `/etc/nginx/conf.d/practacu-press.conf` 与 `/etc/nginx/practacu-press-locations.conf` |
 | API 启动即退出 | `journalctl -u practacu-press-api -n 100`；常见原因是 `practacu.env` 被误改（`APP_ENV=production` 时必须有 JWT 私钥、不能 `PP_DESKTOP=true`） |
-| RHEL / CentOS / Rocky 上 Nginx 访问 API 被拒 | SELinux 默认会拦反向代理：`sudo setsebool -P httpd_can_network_connect 1`；若静态文件 403，给前端目录打标签：`sudo semanage fcontext -a -t httpd_sys_content_t '/opt/practacu-press/web(/.*)?'` 然后 `sudo restorecon -R /opt/practacu-press/web` |
+| RHEL / CentOS / Rocky 上 Nginx 访问 API 被拒 | SELinux 默认会拦反向代理：`sudo setsebool -P httpd_can_network_connect 1` |
 
 ## 8. 卸载
 

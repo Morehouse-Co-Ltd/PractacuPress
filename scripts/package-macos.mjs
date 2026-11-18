@@ -144,7 +144,6 @@ function main() {
     });
   }
   copyFile(securityBinary(), path.join(binDir, 'practacu-security'), 0o755);
-  copyTree(path.join(ROOT, 'apps', 'web', 'dist'), path.join(PACKAGE, 'web'));
   fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
 

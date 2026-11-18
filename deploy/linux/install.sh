@@ -210,7 +210,6 @@ need_arch() {
 check_package() {
     [ -x "$SELF_DIR/bin/practacu-api" ]  || die "安装包不完整：缺少 bin/practacu-api"
     [ -x "$SELF_DIR/bin/practacu-seed" ] || die "安装包不完整：缺少 bin/practacu-seed"
-    [ -f "$SELF_DIR/web/index.html" ]    || die "安装包不完整：缺少 web/index.html"
     [ -d "$TEMPLATE_DIR/nginx" ]         || die "安装包不完整：缺少 deploy/nginx 模板"
     [ -d "$TEMPLATE_DIR/systemd" ]       || die "安装包不完整：缺少 deploy/systemd 模板"
 }
@@ -439,7 +438,6 @@ seed_database() {
 # ---- Nginx 配置 -----------------------------------------------------------
 write_locations() {
     render_template "$TEMPLATE_DIR/nginx/locations.conf.in" "$LOCATIONS_CONF" \
-        "WEB_ROOT=$INSTALL_DIR/web" \
         "API_ADDR=127.0.0.1:$API_PORT" \
         "ACME_ROOT=$ACME_ROOT"
 }
@@ -460,7 +458,7 @@ write_tls_site() {
 
 ensure_nginx() {
     [ "$NGINX_ENABLED" = "yes" ] || {
-        warn "已按 --no-nginx 跳过 Nginx；请自行把 $INSTALL_DIR/web 与 /api 反代到 127.0.0.1:$API_PORT"
+        warn "已按 --no-nginx 跳过 Nginx；请自行把 / 与 /api 反代到 127.0.0.1:$API_PORT"
         return 0
     }
     if ! command -v nginx >/dev/null 2>&1; then
@@ -570,9 +568,8 @@ do_install() {
         # Only refresh service state; upgrading binaries requires a new package.
         log "从安装目录内运行：跳过程序文件复制"
     else
-        rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/web" "$INSTALL_DIR/deploy"
+        rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/deploy"
         cp -a "$SELF_DIR/bin" "$INSTALL_DIR/bin"
-        cp -a "$SELF_DIR/web" "$INSTALL_DIR/web"
         cp -a "$TEMPLATE_DIR" "$INSTALL_DIR/deploy"
         cp -a "$SELF_DIR/install.sh" "$INSTALL_DIR/install.sh"
         if [ -f "$SELF_DIR/uninstall.sh" ]; then cp -a "$SELF_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"; fi
@@ -648,7 +645,7 @@ print_next_steps() {
         printf '           ssh -L %s:127.0.0.1:%s %s@<服务器地址>\n' "$SETUP_PORT" "$SETUP_PORT" "$ssh_user"
         printf '         然后打开 http://127.0.0.1:%s\n' "$SETUP_PORT"
     else
-        printf '       · 你选了 --no-nginx：请把 %s/web 与 /api 反代到 127.0.0.1:%s 后访问\n' "$INSTALL_DIR" "$API_PORT"
+        printf '       · 你选了 --no-nginx：请把 / 与 /api 反代到 127.0.0.1:%s 后访问\n' "$API_PORT"
     fi
     printf '  2. 七步引导里创建的第一个账户就是平台管理员。\n'
     printf '  3. 引导完成后，回到服务器执行其一：\n'

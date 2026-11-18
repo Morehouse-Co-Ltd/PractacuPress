@@ -314,6 +314,9 @@ function assemble(securityPresent) {
   const builtBin = path.join(STAGE_ROOT, 'build', 'bin');
   rmrf(builtBin);
   fs.mkdirSync(builtBin, { recursive: true });
+  // Stamp the source dist before embedding it: building the Go binary copies this
+  // tree into apps/api/internal/web/dist, and the package no longer ships web/.
+  stampWebVersion(path.join(ROOT, 'apps', 'web', 'dist'));
   buildGo(builtBin);
   const binaries = [
     'practacu-api',
@@ -327,9 +330,6 @@ function assemble(securityPresent) {
     copyFile(path.join(builtBin, name), path.join(binDir, name), 0o755);
   }
   const securityPresent2 = copySecurity(binDir);
-
-  copyTree(path.join(ROOT, 'apps', 'web', 'dist'), path.join(PACKAGE, 'web'));
-  stampWebVersion(path.join(PACKAGE, 'web'));
 
   fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${packageVersion()}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
@@ -356,7 +356,6 @@ function selfCheck() {
     'bin/practacu-backup',
     'bin/practacu-media-gc',
     'bin/practacu-searchindex',
-    'web/index.html',
     'deploy/nginx/site.conf.in',
     'deploy/nginx/tls.conf.in',
     'deploy/nginx/locations.conf.in',
@@ -383,10 +382,6 @@ function selfCheck() {
   if (fs.existsSync(path.join(PACKAGE, 'bin', 'practacu-security'))) {
     assertElf(path.join(PACKAGE, 'bin', 'practacu-security'), 'bin/practacu-security');
   }
-
-  const html = fs.readFileSync(path.join(PACKAGE, 'web', 'index.html'), 'utf8');
-  if (!html.includes('id="root"')) fail('自检失败：web/index.html 不像前端入口');
-  ok('前端入口存在');
 }
 
 // ---- 5. tar.gz ------------------------------------------------------------

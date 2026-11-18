@@ -198,7 +198,7 @@ curl -fsS http://127.0.0.1:8080/healthz
 
 既不想用 Docker、也不想在服务器上装 Go / Node / Rust 时，用仓库打好的原生包：里面是
 对应架构（x86_64 或 aarch64）的 API / seed / migrate / backup / media-gc / searchindex
-二进制、Rust 安全服务、前端静态文件，以及一个**交互式安装向导**（`install.sh`）。目标机
+二进制、Rust 安全服务、内嵌在 API 二进制里的 SPA，以及一个**交互式安装向导**（`install.sh`）。目标机
 只需要 systemd 与 Nginx，不需要任何开发工具链。
 
 ```bash
@@ -618,7 +618,7 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | 项 | 说明 |
 | --- | --- |
 | MySQL / PostgreSQL | 代码层无方言依赖，但**本机没有这两个数据库，未实跑验证**，需在 CI 上跑矩阵 |
-| Docker | 已提供 `docker-compose.yml`（API 已内嵌前端 + 安全服务；静态站为可选 profile）；默认两镜像已实机构建，compose 栈、注册/登录、上传与备份已跑通（宿主机 TLS 反代未实跑） |
+| Docker | 已提供 `docker-compose.yml`（API 内嵌前端 + 安全服务，两镜像）；已实机构建，compose 栈、注册/登录、上传与备份已跑通（宿主机 TLS 反代未实跑） |
 | Linux 安装包 | 发布 `PractacuPress-Linux-{x64,arm64}.tar.gz` 以及各自架构的 `.deb` / `.rpm`（预编译二进制 + `install.sh` 向导 + systemd/Nginx 模板）；交叉编译与包内容已校验，**安装脚本尚未在真实 Linux 主机上实跑**（bash 语法、模板渲染与 `nginx -t` 已通过） |
 | Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | WebSocket 多副本 | 票据与 hub 在进程内存，多副本部署需要共享存储 |

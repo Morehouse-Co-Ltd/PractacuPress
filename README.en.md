@@ -549,7 +549,7 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | Item | Notes |
 | --- | --- |
 | MySQL / PostgreSQL | No dialect dependency in the code, but **neither database is available on this machine, so it is unverified in practice** — needs a CI matrix |
-| Docker | Ships a `docker-compose.yml` and three image definitions (API / security service / static site); the images and the compose stack have been built and run for real (health, auth, upload, backup), while the host TLS proxy remains untested |
+| Docker | Ships a `docker-compose.yml` with two images (API with embedded frontend / security service); both images and the compose stack have been built and run for real (health, auth, upload, backup), while the host TLS proxy remains untested |
 | Linux package | Ships `PractacuPress-Linux-{x64,arm64}.tar.gz` plus `.deb`/`.rpm` for both architectures (prebuilt binaries + `install.sh` wizard + systemd/Nginx templates); cross-compilation and package contents are checked, but **the installer has not been run on a real Linux host** (bash syntax, rendered templates and `nginx -t` pass) |
 | Windows installer (MSI) | Not implemented; Windows ships as a launcher plus a zip |
 | Multi-replica WebSocket | Tickets and the hub live in process memory; multiple replicas need shared storage |
