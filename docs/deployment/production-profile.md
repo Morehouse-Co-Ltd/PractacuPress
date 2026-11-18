@@ -7,13 +7,13 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 
 | 编号 | 问题 | 本仓库的处置 |
 | --- | --- | --- |
-| V-17 | `docker-compose.yml` 默认是开发形态 | 新增 `docker-compose.prod.yml`（production 语义 + 持久私钥 + Secure Cookie）、宿主机 TLS 反代模板 `deploy/production/nginx.conf` |
+| V-17 | `docker-compose.yml` 默认是开发形态 | 单份 compose 通过 `--env-file .env.prod` 切换 production 语义、持久私钥与 Secure Cookie；宿主机 TLS 反代模板为 `deploy/production/nginx.conf` |
 | V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头（API 同时服务内嵌前端）；启动器 `launcher/main.go` 与宿主机 TLS 模板各一份（TLS 层补 HSTS） |
 | V-04 | 同机反代可绕过启动器回环校验改端口/读信息 | `/__pp/*` 现在要求「TCP 对端回环 **且** Host 回环」；反代模板显式 `location /__pp/ { return 404; }`；`/__pp/runtime` 只返回页面必需字段 |
 | V-18 | 启动器明文保存 JWT 私钥 | Windows 上用 DPAPI `CryptProtectData` 加密后写 `practacu-web.json`（`dpapi:` 前缀），旧明文文件读取时兼容并在下次写盘迁移 |
 
 > **验证状态**：默认 API 镜像（内嵌前端与安全检查）已在本机 Docker 中实际构建并起栈验证
-> （两个服务 healthy，`/healthz`、`/readyz`、`/api/v1/setup/status`、RSS/Atom/sitemap/robots、
+> （API healthy，`/api/healthz`、`/api/readyz`、`/api/v1/setup/status`、RSS/Atom/sitemap/robots、
 > 首个管理员注册、登录、媒体上传与整库备份均跑通），`docker compose config` 通过。
 > 宿主机 TLS 反代模板仍建议按 §7 在预发环境走一遍证书与 HSTS 检查。
 
@@ -71,7 +71,7 @@ docker compose up -d --build
 
 ```bash
 # 3) 用与生产一致的 Host 验证站点已就绪
-curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/healthz
+curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/api/healthz
 curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/api/v1/setup/status
 # -> "has_admin":true
 ```
@@ -94,13 +94,12 @@ chmod 600 .env.prod
 # PUBLIC_BASE_URL 必须是浏览器实际访问的地址；桌面 / localhost 的 http 部署写成
 # http://127.0.0.1:<端口>。未设置时服务端会假定 https。
 
-# 2) 用叠加文件启动：生产语义 + 持久私钥 + Secure Cookie
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.prod up -d --build
+# 2) 用生产环境文件启动：production + 持久私钥 + Secure Cookie
+docker compose --env-file .env.prod up -d --build
 
 # 3) 容器健康检查
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
+docker compose --env-file .env.prod ps
+docker compose --env-file .env.prod logs -f api
 ```
 
 切换后**旧会话会失效**（阶段 A 的 API 用临时密钥；换到持久私钥后旧 token 无法
@@ -192,7 +191,7 @@ openssl rand -base64 32   # BACKUP_ENCRYPTION_KEY
 ```
 
 填进 `.env.prod`。`APP_ENV=production` 时缺失任一变量会在启动期直接失败，
-不会静默写明文。`docker-compose.prod.yml` 已用 `:?` 语法要求两者存在。
+不会静默写明文；两把密钥缺失时 API 启动直接失败。
 
 升级已有部署时注意**顺序**：先在旧版本上创建一份明文备份 → 填入两把密钥并升级
 → 新版本启动时会把历史明文行（邮箱、私信）自动加密并记录日志
@@ -204,17 +203,9 @@ openssl rand -base64 32   # BACKUP_ENCRYPTION_KEY
 | 文件 | 作用 |
 | --- | --- |
 | `docker-compose.yml` | 基础栈：api（内嵌前端与安全检查）、内部网络、命名卷、健康检查（开发引导形态） |
-| `docker-compose.prod.yml` | 叠加文件：`APP_ENV=production`、`PP_DESKTOP=false`、持久 JWT 私钥必填、`COOKIE_SECURE=true`、`TRUSTED_PROXIES=172.28.0.0/16`、限流、日志轮转 |
+| `.env.prod` | 生产变量：`APP_ENV=production`、`PP_DESKTOP=false`、持久 JWT 私钥、`COOKIE_SECURE=true`、`PP_FIRST_ADMIN_TRUST_PROXY=0` |
 | `deploy/production/env.prod.example` | `.env.prod` 模板（私钥、PUBLIC_BASE_URL、限流、可选 SMTP） |
 | `deploy/production/nginx.conf` | 宿主机 TLS 终止模板：HSTS、CSP/XFO/Referrer/Permissions/nosniff、`/__pp/` 404、`server_tokens off`、真实 IP 覆盖 |
-
-`docker-compose.prod.yml` 是**叠加文件**，不要单独用 `docker compose -f
-docker-compose.prod.yml up`（那样缺服务定义）。可以把它写进 shell 环境省掉重复参数：
-
-```bash
-export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
-export COMPOSE_ENV_FILES=.env.prod   # Compose v2.24+；或继续显式 --env-file
-```
 
 ## 6. 备份与恢复
 
@@ -228,12 +219,12 @@ export COMPOSE_ENV_FILES=.env.prod   # Compose v2.24+；或继续显式 --env-fi
 
 ```bash
 # 备份（先停 api 写入，SQLite 更干净；停写期间站点不可用）
-docker compose -f docker-compose.yml -f docker-compose.prod.yml stop api
+docker compose --env-file .env.prod stop api
 docker run --rm \
   -v practacu-press_practacu-data:/data:ro \
   -v "$PWD/backup:/backup" \
   alpine sh -c 'tar czf /backup/practacu-data-$(date +%F-%H%M).tar.gz -C /data .'
-docker compose -f docker-compose.yml -f docker-compose.prod.yml start api
+docker compose --env-file .env.prod start api
 
 # 备份文件与 .env.prod 分开保管；两者都视同口令
 ```
@@ -241,25 +232,25 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml start api
 恢复：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+docker compose --env-file .env.prod down
 docker volume create practacu-press_practacu-data
 docker run --rm \
   -v practacu-press_practacu-data:/data \
   -v "$PWD/backup:/backup" \
   alpine sh -c 'rm -rf /data/* && tar xzf /backup/practacu-data-YYYY-MM-DD-HHMM.tar.gz -C /data'
 # 放回 .env.prod（或重新生成密钥，代价是全员重新登录）
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose --env-file .env.prod up -d
 ```
 
 ## 7. 上线检查清单
 
 ```bash
 # 容器健康
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod ps
 
 # API 自身健康（回环，绕过 TLS）
-curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/healthz
-curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/readyz
+curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/api/healthz
+curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/api/readyz
 
 # 经公网 TLS 的页面与安全头
 curl -sSI https://press.example.com/ | grep -Ei 'strict-transport|content-security|x-frame|referrer|permissions|x-content-type'
@@ -287,14 +278,13 @@ curl -fsS -H 'Host: press.example.com' https://press.example.com/api/v1/setup/st
 ```bash
 # 1) 先备份（见 §6）
 # 2) 拉取新代码后重建镜像并滚动重启
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.prod up -d --build
+docker compose --env-file .env.prod up -d --build
 
 # 3) 如有 schema 变更，显式执行迁移（镜像内自带 migrate/seed 命令）
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api migrate
+docker compose --env-file .env.prod exec api migrate
 
 # 4) 看日志与健康
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
+docker compose --env-file .env.prod logs -f api
 ```
 
 - `.env.prod` 里的 `AUTH_JWT_ED25519_PRIVATE_KEY` **不要随升级更换**，否则全员被登出。
@@ -343,7 +333,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
 - **宿主机 TLS 反代未实跑**：API 容器栈已实际构建并启动验证；`deploy/production/nginx.conf` 只做了语法与逐行核对，证书路径、HSTS 与真实客户端 IP 请在预发环境验证。
 - **Docker 单主机首管理员**：端口映射会隐藏客户端地址，默认 compose 用
   `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定（只检查 Host 回环）。这个开关
-  只在 `api` 端口绑定 `127.0.0.1` 时安全；完成安装后可设为 `0`，生产 overlay 已显式
+  只在 `api` 端口绑定 `127.0.0.1` 时安全；完成安装后可设为 `0`，生产 `.env.prod` 已显式
   关闭。不要把未完成安装的实例暴露到公网。
 - **Nginx 版本**：模板使用 `http2 on;`（nginx ≥ 1.25.1）；容器镜像固定
   `nginx:1.29.8-alpine`。升级镜像时保留 ≥ 1.27.3，`proxy_pass` 的动态上游解析

@@ -361,6 +361,28 @@ func TestComposeConfiguration(t *testing.T) {
 		t.Error("api service must publish the embedded frontend/API on 8080")
 	}
 
+	// One compose file serves local, production and prebuilt-image deployments.
+	// The production switches must be interpolation expressions, not hardcoded
+	// development values, and the image must be selectable for release runs.
+	apiEnv := lookup(api, "environment")
+	for key, want := range map[string]string{
+		"APP_ENV":                    "development",
+		"PP_DESKTOP":                 "true",
+		"COOKIE_SECURE":              "false",
+		"PP_FIRST_ADMIN_TRUST_PROXY": "1",
+	} {
+		got := scalar(lookup(apiEnv, key))
+		if !strings.Contains(got, "${") || !strings.Contains(got, want) {
+			t.Errorf("api %s = %q, want an interpolation default containing %q", key, got, want)
+		}
+	}
+	if got := scalar(lookup(api, "image")); !strings.Contains(got, "PP_IMAGE") {
+		t.Errorf("api image = %q, want PP_IMAGE override for published images", got)
+	}
+	if files := lookup(api, "env_file"); files == nil || !scalarsContain(files, ".env.prod") {
+		t.Error("api env_file must allow the optional .env.prod production file")
+	}
+
 	// Every build context must point at a Dockerfile that exists in the repo.
 	for _, file := range dockerfileRefs(t, compose) {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(file))); err != nil {
@@ -368,35 +390,22 @@ func TestComposeConfiguration(t *testing.T) {
 		}
 	}
 
-	prod := loadYAML(t, filepath.Join(root, "docker-compose.prod.yml"))
-	prodServices := lookup(prod, "services")
-	if prodServices == nil {
-		t.Fatal("docker-compose.prod.yml has no services")
-	}
-	for _, service := range []string{"api"} {
-		if lookup(prodServices, service) == nil {
-			t.Errorf("docker-compose.prod.yml does not override the %s service", service)
+	// There is deliberately only one compose file; overlays caused drift.
+	for _, name := range []string{"docker-compose.prod.yml", "docker-compose.release.yml"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			t.Errorf("%s must not exist; use docker-compose.yml with env overrides", name)
 		}
-	}
-	apiEnv := lookup(lookup(prodServices, "api"), "environment")
-	if got := scalar(lookup(apiEnv, "PP_DESKTOP")); got != "false" {
-		t.Errorf("prod api PP_DESKTOP = %q, want false", got)
-	}
-	if got := scalar(lookup(apiEnv, "APP_ENV")); got != "production" {
-		t.Errorf("prod api APP_ENV = %q, want production", got)
 	}
 }
 
 func TestDockerComposeHasNoFloatingImages(t *testing.T) {
 	root := repoRoot(t)
-	for _, name := range []string{"docker-compose.yml", "docker-compose.prod.yml"} {
-		doc := loadYAML(t, filepath.Join(root, name))
-		walkScalars(doc, func(value string) {
-			if strings.HasPrefix(value, "docker.io/") || (strings.Contains(value, ":") && strings.HasSuffix(value, ":latest")) {
-				t.Errorf("%s pins a floating image %q", name, value)
-			}
-		})
-	}
+	doc := loadYAML(t, filepath.Join(root, "docker-compose.yml"))
+	walkScalars(doc, func(value string) {
+		if strings.HasPrefix(value, "docker.io/") || (strings.Contains(value, ":") && strings.HasSuffix(value, ":latest")) {
+			t.Errorf("docker-compose.yml pins a floating image %q", value)
+		}
+	})
 }
 
 func dockerfileRefs(t *testing.T, doc *yaml.Node) []string {

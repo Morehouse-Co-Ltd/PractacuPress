@@ -204,26 +204,8 @@ function Invoke-ConfigTask {
         return
     }
 
-    Write-Step 'docker compose config (default profile)'
+    Write-Step 'docker compose config (single compose file)'
     Invoke-Native 'docker' @('compose', '-f', 'docker-compose.yml', 'config', '-q')
-
-    Write-Step 'docker compose config (production overlay)'
-    $previousAuthKey = $env:AUTH_JWT_ED25519_PRIVATE_KEY
-    $previousFieldKey = $env:FIELD_ENCRYPTION_KEY
-    $previousBackupKey = $env:BACKUP_ENCRYPTION_KEY
-    try {
-        # Any non-empty value validates the merged file; the real values live in
-        # .env.prod and are required by the `:?` expressions at deploy time.
-        $env:AUTH_JWT_ED25519_PRIVATE_KEY = 'ci-placeholder'
-        $env:FIELD_ENCRYPTION_KEY = 'ci-placeholder'
-        $env:BACKUP_ENCRYPTION_KEY = 'ci-placeholder'
-        Invoke-Native 'docker' @('compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.prod.yml', 'config', '-q')
-    }
-    finally {
-        $env:AUTH_JWT_ED25519_PRIVATE_KEY = $previousAuthKey
-        $env:FIELD_ENCRYPTION_KEY = $previousFieldKey
-        $env:BACKUP_ENCRYPTION_KEY = $previousBackupKey
-    }
 }
 
 if ($Task -in @('go', 'all')) { Invoke-GoTask }

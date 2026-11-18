@@ -4,8 +4,8 @@ This directory holds the checks that are not tied to one Go package.
 
 ## `tests/ci` — delivery configuration
 
-`go test ./tests/ci/...` parses `.github/workflows/ci.yml`,
-`docker-compose.yml` and `docker-compose.prod.yml` with the YAML parser already
+`go test ./tests/ci/...` parses `.github/workflows/ci.yml` and
+`docker-compose.yml` with the YAML parser already
 in `go.mod`, and fails when:
 
 - the workflow loses a trigger, job, timeout, cache or failure-log artifact;

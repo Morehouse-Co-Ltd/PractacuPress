@@ -185,11 +185,11 @@ curl -fsS http://127.0.0.1:8080/api/healthz
 打开 **http://localhost:8080** 走完八步安装引导；**引导里创建的第一个账户就是平台管理员**。
 
 - **组成**：`api`（Go 二进制，内嵌 SPA，同时提供 `/api`、静态资源与 SPA 回退）。只有 `api` 映射到宿主机；没有独立的 web/Nginx 容器，也没有安全服务容器。
-- **默认只绑回环**：API 端口写成 `127.0.0.1:8080:8080`，避免还没装完的实例被公网抢先注册成管理员。装完后优先叠加 `docker-compose.prod.yml` 并在前面加一层 TLS 反代；不要把未安装完的实例直接改成 `0.0.0.0:8080`。
+- **默认只绑回环**：API 端口写成 `127.0.0.1:8080:8080`，避免还没装完的实例被公网抢先注册成管理员。装完后复制 `deploy/production/env.prod.example` 为 `.env.prod`，用 `docker compose --env-file .env.prod up -d --build` 切生产，并在前面加一层 TLS 反代；不要把未安装完的实例直接改成 `0.0.0.0:8080`。
 - **数据**：命名卷 `practacu-data` 里是 `practacu.db` 与 `media/`。`docker compose down` 不删数据，`down -v` 才删。想直接用宿主机目录，把 compose 里的卷换成 `./data:/data` 并先 `mkdir -p data && sudo chown 10001:10001 data`。
 - **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 启动器一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。Docker 端口映射会隐藏客户端地址，所以默认开启 `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定；它只在回环端口上安全，完成安装后可设为 `0`。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
 - **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`，镜像里还带有 `backup`、`media-gc`、`searchindex`。
-- **生产部署**：`docker-compose.prod.yml` + `deploy/production/nginx.conf` 提供 production 语义、持久 JWT 私钥、Secure Cookie、TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
+- **生产部署**：同一份 `docker-compose.yml` 配合 `--env-file .env.prod` 提供 production 语义、持久 JWT 私钥与 Secure Cookie；`deploy/production/nginx.conf` 负责 TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
 - **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`。
 
 > 默认 API 镜像与 compose 栈已在 Docker 中构建并启动验证：API healthy，`/api/healthz`、`/api/readyz`、RSS/Atom/sitemap/robots、首个管理员注册与登录、媒体上传（含内置安全检查）和整库备份均跑通；`docker compose config` 通过。宿主机 TLS 反代仍需在预发环境按部署文档验证证书与 HSTS。
@@ -246,7 +246,7 @@ Windows x64/arm64 便携包、Linux x86_64/aarch64 的 tar.gz + deb + rpm、macO
   `GITHUB_TOKEN`；没有 Docker Hub 用户名时自动跳过 Docker Hub）。
 - 镜像名：`ghcr.io/<owner>/practacu-press-api:<tag>` 与
   `<dockerhub-user>/practacu-press-api:<tag>`。
-- 用发布镜像运行：`PP_IMAGE_PREFIX=ghcr.io/<owner> PP_VERSION=v1.0.0 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d`。
+- 用发布镜像运行：`PP_IMAGE=ghcr.io/<owner>/practacu-press-api:v1.0.0 docker compose pull`，然后 `PP_IMAGE=ghcr.io/<owner>/practacu-press-api:v1.0.0 docker compose up -d`。
 - 也可以手动触发 Action 并填写版本；打 `v*` / `V*` tag 同样会触发。完整说明见
   [docs/deployment/releases.md](docs/deployment/releases.md)。
 
