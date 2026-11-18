@@ -188,6 +188,10 @@ type Config struct {
 	// relies on: the schema is applied at startup, a single site is created when the
 	// database is empty, and the first registered account owns it.
 	DesktopMode bool
+	// FirstAdminTrustProxy relaxes the first-admin claim to a loopback Host when the
+	// API sits behind a local reverse proxy that hides the client address (Docker
+	// port publishing). Safe only while the published port is bound to loopback.
+	FirstAdminTrustProxy bool
 	// StorageDir is the local media storage root.
 	StorageDir string
 	// BackupDir holds generated backup packages and their metadata sidecars.
@@ -238,15 +242,10 @@ type Config struct {
 	// hidden and its endpoints answer `provider_not_configured`, rather than half
 	// starting a flow that can only fail at the provider.
 	AuthOAuth map[string]OAuthProviderConfig
-	// AuthSMS describes the short message gateway used by phone code login. An
-	// unconfigured gateway disables phone login instead of accepting codes nobody
-	// can receive.
-	AuthSMS SMSConfig
 
-	// SMSProvider selects the phone login gateway (contract A): off, log or http.
-	// It is a separate knob from AuthSMS above on purpose: the contract fixes the
-	// SMS_* names, and mixing the two families would leave one half of a deployment
-	// configured.
+	// SMSProvider selects the phone login gateway (off, log or http). The SMS_*
+	// environment family is the single source of truth for phone login: it is what
+	// the web settings page generates and what the process reads at runtime.
 	SMSProvider string
 	// SMSHTTPURL is the webhook the http provider posts to.
 	SMSHTTPURL string
@@ -279,53 +278,20 @@ func (c OAuthProviderConfig) Configured() bool {
 	return c.ClientID != "" && c.ClientSecret != ""
 }
 
-// SMS gateway provider names accepted by AUTH_SMS_PROVIDER and SMS_PROVIDER.
+// SMS gateway provider names accepted by SMS_PROVIDER.
 const (
 	// SMSProviderOff disables phone login. It is the contract A default.
 	SMSProviderOff = "off"
 	// SMSProviderLog writes the code to the process log. It is development only:
 	// a production install must configure a real gateway.
 	SMSProviderLog = "log"
-	// SMSProviderHTTP posts the code to a generic JSON gateway (AUTH_SMS_ENDPOINT or
-	// SMS_HTTP_URL).
+	// SMSProviderHTTP posts the code to a generic JSON gateway (SMS_HTTP_URL).
 	SMSProviderHTTP = "http"
 )
 
 // DefaultSMSCodeTTL is how long a requested code stays valid when the operator does
 // not override it (contract A: SMS_CODE_TTL_SECONDS, default 300).
 const DefaultSMSCodeTTL = 300 * time.Second
-
-// SMSConfig is the short message gateway configuration.
-type SMSConfig struct {
-	// Provider is one of the SMSProvider* values. Empty means "no gateway", which
-	// disables phone login in production and falls back to the log sender in
-	// development.
-	Provider string
-	// Endpoint is the gateway URL for the http provider.
-	Endpoint string
-	// AccessKeyID and AccessKeySecret authenticate the gateway. The secret is only
-	// ever sent in an Authorization header.
-	AccessKeyID     string
-	AccessKeySecret string
-	// SignName is the sender signature the carrier shows, and TemplateCode the
-	// registered message template.
-	SignName     string
-	TemplateCode string
-	// Timeout bounds one delivery attempt.
-	Timeout time.Duration
-}
-
-// Configured reports whether a real gateway is configured.
-func (c SMSConfig) Configured() bool {
-	switch c.Provider {
-	case SMSProviderHTTP:
-		return c.Endpoint != "" && c.AccessKeySecret != ""
-	case SMSProviderLog:
-		return true
-	default:
-		return false
-	}
-}
 
 // Accepted SMTP_ENCRYPTION values.
 const (
@@ -690,6 +656,13 @@ func Load() (Config, error) {
 	cfg.CookieDomain = env("COOKIE_DOMAIN")
 	cfg.DefaultSiteID = env("DEFAULT_SITE_ID")
 	cfg.DesktopMode = envBool("PP_DESKTOP")
+	cfg.FirstAdminTrustProxy = envBool("PP_FIRST_ADMIN_TRUST_PROXY")
+	if cfg.FirstAdminTrustProxy && !cfg.DesktopMode {
+		// The flag only affects the desktop bootstrap's first-admin promotion; in a
+		// production deployment BootstrapFirstAdmin is off, so a stray value is
+		// harmless rather than a reason to refuse the boot.
+		cfg.FirstAdminTrustProxy = false
+	}
 	if cfg.DesktopMode && cfg.AppEnv == EnvProduction {
 		// The desktop bootstrap seeds a site and promotes the first account. That is
 		// a convenience for a loopback install, never something a public deployment
@@ -804,48 +777,6 @@ func loadAuthProviders(cfg *Config) error {
 			}
 		}
 		cfg.AuthOAuth[id] = provider
-	}
-
-	cfg.AuthSMS = SMSConfig{
-		Provider:        strings.ToLower(env("AUTH_SMS_PROVIDER")),
-		Endpoint:        env("AUTH_SMS_ENDPOINT"),
-		AccessKeyID:     env("AUTH_SMS_ACCESS_KEY_ID"),
-		AccessKeySecret: env("AUTH_SMS_ACCESS_KEY_SECRET"),
-		SignName:        env("AUTH_SMS_SIGN_NAME"),
-		TemplateCode:    env("AUTH_SMS_TEMPLATE_CODE"),
-		Timeout:         10 * time.Second,
-	}
-	switch cfg.AuthSMS.Provider {
-	case "", SMSProviderLog, SMSProviderHTTP:
-	default:
-		return &Error{
-			Code:   "invalid_sms_provider",
-			Detail: "AUTH_SMS_PROVIDER must be one of log, http",
-		}
-	}
-	if cfg.AuthSMS.Provider == SMSProviderHTTP {
-		if cfg.AuthSMS.Endpoint == "" || cfg.AuthSMS.AccessKeySecret == "" {
-			return &Error{
-				Code: "incomplete_sms_gateway",
-				Detail: "AUTH_SMS_ENDPOINT and AUTH_SMS_ACCESS_KEY_SECRET are required " +
-					"when AUTH_SMS_PROVIDER=http",
-			}
-		}
-		parsed, err := url.Parse(cfg.AuthSMS.Endpoint)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return &Error{
-				Code:   "invalid_sms_endpoint",
-				Detail: "AUTH_SMS_ENDPOINT must be an absolute http or https URL",
-			}
-		}
-		if parsed.Scheme != "https" && !isLoopback(parsed.Hostname()) {
-			// The request carries the access key secret; plaintext to a remote host
-			// would hand it to anyone on the path.
-			return &Error{
-				Code:   "insecure_sms_endpoint",
-				Detail: "AUTH_SMS_ENDPOINT must use https unless the gateway is on localhost",
-			}
-		}
 	}
 	return nil
 }

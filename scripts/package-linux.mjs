@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 /**
- * Build the Linux install package: release/PractacuPress-Linux-x64.tar.gz
+ * Build the Linux install package:
+ *   release/PractacuPress-Linux-<x64|arm64>.tar.gz
  *
- *   node scripts/package-linux.mjs                 # full build (web + Go + Rust + tar.gz)
- *   node scripts/package-linux.mjs --skip-web      # reuse apps/web/dist
- *   node scripts/package-linux.mjs --skip-security # package without the Rust binary (degraded)
+ *   node scripts/package-linux.mjs --arch amd64
+ *   node scripts/package-linux.mjs --arch arm64 --skip-web --version v1.0.1-beta1
+ *   node scripts/package-linux.mjs --skip-security --allow-degraded
  *
  * What it does
  *   1. builds the frontend (unless --skip-web) and the Go binaries with GOOS=linux;
- *   2. picks up the Rust security binary built for Linux (native or musl cross build);
- *   3. assembles PractacuPress-Linux-x64/ from deploy/linux templates + the artifacts;
+ *   2. picks up the Rust security binary for the target architecture (or --security);
+ *   3. assembles PractacuPress-Linux-<arch>/ from deploy/linux templates + artifacts;
  *   4. runs static self-checks (ELF arch, frontend presence, LF-only scripts);
  *   5. writes a deterministic-ish tar.gz (ustar + gzip) and its sha256.
+ *
+ * The .deb/.rpm wrappers are produced separately from the assembled tree with
+ * deploy/package/nfpm.yaml (see .github/workflows/release.yml).
  *
  * The archive is written by a small built-in tar writer so file modes (0755 on
  * scripts and binaries) survive on Windows build hosts, where the native tar
@@ -23,6 +27,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { syncEmbeddedWeb } from './lib/embed-web.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'release');
@@ -41,9 +46,13 @@ const ALLOW_DEGRADED = flag('--allow-degraded');
 const ARCH = option('--arch', 'amd64');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
 const SECURITY_OVERRIDE = option('--security', '');
+const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
 
 if (!['amd64', 'arm64'].includes(ARCH)) {
   fail(`unsupported --arch ${ARCH} (use amd64 or arm64)`);
+}
+if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
+  fail(`unsupported --version ${RELEASE_VERSION} (want X.Y.Z or X.Y.Z-betaN)`);
 }
 const ARCH_LABEL = ARCH === 'amd64' ? 'x64' : 'arm64';
 const ELF_MACHINE = ARCH === 'amd64' ? 0x3e : 0xb7;
@@ -188,11 +197,15 @@ function buildWeb() {
 // ---- 2. Go ----------------------------------------------------------------
 function buildGo(binDir) {
   const go = goCommand();
-  log(`构建 Go 二进制（linux/${ARCH}，纯静态）`);
+  log(`构建 Go 二进制（linux/${ARCH}，纯静态，内嵌前端）`);
+  syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'apps', 'web', 'dist') });
   const targets = [
     { pkg: './apps/api/cmd/server', name: 'practacu-api' },
     { pkg: './apps/api/cmd/migrate', name: 'practacu-migrate' },
     { pkg: './apps/api/cmd/seed', name: 'practacu-seed' },
+    { pkg: './apps/api/cmd/backup', name: 'practacu-backup' },
+    { pkg: './apps/api/cmd/media-gc', name: 'practacu-media-gc' },
+    { pkg: './apps/api/cmd/searchindex', name: 'practacu-searchindex' },
   ];
   for (const target of targets) {
     const out = path.join(binDir, target.name);
@@ -207,8 +220,13 @@ function buildGo(binDir) {
 function findSecurityBinary() {
   const candidates = [];
   if (SECURITY_OVERRIDE) candidates.push(path.resolve(SECURITY_OVERRIDE));
+  const triples = ARCH === 'amd64'
+    ? ['x86_64-unknown-linux-musl', 'x86_64-unknown-linux-gnu']
+    : ['aarch64-unknown-linux-musl', 'aarch64-unknown-linux-gnu'];
+  for (const triple of triples) {
+    candidates.push(path.join(ROOT, 'services', 'security', 'target', triple, 'release', 'practacu-security'));
+  }
   candidates.push(
-    path.join(ROOT, 'services', 'security', 'target', `x86_64-unknown-linux-musl`, 'release', 'practacu-security'),
     path.join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security'),
     path.join(ROOT, 'services', 'security', 'target', 'release', 'practacu-security.exe'),
   );
@@ -232,12 +250,9 @@ function copySecurity(binDir) {
   const found = findSecurityBinary();
   if (!found) {
     const message =
-      '找不到 Linux 版 practacu-security。先交叉编译（Windows 构建机）：\n' +
-      '  rustup target add x86_64-unknown-linux-musl\n' +
-      '  cd services/security\n' +
-      '  $env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="<rust-lld.exe 路径>"\n' +
-      '  $env:RUSTFLAGS="-C link-self-contained=yes"\n' +
-      '  cargo build --release --target x86_64-unknown-linux-musl\n' +
+      `找不到 ${ARCH} 版 practacu-security。先编译对应的 Rust 目标：\n` +
+      `  rustup target add ${ARCH === 'amd64' ? 'x86_64-unknown-linux-musl' : 'aarch64-unknown-linux-gnu'}\n` +
+      '  cd services/security && cargo build --release --locked [--target <triple>]\n' +
       '或在 Linux 构建机上直接 cargo build --release。\n' +
       '确实要打一个降级包（发布/上传不可用）时加 --allow-degraded。';
     if (ALLOW_DEGRADED) {
@@ -253,11 +268,32 @@ function copySecurity(binDir) {
 }
 
 // ---- 4. 组装 --------------------------------------------------------------
+// Version stamped into the package. Release builds must pass --version; local
+// builds fall back to the frontend manifest plus the commit.
 function packageVersion() {
+  if (RELEASE_VERSION) return RELEASE_VERSION;
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'apps', 'web', 'package.json'), 'utf8'));
   const git = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
   const commit = git.status === 0 ? git.stdout.trim() : 'unknown';
   return `${pkg.version}+${commit}`;
+}
+
+// The frontend reads /version.json for the footer and the update screen. Leave the
+// repository's development value in place unless a release version was supplied.
+function stampWebVersion(webDir) {
+  if (!RELEASE_VERSION) return;
+  const file = path.join(webDir, 'version.json');
+  const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const beta = /-beta/i.test(RELEASE_VERSION);
+  const next = {
+    title: current.title || 'Practacu Press',
+    describe:
+      current.describe ||
+      '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
+    version: RELEASE_VERSION,
+    style: beta ? 'beta' : 'stable',
+  };
+  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
 }
 
 function assemble(securityPresent) {
@@ -279,18 +315,24 @@ function assemble(securityPresent) {
   rmrf(builtBin);
   fs.mkdirSync(builtBin, { recursive: true });
   buildGo(builtBin);
-  for (const name of ['practacu-api', 'practacu-migrate', 'practacu-seed']) {
+  const binaries = [
+    'practacu-api',
+    'practacu-migrate',
+    'practacu-seed',
+    'practacu-backup',
+    'practacu-media-gc',
+    'practacu-searchindex',
+  ];
+  for (const name of binaries) {
     copyFile(path.join(builtBin, name), path.join(binDir, name), 0o755);
   }
   const securityPresent2 = copySecurity(binDir);
 
   copyTree(path.join(ROOT, 'apps', 'web', 'dist'), path.join(PACKAGE, 'web'));
+  stampWebVersion(path.join(PACKAGE, 'web'));
 
-  fs.writeFileSync(
-    path.join(PACKAGE, 'VERSION'),
-    `${packageVersion()}\n`,
-    'utf8',
-  );
+  fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${packageVersion()}\n`, 'utf8');
+  fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
 
   // 文本文件统一 LF；shebang 与可执行位在 tar 写入时再确保一次。
   for (const entry of walk(PACKAGE)) {
@@ -307,8 +349,13 @@ function selfCheck() {
     'INSTALL.md',
     'README.txt',
     'VERSION',
+    'ARCH',
     'bin/practacu-api',
+    'bin/practacu-migrate',
     'bin/practacu-seed',
+    'bin/practacu-backup',
+    'bin/practacu-media-gc',
+    'bin/practacu-searchindex',
     'web/index.html',
     'deploy/nginx/site.conf.in',
     'deploy/nginx/tls.conf.in',
@@ -320,6 +367,10 @@ function selfCheck() {
   }
   ok('必需文件齐全');
 
+  if (fs.readFileSync(path.join(PACKAGE, 'ARCH'), 'utf8').trim() !== ARCH) {
+    fail('自检失败：ARCH 与打包架构不一致');
+  }
+
   for (const name of ['install.sh', 'uninstall.sh']) {
     const text = fs.readFileSync(path.join(PACKAGE, name), 'utf8');
     if (!text.startsWith('#!/usr/bin/env bash')) fail(`自检失败：${name} 缺少 bash shebang`);
@@ -329,6 +380,9 @@ function selfCheck() {
 
   assertElf(path.join(PACKAGE, 'bin', 'practacu-api'), 'bin/practacu-api');
   assertElf(path.join(PACKAGE, 'bin', 'practacu-seed'), 'bin/practacu-seed');
+  if (fs.existsSync(path.join(PACKAGE, 'bin', 'practacu-security'))) {
+    assertElf(path.join(PACKAGE, 'bin', 'practacu-security'), 'bin/practacu-security');
+  }
 
   const html = fs.readFileSync(path.join(PACKAGE, 'web', 'index.html'), 'utf8');
   if (!html.includes('id="root"')) fail('自检失败：web/index.html 不像前端入口');

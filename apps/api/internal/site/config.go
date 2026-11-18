@@ -763,6 +763,14 @@ func requireOriginList(name string, values []string, count, max int) error {
 		if len([]rune(value)) > max {
 			return fmt.Errorf("%w: %s exceeds %d characters", ErrInvalidInput, name, max)
 		}
+		// A bare "*" is the one value the deployment CORS policy refuses to combine
+		// with credentials, and SiteCORS always answers with credentials. Accepting
+		// it here would let a site administrator re-open exactly the configuration
+		// the operator cannot set in the environment. Subdomain patterns such as
+		// "https://*.example.com" stay valid: they echo one matched origin.
+		if strings.TrimSpace(value) == "*" {
+			return fmt.Errorf("%w: %s must list explicit origins, not *", ErrInvalidInput, name)
+		}
 	}
 	return nil
 }

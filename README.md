@@ -14,9 +14,9 @@
 
 | | |
 | --- | --- |
-| **占地少** | Windows 启动器 8.3 MB，**内嵌整套前端**；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。容器部署也只有三个镜像：API、安全服务、静态站。 |
+| **占地少** | Windows 启动器 8.3 MB，**内嵌整套前端**；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。默认容器部署只有两个镜像：API（内嵌前端）与安全服务。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，**运行时不依赖 Node**，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
-| **使用便捷** | 八步安装引导自带健康检查，装完即用：`docker compose up -d` 或 `启动.bat` 一条命令起全栈（API + 安全服务 + 前端）。备份就是把 `data/` 目录整体复制走。 |
+| **使用便捷** | 八步安装引导自带健康检查，装完即用：`docker compose up -d` 或 `启动.bat` 一条命令起全栈（API 已内嵌前端 + 安全服务）。备份就是把 `data/` 目录整体复制走。 |
 | **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**，每个组件可单独设置圆角、阴影、裁剪、背景、内边距与描边，内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图，随文章发布并按主题重绘；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（当前契约 124 条路径 / 148 个操作，含健康检查与安装状态；站点根路径的 sitemap / robots 与内置 `/api/v1/docs` 不在契约内）后面，想换前端按契约写就行。 |
 
 **功能面**
@@ -169,41 +169,50 @@ docker compose version
 
 #### 构建并启动
 
-仓库自带 `docker-compose.yml` 与三个镜像定义（API / 安全服务 / 静态站），在仓库根目录执行：
+仓库自带 `docker-compose.yml`，默认只启动 API（已用 `go:embed` 内嵌前端）与安全服务，在仓库根目录执行：
 
 ```bash
 docker compose up -d --build
 ```
 
-首次构建要拉基础镜像并编译三个镜像，视网络需要几分钟。起来后先确认健康：
+首次构建要拉基础镜像并编译 API / 安全服务两个镜像（可选 `web` profile 另算），视网络需要几分钟。起来后先确认健康：
 
 ```bash
-docker compose ps                      # api / security / web 都应是 running；api、security 为 healthy
+docker compose ps                      # api / security 应是 running；api、security 为 healthy
 curl -fsS http://127.0.0.1:8080/healthz
 ```
 
 打开 **http://localhost:8080** 走完八步安装引导；**引导里创建的第一个账户就是平台管理员**。
 
-- **组成**：`web`（Nginx 静态站 + 同源反向代理）、`api`（Go，纯静态二进制）、`security`（Rust gRPC）。只有 `web` 映射到宿主机。
-- **默认只绑回环**：端口写成 `127.0.0.1:8080:80`，避免还没装完的实例被公网抢先注册成管理员。装完后把它改成 `8080:80`，并在前面加一层 TLS 反代。
+- **组成**：`api`（Go 二进制，内嵌 SPA，同时提供 `/api`、静态资源与 SPA 回退）、`security`（Rust gRPC）。默认只有 `api` 映射到宿主机；`web` 是可选静态 Nginx 镜像，只有 `docker compose --profile static up -d` 才启动。
+- **默认只绑回环**：API 端口写成 `127.0.0.1:8080:8080`，避免还没装完的实例被公网抢先注册成管理员。装完后优先叠加 `docker-compose.prod.yml` 并在前面加一层 TLS 反代；不要把未安装完的实例直接改成 `0.0.0.0:8080`。
 - **数据**：命名卷 `practacu-data` 里是 `practacu.db` 与 `media/`。`docker compose down` 不删数据，`down -v` 才删。想直接用宿主机目录，把 compose 里的卷换成 `./data:/data` 并先 `mkdir -p data && sudo chown 10001:10001 data`。
-- **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 启动器一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
-- **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`。
+- **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 启动器一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。Docker 端口映射会隐藏客户端地址，所以默认开启 `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定；它只在回环端口上安全，完成安装后可设为 `0`。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
+- **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`，镜像里还带有 `backup`、`media-gc`、`searchindex`。
 - **生产部署**：`docker-compose.prod.yml` + `deploy/production/nginx.conf` 提供 production 语义、持久 JWT 私钥、Secure Cookie、TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
-- **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`，另外两个同理（`security.Dockerfile`、`web.Dockerfile`）。
+- **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`；安全服务用 `security.Dockerfile`；需要独立静态站时再用 `web.Dockerfile`。
 
-> 开发机上没有 Docker 环境，这套 compose 与镜像定义（含 `docker-compose.prod.yml` 生产 profile）**没有实跑验证过**：YAML、Dockerfile 引用与健康检查链路只做了静态校验。首次构建若遇问题，欢迎开 issue。
+> 默认 API（内嵌前端）/ 安全服务镜像与 compose 栈已在 Docker 中构建并启动验证：两个服务 healthy，`/healthz`、`/readyz`、RSS/Atom/sitemap/robots、首个管理员注册与登录、媒体上传（含安全服务扫描）和整库备份均跑通；`docker compose config` 通过。宿主机 TLS 反代仍需在预发环境按部署文档验证证书与 HSTS。
 
-### Linux 原生安装包（tar.gz）
+### Linux 原生安装包（tar.gz / deb / rpm）
 
 既不想用 Docker、也不想在服务器上装 Go / Node / Rust 时，用仓库打好的原生包：里面是
-Linux x86_64 的 API / seed / migrate 二进制、Rust 安全服务、前端静态文件，以及一个
-**交互式安装向导**（`install.sh`）。目标机只需要 systemd 与 Nginx，不需要任何开发工具链。
+对应架构（x86_64 或 aarch64）的 API / seed / migrate / backup / media-gc / searchindex
+二进制、Rust 安全服务、前端静态文件，以及一个**交互式安装向导**（`install.sh`）。目标机
+只需要 systemd 与 Nginx，不需要任何开发工具链。
 
 ```bash
-tar -xzf PractacuPress-Linux-x64.tar.gz
-cd PractacuPress-Linux-x64
+tar -xzf PractacuPress-Linux-<x64|arm64>.tar.gz
+cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
+```
+
+Debian/Ubuntu 与 RHEL/Fedora/openSUSE 也可以直接装 `.deb` / `.rpm`（两者都提供
+`amd64` 与 `arm64`）：安装包会自动执行一次非交互安装，依赖 `nginx`、`curl`、`openssl`。
+
+```bash
+sudo apt install ./practacu-press_<version>_<arch>.deb
+sudo dnf install ./practacu-press-<version>.<arch>.rpm
 ```
 
 向导会询问程序目录、数据目录、端口与是否配置 Nginx，然后创建系统用户与目录、生成
@@ -220,8 +229,26 @@ sudo /opt/practacu-press/install.sh --finalize --mode public --domain a.com  # �
 `uninstall.sh` 卸载（默认保留数据）。SSH 隧道、域名验证、备份/升级/卸载与排障的完整步骤见
 [deploy/linux/INSTALL.md](deploy/linux/INSTALL.md)。
 
-自己打包：`node scripts/package-linux.mjs`（Windows 与 Linux 构建机都可用：构建前端、
-交叉编译 Go 与 Rust、自检 ELF/脚本/模板，最后生成 tar.gz 与 sha256），产物在 `release/`。
+自己打包：`node scripts/package-linux.mjs --arch amd64|arm64`（Windows 与 Linux 构建机都可用：
+构建前端、交叉编译 Go 与 Rust、自检 ELF/脚本/模板，最后生成 tar.gz 与 sha256），产物在
+`release/`。
+
+### 发布版本（GitHub Release / Docker 镜像）
+
+推送提交信息里带版本号（`v1.0.0` 正式版，`v1.0.1-beta1` 测试版；大小写 `v` 均可）就会触发
+[.github/workflows/release.yml](.github/workflows/release.yml)：创建 GitHub Release，并上传
+Windows x64/arm64 便携包、Linux x86_64/aarch64 的 tar.gz + deb + rpm、macOS x86_64/arm64
+的 tar.gz 与 `SHA256SUMS`；同时把 api / security（以及可选静态 web）镜像以
+`linux/amd64,linux/arm64` 推到 GHCR 与 Docker Hub。测试版只更新版本标签与 `beta`，不会
+覆盖 `latest`。
+
+- 需要配置仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（GHCR 使用内置
+  `GITHUB_TOKEN`；没有 Docker Hub 用户名时自动跳过 Docker Hub）。
+- 镜像名：`ghcr.io/<owner>/practacu-press-{api,web,security}:<tag>` 与
+  `<dockerhub-user>/practacu-press-{api,web,security}:<tag>`。
+- 用发布镜像运行：`PP_IMAGE_PREFIX=ghcr.io/<owner> PP_VERSION=v1.0.0 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d`。
+- 也可以手动触发 Action 并填写版本；打 `v*` / `V*` tag 同样会触发。完整说明见
+  [docs/deployment/releases.md](docs/deployment/releases.md)。
 
 ### Linux 源码运行（bash）
 
@@ -296,6 +323,11 @@ go run ./apps/api/cmd/server
 curl -fsS http://127.0.0.1:8080/healthz
 curl -fsS http://127.0.0.1:8080/readyz
 ```
+
+> 发布包与 Docker 镜像会自动把 `apps/web/dist` 同步进 `apps/api/internal/web/dist`
+> 再编译，所以单个 API 进程同时提供前端与 `/api`。源码直接 `go run` 时默认只有
+> API；要本地验证单二进制形态，先执行 `make embed-web`（或
+> `node scripts/sync-web-embed.mjs`）再启动。
 
 前端用开发服务器：它会把 `/api`、`/healthz`、`/readyz`、`/plugins` 代理到本机 8080。
 
@@ -405,7 +437,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 1. 构建前端（`apps/web`，缺少 `node_modules` 时自动 `npm ci`）；
 2. 编译 Rust 安全服务（`services/security`，release）；
 3. 把前端产物同步进启动器的 `go:embed` 目录；
-4. 编译 Go 启动器与 Go API（Windows amd64，纯 Go）；
+4. 编译 Go 启动器与 Go API（Windows 目标架构：x64 或 arm64，纯 Go）；
 5. 组装干净的分发目录，**在临时端口实际启动打包产物做自检**：
    静态站与 SPA 回退、`/__pp/runtime`、`/healthz`、`/readyz`、注册、文章创建
    （验证 Rust 清洗掉 `<script>`）与发布；
@@ -419,13 +451,14 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 - `release/PractacuPress/PractacuPress.exe`：原生启动器，双击即用，**不需要安装 Node**；
 - `release/PractacuPress/PractacuPressAPI.exe`：Go API，由启动器在真实环境下自动拉起；
 - `release/PractacuPress/practacu-security.exe`：Rust 安全服务，默认自动编译并附带；
-- `release/PractacuPress-Windows-x64.zip`（及同名 `.sha256`）：整个文件夹的压缩包，
-  解压后双击 exe 即可。压缩包里只有程序与 `README.txt`，不会带开发机的 `data/`。
+- `release/PractacuPress-Windows-<x64|arm64>.zip`（及同名 `.sha256`）：整个文件夹的压缩包，
+  解压后双击 exe 即可。压缩包里只有程序、`VERSION` 与 `README.txt`，不会带开发机的 `data/`。
 
 `scripts/package.ps1` 的常用参数：
 
 | 参数 | 说明 |
 | --- | --- |
+| `-Arch amd64\|arm64` | 目标架构（默认当前机器；arm64 包由 Windows arm64 runner 原生构建） |
 | `-SkipSecurity` | 不编译也不附带 Rust 安全服务（发布与上传会 fail-closed 返回 503） |
 | `-SkipSmoke` | 跳过打包后的自检（不推荐，自检是“保持原有功能”的保障） |
 | `-NoZip` | 只生成 `release/PractacuPress` 目录 |
@@ -433,7 +466,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | `-Port <端口>` | 自检固定端口（默认自动挑空闲端口） |
 
 CI 可以直接调用底层脚本（与上面是同一套流程）：
-`node scripts\package-windows.mjs [--skip-security] [--skip-smoke] [--no-zip] [--release-dir <目录>]`。
+`node scripts\package-windows.mjs --arch amd64|arm64 [--skip-security] [--skip-smoke] [--no-zip] [--release-dir <目录>]`。
 在没有 Rust 工具链的机器上，用 `-SkipSecurity` 打出的包仍能浏览、写作与演示，只是发布文章与完成上传会返回 503。
 
 启动器默认在 8080 端口提供站点并自动打开浏览器；8080 被占用时依次改用 8081、8082，都不行再退回标准 80 端口，窗口里会显示实际地址。
@@ -585,8 +618,8 @@ go test ./apps/api/internal/media/ -run TestS3 -v
 | 项 | 说明 |
 | --- | --- |
 | MySQL / PostgreSQL | 代码层无方言依赖，但**本机没有这两个数据库，未实跑验证**，需在 CI 上跑矩阵 |
-| Docker | 已提供 `docker-compose.yml` 与三个镜像定义（API / 安全服务 / 静态站）；**开发机无 Docker，镜像构建未实跑验证** |
-| Linux 安装包 | 提供 `release/PractacuPress-Linux-x64.tar.gz`（预编译二进制 + `install.sh` 向导 + systemd/Nginx 模板）；**在 Windows 构建机上交叉编译，未在真实 Linux 主机上实跑安装脚本**，安装流程用替身命令做过演练 |
+| Docker | 已提供 `docker-compose.yml`（API 已内嵌前端 + 安全服务；静态站为可选 profile）；默认两镜像已实机构建，compose 栈、注册/登录、上传与备份已跑通（宿主机 TLS 反代未实跑） |
+| Linux 安装包 | 发布 `PractacuPress-Linux-{x64,arm64}.tar.gz` 以及各自架构的 `.deb` / `.rpm`（预编译二进制 + `install.sh` 向导 + systemd/Nginx 模板）；交叉编译与包内容已校验，**安装脚本尚未在真实 Linux 主机上实跑**（bash 语法、模板渲染与 `nginx -t` 已通过） |
 | Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | WebSocket 多副本 | 票据与 hub 在进程内存，多副本部署需要共享存储 |
 | 限流 | 进程内固定窗口，多副本下是每副本独立计数；真正的 DDoS/CC 防护需要反向代理或边缘 WAF |

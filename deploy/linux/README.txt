@@ -1,15 +1,15 @@
 Practacu Press · Linux 安装包
 ================================
 
-这个目录装的是 Practacu Press 的 Linux x86_64 版本：Go API、Rust 安全服务与
+这个目录装的是 Practacu Press 的 Linux 版本（x86_64 或 aarch64，取决于压缩包）：Go API、Rust 安全服务与
 前端（含八步安装引导）都在包里，目标机不需要 Go / Node / Rust，也不需要 Docker。
 
 三步装好
 --------
 1) 解压后运行安装向导（需要 root）：
 
-     tar -xzf PractacuPress-Linux-x64.tar.gz
-     cd PractacuPress-Linux-x64
+     tar -xzf PractacuPress-Linux-<x64|arm64>.tar.gz
+     cd PractacuPress-Linux-<x64|arm64>
      sudo ./install.sh
 
    向导会问程序目录、数据目录、端口与是否配置 Nginx，直接回车即用默认值。

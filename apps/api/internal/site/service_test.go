@@ -896,6 +896,33 @@ func TestUpdateDomainStartsChallengeAndResolvesOnlyAfterVerification(t *testing.
 	require.Equal(t, "s1", found.ID)
 }
 
+// TestUpdateDomainKeepsVerificationForTheSameDomain is the regression test for a
+// retried form submit taking a verified hostname offline: the same value must be a
+// no-op instead of minting a new challenge and clearing domain_verified_at.
+func TestUpdateDomainKeepsVerificationForTheSameDomain(t *testing.T) {
+	verified := time.Now().UTC()
+	repo := newFakeRepo()
+	repo.sites = []Site{{
+		ID: "s1", Domain: "press.example.com", DomainVerifiedAt: &verified,
+		DomainVerificationToken: "current-token",
+	}}
+	repo.members[memberKey("s1", "admin")] = activeMember("s1", "admin", RoleSiteAdmin)
+	service := newService(t, repo)
+	actor := repo.members[memberKey("s1", "admin")]
+
+	require.NoError(t, service.UpdateDomain(context.Background(), actor, "s1", "PRESS.example.com.", ""))
+	require.Equal(t, "press.example.com", repo.sites[0].Domain)
+	require.NotNil(t, repo.sites[0].DomainVerifiedAt)
+	require.Equal(t, "current-token", repo.sites[0].DomainVerificationToken)
+	require.Zero(t, repo.domainUpdates, "a no-op must not write")
+	require.Empty(t, repo.audits, "a no-op must not audit a change")
+
+	// The hostname keeps serving.
+	found, err := service.Resolve(context.Background(), "press.example.com")
+	require.NoError(t, err)
+	require.Equal(t, "s1", found.ID)
+}
+
 func TestUpdateDomainClearsDomainAndVerification(t *testing.T) {
 	verified := time.Now().UTC()
 	repo := newFakeRepo()

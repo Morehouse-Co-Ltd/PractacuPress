@@ -16,7 +16,7 @@
 #   PP_MIGRATE_POSTGRES_DSN=... disposable PostgreSQL for `cmd/migrate` idempotency
 
 param(
-    [ValidateSet('go', 'web', 'migrations', 'config', 'all')]
+    [ValidateSet('go', 'launcher', 'web', 'migrations', 'config', 'all')]
     [string]$Task = 'all'
 )
 
@@ -79,6 +79,30 @@ function Invoke-GoTask {
     Invoke-Go $testArguments
 }
 
+function Invoke-LauncherTask {
+    # apps/launcher is a separate Go module (its own go.mod), so the root
+    # `go build ./...` never compiles or tests it. Packaging builds it, which is
+    # why a broken launcher used to pass every local gate.
+    Push-Location (Join-Path $root 'apps\launcher')
+    try {
+        Write-Step 'launcher: go build ./...'
+        Invoke-Go @('build', './...')
+
+        Write-Step 'launcher: go vet ./...'
+        Invoke-Go @('vet', './...')
+
+        $testArguments = @('test')
+        if ($env:PP_TEST_RACE -eq '1') { $testArguments += '-race' }
+        $testArguments += '-count=1'
+        $testArguments += './...'
+        Write-Step ('launcher: go ' + ($testArguments -join ' '))
+        Invoke-Go $testArguments
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 function Invoke-WebTask {
     $installMode = $env:PP_WEB_INSTALL
     if (-not $installMode) { $installMode = 'auto' }
@@ -108,6 +132,9 @@ function Invoke-WebTask {
     finally {
         Pop-Location
     }
+
+    Write-Step 'node --test scripts/release-version.test.mjs'
+    Invoke-Native 'node' @('--test', 'scripts/release-version.test.mjs')
 }
 
 function Invoke-MigrateTwice {
@@ -181,17 +208,26 @@ function Invoke-ConfigTask {
     Invoke-Native 'docker' @('compose', '-f', 'docker-compose.yml', 'config', '-q')
 
     Write-Step 'docker compose config (production overlay)'
-    $previousKey = $env:AUTH_JWT_ED25519_PRIVATE_KEY
+    $previousAuthKey = $env:AUTH_JWT_ED25519_PRIVATE_KEY
+    $previousFieldKey = $env:FIELD_ENCRYPTION_KEY
+    $previousBackupKey = $env:BACKUP_ENCRYPTION_KEY
     try {
+        # Any non-empty value validates the merged file; the real values live in
+        # .env.prod and are required by the `:?` expressions at deploy time.
         $env:AUTH_JWT_ED25519_PRIVATE_KEY = 'ci-placeholder'
+        $env:FIELD_ENCRYPTION_KEY = 'ci-placeholder'
+        $env:BACKUP_ENCRYPTION_KEY = 'ci-placeholder'
         Invoke-Native 'docker' @('compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.prod.yml', 'config', '-q')
     }
     finally {
-        $env:AUTH_JWT_ED25519_PRIVATE_KEY = $previousKey
+        $env:AUTH_JWT_ED25519_PRIVATE_KEY = $previousAuthKey
+        $env:FIELD_ENCRYPTION_KEY = $previousFieldKey
+        $env:BACKUP_ENCRYPTION_KEY = $previousBackupKey
     }
 }
 
 if ($Task -in @('go', 'all')) { Invoke-GoTask }
+if ($Task -in @('launcher', 'all')) { Invoke-LauncherTask }
 if ($Task -in @('web', 'all')) { Invoke-WebTask }
 if ($Task -in @('migrations', 'all')) { Invoke-MigrationsTask }
 if ($Task -in @('config', 'all')) { Invoke-ConfigTask }

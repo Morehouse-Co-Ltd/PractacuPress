@@ -72,12 +72,16 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 		now = func() time.Time { return time.Now() }
 	}
 
-	return &Handler{
+	handler := &Handler{
 		service:   service,
 		principal: principal,
 		site:      siteOf,
 		cache:     newResolveCache(size, ttl, now),
 	}
+	// Automatic slug-change rules are written by the content service, not through
+	// this handler, so the cache has to be invalidated by the service itself.
+	service.SetOnRulesChanged(handler.cache.Purge)
+	return handler
 }
 
 // Routes mounts the resolve endpoint and the site redirect management endpoints under

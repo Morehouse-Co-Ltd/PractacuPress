@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/practacu/practacu-press/apps/api/internal/platform/errors"
 )
 
 // CORSConfig is the cross origin policy.
@@ -59,15 +57,13 @@ func CORS(cfg CORSConfig) gin.HandlerFunc {
 
 		_, exact := allowed[strings.ToLower(strings.TrimSuffix(origin, "/"))]
 		if !exact && !wildcard {
-			if isPreflight {
-				problem := apperr.PermissionDenied().
-					WithDetail("origin", origin).
-					WithRequestID(RequestIDFrom(c))
-				AbortProblem(c, problem)
-				return
-			}
-			// A simple request from an unlisted origin is answered without CORS
-			// headers: the browser blocks the read, and no server state is exposed.
+			// Do not abort here. The per-site origin list is applied later, after the
+			// hostname has selected a site (SiteCORS); a preflight answered with 403
+			// now would make a site's own allow-list unreachable whenever the
+			// deployment happens to configure any origin at all. Falling through is
+			// still a refusal: no CORS headers are written, so the browser blocks the
+			// call, and an OPTIONS request only reaches a handler that explicitly
+			// accepts it.
 			c.Next()
 			return
 		}

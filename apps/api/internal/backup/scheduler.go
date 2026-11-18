@@ -260,7 +260,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) (Artifact, error) {
 	defer s.endRun()
 
 	startedAt := s.now()
-	artifact, err := s.service.CreateBackup(ctx)
+	artifact, err := s.service.CreateAutomaticBackup(ctx)
 
 	var deleted []string
 	if err == nil {
@@ -348,15 +348,24 @@ func (s *Scheduler) recordAudit(artifact Artifact, runErr error, deleted []strin
 	}
 }
 
-// prune deletes every stored package beyond the newest Keep ones and returns the
-// removed artifact ids.
+// prune deletes every scheduler-created package beyond the newest Keep ones and
+// returns the removed artifact ids.
+//
+// Manual packages (the pre-upgrade backup an operator takes) are never counted or
+// deleted: retention belongs to the schedule, not to the whole backup directory.
 func (s *Scheduler) prune(ctx context.Context) ([]string, error) {
 	artifacts, err := s.service.ListBackups(ctx, Actor{Role: site.RolePlatformAdmin})
 	if err != nil {
 		return nil, err
 	}
+	automatic := make([]Artifact, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact.Origin == OriginAuto {
+			automatic = append(automatic, artifact)
+		}
+	}
 	removed := make([]string, 0)
-	for index, artifact := range artifacts {
+	for index, artifact := range automatic {
 		if index < s.keep {
 			continue
 		}

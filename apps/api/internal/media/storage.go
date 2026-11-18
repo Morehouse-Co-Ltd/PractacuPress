@@ -214,6 +214,13 @@ func (s *LocalStorage) resolve(key string) (string, error) {
 	if strings.Contains(key, "\\") || strings.HasPrefix(key, "/") || filepath.IsAbs(key) {
 		return "", ErrStorageKeyUnsafe
 	}
+	// A drive prefix is absolute on Windows but looks like an ordinary relative
+	// segment to filepath on Linux. Reject it explicitly so a key means the same
+	// thing on every platform the server and its tests run on.
+	if len(key) >= 2 && key[1] == ':' &&
+		((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')) {
+		return "", ErrStorageKeyUnsafe
+	}
 
 	cleaned := filepath.Clean(filepath.FromSlash(key))
 	if cleaned == "." || strings.HasPrefix(cleaned, "..") {

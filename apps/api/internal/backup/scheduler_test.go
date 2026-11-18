@@ -162,6 +162,32 @@ func testClock(start time.Time) func() time.Time {
 // baseClock is the fixed instant the scheduler itself reports.
 func baseClock() time.Time { return time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC) }
 
+// TestPruneKeepsManualBackups is the regression test for retention deleting the
+// operator's pre-upgrade package along with the oldest automatic one.
+func TestPruneKeepsManualBackups(t *testing.T) {
+	service, scheduler, _, _ := newSchedulerFixture(t,
+		&fakeSnapshotter{}, testClock(time.Date(2026, 11, 17, 3, 0, 0, 0, time.UTC)))
+	scheduler.now = baseClock
+
+	manual, err := service.CreateBackup(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OriginManual, manual.Origin)
+
+	for i := 0; i < 3; i++ {
+		_, err := scheduler.RunOnce(context.Background())
+		require.NoError(t, err)
+	}
+
+	// The manual package is older than every automatic one, yet retention must
+	// only count and delete the automatic packages.
+	require.FileExists(t, filepath.Join(service.BackupDir(), manual.FileName))
+	require.FileExists(t, filepath.Join(service.BackupDir(), manual.ID+".meta.json"))
+
+	artifacts, err := service.ListBackups(context.Background(), Actor{Role: site.RolePlatformAdmin})
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1+2)
+}
+
 // TestRunOncePrunesOldArtifacts covers the keep-N retention rule.
 func TestRunOncePrunesOldArtifacts(t *testing.T) {
 	service, scheduler, recorder, _ := newSchedulerFixture(t,

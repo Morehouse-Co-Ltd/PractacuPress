@@ -111,13 +111,15 @@ export function posterFor(url: string): string {
  * 这是有意的取舍：站内嵌播放需要一个可被信任的 iframe 白名单，v0.1 不做。
  */
 export function videoBlock({ url, title = '', poster = '', provider = '' }: VideoInput): string {
-  const cover = (poster || posterFor(url)).trim();
-  const name = provider || hostOf(url);
+  const href = escapeHtml(url.trim());
+  const cover = escapeHtml((poster || posterFor(url)).trim());
+  const name = escapeHtml(provider || hostOf(url));
+  const label = escapeHtml(title.trim() || '视频标题');
   const img = cover
-    ? `<img class="pp-video-poster" src="${cover}" alt="${title || '视频封面'}" loading="lazy" />`
+    ? `<img class="pp-video-poster" src="${cover}" alt="${escapeHtml(title || '视频封面')}" loading="lazy" />`
     : '';
   const cardClass = cover ? 'pp-video' : 'pp-video pp-video-plain';
-  return `<a class="${cardClass}" href="${url}">\n  ${img}\n  <strong>${title || '视频标题'}</strong>\n  <br />\n  <em>${name} · 点击播放</em>\n</a>`;
+  return `<a class="${cardClass}" href="${href}">\n  ${img}\n  <strong>${label}</strong>\n  <br />\n  <em>${name} · 点击播放</em>\n</a>`;
 }
 
 export interface EmbedInput {
@@ -127,12 +129,14 @@ export interface EmbedInput {
 }
 
 export function embedBlock({ url, title = '', description = '' }: EmbedInput): string {
-  const note = description || hostOf(url);
-  return `<a class="pp-embed" href="${url}">\n  <strong>${title || '链接标题'}</strong>\n  <br />\n  <em>${note}</em>\n</a>`;
+  const note = escapeHtml(description || hostOf(url));
+  return `<a class="pp-embed" href="${escapeHtml(url.trim())}">\n  <strong>${escapeHtml(
+    title.trim() || '链接标题',
+  )}</strong>\n  <br />\n  <em>${note}</em>\n</a>`;
 }
 
 export function linkInline(href: string, text = '链接文字'): string {
-  return `<a href="${href}">${text}</a>`;
+  return `<a href="${escapeHtml(href.trim())}">${escapeHtml(text)}</a>`;
 }
 
 export interface LinkCardInput {

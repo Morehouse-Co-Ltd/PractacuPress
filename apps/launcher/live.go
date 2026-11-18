@@ -371,18 +371,31 @@ func newAPIProxy(base *url.URL) *httputil.ReverseProxy {
 
 // isAPIPath reports whether a request belongs to the API rather than the static site.
 //
-// Sitemap.xml and robots.txt are generated per site by the API, so they must be
-// proxied too; the embedded static bundle has no such files. /plugins/ serves the
-// frontend half of extensions: those bundles are same-origin classic scripts, so
-// they must come from the API rather than the embedded asset folder.
+// Sitemap.xml, robots.txt and the feeds are generated per site by the API, so they
+// must be proxied too; the embedded static bundle has no such files. /plugins/
+// serves the frontend half of extensions: those bundles are same-origin classic
+// scripts, so they must come from the API rather than the embedded asset folder.
 func isAPIPath(path string) bool {
-	return path == "/healthz" ||
+	if path == "/healthz" ||
 		path == "/readyz" ||
 		path == "/sitemap.xml" ||
 		path == "/robots.txt" ||
+		path == "/rss.xml" ||
+		path == "/atom.xml" ||
+		// Named in the implementation plan as an alias of the RSS feed.
+		path == "/feed.xml" ||
 		path == "/api" ||
 		strings.HasPrefix(path, "/api/") ||
-		strings.HasPrefix(path, "/plugins/")
+		strings.HasPrefix(path, "/plugins/") {
+		return true
+	}
+	// Category and tag feeds: /category/<slug>/rss.xml and /tag/<slug>/atom.xml.
+	// Only these paths go to the API; the human-facing /category/<slug> pages stay
+	// in the SPA.
+	if strings.HasPrefix(path, "/category/") || strings.HasPrefix(path, "/tag/") {
+		return strings.HasSuffix(path, "/rss.xml") || strings.HasSuffix(path, "/atom.xml")
+	}
+	return false
 }
 
 func waitForReady(url string, timeout time.Duration, exited <-chan error) error {

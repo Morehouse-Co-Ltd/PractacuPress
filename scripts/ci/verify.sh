@@ -38,9 +38,32 @@ run_go() {
     test_args+=(-race)
   fi
   test_args+=(-count=1)
-  test_args+=(./...)
+  test_args+=("./...")
   log "go ${test_args[*]}"
   "$go_bin" "${test_args[@]}"
+}
+
+# apps/launcher is a separate module and only builds on Windows (its process and
+# console helpers are windows-only). Git Bash on Windows can run it; Linux skips.
+run_launcher() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *) log "launcher: Windows-only module, skipped on $(uname -s)"; return ;;
+  esac
+  (
+    cd apps/launcher
+    log "launcher go build ./..."
+    "$go_bin" build ./...
+    log "launcher go vet ./..."
+    "$go_bin" vet ./...
+    local test_args=(test)
+    if [[ "${PP_TEST_RACE:-0}" == "1" ]]; then
+      test_args+=(-race)
+    fi
+    test_args+=(-count=1 "./...")
+    log "launcher go ${test_args[*]}"
+    "$go_bin" "${test_args[@]}"
+  )
 }
 
 run_web() {
@@ -65,6 +88,9 @@ run_web() {
     log "npm test (vitest)"
     "$npm_bin" test
   )
+
+  log "node --test scripts/release-version.test.mjs"
+  node --test scripts/release-version.test.mjs
 }
 
 run_migrate_twice() {
@@ -115,9 +141,11 @@ run_config() {
     docker compose -f docker-compose.yml config -q
 
     log "docker compose config (production overlay)"
-    # The production overlay requires a persistent key; any non-empty value is
-    # enough to validate the merged configuration.
+    # The production overlay requires three persistent keys; placeholders only
+    # validate that the merged file resolves.
     AUTH_JWT_ED25519_PRIVATE_KEY=ci-placeholder \
+      FIELD_ENCRYPTION_KEY=ci-placeholder \
+      BACKUP_ENCRYPTION_KEY=ci-placeholder \
       docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
   else
     log "docker not available: compose config skipped"
@@ -127,17 +155,19 @@ run_config() {
 
 case "$task" in
   go) run_go ;;
+  launcher) run_launcher ;;
   web) run_web ;;
   migrations) run_migrations ;;
   config) run_config ;;
   all)
     run_go
+    run_launcher
     run_web
     run_migrations
     run_config
     ;;
   *)
-    echo "unknown task: $task (want go|web|migrations|config|all)" >&2
+    echo "unknown task: $task (want go|launcher|web|migrations|config|all)" >&2
     exit 2
     ;;
 esac

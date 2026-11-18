@@ -130,8 +130,12 @@ func TestPoisonEventIsAbandonedAtMaxAttempts(t *testing.T) {
 	result, err := worker.RunOnce(context.Background(), 10)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.Failed)
+	require.Equal(t, 1, result.Abandoned)
 	require.Contains(t, repo.reasons["e1"], "abandoned")
 	require.Empty(t, repo.published)
+	// The reschedule is far enough out that the event is not claimed again; the
+	// previous ten-minute delay looked terminal but retried forever.
+	require.Greater(t, repo.failed["e1"], fixedClock()().Add(365*24*time.Hour))
 }
 
 func TestBackoffGrowsAndIsCapped(t *testing.T) {

@@ -195,10 +195,16 @@ need_systemd() {
     [ -d /run/systemd/system ] || die "systemd 未在运行；容器环境请改用 Docker 部署"
 }
 need_arch() {
+    local host_arch pkg_arch
     case "$(uname -m)" in
-        x86_64|amd64) ;;
-        *) die "这个包是 x86_64 版本，当前机器是 $(uname -m)。arm64 请用源码安装或 Docker 部署。" ;;
+        x86_64|amd64) host_arch="amd64" ;;
+        aarch64|arm64) host_arch="arm64" ;;
+        *) die "不支持的 CPU 架构：$(uname -m)（支持 x86_64 与 aarch64）" ;;
     esac
+    pkg_arch="$(cat "$SELF_DIR/ARCH" 2>/dev/null | tr -d '[:space:]' || true)"
+    if [ -n "$pkg_arch" ] && [ "$pkg_arch" != "$host_arch" ]; then
+        die "这个包是 ${pkg_arch} 版本，当前机器是 ${host_arch}。请下载对应架构的安装包。"
+    fi
 }
 
 check_package() {
@@ -229,6 +235,8 @@ pkg_install() {
         yum install -y "$@"
     elif command -v zypper >/dev/null 2>&1; then
         zypper --non-interactive install "$@"
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm --needed "$@"
     else
         return 1
     fi
@@ -371,6 +379,9 @@ SECURITY_GRPC_BIND=127.0.0.1:9001
 # Nginx 从本机回环转发，信任它送来的 X-Forwarded-*（真实客户端 IP）。
 TRUSTED_PROXIES=127.0.0.1/32
 PP_DESKTOP=$PP_DESKTOP
+# 安装引导经 Nginx 回环反代到达 API，端口映射/代理会隐藏客户端地址；
+# 只放宽「首个管理员」判定，APP_ENV=production 时忽略。完成安装后可删掉。
+PP_FIRST_ADMIN_TRUST_PROXY=1
 PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 AUTH_JWT_ED25519_PRIVATE_KEY=$JWT_KEY
 EOF
@@ -553,15 +564,23 @@ do_install() {
     fi
 
     log "安装程序文件到 $INSTALL_DIR"
-    rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/web" "$INSTALL_DIR/deploy"
-    cp -a "$SELF_DIR/bin" "$INSTALL_DIR/bin"
-    cp -a "$SELF_DIR/web" "$INSTALL_DIR/web"
-    cp -a "$TEMPLATE_DIR" "$INSTALL_DIR/deploy"
-    cp -a "$SELF_DIR/install.sh" "$INSTALL_DIR/install.sh"
-    if [ -f "$SELF_DIR/uninstall.sh" ]; then cp -a "$SELF_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"; fi
-    cp -a "$SELF_DIR/INSTALL.md" "$INSTALL_DIR/INSTALL.md"
-    cp -a "$SELF_DIR/README.txt" "$INSTALL_DIR/README.txt"
-    cp -a "$SELF_DIR/VERSION" "$INSTALL_DIR/VERSION"
+    if [ -d "$INSTALL_DIR" ] && [ "$(cd "$SELF_DIR" && pwd -P)" = "$(cd "$INSTALL_DIR" && pwd -P)" ]; then
+        # Running the installed copy (for example after package postinst already
+        # placed the files): deleting bin/ first would delete the source binaries.
+        # Only refresh service state; upgrading binaries requires a new package.
+        log "从安装目录内运行：跳过程序文件复制"
+    else
+        rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/web" "$INSTALL_DIR/deploy"
+        cp -a "$SELF_DIR/bin" "$INSTALL_DIR/bin"
+        cp -a "$SELF_DIR/web" "$INSTALL_DIR/web"
+        cp -a "$TEMPLATE_DIR" "$INSTALL_DIR/deploy"
+        cp -a "$SELF_DIR/install.sh" "$INSTALL_DIR/install.sh"
+        if [ -f "$SELF_DIR/uninstall.sh" ]; then cp -a "$SELF_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"; fi
+        cp -a "$SELF_DIR/INSTALL.md" "$INSTALL_DIR/INSTALL.md"
+        cp -a "$SELF_DIR/README.txt" "$INSTALL_DIR/README.txt"
+        cp -a "$SELF_DIR/VERSION" "$INSTALL_DIR/VERSION"
+        if [ -f "$SELF_DIR/ARCH" ]; then cp -a "$SELF_DIR/ARCH" "$INSTALL_DIR/ARCH"; fi
+    fi
     chmod 0755 "$INSTALL_DIR/bin"/*
     chmod 0755 "$INSTALL_DIR/install.sh"
     if [ -f "$INSTALL_DIR/uninstall.sh" ]; then chmod 0755 "$INSTALL_DIR/uninstall.sh"; fi

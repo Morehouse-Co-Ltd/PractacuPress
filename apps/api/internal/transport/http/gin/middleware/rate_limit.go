@@ -69,6 +69,18 @@ func (s *MemoryRateLimitStore) Allow(key string, limit int, window time.Duration
 	if !ok || !now.Before(current.resetAt) {
 		if !ok && len(s.windows) >= s.maxEntries {
 			s.evictExpiredLocked(now)
+			if len(s.windows) >= s.maxEntries {
+				// Every entry is still inside its window. Keeping the key would grow
+				// the map without bound (the exact memory exhaustion the ceiling is
+				// meant to prevent), so evict one arbitrary entry instead. Fixed
+				// windows are approximate by design; dropping one counter lets one
+				// client reset its budget slightly early, which is preferable to an
+				// attacker exhausting the process with unique keys.
+				for victim := range s.windows {
+					delete(s.windows, victim)
+					break
+				}
+			}
 		}
 		s.windows[key] = &fixedWindow{count: 1, resetAt: now.Add(window)}
 		return true, 0

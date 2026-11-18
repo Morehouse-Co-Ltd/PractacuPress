@@ -215,6 +215,13 @@ func (s *Service) AddComment(ctx context.Context, actor Actor, in NewCommentInpu
 			return Comment{}, findErr
 		}
 		parent = &found
+		// The parent is client supplied, and so is the declared target. They have to
+		// describe the same thread: otherwise a reply can be stored under article B
+		// while nested beneath a comment on article A, escaping B's moderation and
+		// notifying the wrong author.
+		if replyErr := s.validateReplyTarget(ctx, actor.SiteID, found, validated); replyErr != nil {
+			return Comment{}, replyErr
+		}
 	}
 
 	target, tracked, err := s.commentTarget(ctx, actor, validated, parent)
@@ -363,6 +370,46 @@ func (s *Service) resolveTrackedTarget(
 	default:
 		return Target{}, false, nil
 	}
+}
+
+// validateReplyTarget checks that a reply's declared target belongs to the same
+// thread as its parent.
+//
+// The browser sends the parent itself as the target of a reply
+// (target_type=comment, target_id=parent_id). Content scoped callers may instead
+// name the root article or post; both are accepted, but the parent chain has to
+// lead to exactly that root. A mismatch is reported as invalid input rather than
+// silently rewritten, so a broken client cannot move a comment between threads.
+func (s *Service) validateReplyTarget(
+	ctx context.Context,
+	siteID string,
+	parent Comment,
+	in NewCommentInput,
+) error {
+	if in.TargetType == TargetComment {
+		if in.TargetID == parent.ID {
+			return nil
+		}
+		return invalidField("parent", "mismatch", "reply target must be its parent comment")
+	}
+
+	current := parent
+	// The chain length is bounded by MaxReplyDepth; the extra hop guards a corrupt
+	// cycle the same way commentTarget does.
+	for hops := 0; hops <= MaxReplyDepth+1; hops++ {
+		if current.TargetType != TargetComment {
+			if current.TargetType == in.TargetType && current.TargetID == in.TargetID {
+				return nil
+			}
+			return invalidField("parent", "mismatch", "reply parent belongs to another target")
+		}
+		next, err := s.repo.FindComment(ctx, siteID, current.TargetID)
+		if err != nil {
+			return err
+		}
+		current = next
+	}
+	return invalidField("parent", "mismatch", "reply parent chain is too deep")
 }
 
 // commentTarget resolves the article or post a comment belongs to.

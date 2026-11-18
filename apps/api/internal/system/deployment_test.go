@@ -242,8 +242,7 @@ func TestDeploymentSnapshotCarriesNoCredentials(t *testing.T) {
 	cfg := deploymentConfigForTest()
 	cfg.BackupEncryptionKey = "backup-key-do-not-leak"
 	cfg.CookieDomain = ".example.com"
-	cfg.AuthSMS = config.SMSConfig{AccessKeyID: "sms-id", AccessKeySecret: "sms-secret-do-not-leak"}
-
+	cfg.SMSHTTPToken = "sms-secret-do-not-leak"
 	raw, err := json.Marshal(deploymentSnapshot(cfg, time.Unix(0, 0).UTC()))
 	require.NoError(t, err)
 	body := string(raw)
@@ -255,7 +254,7 @@ func TestDeploymentSnapshotCarriesNoCredentials(t *testing.T) {
 		cfg.AuthJWTPrivateKey,
 		cfg.FieldEncryptionKey,
 		cfg.BackupEncryptionKey,
-		cfg.AuthSMS.AccessKeySecret,
+		cfg.SMSHTTPToken,
 		cfg.S3Endpoint,
 	} {
 		require.NotContains(t, body, secret, "a credential reached the response payload")

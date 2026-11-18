@@ -1,38 +1,72 @@
-# syntax=docker/dockerfile:1
-# Rust 安全服务镜像。构建上下文是仓库根目录：
+# Rust security service image. Build from the repository root:
 #   docker build -f deploy/docker/security.Dockerfile .
 #
-# build.rs 用 protoc-bin-vendored 自带的 protoc 编译 proto，
-# 因此构建阶段不需要在镜像里额外安装 protoc。
+# build.rs compiles packages/contracts/security/v1/security.proto with the
+# protoc binary bundled by the protoc-bin-vendored crate, so no system protoc is
+# required. The source tree relationship matters: build.rs resolves the proto as
+# ../../packages/... relative to services/security.
 
-FROM rust:1-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.100.0-bookworm AS build
+
 WORKDIR /src
 
-# build.rs 期望的目录关系是 services/security ← ../../packages/contracts
+# Cross-compile the arm64 binary on the native build platform: running the whole
+# Rust build under QEMU is several times slower. The runtime stage still runs its
+# apt-get under emulation, which is cheap by comparison.
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        apt-get update \
+     && apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+     && rm -rf /var/lib/apt/lists/* \
+     && rustup target add aarch64-unknown-linux-gnu; \
+    fi
+
+COPY packages/contracts/security/v1 ./packages/contracts/security/v1
 COPY services/security ./services/security
-COPY packages/contracts ./packages/contracts
 
 WORKDIR /src/services/security
-RUN cargo build --release --locked
 
+# --locked makes a stale Cargo.lock a build error instead of silently resolving
+# newer crates. The caches keep rebuilds fast without baking them into the image.
+# The binary is copied out of the cache-mounted target directory inside the same
+# RUN: cache mounts are not part of the layer, so a later COPY --from would not
+# see a binary left there.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/services/security/target \
+    set -e; \
+    target_dir="target"; \
+    target_arg=""; \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        target_dir="target/aarch64-unknown-linux-gnu"; \
+        target_arg="--target aarch64-unknown-linux-gnu"; \
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc; \
+    fi; \
+    cargo build --release --locked $target_arg; \
+    install -m 0755 "$target_dir/release/practacu-security" /usr/local/bin/practacu-security
 
 FROM debian:bookworm-slim AS runtime
 
+# netcat is only the health probe: the service is a gRPC listener with no HTTP
+# endpoint. ca-certificates keeps a future TLS listener working.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates bash \
+ && apt-get install -y --no-install-recommends ca-certificates netcat-openbsd \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --uid 10002 --create-home --shell /usr/sbin/nologin practacu
+ && groupadd --gid 10002 practacu \
+ && useradd --uid 10002 --gid practacu --no-create-home --shell /usr/sbin/nologin practacu
 
-COPY --from=build /src/services/security/target/release/practacu-security /usr/local/bin/practacu-security
+COPY --from=build /usr/local/bin/practacu-security /usr/local/bin/practacu-security
 
-USER practacu
+USER 10002:10002
 
-# 容器内监听所有网卡；端口只在 compose 的内部网络里可达。
+# Listen on all interfaces: the port is only reachable on the compose network.
 ENV SECURITY_GRPC_BIND=0.0.0.0:9001
 
 EXPOSE 9001
+STOPSIGNAL SIGTERM
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
-  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/9001' || exit 1
+    CMD ["nc", "-z", "127.0.0.1", "9001"]
 
 ENTRYPOINT ["/usr/local/bin/practacu-security"]

@@ -82,6 +82,10 @@ const (
 	baseBackoff = 2 * time.Second
 	// maxBackoff caps the exponential growth.
 	maxBackoff = 10 * time.Minute
+	// abandonedRetryDelay parks a poison event far enough in the future that the
+	// worker stops retrying it. The row stays unpublished with its last error for an
+	// operator to inspect; a real terminal column would need a schema change.
+	abandonedRetryDelay = 10 * 365 * 24 * time.Hour
 )
 
 // Result summarises one pass.
@@ -151,7 +155,11 @@ func (w *Worker) RunOnce(ctx context.Context, limit int) (Result, error) {
 	for _, event := range events {
 		if err := w.handler.Handle(ctx, event); err != nil {
 			result.Failed++
-			if abandonErr := w.recordFailure(ctx, event, err); abandonErr != nil {
+			abandoned, abandonErr := w.recordFailure(ctx, event, err)
+			if abandoned {
+				result.Abandoned++
+			}
+			if abandonErr != nil {
 				return result, abandonErr
 			}
 			continue
@@ -166,17 +174,21 @@ func (w *Worker) RunOnce(ctx context.Context, limit int) (Result, error) {
 	return result, nil
 }
 
-func (w *Worker) recordFailure(ctx context.Context, event Event, cause error) error {
+func (w *Worker) recordFailure(ctx context.Context, event Event, cause error) (bool, error) {
 	attempts := event.Attempts + 1
 	if attempts >= w.maxAttempts {
 		// Give up: leave the row unpublished with the reason so an operator can see it
-		// instead of the worker retrying a poison event forever.
-		_ = w.repo.RescheduleAfterFailure(ctx, event.EventID,
-			w.now().Add(maxBackoff), fmt.Sprintf("abandoned after %d attempts: %v", attempts, cause))
-		return nil
+		// instead of the worker retrying a poison event forever. Scheduling it a decade
+		// out is what actually stops Claim from picking it up again (the previous
+		// ten-minute reschedule looked terminal but kept one write per event every
+		// ten minutes for the life of the deployment).
+		err := w.repo.RescheduleAfterFailure(ctx, event.EventID,
+			w.now().Add(abandonedRetryDelay),
+			fmt.Sprintf("abandoned after %d attempts: %v", attempts, cause))
+		return true, err
 	}
 
-	return w.repo.RescheduleAfterFailure(ctx, event.EventID,
+	return false, w.repo.RescheduleAfterFailure(ctx, event.EventID,
 		w.now().Add(Backoff(attempts)), truncate(cause.Error(), 400))
 }
 

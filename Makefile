@@ -7,7 +7,8 @@ PKG := ./apps/api/...
 
 .PHONY: build test vet generate migrate tidy smoke \
 	web-install web-typecheck web-build web-test web-dev web-start web-package package package-linux \
-	migrations-test config-test verify verify-go verify-web verify-migrations verify-config ci
+	embed-web \
+	migrations-test config-test verify verify-go verify-launcher verify-web verify-migrations verify-config ci
 
 build:
 	$(GO) build $(PKG)
@@ -35,6 +36,11 @@ web-typecheck:
 
 web-build:
 	cd apps/web && $(NPM) run build
+
+# Copy the built SPA into apps/api/internal/web/dist before a plain `go build`.
+# Release/package scripts do this automatically; this target is for local runs.
+embed-web: web-build
+	node scripts/sync-web-embed.mjs
 
 web-test:
 	cd apps/web && $(NPM) test
@@ -69,7 +75,14 @@ verify-go:
 	$(GO) vet ./...
 	$(GO) test -count=1 ./...
 
+# apps/launcher is its own Go module and only builds on Windows. The root
+# `./...` above never compiles it, so it needs this separate gate (CI runs it on
+# windows-latest; Linux/macOS developers skip it).
+verify-launcher:
+	cd apps/launcher && $(GO) build ./... && $(GO) vet ./... && $(GO) test -count=1 ./...
+
 verify-web: web-install web-typecheck web-build web-test
+	node --test scripts/release-version.test.mjs
 
 verify-migrations: migrations-test
 	@mkdir -p .tmp/verify

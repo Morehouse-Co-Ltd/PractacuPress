@@ -188,7 +188,9 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc, protected .
 	r.POST("/me/email/verification", withAuth(h.credential, h.guard(false), h.RequestEmailVerification)...)
 	// Account creation lives with authentication because it owns password hashing and
 	// identity uniqueness; the path stays site scoped so the contract reads naturally.
-	r.POST("/sites/:siteID/members", withAuth(h.CreateMemberAccount)...)
+	// It consumes a password and parses JSON, so it carries the same credential
+	// limiter and write guard as every sibling write route.
+	r.POST("/sites/:siteID/members", withAuth(h.credential, h.guard(true), h.CreateMemberAccount)...)
 }
 
 type registerRequest struct {

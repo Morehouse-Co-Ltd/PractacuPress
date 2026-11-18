@@ -48,10 +48,13 @@ func RequestTimeout(d time.Duration, exempt func(*gin.Context) bool) gin.Handler
 // LongLivedRequests is the default exemption set: upgraded connections and streaming
 // downloads. Both are legitimately slow and both would be cut off by a deadline.
 func LongLivedRequests(c *gin.Context) bool {
-	if c.Request.Header.Get("Upgrade") != "" {
+	path := c.Request.URL.Path
+	// Only the socket actually upgrades. The header alone is client controlled: a
+	// request to an expensive route could otherwise opt out of the deadline (and hold
+	// a pooled database connection) just by sending "Upgrade: h2c".
+	if c.Request.Header.Get("Upgrade") != "" && strings.HasPrefix(path, "/api/v1/ws") {
 		return true
 	}
-	path := c.Request.URL.Path
 	if strings.HasPrefix(path, "/api/v1/ws") || strings.HasPrefix(path, "/api/v1/media/") {
 		return true
 	}

@@ -71,6 +71,7 @@ import (
 	ginrouter "github.com/practacu/practacu-press/apps/api/internal/transport/http/gin"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/ws"
+	"github.com/practacu/practacu-press/apps/api/internal/web"
 )
 
 // Timeouts. There is deliberately no global WriteTimeout: WebSocket connections
@@ -96,6 +97,10 @@ func run() error {
 	}
 	logger := logging.New(cfg)
 	warnUnsetPublicBaseURL(cfg, logger)
+	if !web.Available() {
+		logger.Warn("frontend is not embedded in this binary; only the API will be served " +
+			"(run node scripts/sync-web-embed.mjs or use a release build)")
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -308,8 +313,13 @@ func run() error {
 
 	// Third party login is independent of the password flow and entirely optional:
 	// without provider credentials the handler is nil, the router mounts nothing and
-	// every other route behaves exactly as before.
-	oauthHandler := buildOAuth(cfg, logger, handle, authService, fieldCipher)
+	// every other route behaves exactly as before. The state store is shared with
+	// the sweeper so expired attempts do not accumulate when the feature is on.
+	oauthStates := authstore.NewOAuthStateStore(handle)
+	oauthHandler := buildOAuth(cfg, logger, handle, authService, fieldCipher, oauthStates)
+	if oauthHandler != nil {
+		go runOAuthStateSweeper(ctx, logger, oauthStates)
+	}
 
 	// The platform console owns deployment level site lifecycle. It borrows auth for
 	// password hashing and session minting, and the site store for the site rows, so
@@ -675,7 +685,7 @@ func run() error {
 		// The site service owns the document, so the transport asks it rather than
 		// parsing site configuration a second time.
 		SiteCORSOrigins: siteService.SiteCORSOrigins,
-		Install:      siteService,
+		Install:         siteService,
 		// Extension administration is deployment scoped, so the handler re-checks the
 		// platform administrator seat itself; the payload can install server side code.
 		Extensions: extensions.NewHandler(extensionManager, extensions.HandlerConfig{
@@ -1037,10 +1047,10 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 		Mailer:             mailSender,
 		// Every system mail also lands in email_logs, so the dashboard can answer
 		// "did the reset mail go out" without reading the relay's log.
-		MailLog:            mailLog,
-		PublicBaseURL:      cfg.PublicBaseURL,
-		Audit:              auditRecorder,
-		AvatarValidator:    avatars,
+		MailLog:         mailLog,
+		PublicBaseURL:   cfg.PublicBaseURL,
+		Audit:           auditRecorder,
+		AvatarValidator: avatars,
 		// High threat operations re-prove a password; the minted grant is verified
 		// by the step-up guard from the same signer instance.
 		StepUpSigner: stepUpSigner,
@@ -1069,7 +1079,9 @@ func buildAuth(cfg config.Config, logger *slog.Logger, handle *db.DB, security s
 		// The desktop bootstrap lets the first account become platform administrator.
 		// Only a loopback caller may claim that seat, so a not yet installed instance
 		// exposed over the network cannot be taken over before the operator arrives.
-		FirstAdminAllowed: auth.AllowFirstAdminFromLoopback,
+		// The Docker single-host profile opts into the local-proxy variant because
+		// port publishing hides the client address; see the flag's config comment.
+		FirstAdminAllowed: chooseFirstAdminRule(cfg, logger),
 		// Registration, password login and password reset are the credential entry
 		// points; each runs the site's human verification policy before hashing.
 		Captcha:   captchaGuard,
@@ -1102,6 +1114,21 @@ func buildCredentialLimiter(cfg config.Config) gin.HandlerFunc {
 		middleware.NewMemoryRateLimitStore(nil),
 		middleware.Policy{Limit: cfg.CredentialRateLimitPerMinute, Window: time.Minute},
 	)
+}
+
+// chooseFirstAdminRule picks how strictly the install's first administrator may be
+// claimed.
+//
+// The strict rule needs a loopback client address, which a Docker published port
+// hides (the API sees the bridge gateway). The opt-in variant only checks the Host
+// header, so it is limited to the desktop bootstrap and warned about loudly.
+func chooseFirstAdminRule(cfg config.Config, logger *slog.Logger) auth.FirstAdminFunc {
+	if cfg.FirstAdminTrustProxy {
+		logger.Warn("first administrator may be claimed through the local reverse proxy: " +
+			"keep the published port bound to 127.0.0.1 until the install is complete")
+		return auth.AllowFirstAdminFromLocalProxy
+	}
+	return auth.AllowFirstAdminFromLoopback
 }
 
 // buildMailer returns the SMTP sender, or nil when no relay is configured.
@@ -1713,13 +1740,15 @@ func runOutbox(ctx context.Context, logger *slog.Logger, worker *outbox.Worker) 
 func backupMediaRoots(cfg config.Config) []backup.MediaRoot {
 	roots := make([]backup.MediaRoot, 0, 1+len(cfg.StorageScopes))
 	seen := make(map[string]struct{}, 1+len(cfg.StorageScopes))
-	add := func(alias, driver, dir string) {
-		key := driver + "\x00" + filepath.Clean(dir)
+	record := func(alias, driver, dir, key string) {
 		if _, exists := seen[key]; exists {
 			return
 		}
 		seen[key] = struct{}{}
 		roots = append(roots, backup.MediaRoot{Alias: alias, Driver: driver, Dir: dir})
+	}
+	add := func(alias, driver, dir string) {
+		record(alias, driver, dir, driver+"\x00"+filepath.Clean(dir))
 	}
 	add("global", cfg.StorageDriver, cfg.StorageDir)
 	for _, scope := range config.StorageScopeNames() {
@@ -1728,7 +1757,10 @@ func backupMediaRoots(cfg config.Config) []backup.MediaRoot {
 		case config.StorageDriverLocal:
 			add(scope, "local", scopeCfg.LocalDir)
 		case config.StorageDriverS3:
-			add(scope, "s3", "")
+			// S3 roots have no local directory: dedupe them by bucket and prefix.
+			// Keying them on driver+dir alone collapses every S3 scope into the first
+			// one, which hides the rest from the backup report.
+			record(scope, "s3", "", "s3\x00"+scopeCfg.S3Bucket+"\x00"+scopeCfg.S3Prefix)
 		}
 	}
 	return roots

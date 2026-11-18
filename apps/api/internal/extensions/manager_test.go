@@ -320,6 +320,30 @@ func TestImportAcceptsWindowsZipSeparators(t *testing.T) {
 	require.FileExists(t, filepath.Join(dataDir, "extensions", "com.example.windows", "frontend", "client.css"))
 }
 
+// TestRemoveUsesTheAdoptedDirectory is the regression test for a package whose
+// directory name differs from its manifest id: removal must delete the directory
+// that was actually loaded, otherwise the next boot re-adopts it.
+func TestRemoveUsesTheAdoptedDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	packageDir := filepath.Join(dataDir, "extensions", "acme-press")
+	writeFrontendPackage(t, packageDir, "com.example.acme", "1.0.0")
+
+	manager := newTestManager(t, dataDir, nil)
+	items, err := manager.List()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "com.example.acme", items[0].ID)
+
+	require.NoError(t, manager.Remove("com.example.acme"))
+	require.NoDirExists(t, packageDir)
+
+	// A restart must not find the package again.
+	restarted := newTestManager(t, dataDir, nil)
+	items, err = restarted.List()
+	require.NoError(t, err)
+	require.Empty(t, items)
+}
+
 // TestRemoveExtension deletes the package and its state entry.
 func TestRemoveExtension(t *testing.T) {
 	dataDir := t.TempDir()

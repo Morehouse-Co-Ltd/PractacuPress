@@ -88,6 +88,10 @@ type Plugin struct {
 	compiled wazero.CompiledModule
 	wasm     []byte
 	memoryMB int
+	// runMu serialises invocations of this plugin. A timeout closes the shared
+	// runtime, so it must not run while another call is inside it; the same lock
+	// guards the lazy rebuild after such a close.
+	runMu sync.Mutex
 }
 
 // PublicPlugin is the browser boot record of an enabled plugin. It contains no
@@ -536,9 +540,6 @@ func (h *Host) TransformHTML(ctx context.Context, payload HookPayload) (string, 
 // invokeHook wraps one hook invocation in the ABI request and decodes the
 // plugin's result envelope.
 func (h *Host) invokeHook(ctx context.Context, plugin *Plugin, hook string, payload any) (json.RawMessage, error) {
-	if plugin.compiled == nil {
-		return nil, errors.New("plugin has no compiled backend")
-	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("encode hook payload: %w", err)
@@ -552,6 +553,30 @@ func (h *Host) invokeHook(ctx context.Context, plugin *Plugin, hook string, payl
 		Capabilities: SortedPermissionList(plugin.Manifest.Permissions),
 	}
 	return h.invoke(ctx, plugin, request)
+}
+
+// rebuildPluginLocked recreates the runtime of a plugin whose runtime was closed
+// after a timeout or a cancelled request. The wasm bytes are retained at install
+// time, so recovery does not require the operator to reinstall the package.
+func (h *Host) rebuildPluginLocked(plugin *Plugin) error {
+	if plugin.Manifest.Backend == nil {
+		return errors.New("plugin has no compiled backend")
+	}
+	if len(plugin.wasm) == 0 {
+		return fmt.Errorf("plugin %s has no backend bytes to rebuild", plugin.Manifest.ID)
+	}
+	runtime, err := newPluginRuntime(plugin.memoryMB)
+	if err != nil {
+		return fmt.Errorf("plugin %s rebuild runtime: %w", plugin.Manifest.ID, err)
+	}
+	compiled, err := runtime.CompileModule(context.Background(), plugin.wasm)
+	if err != nil {
+		_ = runtime.Close(context.Background())
+		return fmt.Errorf("plugin %s rebuild module: %w", plugin.Manifest.ID, err)
+	}
+	plugin.runtime = runtime
+	plugin.compiled = compiled
+	return nil
 }
 
 type wasmRequest struct {
@@ -575,9 +600,17 @@ type wasmResponse struct {
 }
 
 func (h *Host) invoke(ctx context.Context, plugin *Plugin, request wasmRequest) (json.RawMessage, error) {
-	if plugin.runtime == nil || plugin.compiled == nil {
-		return nil, fmt.Errorf("plugin %s is not runnable", plugin.Manifest.ID)
+	// The lock serialises this plugin's calls: a timeout closes its only runtime, and
+	// the next call may have to rebuild it from the bytes kept at install time.
+	plugin.runMu.Lock()
+	defer plugin.runMu.Unlock()
+
+	if plugin.compiled == nil {
+		if err := h.rebuildPluginLocked(plugin); err != nil {
+			return nil, err
+		}
 	}
+	runtime, compiled := plugin.runtime, plugin.compiled
 	timeout := h.options.DefaultTimeout
 	if plugin.Manifest.Backend != nil && plugin.Manifest.Backend.TimeoutMS > 0 {
 		timeout = time.Duration(plugin.Manifest.Backend.TimeoutMS) * time.Millisecond
@@ -612,7 +645,7 @@ func (h *Host) invoke(ctx context.Context, plugin *Plugin, request wasmRequest) 
 	// touching another plugin.
 	done := make(chan outcome, 1)
 	go func() {
-		instance, instantiateErr := plugin.runtime.InstantiateModule(requestCtx, plugin.compiled, config)
+		instance, instantiateErr := runtime.InstantiateModule(requestCtx, compiled, config)
 		if instance != nil {
 			_ = instance.Close(context.Background())
 		}
@@ -628,11 +661,21 @@ func (h *Host) invoke(ctx context.Context, plugin *Plugin, request wasmRequest) 
 			return nil, fmt.Errorf("plugin %s failed: %w", plugin.Manifest.ID, result.err)
 		}
 	case <-requestCtx.Done():
+		// The runtime cannot be used again, but it must not be Close()d while the
+		// InstantiateModule goroutine may still be inside it: wazero is not safe
+		// against a concurrent Close (the race detector catches it), and a hard
+		// close is exactly what the context-done watchdog is already doing
+		// internally. Clear the fields so the next call builds a fresh runtime, and
+		// close the abandoned one only after its call has returned.
+		plugin.runtime = nil
+		plugin.compiled = nil
+		go func() {
+			<-done
+			_ = runtime.Close(context.Background())
+		}()
 		if errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
-			_ = plugin.runtime.Close(context.Background())
 			return nil, fmt.Errorf("plugin %s timed out after %s", plugin.Manifest.ID, timeout)
 		}
-		_ = plugin.runtime.Close(context.Background())
 		return nil, fmt.Errorf("plugin %s was cancelled: %w", plugin.Manifest.ID, requestCtx.Err())
 	}
 

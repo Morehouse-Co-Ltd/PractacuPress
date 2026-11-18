@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -129,19 +130,33 @@ func TestRequestTimeoutExemptsLongLivedRequests(t *testing.T) {
 		serve(r, httptest.NewRequest(http.MethodGet, "/api/v1/media/a1", nil)).Code)
 }
 
-// TestLongLivedRequestsMatchesUpgrades covers the other exemption shape: a request that
-// carries an Upgrade header is a protocol switch, whatever its path.
-func TestLongLivedRequestsMatchesUpgrades(t *testing.T) {
+// TestLongLivedRequestsRequiresTheSocketPath covers the header exemption: an
+// Upgrade header alone is client controlled and must not disable the deadline for
+// an arbitrary route, while the real socket path stays exempt.
+func TestLongLivedRequestsRequiresTheSocketPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := newEngine(RequestTimeout(10*time.Millisecond, LongLivedRequests))
+	var plainErr, socketErr error
 	r.GET("/anything", func(c *gin.Context) {
 		time.Sleep(50 * time.Millisecond)
-		require.NoError(t, c.Request.Context().Err())
+		plainErr = c.Request.Context().Err()
+		c.Status(http.StatusOK)
+	})
+	r.GET("/api/v1/ws", func(c *gin.Context) {
+		time.Sleep(50 * time.Millisecond)
+		socketErr = c.Request.Context().Err()
 		c.Status(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
-	req.Header.Set("Upgrade", "websocket")
-	require.Equal(t, http.StatusOK, serve(r, req).Code)
+	plain := httptest.NewRequest(http.MethodGet, "/anything", nil)
+	plain.Header.Set("Upgrade", "websocket")
+	require.Equal(t, http.StatusOK, serve(r, plain).Code)
+	require.ErrorIs(t, plainErr, context.DeadlineExceeded,
+		"a non-socket route must keep its deadline even with an Upgrade header")
+
+	socket := httptest.NewRequest(http.MethodGet, "/api/v1/ws", nil)
+	socket.Header.Set("Upgrade", "websocket")
+	require.Equal(t, http.StatusOK, serve(r, socket).Code)
+	require.NoError(t, socketErr, "the socket path must stay exempt")
 }

@@ -461,7 +461,11 @@ export default function App() {
     });
     return () => {
       alive = false;
-      // 换站点 / 卸载时必须摘掉写回句柄，否则旧安装的编辑会写到新站点上。
+      // 换站点 / 卸载时必须摘掉写回句柄，否则旧安装的编辑会写到新站点上。主题与
+      // 站点配置各自持有一个防抖句柄；只清理其中一个，另一个仍会在 pagehide 或
+      // 防抖到期时把新站点的内容写进旧站点。
+      saveRef.current?.handle.dispose();
+      saveRef.current = null;
       siteConfigSaveRef.current?.handle.dispose();
       siteConfigSaveRef.current = null;
       setActiveSiteConfigSaver(null);

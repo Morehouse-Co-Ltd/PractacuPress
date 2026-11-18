@@ -2,15 +2,20 @@ package middleware
 
 import "github.com/gin-gonic/gin"
 
-// ContentSecurityPolicy is the conservative default policy for API responses.
+// ContentSecurityPolicy is the browser policy for the embedded frontend.
 //
-// The API itself only writes JSON, so a strict policy costs nothing; it becomes the
-// second line of defence when a deployment serves user HTML through the same origin
-// (a misconfigured reverse proxy, an error page, a future server-rendered route).
-// `style-src 'unsafe-inline'` is required for the SPA's inline theme variables and
-// sandboxed extension frames; script stays same-origin only.
+// The API itself only writes JSON, but the same process serves the SPA when the
+// frontend is embedded. The captcha and page-builder preview capabilities need
+// the slightly wider script/frame sources; every other directive stays
+// same-origin. Keep this string byte-identical to deploy/docker/nginx.conf and
+// deploy/production/nginx.conf; the deployment header test compares the copies.
 const ContentSecurityPolicy = "default-src 'self'; img-src 'self' data: https:; " +
-	"style-src 'self' 'unsafe-inline'; script-src 'self'; " +
+	"font-src 'self' data:; style-src 'self' 'unsafe-inline' " +
+	"https://challenges.cloudflare.com https://*.hcaptcha.com https://www.gstatic.com; " +
+	"script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com " +
+	"https://www.google.com https://www.gstatic.com; " +
+	"frame-src 'self' https: http:; " +
+	"connect-src 'self' https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com; " +
 	"frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
 
 // PermissionsPolicy minimally disables powerful browser features nobody on the site

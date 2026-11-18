@@ -29,7 +29,7 @@ jobs:
   go:
     name: Go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -49,7 +49,12 @@ jobs:
       - name: Verify Go (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        timeout-minutes: 25
+        timeout-minutes: 40
+        env:
+          # The race detector is part of the gate: `go test ./...` alone cannot
+          # catch the shared-state bugs the concurrency-sensitive modules are
+          # most likely to grow.
+          PP_TEST_RACE: "1"
         run: |
           set -o pipefail
           mkdir -p .ci-logs
@@ -62,6 +67,21 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force .ci-logs | Out-Null
           powershell -ExecutionPolicy Bypass -File scripts/verify.ps1 -Task go 2>&1 | Tee-Object -FilePath .ci-logs/go-windows.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # apps/launcher has its own go.mod, so the root `./...` above never builds
+      # or tests it. Run its gate where it can actually compile (Windows).
+      - name: Verify launcher module (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: apps/launcher
+        timeout-minutes: 10
+        run: |
+          go build ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=1 ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload failure logs
@@ -102,6 +122,33 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: web-logs
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  rust:
+    name: Security service (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      # The Rust crate is what the Docker and Linux packages ship, but nothing in
+      # the Go/web gates compiles it. GitHub-hosted Ubuntu images provide cargo;
+      # the vendored protoc in build.rs means no system package is needed.
+      - name: Test security service
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          mkdir -p .ci-logs
+          cargo test --locked --manifest-path services/security/Cargo.toml 2>&1 | tee .ci-logs/rust.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: rust-logs
           path: .ci-logs/
           if-no-files-found: ignore
           retention-days: 14

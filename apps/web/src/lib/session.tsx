@@ -138,7 +138,7 @@ function stripSwitchParam(): void {
  * 浏览器和代理会把它们规范化成 `/`，`/\evil.com` 这类输入就能绕过前缀检查。不合法的
  * 输入返回空串，调用方直接把 `redirect` 参数省掉，而不是拒绝整次登录。
  */
-function inSitePath(raw: string | undefined): string {
+export function inSitePath(raw: string | undefined): string {
   const value = (raw ?? '').trim();
   if (!value.startsWith('/') || value.startsWith('//')) return '';
   if (/[\\\t\r\n]/.test(value)) return '';

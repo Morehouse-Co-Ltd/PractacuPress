@@ -1,15 +1,23 @@
 # Practacu Press —— Docker 自托管部署（单站点）
 #
-#   docker compose up -d --build      构建并启动
-#   docker compose exec api migrate   仅建表（可选，默认启动时会自动建表）
+#   docker compose up -d --build      构建并启动（security + api，前端已内嵌）
+#   docker compose exec api migrate   仅建表（可选，默认启动时自动建表）
 #   docker compose logs -f            看日志
 #   docker compose down               停止
 #
-# 启动后打开 http://localhost:8080 完成八步安装引导：
+# 启动后打开 http://localhost:8080 完成安装引导：
 # 引导里创建的第一个账户就是平台管理员。
 #
-# 默认只绑定回环地址（127.0.0.1），装完之后再把 「127.0.0.1:」前缀去掉
-# 或换成 "8080:80" 并加一层 TLS 反代，不要把未完成安装的实例暴露到公网。
+# 默认只绑定回环地址（127.0.0.1）。装完之后若要对外开放，请用生产叠加文件
+# 并在前面加 TLS 反代，不要把未完成安装的实例暴露到公网：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# 前端已通过 go:embed 编进 API 镜像，默认不需要 web 容器；需要独立 Nginx
+# 静态站时用 `docker compose --profile static up -d`。
+#
+# 可选配置写进仓库根目录的 .env（不存在也没关系）：SMTP_*、CAPTCHA_*、AUTH_*、
+# SMS_*、STORAGE_S3_*、PUBLIC_BASE_URL 等都会传给 API 容器；下面的 environment
+# 显式列出的值优先级更高，不会被 .env 改写。
 
 name: practacu-press
 
@@ -21,23 +29,45 @@ services:
       context: .
       dockerfile: deploy/docker/security.Dockerfile
     restart: unless-stopped
+    # 停止时先让 gRPC 排空在途请求；镜像内已处理 SIGTERM。
+    stop_grace_period: 20s
     networks: [internal]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
-  # Go API：容器内监听 0.0.0.0:8080，对外只经由 web 反代。
+  # Go API + 内嵌前端：容器内监听 0.0.0.0:8080，本身同时提供 SPA 与 /api。
+  # 默认栈不再需要独立的 web/Nginx 容器；需要静态 Nginx/CDN 时可显式启用
+  # 下面的 static profile。
   api:
     build:
       context: .
       dockerfile: deploy/docker/api.Dockerfile
+      args:
+        VERSION: ${PP_VERSION:-development}
     restart: unless-stopped
     depends_on:
       security:
         condition: service_healthy
     networks: [internal]
+    ports:
+      - "127.0.0.1:${PP_HTTP_PORT:-8080}:8080"
+    env_file:
+      # 不存在时跳过，首次克隆无需先建文件。显式 environment 覆盖同名值。
+      - path: .env
+        required: false
     environment:
-      # 单站点自托管：与 Windows 启动器相同的零配置引导——
-      # 自动建表、创建默认站点，并把第一个注册账户提升为平台管理员。
-      # 多站点 / SaaS 部署请改成 false，并自行准备数据库与管理员账户。
+      # 单站点自托管：与 Windows 启动器相同的零配置引导——自动建表、创建默认
+      # 站点，并把第一个注册账户提升为平台管理员。多站点 / SaaS 部署请改用
+      # docker-compose.prod.yml（PP_DESKTOP=false）。
       PP_DESKTOP: "true"
+      # Docker 的端口映射会隐藏真实客户端地址，API 看到的是网桥网关，严格的
+      # 回环校验会让安装向导永远拿不到第一个管理员。此开关只放宽「首个管理员」
+      # 判定，并且只在上面 API 端口绑定 127.0.0.1 时安全；完成安装后可删掉。
+      # 不要把未完成安装的实例暴露到公网。
+      PP_FIRST_ADMIN_TRUST_PROXY: ${PP_FIRST_ADMIN_TRUST_PROXY:-1}
       APP_ENV: development
       HTTP_ADDR: 0.0.0.0:8080
       PP_ALLOW_REMOTE_API: "1"
@@ -45,29 +75,42 @@ services:
       DATABASE_DSN: file:/data/practacu.db
       STORAGE_DRIVER: local
       STORAGE_DIR: /data/media
-      # Instance backups live on the same persistent volume, so a container
-      # rebuild does not take the downloadable packages with it.
+      # 实例备份与下载包使用同一持久卷，重建容器不会丢。
       BACKUP_DIR: /data/backups
       MEDIA_DEFAULT_USER_QUOTA_BYTES: ${MEDIA_DEFAULT_USER_QUOTA_BYTES:-536870912}
       MEDIA_DEFAULT_SITE_QUOTA_BYTES: ${MEDIA_DEFAULT_SITE_QUOTA_BYTES:-10737418240}
       SECURITY_GRPC_ADDR: security:9001
       # 让 API 信任 Nginx 传来的 X-Forwarded-*，限流与日志才能拿到真实客户端 IP。
-      TRUSTED_PROXIES: 172.28.0.0/16
-      RATE_LIMIT_PER_MINUTE: "240"
+      TRUSTED_PROXIES: ${PP_DOCKER_SUBNET:-172.28.0.0/16}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-240}
+      AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE: ${AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE:-10}
+      # 自托管上传经常比 30 秒慢（10 MiB 图片在 1 Mbps 链路上就要 80 秒）；请求
+      # 级超时仍由 HTTP_REQUEST_TIMEOUT_SECONDS 控制，上传与下载路由已豁免。
+      HTTP_READ_TIMEOUT_SECONDS: ${HTTP_READ_TIMEOUT_SECONDS:-300}
       # 生产环境（APP_ENV=production）必须提供 Ed25519 私钥（base64 PKCS#8）：
       # AUTH_JWT_ED25519_PRIVATE_KEY: "…"
       # 未设置时开发环境会生成临时密钥并告警，重启后会话失效。
     volumes:
       - practacu-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 15s
       timeout: 3s
       retries: 5
       start_period: 25s
+    # Go 进程的优雅关闭上限是 10 秒；留出余量让正在写的请求结束。
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
-  # 前端静态站 + 同源反向代理。
+  # 可选：独立 Nginx 静态站。默认不启动（profile），因为 API 镜像已经内嵌前端。
+  # 只有需要 CDN、独立缓存或兼容旧三容器部署时才启用：
+  #   docker compose --profile static up -d
   web:
+    profiles: ["static"]
     build:
       context: .
       dockerfile: deploy/docker/web.Dockerfile
@@ -77,19 +120,26 @@ services:
         condition: service_healthy
     networks: [internal]
     ports:
-      # 完成安装后想对外开放，把这一行换成 "8080:80"，并在前面加 TLS 反代。
-      - "127.0.0.1:8080:80"
+      # 与 API 的 8080 分开，避免 profile 启用时端口冲突。
+      - "127.0.0.1:${PP_STATIC_PORT:-8081}:80"
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 networks:
   internal:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.0.0/16
+        # 与 TRUSTED_PROXIES 共用同一个变量：改网段时只改一处。
+        - subnet: ${PP_DOCKER_SUBNET:-172.28.0.0/16}
 
 volumes:
-  # 命名卷由容器自己初始化属主，避免 bind mount 的 root 属主导致 SQLite 写不进去。
-  # 想直接备份或用宿主机目录，就把下面的卷换成：
+  # 命名卷由容器初始化属主，避免 bind mount 的 root 属主导致 SQLite 写不进去。
+  # 想直接用宿主机目录，就把下面的卷换成：
   #   - ./data:/data
   # 并先执行 mkdir -p data && sudo chown 10001:10001 data
   practacu-data:

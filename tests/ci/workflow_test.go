@@ -360,6 +360,12 @@ func TestComposeConfiguration(t *testing.T) {
 	if lookup(lookup(services, "web"), "depends_on") == nil {
 		t.Error("web service does not depend on api")
 	}
+	if profiles := lookup(lookup(services, "web"), "profiles"); !scalarsContain(profiles, "static") {
+		t.Error("web service must be opt-in via the static profile (API serves the embedded SPA by default)")
+	}
+	if ports := lookup(lookup(services, "api"), "ports"); ports == nil || !scalarsContain(ports, "8080") {
+		t.Error("api service must publish the embedded frontend/API on 8080")
+	}
 	if lookup(lookup(services, "api"), "depends_on") == nil {
 		t.Error("api service does not depend on security")
 	}

@@ -8,19 +8,9 @@
     <!--
       明暗偏好在 React 启动前就要落到 <html>：否则深色读者每次刷新都会先看到
       一帧白底，再被主题层改成深色。Cookie 是同步可读的，所以放在这里。
+      脚本必须是同源外部文件：CSP 的 script-src 'self' 会拒绝内联脚本。
     -->
-    <script>
-      (function () {
-        try {
-          var match = document.cookie.match(/(?:^|;\s*)pp_theme=(dark|light)(?:;|$)/);
-          if (!match) return;
-          document.documentElement.dataset.mode = match[1];
-          document.documentElement.style.colorScheme = match[1];
-        } catch (error) {
-          /* Cookie 不可用时交给 React 主题层 */
-        }
-      })();
-    </script>
+    <script src="/theme-boot.js"></script>
     <style>
       html[data-mode='dark'],
       html[data-mode='dark'] body {

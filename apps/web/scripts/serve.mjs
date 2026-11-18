@@ -110,6 +110,20 @@ function isLoopback(address) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
+/**
+ * 控制面只接受本机地址栏的 Host。
+ *
+ * 只检查来源地址不够：DNS rebinding 会让浏览器把恶意域名解析到 127.0.0.1，
+ * 此时 remoteAddress 是回环地址，但 Host/Origin 都是攻击者的域名（两者相等，
+ * 同源检查也通过）。控制面接口（端口修改、状态导出、更新检查、运行时信息）
+ * 因此还必须确认 Host 本身就是 localhost / 127.0.0.1 / [::1]。
+ */
+function isLocalHostHeader(hostHeader) {
+  if (!hostHeader) return false;
+  const host = hostnameOf(hostHeader).toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 function readBody(req, limit = 2048) {
   return new Promise((resolveBody, rejectBody) => {
     let size = 0;
@@ -720,6 +734,19 @@ async function handle(req, res) {
   } catch {
     sendJson(res, 400, { code: 'bad_request', message: '路径无法解码。' });
     return;
+  }
+
+  if (pathname.startsWith('/__pp/')) {
+    // The whole __pp control plane is local-only, not just the port change: the
+    // runtime endpoint exposes the pid and listener, and the update endpoint reads
+    // server-side state. Host validation closes the DNS rebinding path.
+    if (!isLoopback(req.socket.remoteAddress) || !isLocalHostHeader(req.headers.host)) {
+      sendJson(res, 403, {
+        code: 'permission_denied',
+        message: '控制接口只允许在本机通过 localhost 访问。',
+      });
+      return;
+    }
   }
 
   if (pathname === '/__pp/runtime') {

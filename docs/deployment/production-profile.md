@@ -8,13 +8,14 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 | 编号 | 问题 | 本仓库的处置 |
 | --- | --- | --- |
 | V-17 | `docker-compose.yml` 默认是开发形态 | 新增 `docker-compose.prod.yml`（production 语义 + 持久私钥 + Secure Cookie）、宿主机 TLS 反代模板 `deploy/production/nginx.conf` |
-| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | 启动器 `apps/launcher/main.go` 对每个响应加安全头；`deploy/docker/nginx.conf` 与 `deploy/production/nginx.conf` 各加一份（TLS 层补 HSTS） |
+| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头，启动器 `apps/launcher/main.go` 与宿主机 TLS 模板各一份（TLS 层补 HSTS）；可选静态站镜像沿用 `deploy/docker/nginx.conf` |
 | V-04 | 同机反代可绕过启动器回环校验改端口/读信息 | `/__pp/*` 现在要求「TCP 对端回环 **且** Host 回环」；反代模板显式 `location /__pp/ { return 404; }`；`/__pp/runtime` 只返回页面必需字段 |
 | V-18 | 启动器明文保存 JWT 私钥 | Windows 上用 DPAPI `CryptProtectData` 加密后写 `practacu-web.json`（`dpapi:` 前缀），旧明文文件读取时兼容并在下次写盘迁移 |
 
-> **未实跑声明**：本机没有 Docker 环境，`docker-compose.prod.yml`、镜像与两份 Nginx
-> 配置**没有真实运行验证**，只做了 YAML/语法静态检查与逐行核对。首次上线请按 §7
-> 的检查清单在预发环境走一遍。
+> **验证状态**：默认 API（内嵌前端）与 security 镜像已在本机 Docker 中实际构建并起栈验证
+> （两个服务 healthy，`/healthz`、`/readyz`、`/api/v1/setup/status`、RSS/Atom/sitemap/robots、
+> 首个管理员注册、登录、媒体上传与整库备份均跑通），`docker compose config` 通过。
+> 宿主机 TLS 反代模板仍建议按 §7 在预发环境走一遍证书与 HSTS 检查。
 
 ---
 
@@ -24,17 +25,16 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 浏览器 ──443/TLS──▶ 宿主机 Nginx（deploy/production/nginx.conf）
                           │  proxy_pass http://127.0.0.1:8080
                           ▼
-                 compose web 容器（Nginx：静态站 + /api 同源反代）
+                 compose api 容器（Go API + go:embed 内嵌前端，SQLite /data/practacu.db）
                           │  内部网络 172.28.0.0/16
-                          ▼
-                 compose api 容器（Go API，SQLite /data/practacu.db）
-                          │
                           ▼
                  compose security 容器（Rust gRPC：Argon2id / HTML 清洗 / 上传检查）
 ```
 
-- 只有宿主机 Nginx 监听公网 443；compose 的 web 端口保持 `127.0.0.1:8080:80`。
+- 只有宿主机 Nginx 监听公网 443；API 端口保持 `127.0.0.1:8080:8080`。
 - api 与 security 不发布到宿主机，只在 compose 内部网络可达。
+- 前端已编入 API 二进制，默认不再需要 `web` 容器；需要独立静态 Nginx 时才用
+  `docker compose --profile static up -d`（端口 `PP_STATIC_PORT`，默认 8081）。
 - 备份对象是命名卷 `practacu-data`（数据库 + 媒体）与 `.env.prod`（含签名私钥）。
 
 ## 2. 前置条件
@@ -55,7 +55,7 @@ HTTP 入口。此外生产模式下单站点没有域名时只接受公网 IP �
 ### 阶段 A：本机装好管理员与域名
 
 ```bash
-# 1) 默认 compose（development + PP_DESKTOP=true），web 只绑 127.0.0.1:8080
+# 1) 默认 compose（development + PP_DESKTOP=true），API 只绑 127.0.0.1:8080
 docker compose up -d --build
 
 # 2) 在这台服务器上用浏览器打开 http://localhost:8080
@@ -77,7 +77,7 @@ curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/api/v1/setup/status
 ```
 
 > ⚠️ 这一阶段**不要**把 8080 暴露到公网：未安装完的实例谁先注册谁是管理员（V-16）。
-> 默认端口映射 `127.0.0.1:8080:80` 就是为此而设，安装完成前请保持原样。
+> 默认端口映射 `127.0.0.1:8080:8080` 就是为此而设，安装完成前请保持原样。
 >
 > 阶段 A 是 **http** 访问：未设置 `PUBLIC_BASE_URL` 时，服务端在没有请求上下文的地方
 > 按 https 推导绝对链接。要在这个阶段测试通知邮件或第三方登录，请先在 API 环境里
@@ -203,11 +203,11 @@ openssl rand -base64 32   # BACKUP_ENCRYPTION_KEY
 
 | 文件 | 作用 |
 | --- | --- |
-| `docker-compose.yml` | 基础栈：security / api / web、内部网络、命名卷、健康检查（开发引导形态） |
+| `docker-compose.yml` | 基础栈：security / api（内嵌前端）、内部网络、命名卷、健康检查（开发引导形态）；web 为可选 static profile |
 | `docker-compose.prod.yml` | 叠加文件：`APP_ENV=production`、`PP_DESKTOP=false`、持久 JWT 私钥必填、`COOKIE_SECURE=true`、`TRUSTED_PROXIES=172.28.0.0/16`、限流、日志轮转 |
 | `deploy/production/env.prod.example` | `.env.prod` 模板（私钥、PUBLIC_BASE_URL、限流、可选 SMTP） |
 | `deploy/production/nginx.conf` | 宿主机 TLS 终止模板：HSTS、CSP/XFO/Referrer/Permissions/nosniff、`/__pp/` 404、`server_tokens off`、真实 IP 覆盖 |
-| `deploy/docker/nginx.conf` | 容器内 Nginx：静态站 + `/api` 反代，同样带安全头并拒绝 `/__pp/` |
+| `deploy/docker/nginx.conf` | 可选 `web` profile 的容器内 Nginx：静态站 + `/api` 反代，同样带安全头并拒绝 `/__pp/` |
 
 `docker-compose.prod.yml` 是**叠加文件**，不要单独用 `docker compose -f
 docker-compose.prod.yml up`（那样缺服务定义）。可以把它写进 shell 环境省掉重复参数：
@@ -228,7 +228,7 @@ export COMPOSE_ENV_FILES=.env.prod   # Compose v2.24+；或继续显式 --env-fi
 > 把加密包和 `BACKUP_ENCRYPTION_KEY` 分开保管。
 
 ```bash
-# 备份（先停 api 写入，SQLite 更干净；web 可继续提供只读页）
+# 备份（先停 api 写入，SQLite 更干净；停写期间站点不可用）
 docker compose -f docker-compose.yml -f docker-compose.prod.yml stop api
 docker run --rm \
   -v practacu-press_practacu-data:/data:ro \
@@ -277,7 +277,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://press.example.com/__pp/state/x
 curl -fsS -H 'Host: press.example.com' https://press.example.com/api/v1/setup/status
 ```
 
-- 确认 `docker compose ... ps` 里 api / web / security 都是 `healthy`。
+- 确认 `docker compose ... ps` 里 api / security 都是 `healthy`（启用 static profile 时 web 也应为 healthy）。
 - 用浏览器登录后台，确认 Cookie 带 `Secure`（开发者工具 → Application → Cookies）。
 - 确认站点设置里域名与 `PUBLIC_BASE_URL` 一致；`PUBLIC_BASE_URL` 必须是浏览器实际
   访问的地址（生产是 `https://` 域名，桌面 / localhost 是 `http://127.0.0.1:<端口>`）。
@@ -341,10 +341,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api
 
 ## 11. 未验证项与已知限制
 
-- **Docker/镜像未实跑**：开发机无 Docker；`docker-compose.prod.yml` 只做过 YAML
-  解析与逐行核对，`deploy/production/nginx.conf` 未用真实 `nginx -t` 验证。
-- **Nginx 版本**：模板使用 `http2 on;`（nginx ≥ 1.25.1）；老版本请改成
-  `listen 443 ssl http2;`。
+- **宿主机 TLS 反代未实跑**：容器栈与 `deploy/docker/nginx.conf` 已实际构建、启动并
+  用 `nginx -t` 验证；`deploy/production/nginx.conf` 仍只做了语法与逐行核对，证书
+  路径、HSTS 与真实客户端 IP 请在预发环境验证。
+- **Docker 单主机首管理员**：端口映射会隐藏客户端地址，默认 compose 用
+  `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定（只检查 Host 回环）。这个开关
+  只在 `api` 端口绑定 `127.0.0.1` 时安全；完成安装后可设为 `0`，生产 overlay 已显式
+  关闭。不要把未完成安装的实例暴露到公网。
+- **Nginx 版本**：模板使用 `http2 on;`（nginx ≥ 1.25.1）；容器镜像固定
+  `nginx:1.29.8-alpine`。升级镜像时保留 ≥ 1.27.3，`proxy_pass` 的动态上游解析
+  （`server api:8080 resolve`）依赖该版本。
 - **HSTS 不可逆**：确认全站 HTTPS 长期可用后再考虑 `preload`；模板只给一年、
   不含 `preload`。
 - **限流**：应用内是进程内固定窗口，多副本各自计数；公网部署建议在宿主机 Nginx

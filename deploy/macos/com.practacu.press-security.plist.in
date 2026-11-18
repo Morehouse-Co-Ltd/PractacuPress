@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.practacu.press-security</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>set -a; . "@@ENV_FILE@@"; set +a; exec "@@INSTALL_DIR@@/bin/practacu-security"</string>
+    </array>
+    <key>UserName</key>
+    <string>@@RUN_USER@@</string>
+    <key>WorkingDirectory</key>
+    <string>@@DATA_DIR@@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>@@DATA_DIR@@/security.log</string>
+    <key>StandardErrorPath</key>
+    <string>@@DATA_DIR@@/security.err.log</string>
+</dict>
+</plist>

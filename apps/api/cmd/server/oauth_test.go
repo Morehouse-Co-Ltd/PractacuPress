@@ -23,7 +23,7 @@ func noOAuthConfig() config.Config {
 func TestBuildOAuthDisabledWithoutProviders(t *testing.T) {
 	// A nil database handle is safe here on purpose: the function must answer before
 	// it touches anything, which is what keeps an unconfigured install unchanged.
-	require.Nil(t, buildOAuth(noOAuthConfig(), silentLogger(), nil, nil, nil))
+	require.Nil(t, buildOAuth(noOAuthConfig(), silentLogger(), nil, nil, nil, nil))
 }
 
 func TestOAuthRedirectURICarriesSiteAndProvider(t *testing.T) {

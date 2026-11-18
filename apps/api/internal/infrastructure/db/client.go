@@ -25,7 +25,7 @@ import (
 // It mirrors the newest file in migrations/<dialect>/; the backup manifest stores
 // it so a restore can refuse a package produced by a newer schema and report when
 // an older one needed the additive migration pass.
-const SchemaVersion = "20261117000000"
+const SchemaVersion = "20261121000000"
 
 // ErrSnapshotUnsupported means the active driver cannot be snapshotted by this
 // process. SQLite has a consistent, online snapshot command; MySQL and PostgreSQL

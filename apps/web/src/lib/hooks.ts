@@ -384,7 +384,13 @@ export function useEditorAutosave({
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled || !serialized || serialized === lastWrittenRef.current) return;
+    if (!enabled || !serialized) return;
+    if (serialized === lastWrittenRef.current) {
+      // 改回与服务端一致（撤销 / 手动改回原文）时不会再触发 flush，这里要把上一笔
+      // 编辑留下的「正在保存」收掉，否则状态栏会永远停在保存中。
+      setState((prev) => (prev === 'saving' ? 'saved' : prev));
+      return;
+    }
     if (!dirtySinceRef.current) dirtySinceRef.current = Date.now();
     const elapsed = Date.now() - dirtySinceRef.current;
     setState((prev) => (prev === 'saving' ? prev : 'saving'));

@@ -18,6 +18,15 @@ import (
 	"time"
 )
 
+// Backup origins. The scheduler prunes only the packages it created itself, so a
+// manual pre-upgrade backup is never deleted by retention.
+const (
+	// OriginManual is a package created from the admin console or CLI.
+	OriginManual = "manual"
+	// OriginAuto is a package created by the scheduled backup loop.
+	OriginAuto = "auto"
+)
+
 // Artifact is one stored backup package.
 type Artifact struct {
 	ID       string `json:"id"`
@@ -30,6 +39,10 @@ type Artifact struct {
 	Driver        string    `json:"driver"`
 	Dialect       string    `json:"dialect"`
 	IncludesMedia bool      `json:"includes_media"`
+	// Origin records who created the package: manual or auto. A sidecar written
+	// before this field existed decodes as "" and is treated as manual, which keeps
+	// old operator packages safe from automatic pruning.
+	Origin string `json:"origin,omitempty"`
 	// Encrypted says the stored package is a PPBAK1 envelope and FileName ends
 	// in .ppbak. Reading it back requires the deployment's encryption key.
 	Encrypted bool     `json:"encrypted,omitempty"`
@@ -124,13 +137,24 @@ func (b *zipBuilder) addManifest(manifest any) error {
 // close closes the underlying zip writer.
 func (b *zipBuilder) close() error { return b.writer.Close() }
 
-// CreateBackup builds a whole instance backup package and returns its metadata.
+// CreateBackup builds a whole instance backup package on explicit operator request.
+func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
+	return s.createBackup(ctx, OriginManual)
+}
+
+// CreateAutomaticBackup builds a package for the scheduled retention loop. Its
+// origin is what keeps prune from deleting manual packages.
+func (s *Service) CreateAutomaticBackup(ctx context.Context) (Artifact, error) {
+	return s.createBackup(ctx, OriginAuto)
+}
+
+// createBackup builds a whole instance backup package and returns its metadata.
 //
 // The package contains database/practacu.db, design/<site>.json for every site,
 // media/<root>/<key> for every local storage root, and a manifest with per entry
 // checksums. The database is captured with VACUUM INTO, so the file is a
 // consistent copy even while the API is serving writes.
-func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
+func (s *Service) createBackup(ctx context.Context, origin string) (Artifact, error) {
 	if s.snapshotter == nil {
 		return Artifact{}, fmt.Errorf("%w: no database snapshotter configured", ErrUnsupportedDriver)
 	}
@@ -266,6 +290,7 @@ func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
 		Driver:        s.driver,
 		Dialect:       s.driver,
 		IncludesMedia: mediaInfo.Included,
+		Origin:        origin,
 		Encrypted:     encrypted,
 		Warnings:      warnings,
 		Path:          finalPath,

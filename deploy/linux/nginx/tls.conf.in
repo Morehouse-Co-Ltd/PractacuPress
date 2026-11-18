@@ -3,7 +3,7 @@
 
 map $http_upgrade $pp_connection_upgrade {
     default upgrade;
-    ''      close;
+    ''      '';
 }
 
 # 80 端口：只保留 ACME 挑战与跳转，其余一律去 HTTPS。

@@ -15,9 +15,9 @@
 
 | | |
 | --- | --- |
-| **Small footprint** | The Windows launcher is 8.3 MB and **embeds the entire frontend**; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The container deployment is three images: API, security service, static site. |
+| **Small footprint** | The Windows launcher is 8.3 MB and **embeds the entire frontend**; the Rust security service is 3.3 MB; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The default container deployment is two images: API (frontend embedded with `go:embed`) and security service. |
 | **Fast** | Requests pass through exactly one layer (Gin); Ent-generated code talks straight to `database/sql`; the pool and SQLite's WAL / busy_timeout are configured by the server itself. The frontend is a static single-page app with **no Node at runtime** and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets, while first-screen request coalescing and media lazy-loading are configurable in the admin. |
-| **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API + security service + frontend) in one command. Backup means copying the `data/` directory. |
+| **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API with embedded frontend + security service) in one command. Backup means copying the `data/` directory. |
 | **Easy to make your own** | 3 built-in themes + 8 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 124 paths / 148 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
 
 **What it does**
@@ -105,44 +105,53 @@ docker compose version
 
 #### Build and start
 
-The repository ships `docker-compose.yml` and three image definitions (API / security service / static
-site). From the repository root:
+The repository ships `docker-compose.yml`. By default it starts only the API (with the SPA embedded through `go:embed`) and the security service:
 
 ```bash
 docker compose up -d --build
 ```
 
-The first build pulls base images and compiles three images; allow a few minutes on a slow network.
+The first build pulls base images and compiles the API and security-service images (the optional `web` profile adds a third); allow a few minutes on a slow network.
 Then check health:
 
 ```bash
-docker compose ps                      # api / security / web all running; api and security healthy
+docker compose ps                      # api / security running; api and security healthy
 curl -fsS http://127.0.0.1:8080/healthz
 ```
 
 Open **http://localhost:8080** and complete the seven-step wizard; **the first account it creates is the platform administrator**.
 
-- **What runs**: `web` (Nginx static site + same-origin reverse proxy), `api` (Go, a static binary), `security` (Rust gRPC). Only `web` is published to the host.
-- **Loopback by default**: the mapping is `127.0.0.1:8080:80`, so an unfinished install cannot be claimed by the public internet. After setup, change it to `8080:80` and put TLS in front.
+- **What runs**: `api` (one Go binary with the embedded SPA, serving `/api`, static assets and the SPA fallback) and `security` (Rust gRPC). Only `api` is published to the host by default; `web` is an optional static Nginx image started only with `docker compose --profile static up -d`.
+- **Loopback by default**: the mapping is `127.0.0.1:8080:8080`, so an unfinished install cannot be claimed by the public internet. After setup, prefer the production overlay plus a host TLS proxy; do not expose an unfinished instance on `0.0.0.0:8080`.
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
-- **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows launcher (create tables, create the default site, promote the first account). Set it to `false` for multi-site / SaaS and prepare the database and an administrator yourself.
-- **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`.
+- **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows launcher (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
+- **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`; the image also ships `backup`, `media-gc` and `searchindex`.
 - **Production deployment**: `docker-compose.prod.yml` + `deploy/production/nginx.conf` provide production semantics, a persistent JWT signing key, Secure cookies, TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [docs/deployment/production-profile.md](docs/deployment/production-profile.md).
-- **Build one image**: `docker build -f deploy/docker/api.Dockerfile .` (likewise `security.Dockerfile` and `web.Dockerfile`).
+- **Build one image**: `docker build -f deploy/docker/api.Dockerfile .`; use `security.Dockerfile` for the security service and `web.Dockerfile` only for an optional static site.
 
-> There is no Docker on the development machine, so **this compose file and these images have never been run for real** — only the YAML, the file references and the health-check chain were statically validated. Open an issue if your first build fails.
+> The default API (embedded frontend) and security-service images and the compose stack have been built and started for real: both services report healthy, and `/healthz`, `/readyz`, RSS/Atom/sitemap/robots, first-admin registration and login, media upload (including the security-service scan) and a whole-instance backup were exercised. `docker compose config` passes. The host TLS proxy still needs a staging run to validate certificates and HSTS.
 
-### Linux native package (tar.gz)
+### Linux native package (tar.gz / deb / rpm)
 
 If you would rather not use Docker and do not want Go / Node / Rust on the server, use the
-prebuilt native package: Linux x86_64 binaries for the API, seed and migrate commands, the Rust
-security service, the static frontend, and an **interactive install wizard** (`install.sh`).
-The target machine only needs systemd and Nginx; no development toolchain.
+prebuilt native package for your architecture (x86_64 or aarch64): API, seed, migrate, backup,
+media-gc and searchindex binaries, the Rust security service, the static frontend, and an
+**interactive install wizard** (`install.sh`). The target machine only needs systemd and Nginx;
+no development toolchain.
 
 ```bash
-tar -xzf PractacuPress-Linux-x64.tar.gz
-cd PractacuPress-Linux-x64
+tar -xzf PractacuPress-Linux-<x64|arm64>.tar.gz
+cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
+```
+
+Debian/Ubuntu and RHEL/Fedora/openSUSE can also install the `.deb` / `.rpm` (both are published
+for `amd64` and `arm64`). The package runs the same non-interactive install and depends on
+`nginx`, `curl`, `openssl` and `ca-certificates`.
+
+```bash
+sudo apt install ./practacu-press_<version>_<arch>.deb
+sudo dnf install ./practacu-press-<version>.<arch>.rpm
 ```
 
 The wizard asks for the program directory, data directory, ports and whether to configure Nginx,
@@ -162,9 +171,27 @@ access mode), and `uninstall.sh` removes the installation (data kept by default)
 SSH tunnel, domain verification, backup/upgrade/uninstall and troubleshooting — are in
 [deploy/linux/INSTALL.md](deploy/linux/INSTALL.md).
 
-Build the package yourself with `node scripts/package-linux.mjs` (works on Windows and Linux build
-hosts: web build, cross-compiled Go and Rust, ELF/script/template self-checks, tar.gz + sha256 in
-`release/`).
+Build the package yourself with `node scripts/package-linux.mjs --arch amd64|arm64` (works on
+Windows and Linux build hosts: web build, cross-compiled Go and Rust, ELF/script/template
+self-checks, tar.gz + sha256 in `release/`).
+
+### Releases (GitHub Release / Docker images)
+
+Pushing a commit whose message contains a version (`v1.0.0` stable, `v1.0.1-beta1` beta;
+upper- or lower-case `v`) triggers [.github/workflows/release.yml](.github/workflows/release.yml):
+it creates a GitHub Release with Windows x64/arm64 portable zips, Linux x86_64/aarch64 tar.gz,
+deb and rpm, macOS x86_64/arm64 tar.gz and `SHA256SUMS`, and pushes the api / security
+(plus optional static web) images for `linux/amd64,linux/arm64` to GHCR and Docker Hub. A beta only updates the version
+tag and `beta`; it never overwrites `latest`.
+
+- Repository secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the built-in
+  `GITHUB_TOKEN`; Docker Hub is skipped when the username is empty).
+- Image names: `ghcr.io/<owner>/practacu-press-{api,web,security}:<tag>` and
+  `<dockerhub-user>/practacu-press-{api,web,security}:<tag>`.
+- Run published images with
+  `PP_IMAGE_PREFIX=ghcr.io/<owner> PP_VERSION=v1.0.0 docker compose -f docker-compose.yml -f docker-compose.release.yml up -d`.
+- You can also dispatch the workflow manually with a version, or push a `v*` / `V*` tag. Full
+  details: [docs/deployment/releases.md](docs/deployment/releases.md).
 
 ### Linux from source (bash)
 
@@ -245,6 +272,12 @@ Confirm the API is ready (both return 200; `readyz` waits for the security servi
 curl -fsS http://127.0.0.1:8080/healthz
 curl -fsS http://127.0.0.1:8080/readyz
 ```
+
+> Release packages and Docker images copy `apps/web/dist` into
+> `apps/api/internal/web/dist` before compiling, so one API process serves both the
+> frontend and `/api`. A plain source `go run` is API-only by default; to test the
+> single-binary shape locally, run `make embed-web` (or
+> `node scripts/sync-web-embed.mjs`) first.
 
 Run the frontend with the dev server, which proxies `/api`, `/healthz`, `/readyz` and `/plugins` to the
 local 8080 API:
@@ -351,7 +384,7 @@ The packaging script checks the toolchain and then runs the whole pipeline:
 1. build the frontend (`apps/web`, running `npm ci` automatically when `node_modules` is missing);
 2. compile the Rust security service (`services/security`, release);
 3. sync the frontend output into the launcher's `go:embed` directory;
-4. compile the Go launcher and the Go API (Windows amd64, pure Go);
+4. compile the Go launcher and the Go API (Windows target architecture: x64 or arm64, pure Go);
 5. assemble a clean distribution directory and **actually boot the artifact on a temporary port to self-test it**:
    static site and SPA fallback, `/__pp/runtime`, `/healthz`, `/readyz`, registration, article creation
    (verifying that Rust strips `<script>`) and publishing;
@@ -365,14 +398,15 @@ Artifacts:
 - `release/PractacuPress/PractacuPress.exe`: the native launcher, double-click to run, **no Node installation required**;
 - `release/PractacuPress/PractacuPressAPI.exe`: the Go API, started by the launcher in real-environment mode;
 - `release/PractacuPress/practacu-security.exe`: the Rust security service, compiled and bundled by default;
-- `release/PractacuPress-Windows-x64.zip` (plus a matching `.sha256`): the whole folder zipped —
-  unzip and double-click the exe. The archive contains only the binaries and `README.txt`, never the
-  development machine's `data/`.
+- `release/PractacuPress-Windows-<x64|arm64>.zip` (plus a matching `.sha256`): the whole folder zipped —
+  unzip and double-click the exe. The archive contains only the binaries, `VERSION` and `README.txt`,
+  never the development machine's `data/`.
 
 Common `scripts/package.ps1` parameters:
 
 | Parameter | Meaning |
 | --- | --- |
+| `-Arch amd64\|arm64` | Target architecture (defaults to the current machine; arm64 is built natively on a Windows arm64 runner) |
 | `-SkipSecurity` | Do not compile or bundle the Rust security service (publishing and uploads then fail closed with 503) |
 | `-SkipSmoke` | Skip the post-packaging self-test (not recommended; the self-test is what keeps existing behaviour intact) |
 | `-NoZip` | Only produce the `release/PractacuPress` directory |
@@ -380,7 +414,7 @@ Common `scripts/package.ps1` parameters:
 | `-Port <port>` | Pin the self-test port (a free port is chosen automatically by default) |
 
 CI can call the underlying script directly (same pipeline):
-`node scripts\package-windows.mjs [--skip-security] [--skip-smoke] [--no-zip] [--release-dir <dir>]`.
+`node scripts\package-windows.mjs --arch amd64|arm64 [--skip-security] [--skip-smoke] [--no-zip] [--release-dir <dir>]`.
 On a machine without a Rust toolchain, a package built with `-SkipSecurity` still browses, writes and demos — only publishing articles and completing uploads return 503.
 
 The launcher serves the site on port 8080 by default and opens the browser; if 8080 is taken it tries 8081 and 8082, then falls back to the standard HTTP port 80, and shows the actual address in its window. Changing Admin → Site settings → Access & domains → Port writes to `practacu-web.json` next to the exe, and the next start reuses it. The site only listens on the loopback address, closing the window stops it, and the API and security service it started exit with it.
@@ -515,8 +549,8 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | Item | Notes |
 | --- | --- |
 | MySQL / PostgreSQL | No dialect dependency in the code, but **neither database is available on this machine, so it is unverified in practice** — needs a CI matrix |
-| Docker | Ships a `docker-compose.yml` and three image definitions (API / security service / static site); **no Docker on the development machine, so the images have never been built or run** |
-| Linux package | Ships `release/PractacuPress-Linux-x64.tar.gz` (prebuilt binaries + `install.sh` wizard + systemd/Nginx templates); **cross-compiled on a Windows build host, the installer has not been run on a real Linux machine** — its flow was exercised with stub commands |
+| Docker | Ships a `docker-compose.yml` and three image definitions (API / security service / static site); the images and the compose stack have been built and run for real (health, auth, upload, backup), while the host TLS proxy remains untested |
+| Linux package | Ships `PractacuPress-Linux-{x64,arm64}.tar.gz` plus `.deb`/`.rpm` for both architectures (prebuilt binaries + `install.sh` wizard + systemd/Nginx templates); cross-compilation and package contents are checked, but **the installer has not been run on a real Linux host** (bash syntax, rendered templates and `nginx -t` pass) |
 | Windows installer (MSI) | Not implemented; Windows ships as a launcher plus a zip |
 | Multi-replica WebSocket | Tickets and the hub live in process memory; multiple replicas need shared storage |
 | Rate limiting | In-process fixed window, counted per replica; real DDoS/CC protection needs a reverse proxy or edge WAF |

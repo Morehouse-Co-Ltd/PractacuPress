@@ -89,11 +89,6 @@ func requiredCapability(c *gin.Context) (site.Capability, bool) {
 		}
 		return site.CapabilityModerateContent, true
 	case "taxonomy", "safety", "analytics", "backups":
-		if method == "GET" && segments[0] == "taxonomy" {
-			// The public taxonomy list is mounted with optional auth and never
-			// reaches this guard; a guarded GET here is the editor surface.
-			return site.CapabilityManageSite, true
-		}
 		return site.CapabilityManageSite, true
 	}
 	return "", false

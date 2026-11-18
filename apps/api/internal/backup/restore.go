@@ -161,14 +161,6 @@ func (s *Service) Restore(ctx context.Context, opts RestoreOptions) (RestoreResu
 		DatabasePath:   opts.TargetDBPath,
 		SchemaVersion:  currentSchema,
 	}
-	if !opts.SkipMedia {
-		files, warnings, mediaErr := extractMedia(ctx, archivePath, opts.MediaRoots)
-		if mediaErr != nil {
-			return RestoreResult{}, mediaErr
-		}
-		result.MediaFiles = files
-		result.Warnings = append(result.Warnings, warnings...)
-	}
 
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
@@ -210,6 +202,23 @@ func (s *Service) Restore(ctx context.Context, opts RestoreOptions) (RestoreResu
 	// behind would splice an old write-ahead log onto the restored file.
 	_ = os.Remove(opts.TargetDBPath + "-wal")
 	_ = os.Remove(opts.TargetDBPath + "-shm")
+
+	// Media is extracted only after the database file has been swapped in. The old
+	// order replaced every media root first, so a failed database swap (for example
+	// a locked SQLite file on Windows) left today's rows pointing at yesterday's
+	// bytes with no way back. If extraction fails now, the database is rolled back
+	// and the previous files are kept; a later schema failure can still leave newer
+	// media next to the rolled-back database, but storage keys are random, so the
+	// old rows keep resolving to the same objects.
+	if !opts.SkipMedia {
+		files, warnings, mediaErr := extractMedia(ctx, archivePath, opts.MediaRoots)
+		if mediaErr != nil {
+			rollbackDatabase(opts.TargetDBPath, previousPath)
+			return RestoreResult{}, mediaErr
+		}
+		result.MediaFiles = files
+		result.Warnings = append(result.Warnings, warnings...)
+	}
 
 	restored, err := db.Open(ctx, "sqlite", db.SQLiteDSN(opts.TargetDBPath))
 	if err != nil {

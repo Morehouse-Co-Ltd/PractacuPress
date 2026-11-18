@@ -81,6 +81,7 @@ export class PluginRuntime {
   private readonly loading = new Set<string>();
   private previousGlobal?: Window['__PP_PLUGIN_REGISTER__'];
   private started = false;
+  private starting?: Promise<void>;
   private disposed = false;
 
   constructor(options: PluginRuntimeOptions = {}) {
@@ -104,7 +105,20 @@ export class PluginRuntime {
   async start(): Promise<void> {
     if (this.disposed) throw new Error('plugin runtime is disposed');
     if (this.started) return;
-    this.started = true;
+    // A failed boot must stay retryable: an API restart or a transient network error
+    // used to latch `started` and leave extensions unloaded until a full reload.
+    // Concurrent callers share the in-flight attempt instead of racing a second one.
+    if (this.starting) return this.starting;
+    this.starting = this.boot();
+    try {
+      await this.starting;
+    } finally {
+      this.starting = undefined;
+    }
+  }
+
+  /** Performs one boot attempt; `start` records its completion. */
+  private async boot(): Promise<void> {
     this.installGlobal();
     const response = await this.fetchImpl(this.endpoint, {
       headers: { Accept: 'application/json' },
@@ -124,6 +138,7 @@ export class PluginRuntime {
         this.fail(manifest.id, error);
       }
     }
+    this.started = true;
   }
 
   /** Activates one plugin. Idempotent only for an already-active id (no-op). */

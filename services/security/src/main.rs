@@ -4,6 +4,30 @@ use practacu_security::transport::grpc::{
     argon2_limits, pb::security_service_server::SecurityServiceServer, SecurityServer,
 };
 
+/// Resolves on Ctrl+C or SIGTERM, so a container stop or upgrade drains in-flight
+/// calls instead of cutting them off (the API fails closed on a transport error).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c().await.expect("install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = std::env::var("SECURITY_GRPC_BIND").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
@@ -22,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tonic::transport::Server::builder()
         .add_service(SecurityServiceServer::new(SecurityServer))
-        .serve(socket)
+        .serve_with_shutdown(socket, shutdown_signal())
         .await?;
 
     Ok(())

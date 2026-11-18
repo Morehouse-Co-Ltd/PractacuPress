@@ -736,6 +736,21 @@ func (s *Service) UpdateDomain(
 		return err
 	}
 
+	// Re-saving the domain that is already verified must be a no-op. A retried form
+	// submit used to mint a fresh challenge and clear domain_verified_at, which takes
+	// the live hostname offline until the operator republishes the TXT record. A
+	// still-unverified declaration may restart the challenge: that is how an operator
+	// recovers a lost token.
+	current, err := s.repo.FindByID(ctx, siteID)
+	if err != nil {
+		return err
+	}
+	if normalized != "" &&
+		strings.EqualFold(current.Domain, normalized) &&
+		current.DomainVerifiedAt != nil {
+		return nil
+	}
+
 	in := DomainInput{Domain: normalized}
 	detail := map[string]any{
 		"domain":           normalized,

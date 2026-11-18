@@ -23,6 +23,10 @@ type Service struct {
 	// launch runs a best effort background task. The default starts a goroutine;
 	// tests replace it with a synchronous call so a counter assertion is deterministic.
 	launch func(func())
+	// onRulesChanged is called after a write that can change a resolution. The HTTP
+	// handler points it at its resolve cache; without it an automatic slug-change
+	// rule would stay invisible for one cache TTL after the author renamed a slug.
+	onRulesChanged func(siteID string)
 }
 
 // The content service receives the same instance through this port (J4).
@@ -68,6 +72,22 @@ func (s *Service) SetLocator(locator ContentLocator) {
 		return
 	}
 	s.locator = locator
+}
+
+// SetOnRulesChanged installs the invalidation hook run after a rule write. Wired
+// once at construction time; nil is safe and keeps tests independent of a cache.
+func (s *Service) SetOnRulesChanged(changed func(siteID string)) {
+	if s == nil {
+		return
+	}
+	s.onRulesChanged = changed
+}
+
+// rulesChanged tells the cache that one site's resolutions are stale.
+func (s *Service) rulesChanged(siteID string) {
+	if s != nil && s.onRulesChanged != nil {
+		s.onRulesChanged(siteID)
+	}
 }
 
 // Resolve returns the rule that owns an exact normalised path.
@@ -232,7 +252,7 @@ func (s *Service) Create(ctx context.Context, actor site.Member, siteID string, 
 	}
 
 	now := s.now().UTC()
-	return s.repo.Insert(ctx, Redirect{
+	created, err := s.repo.Insert(ctx, Redirect{
 		SiteID:     siteID,
 		FromPath:   validated.FromPath,
 		ToPath:     validated.ToPath,
@@ -242,6 +262,11 @@ func (s *Service) Create(ctx context.Context, actor site.Member, siteID string, 
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	})
+	if err != nil {
+		return Redirect{}, err
+	}
+	s.rulesChanged(siteID)
+	return created, nil
 }
 
 // Update applies a partial change to one rule.
@@ -268,7 +293,12 @@ func (s *Service) Update(
 		return Redirect{}, err
 	}
 	updated.UpdatedAt = s.now().UTC()
-	return s.repo.Update(ctx, updated)
+	saved, err := s.repo.Update(ctx, updated)
+	if err != nil {
+		return Redirect{}, err
+	}
+	s.rulesChanged(siteID)
+	return saved, nil
 }
 
 // Delete removes one rule.
@@ -276,7 +306,11 @@ func (s *Service) Delete(ctx context.Context, actor site.Member, siteID, redirec
 	if err := authorizeWrite(actor, siteID); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, siteID, redirectID)
+	if err := s.repo.Delete(ctx, siteID, redirectID); err != nil {
+		return err
+	}
+	s.rulesChanged(siteID)
+	return nil
 }
 
 // RecordSlugChange inserts or replaces the automatic rule for a moved permalink.
@@ -290,10 +324,19 @@ func (s *Service) Delete(ctx context.Context, actor site.Member, siteID, redirec
 // asked for exactly that, and an automatic rule must not silently retarget it. An
 // existing slug_change rule is overwritten because it describes the same automatic
 // decision and the latest move is the correct one.
-func (s *Service) RecordSlugChange(ctx context.Context, siteID, fromPath, toPath string) error {
+func (s *Service) RecordSlugChange(ctx context.Context, siteID, fromPath, toPath string) (err error) {
 	if strings.TrimSpace(siteID) == "" {
 		return nil
 	}
+	// Any successful write can change a resolution, and this path bypasses the HTTP
+	// handler that would otherwise purge the cache. The no-op branches purge too;
+	// dropping a few cache entries is far cheaper than serving a stale 404 for a
+	// link that has just been given a permanent redirect.
+	defer func() {
+		if err == nil {
+			s.rulesChanged(siteID)
+		}
+	}()
 
 	from, err := NormalizePath(fromPath)
 	if err != nil {

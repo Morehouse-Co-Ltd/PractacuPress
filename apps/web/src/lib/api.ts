@@ -535,8 +535,10 @@ export class HttpBackend {
       if (problem.status === 403 && problem.details?.reason === 'step_up_required') {
         clearStepUpToken();
       }
-      // 同上：匿名期间发出、登录之后才回来的 401 不能清掉新会话。
-      if (res.status === 401 && epoch === this.sessionEpoch) {
+      // 同上：匿名期间发出、登录之后才回来的 401 不能清掉新会话。匿名请求本身
+      // 没有会话可过期（例如成员站点的公开子集接口按设计返回 401），广播一次退出
+      // 会把同一浏览器的其他标签页误伤。
+      if (res.status === 401 && epoch === this.sessionEpoch && this.token !== null) {
         this.clearSession();
         this.onExpired();
       }

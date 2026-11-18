@@ -37,7 +37,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 | 优势 | 具体是什么 |
 | --- | --- |
-| **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。容器部署只有三个镜像：API、安全服务、静态站。 |
+| **占地少** | Windows 启动器 8.3 MB，内嵌整套前端；Rust 安全服务 3.3 MB；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。默认容器部署只有两个镜像：API（内嵌前端）与安全服务。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 八步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
 | **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 83 条路径 / 100 个操作）之后，换前端按契约写即可。 |
@@ -147,7 +147,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 ### Docker（Linux / 服务器）
 
-仓库自带 `docker-compose.yml` 与三个镜像定义：
+仓库自带 `docker-compose.yml`，默认只启动 API（已用 `go:embed` 内嵌前端）与安全服务：
 
 ```bash
 docker compose up -d --build
@@ -155,7 +155,7 @@ docker compose up -d --build
 
 打开 `http://localhost:8080` 走完八步安装引导，**第一个账户即平台管理员**。默认只绑 `127.0.0.1`；数据在命名卷 `practacu-data`（`practacu.db` 与 `media/`）。完整说明见 [README 的 Docker 章节](../README.md)。
 
-> 开发机上没有 Docker，这套镜像与 compose **没有实跑验证**，只做了 YAML / 文件引用 / 健康检查链路的静态校验。
+> 默认 API（内嵌前端）与安全服务镜像及 compose 栈已经在本机 Docker 中实际构建并启动验证（两容器 healthy，注册/登录、上传扫描、备份与 RSS/sitemap 链路均跑通）；宿主机 TLS 反代仍需在预发环境验证。
 
 ### Windows 启动器
 
@@ -217,7 +217,7 @@ cd services/security; cargo test                            # Rust（需 MSVC �
 
 | 项 | 说明 |
 | --- | --- |
-| Docker | 已提供 `docker-compose.yml` 与三个镜像定义；**开发机无 Docker，镜像构建未实跑验证** |
+| Docker | 已提供 `docker-compose.yml`（API 内嵌前端 + 安全服务；静态站可选 profile）；默认两镜像与 compose 栈已实机构建运行，注册/登录、上传与备份链路已验证 |
 | Windows 安装包（MSI） | 未实现；Windows 通过启动器 + zip 分发 |
 | 多副本部署 | WebSocket 票据与 hub 在进程内存，限流是进程内固定窗口；多副本需要共享存储与边缘限流 |
 | 浏览器端访问限制 | 只能约束使用本站脚本的访问者；IP 级请求/并发由 Nginx / Cloudflare 执行，后台只生成片段 |
@@ -394,7 +394,7 @@ The project separates "actually exercised" from "written but unverified":
 
 - **Verified locally:** auth and session rotation, site resolution and permissions, the content state machine, two-phase media upload and download, search, notifications, DMs, WebSocket tickets, event catch-up, reports and moderation, audit queries, email verification, and the packaging self-test against a real process.
 - **Implemented but unverified:** MySQL / PostgreSQL (no local instances; needs a CI matrix) and S3-compatible storage (S3 tests are skipped without a real endpoint such as MinIO or AWS).
-- **Not done / known edges:** the Docker images and compose file are present but **have never been built or run** here (no Docker on the development machine); no MSI installer; multi-replica deployment (WebSocket tickets and the hub are in-process; rate limiting is per process), granular IP/concurrency limits (the admin generates Nginx snippets, it does not enforce them), notification email beyond password reset and email verification, SEO tags written client-side (crawlers without JS see `index.html` defaults), sitemap/robots served by the API at the site root but still manual for static-only hosting, and no frontend SDK generation, OAuth adapters, SMS codes or search pagination.
+- **Not done / known edges:** the host TLS proxy has not been exercised in staging; no MSI installer; multi-replica deployment (WebSocket tickets and the hub are in-process; rate limiting is per process), granular IP/concurrency limits (the admin generates Nginx snippets, it does not enforce them), notification email beyond password reset and email verification, SEO tags written client-side (crawlers without JS see `index.html` defaults), sitemap/robots served by the API at the site root but still manual for static-only hosting, and no frontend SDK generation, OAuth adapters, SMS codes or search pagination.
 
 Details in [Current implementation vs. documentation](superpowers/reports/2026-11-07-documentation-reality-check.md). The [2026-10-20 delivery status report](superpowers/reports/2026-10-20-delivery-status.md) is a historical snapshot whose "not implemented" list no longer describes the current code.
 
@@ -408,7 +408,7 @@ docker compose up -d --build     # API + security service + Nginx static site
 
 Open `http://localhost:8080` and finish the seven-step wizard — the first account becomes the platform administrator. The port is bound to loopback by default, and data lives in the named volume `practacu-data`. Full details in the [README](../README.md).
 
-> There is no Docker on the development machine, so these images and the compose file have **never been built or run** — only YAML, file references and the health-check chain were statically validated.
+> The three images and the compose stack have been built and started for real (three healthy containers; registration/login, media upload with the security-service scan, an instance backup and the RSS/sitemap paths were exercised). The host TLS proxy still needs a staging run.
 
 ### Windows launcher
 

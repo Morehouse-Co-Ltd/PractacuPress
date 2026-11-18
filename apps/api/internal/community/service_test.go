@@ -166,6 +166,41 @@ func TestAddCommentAndReplyDepth(t *testing.T) {
 	require.Equal(t, 1, reply.Depth)
 }
 
+func TestReplyMustBelongToTheDeclaredTarget(t *testing.T) {
+	repo := newFakeRepo()
+	service := newService(t, repo)
+	ctx := context.Background()
+	author := Actor{UserID: "u1", SiteID: "s1", Role: site.RoleMember}
+
+	first, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1", Body: "first",
+	})
+	require.NoError(t, err)
+	second, err := service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a2", Body: "elsewhere",
+	})
+	require.NoError(t, err)
+
+	// A reply that names another article while nesting under this comment would be
+	// stored under the other article but keep a parent from this thread.
+	_, err = service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a2", ParentID: first.ID, Body: "cross thread",
+	})
+	require.ErrorIs(t, err, ErrInvalidInput)
+
+	// The comment-target spelling must point at the parent itself.
+	_, err = service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetComment, TargetID: second.ID, ParentID: first.ID, Body: "cross thread",
+	})
+	require.ErrorIs(t, err, ErrInvalidInput)
+
+	// Naming the parent's root explicitly is still accepted.
+	_, err = service.AddComment(ctx, author, NewCommentInput{
+		TargetType: TargetArticle, TargetID: "a1", ParentID: first.ID, Body: "same thread",
+	})
+	require.NoError(t, err)
+}
+
 func TestReplyBeyondDepthLimitIsRefused(t *testing.T) {
 	repo := newFakeRepo()
 	service := newService(t, repo)

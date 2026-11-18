@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -321,7 +322,7 @@ func TestCORSPreflightFromListedOrigin(t *testing.T) {
 	require.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "Idempotency-Key")
 }
 
-func TestCORSPreflightFromUnlistedOriginIsRejected(t *testing.T) {
+func TestCORSPreflightFromUnlistedOriginGetsNoHeaders(t *testing.T) {
 	r := corsEngine(CORSConfig{AllowedOrigins: []string{"https://app.example.com"}})
 
 	req := httptest.NewRequest(http.MethodOptions, "/x", nil)
@@ -329,7 +330,9 @@ func TestCORSPreflightFromUnlistedOriginIsRejected(t *testing.T) {
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	w := serve(r, req)
 
-	require.Equal(t, http.StatusForbidden, w.Code)
+	// Falling through lets a site-level allow-list answer later; with no such rule
+	// the request reaches the router and is refused without CORS headers.
+	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Empty(t, w.Header().Get("Access-Control-Allow-Origin"))
 }
 
@@ -406,4 +409,21 @@ func TestRateLimitZeroLimitDisables(t *testing.T) {
 	store := NewMemoryRateLimitStore(nil)
 	allowed, _ := store.Allow("k", 0, time.Minute)
 	require.True(t, allowed)
+}
+
+// TestRateLimitStoreIsBounded guards the memory ceiling: a flood of unique keys
+// inside one window must not grow the map past maxEntries.
+func TestRateLimitStoreIsBounded(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	store := NewMemoryRateLimitStore(func() time.Time { return now })
+	store.maxEntries = 8
+
+	for i := 0; i < 100; i++ {
+		allowed, _ := store.Allow("key-"+strconv.Itoa(i), 10, time.Minute)
+		require.True(t, allowed)
+	}
+
+	require.LessOrEqual(t, len(store.windows), store.maxEntries,
+		"the store must never exceed its entry ceiling")
+	require.Equal(t, 8, len(store.windows))
 }

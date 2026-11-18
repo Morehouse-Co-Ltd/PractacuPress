@@ -3,6 +3,14 @@
 .gitignore
 .gitattributes
 .github
+.idea
+.superpowers
+
+# 本机密钥与配置绝不进构建上下文
+.env
+.env.*
+*.pem
+*.key
 
 # 依赖与构建产物
 **/node_modules

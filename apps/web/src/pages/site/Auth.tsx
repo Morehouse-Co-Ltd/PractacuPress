@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { AuthProviderId, CaptchaScene, TwoFactorChallenge } from '../../types';
-import { useAuth } from '../../lib/session';
+import { inSitePath, useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
@@ -42,7 +42,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const toast = useToast();
   const [params] = useSearchParams();
   const nextParam = params.get('next') || '/';
-  const next = nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+  // 与 OAuth 回跳共用同一套站内路径校验：反斜杠会被浏览器规范化成 `/`，
+  // 只检查前缀的写法（`/\evil.example`）能把登录成功后的用户带到外站。
+  const next = inSitePath(nextParam) || '/';
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');

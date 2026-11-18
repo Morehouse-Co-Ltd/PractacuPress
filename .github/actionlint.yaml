@@ -1,0 +1,6 @@
+# actionlint only ships a snapshot of GitHub's hosted-runner labels. The Windows
+# 11 arm64 + Visual Studio 2026 image is newer than that snapshot; it is a hosted
+# runner, not a self-hosted one, so this entry only teaches the linter the name.
+self-hosted-runner:
+  labels:
+    - windows-11-vs2026-arm

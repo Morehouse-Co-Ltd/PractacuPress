@@ -1,4 +1,4 @@
-﻿# Practacu Press · 一键打包（Windows x64 便携包）
+# Practacu Press · 一键打包（Windows 便携包，x64 / arm64）
 #
 # 双击仓库根目录的 打包.bat，或者在这里直接运行：
 #   powershell -ExecutionPolicy Bypass -File scripts\package.ps1
@@ -7,6 +7,7 @@
 # 真正的构建、自检、压缩都在 Node 脚本里，方便 CI 复用同一套流程。
 #
 # 参数：
+#   -Arch            amd64 或 arm64（默认当前机器的 Node 架构）
 #   -SkipSecurity   不编译也不附带 Rust 安全服务（发布与上传会 fail-closed）
 #   -SkipSmoke      跳过打包后的自检
 #   -NoZip          只生成 release\PractacuPress 目录
@@ -15,6 +16,8 @@
 
 [CmdletBinding()]
 param(
+    [ValidateSet('amd64', 'arm64')]
+    [string]$Arch = '',
     [switch]$SkipSecurity,
     [switch]$SkipSmoke,
     [switch]$NoZip,
@@ -84,11 +87,13 @@ else {
 }
 
 $nodeArgs = @('scripts/package-windows.mjs')
+if ($Arch) { $nodeArgs += @('--arch', $Arch) }
 if ($SkipSecurity) { $nodeArgs += '--skip-security' }
 if ($SkipSmoke) { $nodeArgs += '--skip-smoke' }
 if ($NoZip) { $nodeArgs += '--no-zip' }
 if ($ReleaseDir) { $nodeArgs += @('--release-dir', $ReleaseDir) }
 if ($Port -gt 0) { $nodeArgs += @('--port', [string]$Port) }
+$archLabel = if ($Arch -eq 'arm64') { 'arm64' } elseif ($Arch -eq 'amd64') { 'x64' } elseif ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 
 Write-Step '开始打包（首次编译 Rust 需要几分钟）'
 $started = Get-Date
@@ -106,6 +111,6 @@ if ($code -ne 0) {
 Write-Host ''
 Write-Host "[完成] 打包成功，耗时 $([int]$elapsed.TotalSeconds) 秒。" -ForegroundColor Green
 Write-Host '       分发目录：release\PractacuPress'
-Write-Host '       分发压缩包：release\PractacuPress-Windows-x64.zip'
+Write-Host "       分发压缩包：release\PractacuPress-Windows-$archLabel.zip"
 Write-Host '       解压后双击 PractacuPress.exe 即可运行。'
 exit 0

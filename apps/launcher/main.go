@@ -456,11 +456,10 @@ func shortErr(err error) string {
 //
 // The site is served from this origin: scripts, styles and images are same origin
 // module assets. Inline styles stay allowed because the theme layer injects
-// <style> elements at runtime. Inline scripts stay blocked; the single inline script in
-// the shell today is the dark-mode bootstrap in apps/web/index.html, and the browser
-// refuses it (a reader who picked dark mode gets one light frame on a cold load).
-// Moving that snippet to an external file — or hashing it into `script-src` — is the fix;
-// do not relax the whole directive to 'unsafe-inline'. A third-party reverse proxy
+// <style> elements at runtime. Inline scripts stay blocked; the dark-mode
+// bootstrap lives in apps/web/public/theme-boot.js (an external same-origin file)
+// precisely so it runs under this policy instead of being refused on every load.
+// Do not relax the whole directive to 'unsafe-inline'. A third-party reverse proxy
 // terminates TLS, but the policy belongs to the page and is always sent from here first.
 //
 // The captcha providers are one deliberate exception on the script and connect
@@ -598,7 +597,10 @@ func (a *app) handleRuntime(w http.ResponseWriter, r *http.Request) {
 			"security": live.security,
 		}
 	} else if liveErr != "" {
-		api["error"] = liveErr
+		// The detailed error is written to the launcher console; the API string can
+		// contain the child process's log tail (database path, startup config), and
+		// any same-origin script — including a plugin bundle — can fetch this JSON.
+		api["error"] = "本机 API 未能启动，详情见启动器控制台。"
 	}
 
 	writeJSON(w, 200, map[string]any{

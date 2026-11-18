@@ -58,6 +58,19 @@ impl std::fmt::Display for PasswordError {
 
 impl std::error::Error for PasswordError {}
 
+/// Upper bound on the Argon2 cost a stored hash may ask for during verification.
+///
+/// Verification uses the parameters embedded in the stored PHC string, not the
+/// server defaults: a hash with `m=4294967295` would otherwise allocate terabytes and
+/// abort the process, and the hash comes from a database row or an RPC caller. The
+/// bound matches the Go implementation's `maxVerifyMemoryKiB` (1 GiB), which is far
+/// above any password this service produces (64 MiB).
+pub const MAX_VERIFY_MEMORY_KIB: u32 = 1024 * 1024;
+/// Upper bound on the iteration count of a stored hash.
+pub const MAX_VERIFY_ITERATIONS: u32 = 16;
+/// Upper bound on the parallelism of a stored hash.
+pub const MAX_VERIFY_PARALLELISM: u32 = 16;
+
 /// Argon2id cost parameters.
 ///
 /// The defaults follow the OWASP recommendation (64 MiB, 3 iterations, 2 lanes) and are
@@ -121,6 +134,24 @@ pub fn verify_password(plain: &str, encoded: &str) -> Result<bool, PasswordError
     }
 
     let parsed = PasswordHash::new(encoded).map_err(|_| PasswordError::InvalidHash)?;
+
+    // The parsed hash carries its own cost parameters, and argon2 0.5 honours them
+    // over the instance defaults. Refuse an absurd cost before verifying: a crafted
+    // or corrupt row must not be able to allocate gigabytes or spin for minutes.
+    let m_cost = parsed.params.get_str("m").and_then(|value| value.parse::<u32>().ok());
+    let t_cost = parsed.params.get_str("t").and_then(|value| value.parse::<u32>().ok());
+    let p_cost = parsed.params.get_str("p").and_then(|value| value.parse::<u32>().ok());
+    match (m_cost, t_cost, p_cost) {
+        (Some(m), Some(t), Some(p))
+            if m > 0
+                && m <= MAX_VERIFY_MEMORY_KIB
+                && t > 0
+                && t <= MAX_VERIFY_ITERATIONS
+                && p > 0
+                && p <= MAX_VERIFY_PARALLELISM => {}
+        _ => return Ok(false),
+    }
+
     let argon = build(Params2::default())?;
 
     Ok(argon.verify_password(plain.as_bytes(), &parsed).is_ok())
@@ -150,6 +181,24 @@ mod tests {
     #[test]
     fn malformed_hash_is_false() {
         assert!(!verify_password("anything", "$argon2id$not-really").unwrap_or(false));
+    }
+
+    #[test]
+    fn absurd_cost_hash_is_refused_before_allocating() {
+        // A stored hash may come from a database row or an RPC caller. Verification
+        // must reject an unbounded memory cost instead of trying to allocate it.
+        let encoded = hash_password("correct horse battery".to_string(), cheap()).unwrap();
+        let evil = encoded.replacen("m=8192", "m=4294967295", 1);
+        assert_ne!(evil, encoded, "the test must actually replace the cost");
+        assert_eq!(verify_password("correct horse battery", &evil), Ok(false));
+    }
+
+    #[test]
+    fn excessive_iterations_are_refused() {
+        let encoded = hash_password("correct horse battery".to_string(), cheap()).unwrap();
+        let evil = encoded.replacen("t=1", "t=1000000", 1);
+        assert_ne!(evil, encoded);
+        assert_eq!(verify_password("correct horse battery", &evil), Ok(false));
     }
 
     #[test]

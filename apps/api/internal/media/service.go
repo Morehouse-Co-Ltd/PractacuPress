@@ -102,8 +102,11 @@ type Service struct {
 	usage AssetUsageChecker
 	// derivativeLocks serialises variant generation per object key. It is a map rather
 	// than a single lock so two different images do not wait for each other, and it is
-	// keyed by the derived key because that is the object being written.
-	derivativeLocks sync.Map
+	// keyed by the derived key because that is the object being written. Entries are
+	// reference counted and removed when the last waiter leaves, so a long-lived
+	// process does not accumulate one mutex per asset it ever served.
+	derivativeLocksMu sync.Mutex
+	derivativeLocks   map[string]*derivativeLock
 	// derivativeSlots bounds how many images are decoded at once. A decoder holds the
 	// whole bitmap in memory, so without a global ceiling a burst of first requests for
 	// different images could exhaust the process even though each one is small on disk.
@@ -172,6 +175,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		usage:           usageChecker(cfg),
 		now:             cfg.Now,
 		derivativeSlots: make(chan struct{}, derivativeConcurrency),
+		derivativeLocks: make(map[string]*derivativeLock),
 	}
 	if service.now == nil {
 		service.now = func() time.Time { return time.Now().UTC() }

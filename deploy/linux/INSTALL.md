@@ -1,7 +1,8 @@
 # Practacu Press · Linux 安装引导
 
-这是 `PractacuPress-Linux-x64.tar.gz` 里的安装说明。目标是让一台 x86_64 的 Linux 服务器
-（systemd 发行版，Debian / Ubuntu / RHEL / Rocky / Alma 等）用两条命令跑起来：
+这是 `PractacuPress-Linux-x64.tar.gz` / `PractacuPress-Linux-arm64.tar.gz` 里的安装说明。
+目标是一台 x86_64 或 aarch64 的 Linux 服务器（systemd 发行版，Debian / Ubuntu /
+RHEL / Rocky / Alma / Fedora / openSUSE 等）用两条命令跑起来：
 
 1. `sudo ./install.sh` —— 装程序、建数据库、起服务，**只监听本机回环**；
 2. 在浏览器里走完产品自带的八步安装引导，创建第一个账户（平台管理员）；
@@ -16,16 +17,20 @@
 ## 1. 包内容
 
 ```
-PractacuPress-Linux-x64/
+PractacuPress-Linux-<x64|arm64>/
 ├── install.sh                 安装 / 升级 / 切换形态的向导
 ├── uninstall.sh               卸载（默认保留数据）
 ├── INSTALL.md                 本文件
 ├── README.txt                 一页快速上手
 ├── VERSION
+├── ARCH                       本包的架构（amd64 / arm64）
 ├── bin/
 │   ├── practacu-api           Go API（静态链接，含 SQLite 驱动）
-│   ├── practacu-seed          建表 + 创建默认站点（幂等）
 │   ├── practacu-migrate       只应用数据库结构（升级/排障用）
+│   ├── practacu-seed          建表 + 创建默认站点（幂等）
+│   ├── practacu-backup        整库备份 / 恢复 / 校验
+│   ├── practacu-media-gc      清理无引用的媒体对象
+│   ├── practacu-searchindex   重建全文搜索索引
 │   └── practacu-security      Rust 安全服务（Argon2id、HTML 白名单、上传检查）
 ├── web/                       前端静态文件（含八步安装引导）
 └── deploy/
@@ -33,29 +38,45 @@ PractacuPress-Linux-x64/
     └── nginx/*.conf.in        Nginx 站点模板（安装器渲染后写入 /etc/nginx）
 ```
 
-包里的 Go 与 Rust 程序都是 **Linux x86_64 静态二进制**，目标机不需要安装 Go / Node / Rust，
-也不需要 Docker。
+包里的 Go 与 Rust 程序都是 **对应架构的 Linux 二进制**，目标机不需要安装
+Go / Node / Rust，也不需要 Docker。
 
 ## 2. 前置条件
 
 | 要求 | 说明 |
 | --- | --- |
-| Linux x86_64 | `uname -m` 应为 `x86_64`。arm64 请用源码或 Docker 部署。 |
+| Linux x86_64 / aarch64 | `uname -m` 应为 `x86_64` 或 `aarch64`；安装器会核对包里的 `ARCH`。 |
 | systemd | 安装器用 systemd 管理两个服务。容器环境请改用 Docker Compose。 |
 | root | 安装、切形态、卸载都需要 `sudo`。 |
-| curl、openssl | 缺失时安装器会尝试用 apt / dnf / zypper 自动安装。 |
+| curl、openssl | 缺失时安装器会尝试用 apt / dnf / yum / zypper / pacman 自动安装。 |
 | Nginx | 静态站与同源反向代理需要它；缺失时安装器会提示并尝试自动安装。也可以 `--no-nginx` 自备反代。 |
 | 域名 + 证书（可选） | 只有「公网 HTTPS」形态需要。内网 / 单机形态不需要域名。 |
 
 服务器最低配置：1 核 / 1 GB 内存 / 1 GB 磁盘可跑；上传与备份占空间时按需加盘。
+
+### 2.1 .deb / .rpm 安装（可选）
+
+发布页同时提供 Debian/Ubuntu 的 `.deb` 与 RHEL/Fedora/openSUSE 的 `.rpm`
+（`amd64` / `arm64` 各自独立）。包内是同一套 `/usr/lib/practacu-press` 便携树，
+安装后会自动执行一次非交互安装（创建服务用户、数据目录、systemd、Nginx 与密钥）：
+
+```bash
+sudo apt install ./practacu-press_<version>_<arch>.deb
+# 或
+sudo dnf install ./practacu-press-<version>.<arch>.rpm
+```
+
+包依赖 `nginx`、`curl`、`openssl`、`ca-certificates`。卸载会停止服务并保留
+`/var/lib/practacu-press` 与 `/etc/practacu-press`；彻底删除请再用安装目录里的
+`uninstall.sh --purge`。容器或非 systemd 环境请使用 tar.gz + 手动命令或 Docker。
 
 ## 3. 快速开始（推荐流程）
 
 ### 3.1 解压并运行安装向导
 
 ```bash
-tar -xzf PractacuPress-Linux-x64.tar.gz
-cd PractacuPress-Linux-x64
+tar -xzf PractacuPress-Linux-<x64|arm64>.tar.gz
+cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
 ```
 
@@ -191,10 +212,12 @@ sudo systemctl start practacu-press-api
 **升级**：用新版本的包覆盖解压后重新执行安装器，它会保留数据目录、密钥与访问形态：
 
 ```bash
-tar -xzf PractacuPress-Linux-x64-<新版本>.tar.gz
-cd PractacuPress-Linux-x64
+tar -xzf PractacuPress-Linux-<x64|arm64>-<新版本>.tar.gz
+cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
 ```
+
+也可以直接用新版本的 deb/rpm 覆盖安装；postinst 会执行同一套升级流程。
 
 升级会停止服务、替换程序、应用数据库结构（幂等）、重新渲染 systemd / Nginx 配置并重启。
 升级前建议先备份 `data/`。
@@ -244,14 +267,15 @@ sudo /opt/practacu-press/uninstall.sh --purge   # 连数据、系统用户、环
 ## 9. 校验与重新打包
 
 ```bash
-sha256sum -c PractacuPress-Linux-x64.tar.gz.sha256
+sha256sum -c PractacuPress-Linux-<x64|arm64>.tar.gz.sha256
 ```
 
 这个安装包由仓库里的 `scripts/package-linux.mjs` 生成（前端构建 + Go/Rust 交叉编译 +
-模板渲染 + 自检 + tar.gz）。修改 `deploy/linux/` 下的模板或安装器后重新打包：
+模板渲染 + 自检 + tar.gz）。修改 `deploy/linux/` 下的模板或安装器后重新打包（架构用
+`--arch amd64` 或 `--arch arm64`）：
 
 ```bash
-node scripts/package-linux.mjs
+node scripts/package-linux.mjs --arch amd64
 ```
 
 产物在 `release/`：`PractacuPress-Linux-x64/`（目录）、`.tar.gz` 与 `.sha256`。

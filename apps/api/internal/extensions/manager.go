@@ -338,13 +338,24 @@ func (m *Manager) SetEnabled(id string, enabled bool) (Extension, error) {
 
 // Remove unloads an extension and deletes its package directory and state entry.
 func (m *Manager) Remove(id string) error {
-	dir, err := m.extensionDir(id)
-	if err != nil {
-		return err
-	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Delete the directory the package was actually adopted from, not a path
+	// derived from its manifest id. Boot adoption supports any directory name
+	// (acme-press/ may declare acme.press), and deleting <root>/<id> then looks
+	// successful while the real directory is re-adopted on the next start.
+	dir, known := m.dirs[id]
+	if !known {
+		computed, err := m.extensionDir(id)
+		if err != nil {
+			return err
+		}
+		dir = computed
+	}
+	if err := m.ensureInsideRoot(dir); err != nil {
+		return err
+	}
 
 	_, installed := m.host.Get(id)
 	if !installed {
@@ -364,6 +375,26 @@ func (m *Manager) Remove(id string) error {
 	delete(m.manifests, id)
 	delete(m.dirs, id)
 	m.persistLocked()
+	return nil
+}
+
+// ensureInsideRoot refuses a deletion target that is not a direct child of the
+// package root. The directory normally comes from scan(), but a future writer of
+// m.dirs must not be able to turn Remove into a recursive delete elsewhere.
+func (m *Manager) ensureInsideRoot(dir string) error {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("extensions: resolve package path: %w", err)
+	}
+	root, err := filepath.Abs(m.root)
+	if err != nil {
+		return fmt.Errorf("extensions: resolve package root: %w", err)
+	}
+	relative, err := filepath.Rel(root, absolute)
+	if err != nil || relative == "." || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%w: %s", ErrExtensionNotFound, dir)
+	}
 	return nil
 }
 
@@ -652,12 +683,12 @@ func (m *Manager) scan() {
 					// package cannot be turned on, and the row says why.
 					enabled = false
 					m.recordAudit(audit.Entry{
-						Action:  "extension.integrity_failed",
-						Outcome: "failure",
+						Action:   "extension.integrity_failed",
+						Outcome:  "failure",
 						TargetID: manifest.ID,
 						Detail: map[string]any{
-							"reason":   "manifest_integrity_mismatch",
-							"version":  manifest.Version,
+							"reason":     "manifest_integrity_mismatch",
+							"version":    manifest.Version,
 							"last_error": plugins.ErrIntegrityMismatch.Error(),
 						},
 					})

@@ -219,9 +219,8 @@ func (s *Service) openVariant(
 	// One generation per key at a time. Without this two concurrent first requests
 	// would both decode and write the same object, and on the local driver the second
 	// O_TRUNC write could be observed half finished.
-	lock := s.derivativeLock(key)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock := s.lockDerivative(key)
+	defer unlock()
 
 	cached, cacheErr := readStoredObject(ctx, storage, key, MaxDerivativeSourceBytes)
 	if cacheErr == nil && len(cached) > 0 {
@@ -393,10 +392,37 @@ func decodedFormatMatches(decodedFormat, mime string) bool {
 	}
 }
 
-// derivativeLock returns the mutex guarding one derivative key.
-func (s *Service) derivativeLock(key string) *sync.Mutex {
-	value, _ := s.derivativeLocks.LoadOrStore(key, &sync.Mutex{})
-	return value.(*sync.Mutex)
+// derivativeLock is one reference counted mutex in the per-key lock map.
+type derivativeLock struct {
+	mu    sync.Mutex
+	users int
+}
+
+// lockDerivative acquires the mutex guarding one derivative key and returns the
+// release function.
+//
+// The entry is reference counted and deleted when the last user releases it, so a
+// long-lived process does not keep one mutex per asset it ever generated.
+func (s *Service) lockDerivative(key string) func() {
+	s.derivativeLocksMu.Lock()
+	lock := s.derivativeLocks[key]
+	if lock == nil {
+		lock = &derivativeLock{}
+		s.derivativeLocks[key] = lock
+	}
+	lock.users++
+	s.derivativeLocksMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		s.derivativeLocksMu.Lock()
+		lock.users--
+		if lock.users == 0 {
+			delete(s.derivativeLocks, key)
+		}
+		s.derivativeLocksMu.Unlock()
+	}
 }
 
 // deleteDerivatives removes the variants an asset could own.

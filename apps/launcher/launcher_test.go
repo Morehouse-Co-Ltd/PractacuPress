@@ -80,12 +80,19 @@ func TestOriginForPortOmitsOnlyStandardHTTPPort(t *testing.T) {
 }
 
 func TestIsAPIPath(t *testing.T) {
-	for _, path := range []string{"/api", "/api/", "/api/v1/articles", "/healthz", "/readyz", "/sitemap.xml", "/robots.txt", "/plugins/com.example.hello/1.0.0/client.js"} {
+	for _, path := range []string{
+		"/api", "/api/", "/api/v1/articles", "/healthz", "/readyz",
+		"/sitemap.xml", "/robots.txt",
+		"/rss.xml", "/atom.xml", "/feed.xml",
+		"/category/news/rss.xml", "/category/news/atom.xml",
+		"/tag/go/rss.xml", "/tag/go/atom.xml",
+		"/plugins/com.example.hello/1.0.0/client.js",
+	} {
 		if !isAPIPath(path) {
 			t.Fatalf("%s must be proxied to the API", path)
 		}
 	}
-	for _, path := range []string{"/", "/admin", "/apix", "/plugins", "/__pp/runtime", "/assets/app.js", "/sitemap.xml.bak", "/robots.txt/extra"} {
+	for _, path := range []string{"/", "/admin", "/apix", "/plugins", "/__pp/runtime", "/assets/app.js", "/sitemap.xml.bak", "/robots.txt/extra", "/category/news", "/tag/go", "/category/news/extra.xml"} {
 		if isAPIPath(path) {
 			t.Fatalf("%s must be served by the launcher itself", path)
 		}

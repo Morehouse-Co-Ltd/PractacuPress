@@ -19,6 +19,7 @@ import (
 	"github.com/practacu/practacu-press/apps/api/internal/plugins"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/apidocs"
 	"github.com/practacu/practacu-press/apps/api/internal/transport/http/gin/middleware"
+	"github.com/practacu/practacu-press/apps/api/internal/web"
 	"github.com/practacu/practacu-press/packages/contracts/openapi"
 )
 
@@ -526,6 +527,12 @@ func setupStatus(report InstallReporter, trusted middleware.TrustedProxies) gin.
 }
 
 func noRoute(c *gin.Context) {
+	// The API binary also carries the built SPA. Static files and client-side
+	// routes are answered here; API-looking paths and missing assets still fall
+	// through to the JSON problem response below.
+	if web.Serve(c) {
+		return
+	}
 	problem := apperr.NotFound("route").
 		WithDetail("path", c.Request.URL.Path).
 		WithRequestID(middleware.RequestIDFrom(c))

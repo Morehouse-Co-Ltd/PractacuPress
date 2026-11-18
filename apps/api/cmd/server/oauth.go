@@ -54,6 +54,7 @@ func buildOAuth(
 	handle *db.DB,
 	authService *auth.Service,
 	fieldCipher *fieldcrypto.Cipher,
+	states *authstore.OAuthStateStore,
 ) *auth.OAuthHandler {
 	providers := make(map[string]auth.OAuthProvider, len(oauthProviderIDs))
 	for _, id := range oauthProviderIDs {
@@ -86,7 +87,7 @@ func buildOAuth(
 
 	return auth.NewOAuthHandler(auth.OAuthHandlerDeps{
 		Service: auth.NewOAuthService(
-			authstore.NewOAuthStateStore(handle),
+			states,
 			providers,
 			oauthRedirectURI(cfg, base),
 		),
@@ -95,6 +96,39 @@ func buildOAuth(
 		// A completed login returns the visitor to the site they started on.
 		Redirects: base,
 	})
+}
+
+// oauthStateSweepInterval is how often expired authorization attempts are deleted.
+//
+// The rows are short lived (the flow expires in minutes) but nothing else removes
+// them: Consume keeps the row until expiry so a replayed callback is recognised as
+// used. Without this loop the table grows with every third-party login attempt.
+const oauthStateSweepInterval = time.Hour
+
+// runOAuthStateSweeper deletes expired oauth_states rows until the process stops.
+func runOAuthStateSweeper(ctx context.Context, logger *slog.Logger, store *authstore.OAuthStateStore) {
+	if store == nil {
+		return
+	}
+	ticker := time.NewTicker(oauthStateSweepInterval)
+	defer ticker.Stop()
+
+	// One pass at startup clears anything left by a previous process; an error is
+	// logged and retried on the next tick rather than failing the boot.
+	sweep := func() {
+		if err := store.DeleteExpired(ctx, time.Now().UTC()); err != nil && ctx.Err() == nil {
+			logger.Warn("sweep expired oauth states failed", "error", err)
+		}
+	}
+	sweep()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sweep()
+		}
+	}
 }
 
 // newOAuthProvider builds the provider for one registration.

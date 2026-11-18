@@ -6,26 +6,35 @@
 #        docker compose up -d --build
 #        # 打开 http://localhost:8080 走完安装引导，创建平台管理员，
 #        # 并「站点设置 → 域名」填好对外的 https 域名（生产不会回退到 localhost）。
-#   2. 生成持久 JWT 私钥并写入 .env.prod
+#   2. 生成持久密钥并写入 .env.prod
 #        cp deploy/production/env.prod.example .env.prod
-#        # 按文件内命令生成 AUTH_JWT_ED25519_PRIVATE_KEY 后填入
+#        # 按文件内命令生成 AUTH_JWT_ED25519_PRIVATE_KEY / FIELD_ENCRYPTION_KEY /
+#        # BACKUP_ENCRYPTION_KEY 后填入
 #   3. 切换到生产语义
 #        docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 #          --env-file .env.prod up -d --build
 #   4. 宿主机 TLS 终止：把 deploy/production/nginx.conf 装进宿主机 Nginx，
-#      让它反代 127.0.0.1:8080（本文件保持 web 端口只绑回环）。
+#      让它反代 127.0.0.1:8080（API 已经内嵌前端，本文件保持 API 端口只绑回环）。
 #
 # 本文件只覆盖与生产语义相关的项；镜像、健康检查、数据卷、内部网络全部沿用
 # docker-compose.yml，避免两份定义漂移。
 
 services:
   api:
+    env_file:
+      # 生产密钥与 SMTP/CAPTCHA 等可选配置都放这里；文件不存在也不影响 `config`
+      # 校验，但下面用 :? 标记的三个密钥仍会强制要求。
+      - path: .env.prod
+        required: false
     environment:
       # production 会切到 gin release 模式、Info 级 JSON 日志，并强制 Secure Cookie。
       APP_ENV: production
       # production 与 PP_DESKTOP 互斥（config.go 启动期会直接拒绝）。首个管理员在
       # 上面的安装阶段用默认 compose（development + PP_DESKTOP=true）创建。
       PP_DESKTOP: "false"
+      # The loopback-claim relaxation is a bootstrap-only switch. Production fills
+      # the administrator seat during installation, before this overlay is applied.
+      PP_FIRST_ADMIN_TRUST_PROXY: "0"
       # 生产必须持久化 Ed25519 私钥：否则每次重启都会生成临时密钥，全员被登出。
       # 未在 .env.prod 设置时 compose 直接报错，避免静默降级。
       AUTH_JWT_ED25519_PRIVATE_KEY: ${AUTH_JWT_ED25519_PRIVATE_KEY:?set AUTH_JWT_ED25519_PRIVATE_KEY in .env.prod}
@@ -40,29 +49,25 @@ services:
       # 填写对外地址后，找回密码等邮件里的链接才会用 https 域名；留空则取请求 Host。
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       # 只信任 compose 内部网段传来的 X-Forwarded-*。宿主机反代回源经 docker 网关
-      # （172.28.0.1，落在该网段内），因此务必让宿主机 Nginx 用 $remote_addr
+      # （默认 172.28.0.1，落在该网段内），因此务必让宿主机 Nginx 用 $remote_addr
       # 覆盖 X-Forwarded-For，而不是追加客户端传来的值（模板已这样写）。
-      TRUSTED_PROXIES: 172.28.0.0/16
+      TRUSTED_PROXIES: ${PP_DOCKER_SUBNET:-172.28.0.0/16}
       # 全局限流按客户端 IP 计。生产建议保持 120–240，配合 Nginx limit_req 使用。
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-240}
       # 凭据端点（注册/登录/重置）单独的低额度，抵御口令爆破。
-      AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE: "10"
-      # 邮件是可选能力：需要找回密码时在 .env.prod 里设置 SMTP_*，再取消下面注释。
-      # SMTP_HOST: ${SMTP_HOST:-}
-      # SMTP_PORT: ${SMTP_PORT:-587}
-      # SMTP_ENCRYPTION: ${SMTP_ENCRYPTION:-starttls}
-      # SMTP_USERNAME: ${SMTP_USERNAME:-}
-      # SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      # SMTP_FROM: ${SMTP_FROM:-}
+      AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE: ${AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE:-10}
+      # 上传需要比普通请求更长的读超时（见 docker-compose.yml 的说明）。
+      HTTP_READ_TIMEOUT_SECONDS: ${HTTP_READ_TIMEOUT_SECONDS:-300}
+      # 邮件是可选能力：需要找回密码时在 .env.prod 里设置 SMTP_*（env_file 会
+      # 传给容器），并确保 PUBLIC_BASE_URL 已填写。
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
 
-  # 静态站 + 同源反代：保持只绑 127.0.0.1:8080（继承 docker-compose.yml），
-  # 由宿主机 TLS 反代回源。确认安装与登录都正常后，若要直接对外暴露才改成
-  # "8080:80"；更推荐始终保留回环，只让宿主机 Nginx 对公网监听 443。
+  # 静态站 profile（可选）：端口继承 docker-compose.yml 的 PP_STATIC_PORT，
+  # 默认不启动。宿主机 TLS 反代应回源到 API 的 127.0.0.1:8080。
   web:
     logging:
       driver: json-file

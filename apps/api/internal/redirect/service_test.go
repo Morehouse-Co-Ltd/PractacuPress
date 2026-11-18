@@ -459,6 +459,17 @@ func TestRecordSlugChangeInsertsAutomaticRule(t *testing.T) {
 	require.Equal(t, SourceSlugChange, rule.Source)
 }
 
+func TestRecordSlugChangeInvalidatesTheResolveCache(t *testing.T) {
+	repo := newFakeRepo()
+	service := newTestService(t, repo, nil)
+	var purged []string
+	service.SetOnRulesChanged(func(siteID string) { purged = append(purged, siteID) })
+
+	require.NoError(t, service.RecordSlugChange(context.Background(), "site_1", "/a/old", "/a/new"))
+	require.Contains(t, purged, "site_1",
+		"an automatic rule must purge the handler cache, or the old path keeps 404ing for one TTL")
+}
+
 func TestRecordSlugChangeIsNoOpForEmptyOrIdenticalPaths(t *testing.T) {
 	repo := newFakeRepo()
 	service := newTestService(t, repo, nil)

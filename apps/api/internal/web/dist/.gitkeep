@@ -1,0 +1,2 @@
+# The release/package build replaces this directory with apps/web/dist.
+# Only this marker is committed; generated frontend files are ignored.

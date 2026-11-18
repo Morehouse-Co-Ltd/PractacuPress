@@ -24,4 +24,11 @@ func TestPluginRouteTimesOut(t *testing.T) {
 
 	require.Equal(t, http.StatusBadGateway, recorder.Code)
 	require.Less(t, elapsed, 2*time.Second, "the host must cancel the invocation, not wait for the plugin")
+
+	// The timeout closes the plugin's runtime. A later request must rebuild it from
+	// the retained wasm bytes instead of failing with "runtime closed" forever.
+	recovered := httptest.NewRecorder()
+	handler.ServeHTTP(recovered, httptest.NewRequest(http.MethodGet, "/api/v1/plugins/com.example.hello/hello", nil))
+	require.Equal(t, http.StatusOK, recovered.Code,
+		"a timed-out plugin must be rebuilt on the next call: %s", recovered.Body.String())
 }

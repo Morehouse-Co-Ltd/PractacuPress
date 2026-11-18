@@ -42,6 +42,9 @@ export function bootRuntimeOnce(
     .then(() => runtime.start())
     .catch((error: unknown) => {
       console.warn('[pp plugin] boot failed', error);
+      // Do not cache a failed attempt: the next mount (for example after the API
+      // comes back) must be able to retry instead of staying broken until reload.
+      booted.delete(runtime);
     });
   booted.set(runtime, pending);
   return pending;
