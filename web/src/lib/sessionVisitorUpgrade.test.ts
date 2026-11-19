@@ -40,6 +40,7 @@ const SITE: Site = {
   slug: 'quiet',
   name: '安静的编辑部',
   domain: '',
+  created_at: '2026-10-01T00:00:00Z',
   visibility_mode: 'public',
   publish_mode: 'review',
   disabled: false,

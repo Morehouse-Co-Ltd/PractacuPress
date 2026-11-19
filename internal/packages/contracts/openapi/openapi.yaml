@@ -6414,12 +6414,13 @@ components:
 
     Site:
       type: object
-      required: [id, slug, name, domain, visibility_mode, publish_mode, disabled, media_quota_bytes]
+      required: [id, slug, name, domain, created_at, visibility_mode, publish_mode, disabled, media_quota_bytes]
       properties:
         id: { type: string }
         slug: { type: string }
         name: { type: string }
         domain: { type: string }
+        created_at: { type: string, format: date-time }
         domain_verified:
           type: boolean
           description: True when a DNS TXT challenge has proven the primary domain.

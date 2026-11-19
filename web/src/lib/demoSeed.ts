@@ -301,6 +301,7 @@ export function createSeed(options: SeedOptions): DemoState {
     slug: 'practacu',
     name: options.site.name || 'Practacu Press',
     domain: options.site.domain || 'press.local',
+    created_at: daysAgo(160),
     visibility_mode: options.site.visibility_mode,
     publish_mode: options.site.publish_mode,
     registration_open: options.site.registration_open ?? true,

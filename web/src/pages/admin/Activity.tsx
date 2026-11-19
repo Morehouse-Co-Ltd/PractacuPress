@@ -6,6 +6,7 @@ import { activityCsv, activityTone, formatDateTime } from '../../lib/format';
 import { activityActionLabel } from '../../lib/activityLabels';
 import type { ActivityEntry } from '../../types';
 import type { AuditLog } from '../../types';
+import { BackupScheduleSection, RequestLogsSection } from './ActivityOperations';
 import {
   Badge,
   Button,
@@ -130,7 +131,7 @@ function toActivityEntry(entry: AuditLog, actionLabel: string): ActivityEntry {
 export function ActivityPage() {
   const t = useT();
   const backend = useBackend();
-  const { site } = useAuth();
+  const { me, site } = useAuth();
   const toast = useToast();
   const [range, setRange] = useState<Range>('7d');
   const [action, setAction] = useState('');
@@ -185,6 +186,8 @@ export function ActivityPage() {
   // Once "load more" ran, its cursor (possibly empty) is authoritative: falling back
   // to the first page cursor would re-fetch page two forever.
   const nextCursor = more.loaded ? more.cursor : data.data?.next_cursor;
+  const canViewRequestLogs = me?.role === 'site_admin' || me?.role === 'platform_admin';
+  const canViewBackupSchedule = me?.role === 'platform_admin';
 
   const loadMore = async () => {
     if (!site || !nextCursor) return;
@@ -335,6 +338,9 @@ export function ActivityPage() {
       <p className="tiny faint mt-16">
         {t('记录保存在服务端 audit_logs 表中，按站点隔离；导出 CSV 只包含当前筛选已加载的记录。')}
       </p>
+
+      {canViewRequestLogs ? <RequestLogsSection /> : null}
+      {canViewBackupSchedule ? <BackupScheduleSection /> : null}
     </>
   );
 }

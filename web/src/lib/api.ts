@@ -72,7 +72,6 @@ import type {
   ProblemBody,
   ProfileInput,
   PublicProfile,
-  QueueStatus,
   RedirectRule,
   Report,
   ReportAction,
@@ -1374,23 +1373,6 @@ export class HttpBackend {
       `/system/logs?${params.toString()}`,
     );
     return res.items ?? [];
-  }
-
-  /** 队列监控（`GET /system/queue`，site_admin）：outbox 积压、最近事件与邮件队列。 */
-  async systemQueue(): Promise<QueueStatus> {
-    return this.performRequest<QueueStatus>('/system/queue');
-  }
-
-  /**
-   * 重试 outbox 投递（`POST /system/queue/retry`，site_admin）。
-   *
-   * `eventIds` 为空表示重试最近 50 条失败事件；返回实际重试的条数。
-   */
-  async retryQueue(eventIds: string[] = []): Promise<{ retried: number }> {
-    return this.request<{ retried: number }>('/system/queue/retry', {
-      method: 'POST',
-      body: JSON.stringify({ event_ids: eventIds }),
-    });
   }
 
   /** 自动备份计划（`GET /system/backup-schedule`，platform_admin，契约 L 节）。 */

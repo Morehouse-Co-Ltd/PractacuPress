@@ -201,6 +201,7 @@ export interface Site {
   slug: string;
   name: string;
   domain: string;
+  created_at?: string;
   visibility_mode: VisibilityMode;
   publish_mode: PublishMode;
   disabled: boolean;
@@ -2761,23 +2762,6 @@ export interface SystemLogEntry {
   duration_ms: number;
   site_id: string;
   user_id: string;
-}
-
-/** 队列最近一条事件。 */
-export interface QueueEventItem {
-  event_id: string;
-  event_type: string;
-  status: 'pending' | 'published' | 'failed';
-  attempts: number;
-  last_error: string;
-  occurred_at: string;
-}
-
-/** 队列监控（`GET /system/queue`）：outbox 积压、最近事件与邮件发送队列。 */
-export interface QueueStatus {
-  outbox: { pending: number; failed: number; oldest_age_seconds: number };
-  recent: QueueEventItem[];
-  mail: { queued: number; failed: number };
 }
 
 /** 自动备份产物（`GET /system/backup-schedule` 的 `artifacts`）。 */

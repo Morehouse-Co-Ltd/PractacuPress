@@ -81,7 +81,6 @@ import { ActivityPage } from './pages/admin/Activity';
 import { DocsPage } from './pages/admin/Docs';
 import { RedirectsPage } from './pages/admin/Redirects';
 import { InsightsPage } from './pages/admin/Insights';
-import { ObservabilityPage } from './pages/admin/Observability';
 import { NewsletterPage } from './pages/admin/Newsletter';
 import { PagesPage } from './pages/admin/Pages';
 import { PageEditorPage } from './pages/admin/PageEditor';
@@ -710,13 +709,9 @@ export default function App() {
                 <Route path="loading" element={<LoadingPage />} />
                 <Route path="activity" element={<ActivityPage />} />
                 <Route path="docs" element={<DocsPage />} />
-                {/*
-                  Beta 1.2 第二批：永久链接规则、访问洞察（来源/留存/设备）与运行观察
-                  （请求日志、队列、自动备份）。三者都是站点管理员可见的运维面。
-                */}
+                {/* Beta 1.2 第二批：永久链接规则与访问洞察（来源/留存/设备）。 */}
                 <Route path="redirects" element={<RedirectsPage />} />
                 <Route path="insights" element={<InsightsPage />} />
-                <Route path="observability" element={<ObservabilityPage />} />
                 {/* 邮件订阅：名单、模板、投递日志与群发。 */}
                 <Route path="newsletter" element={<NewsletterPage />} />
                 <Route path="*" element={<NotFoundPage />} />

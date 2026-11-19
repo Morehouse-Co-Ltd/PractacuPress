@@ -155,18 +155,19 @@ type publicUserResponse struct {
 }
 
 type siteResponse struct {
-	ID                    string `json:"id"`
-	Slug                  string `json:"slug"`
-	Name                  string `json:"name"`
-	Domain                string `json:"domain"`
-	DomainVerified        bool   `json:"domain_verified"`
-	RegistrationOpen      bool   `json:"registration_open"`
-	CommentsEnabled       bool   `json:"comments_enabled"`
-	CommentsRequireReview bool   `json:"comments_require_review"`
-	MediaQuotaBytes       *int64 `json:"media_quota_bytes"`
-	VisibilityMode        string `json:"visibility_mode"`
-	PublishMode           string `json:"publish_mode"`
-	Disabled              bool   `json:"disabled"`
+	ID                    string    `json:"id"`
+	Slug                  string    `json:"slug"`
+	Name                  string    `json:"name"`
+	Domain                string    `json:"domain"`
+	CreatedAt             time.Time `json:"created_at"`
+	DomainVerified        bool      `json:"domain_verified"`
+	RegistrationOpen      bool      `json:"registration_open"`
+	CommentsEnabled       bool      `json:"comments_enabled"`
+	CommentsRequireReview bool      `json:"comments_require_review"`
+	MediaQuotaBytes       *int64    `json:"media_quota_bytes"`
+	VisibilityMode        string    `json:"visibility_mode"`
+	PublishMode           string    `json:"publish_mode"`
+	Disabled              bool      `json:"disabled"`
 }
 
 type changeRoleRequest struct {
@@ -246,6 +247,7 @@ func (h *Handler) GetSite(c *gin.Context) {
 		Slug:                  found.Slug,
 		Name:                  found.Name,
 		Domain:                found.Domain,
+		CreatedAt:             found.CreatedAt.UTC(),
 		DomainVerified:        found.DomainVerified(),
 		RegistrationOpen:      found.RegistrationOpen,
 		CommentsEnabled:       found.CommentsEnabled,

@@ -62,7 +62,6 @@ import type {
   ProbeResult,
   ProfileInput,
   PublicProfile,
-  QueueStatus,
   ReadingHistoryEntry,
   RedirectRule,
   Report,
@@ -3592,7 +3591,7 @@ export class DemoBackend {
     return this.cleanPath(value);
   }
 
-  /* ---------- K. 日志查看器与队列监控 ---------- */
+  /* ---------- K. 请求日志查看器 ---------- */
 
   async systemLogs(
     query: { limit?: number; status?: number; path?: string; method?: string } = {},
@@ -3608,48 +3607,6 @@ export class DemoBackend {
       .filter((entry) => !method || entry.method.toUpperCase() === method)
       .filter((entry) => !path || entry.path.includes(path))
       .slice(0, limit);
-  }
-
-  async systemQueue(): Promise<QueueStatus> {
-    await wait(80);
-    this.requireRole('site_admin');
-    const now = Date.now();
-    return {
-      outbox: { pending: 2, failed: 1, oldest_age_seconds: 95 },
-      recent: [
-        {
-          event_id: 'evt_demo_1',
-          event_type: 'content.published',
-          status: 'published',
-          attempts: 1,
-          last_error: '',
-          occurred_at: new Date(now - 60_000).toISOString(),
-        },
-        {
-          event_id: 'evt_demo_2',
-          event_type: 'community.comment.created',
-          status: 'pending',
-          attempts: 0,
-          last_error: '',
-          occurred_at: new Date(now - 30_000).toISOString(),
-        },
-        {
-          event_id: 'evt_demo_3',
-          event_type: 'newsletter.sent',
-          status: 'failed',
-          attempts: 3,
-          last_error: 'smtp timeout',
-          occurred_at: new Date(now - 600_000).toISOString(),
-        },
-      ],
-      mail: { queued: 1, failed: 1 },
-    };
-  }
-
-  async retryQueue(eventIds: string[] = []): Promise<{ retried: number }> {
-    await wait(160);
-    this.requireRole('site_admin');
-    return { retried: eventIds.length || 3 };
   }
 
   /* ---------- L. 自动备份 ---------- */

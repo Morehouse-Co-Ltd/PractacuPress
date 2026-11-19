@@ -323,6 +323,7 @@ func TestSiteAdminCanSetSiteAndMemberMediaQuotas(t *testing.T) {
 	siteResponse := h.do(t, http.MethodGet, "/api/v1/sites/"+h.siteID, adminToken, "")
 	var sitePayload map[string]any
 	require.NoError(t, json.Unmarshal(siteResponse.Body.Bytes(), &sitePayload))
+	require.NotEmpty(t, sitePayload["created_at"])
 	require.Equal(t, float64(4096), sitePayload["media_quota_bytes"])
 
 	updatedMember := h.do(t, http.MethodPatch,

@@ -43,7 +43,7 @@ import { Icon } from '../../components/Icon';
 export function SystemMonitorPage() {
   const t = useT();
   useTitle(t('性能面板'));
-  const { me } = useAuth();
+  const { me, site } = useAuth();
   const backend = useBackend();
   const demo = isDemo(backend);
   const isPlatformAdmin = me?.role === 'platform_admin';
@@ -147,7 +147,11 @@ export function SystemMonitorPage() {
     }
   };
 
-  const uptime = metrics ? uptimeParts(metrics.platform.uptime_seconds) : null;
+  const siteCreatedAt = site?.created_at ? Date.parse(site.created_at) : Number.NaN;
+  const uptimeSeconds = Number.isFinite(siteCreatedAt)
+    ? Math.max(0, Math.floor((now - siteCreatedAt) / 1000))
+    : null;
+  const uptime = uptimeSeconds === null ? null : uptimeParts(uptimeSeconds);
   const uptimeText = uptime
     ? uptime.days > 0
       ? t('{days} 天 {hours} 小时', { days: uptime.days, hours: uptime.hours })
@@ -351,7 +355,7 @@ export function SystemMonitorPage() {
 
         <MetricCard
           tone="uptime"
-          label={t('运行时长')}
+          label={t('本站运行时长')}
           value={uptimeText || '—'}
           sub={t('{count} 个其他进程 · {os}/{arch}', {
             count: metrics.others.process_count,

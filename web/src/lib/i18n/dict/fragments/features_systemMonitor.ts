@@ -40,6 +40,7 @@ const fragment: Dictionary = {
   '{used} / {total}': '{used} / {total}',
   '磁盘使用': 'Disk usage',
   '运行时长': 'Uptime',
+  本站运行时长: 'Site uptime',
   '{count} 个其他进程 · {os}/{arch}': '{count} other processes · {os}/{arch}',
   '本软件': 'This software',
   '其他软件': 'Other software',

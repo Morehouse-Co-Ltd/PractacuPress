@@ -72,7 +72,6 @@ import type {
   ProbeResult,
   ProfileInput,
   PublicProfile,
-  QueueStatus,
   ReadingHistoryEntry,
   RedirectRule,
   ResolveResult,
@@ -146,8 +145,6 @@ export type {
   PhoneCodeResult,
   PhonePolicy,
   PreviewGrant,
-  QueueEventItem,
-  QueueStatus,
   RedirectRule,
   RedirectSource,
   RedirectStatusCode,
@@ -722,10 +719,6 @@ export interface Backend {
   systemLogs(
     query?: { limit?: number; status?: number; path?: string; method?: string },
   ): Promise<SystemLogEntry[]>;
-  /** 队列监控（契约 K 节）：outbox 积压、最近事件与邮件发送队列。 */
-  systemQueue(): Promise<QueueStatus>;
-  /** 重试 outbox 投递；`eventIds` 为空表示重试最近 50 条失败事件。 */
-  retryQueue(eventIds?: string[]): Promise<{ retried: number }>;
   /** 自动备份计划（契约 L 节，平台管理员）。 */
   backupSchedule(): Promise<BackupSchedule>;
   /**

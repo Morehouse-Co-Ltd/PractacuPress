@@ -67,10 +67,9 @@ const fragment: Dictionary = {
   '演示数据（浏览器本地）': 'Demo data (browser local)',
   '展开「{group}」': 'Expand “{group}”',
   '收起「{group}」': 'Collapse “{group}”',
-  // Beta 1.2: the permanent link, traffic insight and operator console entries.
+  // Beta 1.2: the permanent link and traffic insight entries.
   永久链接: 'Permalinks',
   访问洞察: 'Traffic insights',
-  运行观察: 'Observability',
 };
 
 export default fragment;
