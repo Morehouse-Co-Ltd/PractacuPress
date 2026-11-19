@@ -61,8 +61,8 @@ const ARCH = options.arch || HOST_ARCH;
 const NATIVE_ARCH = ARCH === HOST_ARCH;
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x64';
 const RELEASE_VERSION = String(options.version || '').replace(/^v/i, '');
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
-  throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-betaN，收到 ${options.version}`);
+if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta(?:\.?\d+)?)?$/i.test(RELEASE_VERSION)) {
+  throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-beta，收到 ${options.version}`);
 }
 
 const releaseDir = path.resolve(options.releaseDir || process.env.PP_RELEASE_DIR || path.join(root, 'release'));

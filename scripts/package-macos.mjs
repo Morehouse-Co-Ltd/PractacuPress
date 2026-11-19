@@ -37,7 +37,7 @@ const TARBALL = path.join(OUT_DIR, `${PACKAGE_NAME}.tar.gz`);
 const SHA_FILE = `${TARBALL}.sha256`;
 
 if (!['amd64', 'arm64'].includes(ARCH)) fail(`unsupported --arch ${ARCH}`);
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
+if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta(?:\.?\d+)?)?$/i.test(RELEASE_VERSION)) {
   fail(`unsupported --version ${RELEASE_VERSION}`);
 }
 if (process.platform !== 'darwin') fail('macOS 包必须在 macOS 上构建');
