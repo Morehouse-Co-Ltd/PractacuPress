@@ -61,11 +61,21 @@ RUN --mount=type=cache,target=/go/pkg/mod \
  && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/media-gc ./cmd/media-gc \
  && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/searchindex ./cmd/searchindex
 
+# Stay on the stable Alpine branch and pull only the patched musl from edge:
+# Alpine 3.24 still ships musl 1.2.6-r3 (CVE-2026-107891), while 1.2.6-r6 is
+# available from edge. The upgrade below also picks up patched zlib 1.4-r0 and
+# openssl 3.5.9-r1 from the 3.24 repository.
 FROM alpine:3.24 AS runtime
 
+ARG EDGE_REPO=https://dl-cdn.alpinelinux.org/alpine/edge/main
+
 # ca-certificates is required for SMTP, OAuth, captcha and S3 over TLS; tzdata
-# keeps timestamps readable for operators who set TZ.
-RUN apk add --no-cache ca-certificates tzdata \
+# keeps timestamps readable for operators who set TZ. Upgrade the stable branch
+# first, then replace only musl/musl-utils with the fixed edge packages.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache --repository="$EDGE_REPO" \
+        musl=1.2.6-r6 musl-utils=1.2.6-r6 \
+ && apk add --no-cache ca-certificates tzdata \
  && addgroup --gid 10001 practacu \
  && adduser --uid 10001 --ingroup practacu --disabled-password --no-create-home \
         --shell /sbin/nologin practacu \
