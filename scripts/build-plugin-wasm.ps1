@@ -1,7 +1,7 @@
 # 构建一个 pp 服务端插件：Go 源码 -> wasip1 WASM。
 #
 # 用法：
-#   ./scripts/build-plugin-wasm.ps1 -PluginDir apps/api/internal/plugins/testdata/hello
+#   ./scripts/build-plugin-wasm.ps1 -PluginDir internal/plugins/testdata/hello
 #   ./scripts/build-plugin-wasm.ps1 -PluginDir <dir> -Output custom.wasm
 #
 # 安装器不会执行构建；发布时必须带上构建产物和哈希/签名。

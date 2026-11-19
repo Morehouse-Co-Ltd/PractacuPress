@@ -3,6 +3,14 @@
 .gitignore
 .gitattributes
 .github
+.idea
+.superpowers
+
+# 本机密钥与配置绝不进构建上下文
+.env
+.env.*
+*.pem
+*.key
 
 # 依赖与构建产物
 **/node_modules
@@ -27,6 +35,6 @@ backups
 # 设计与审计文档不参与镜像构建（约 36 MB，构建链一条都不读它）
 docs
 
-# 本机二进制
+# 非运行时源码不进入镜像\ninternal/tests\ninternal/plugins/examples\ninternal/migrations\n\n# 本机二进制
 **/*.exe
 **/*.test

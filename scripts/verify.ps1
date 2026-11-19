@@ -83,17 +83,17 @@ function Invoke-WebTask {
     $installMode = $env:PP_WEB_INSTALL
     if (-not $installMode) { $installMode = 'auto' }
 
-    Push-Location (Join-Path $root 'apps\web')
+    Push-Location (Join-Path $root 'web')
     try {
         if ($installMode -eq 'ci' -or ($installMode -eq 'auto' -and -not (Test-Path 'node_modules'))) {
-            Write-Step 'npm ci (apps/web)'
+            Write-Step 'npm ci (web)'
             Invoke-Native $npm @('ci', '--no-audit', '--no-fund')
         }
         elseif ($installMode -eq 'skip') {
             Write-Step 'npm install skipped by PP_WEB_INSTALL=skip'
         }
         else {
-            Write-Step 'using existing apps/web/node_modules'
+            Write-Step 'using existing web/node_modules'
         }
 
         Write-Step 'npm run typecheck'
@@ -108,6 +108,9 @@ function Invoke-WebTask {
     finally {
         Pop-Location
     }
+
+    Write-Step 'node --test scripts/release-version.test.mjs'
+    Invoke-Native 'node' @('--test', 'scripts/release-version.test.mjs')
 }
 
 function Invoke-MigrateTwice {
@@ -116,15 +119,15 @@ function Invoke-MigrateTwice {
         [string]$Dsn
     )
     Write-Step "cmd/migrate $Dialect (first run)"
-    Invoke-Go @('run', './apps/api/cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
+    Invoke-Go @('run', './cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
     Write-Step "cmd/migrate $Dialect (second run, must be idempotent)"
-    Invoke-Go @('run', './apps/api/cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
+    Invoke-Go @('run', './cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
 }
 
 function Invoke-MigrationsTask {
     Write-Step 'reviewed migration pairs and SQL up/down round trip'
     # SQLite always runs; MySQL/PostgreSQL run when their DSNs are exported.
-    Invoke-Go @('test', '-v', '-count=1', './tests/migrations/...')
+    Invoke-Go @('test', '-v', '-count=1', './internal/tests/migrations/...')
 
     $tmp = Join-Path $root '.tmp\verify'
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -161,7 +164,7 @@ function Invoke-MigrationsTask {
 
 function Invoke-ConfigTask {
     Write-Step 'migration pairs, workflows, Compose files and scripts'
-    Invoke-Go @('test', '-v', '-count=1', './tests/ci/...')
+    Invoke-Go @('test', '-v', '-count=1', './internal/tests/ci/...')
 
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if (-not $docker) {
@@ -177,18 +180,8 @@ function Invoke-ConfigTask {
         return
     }
 
-    Write-Step 'docker compose config (default profile)'
+    Write-Step 'docker compose config (single compose file)'
     Invoke-Native 'docker' @('compose', '-f', 'docker-compose.yml', 'config', '-q')
-
-    Write-Step 'docker compose config (production overlay)'
-    $previousKey = $env:AUTH_JWT_ED25519_PRIVATE_KEY
-    try {
-        $env:AUTH_JWT_ED25519_PRIVATE_KEY = 'ci-placeholder'
-        Invoke-Native 'docker' @('compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.prod.yml', 'config', '-q')
-    }
-    finally {
-        $env:AUTH_JWT_ED25519_PRIVATE_KEY = $previousKey
-    }
 }
 
 if ($Task -in @('go', 'all')) { Invoke-GoTask }

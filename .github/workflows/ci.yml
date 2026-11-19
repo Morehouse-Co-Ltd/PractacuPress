@@ -7,7 +7,7 @@
 #
 # The Go job runs on both target families (Windows is the primary distribution
 # target, Linux is what Docker deploys), the web job matches the Node version in
-# deploy/docker/web.Dockerfile, and the migrations job uses disposable MySQL and
+# deploy/docker/api.Dockerfile, and the migrations job uses disposable MySQL and
 # PostgreSQL service containers to exercise the reviewed SQL change sets up and
 # down.
 
@@ -29,7 +29,7 @@ jobs:
   go:
     name: Go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -49,7 +49,12 @@ jobs:
       - name: Verify Go (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        timeout-minutes: 25
+        timeout-minutes: 40
+        env:
+          # The race detector is part of the gate: `go test ./...` alone cannot
+          # catch the shared-state bugs the concurrency-sensitive modules are
+          # most likely to grow.
+          PP_TEST_RACE: "1"
         run: |
           set -o pipefail
           mkdir -p .ci-logs
@@ -86,7 +91,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Verify web
         timeout-minutes: 20

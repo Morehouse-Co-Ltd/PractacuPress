@@ -1,7 +1,7 @@
 @echo off
 setlocal
 chcp 65001 >nul 2>&1
-title Practacu Press - Package Windows x64
+title Practacu Press - Package Windows
 cd /d "%~dp0"
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\package.ps1" %*
@@ -11,7 +11,7 @@ echo.
 if not "%PP_EXIT%"=="0" (
   echo [FAILED] packaging stopped with exit code %PP_EXIT%.
 ) else (
-  echo [DONE] output: release\PractacuPress and release\PractacuPress-Windows-x64.zip
+  echo [DONE] output: release\PractacuPress and release\PractacuPress-Windows-<arch>.zip
 )
 echo.
 pause
