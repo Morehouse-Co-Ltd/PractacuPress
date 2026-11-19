@@ -46,8 +46,8 @@ const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
 if (!['amd64', 'arm64'].includes(ARCH)) {
   fail(`unsupported --arch ${ARCH} (use amd64 or arm64)`);
 }
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
-  fail(`unsupported --version ${RELEASE_VERSION} (want X.Y.Z or X.Y.Z-betaN)`);
+if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta(?:\.?\d+)?)?$/i.test(RELEASE_VERSION)) {
+  fail(`unsupported --version ${RELEASE_VERSION} (want X.Y.Z or X.Y.Z-beta)`);
 }
 const ARCH_LABEL = ARCH === 'amd64' ? 'x64' : 'arm64';
 const ELF_MACHINE = ARCH === 'amd64' ? 0x3e : 0xb7;

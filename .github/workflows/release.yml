@@ -73,7 +73,7 @@ jobs:
             --ref "$REF_NAME" \
             --input "$REQUESTED_VERSION"
           if [ "$(grep -c '^should_release=true$' "$GITHUB_OUTPUT" || true)" -eq 0 ]; then
-            echo "No vX.Y.Z[-betaN] in the push message; skipping the release jobs."
+            echo "No vX.Y.Z[-beta[N]] in the push message; skipping the release jobs."
           else
             echo "Releasing $(grep '^tag=' "$GITHUB_OUTPUT" | tail -n1 | cut -d= -f2)"
           fi
