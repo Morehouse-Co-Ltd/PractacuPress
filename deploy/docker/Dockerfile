@@ -1,5 +1,5 @@
 # Go API image. Build from the repository root:
-#   docker build -f deploy/docker/api.Dockerfile .
+#   docker build -f deploy/docker/Dockerfile .
 #
 # The runtime is Alpine and the binary is fully static: SQLite uses
 # modernc.org/sqlite (pure Go), so CGO can stay disabled and no glibc is needed.

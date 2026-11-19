@@ -25,7 +25,7 @@ services:
     image: ${PP_IMAGE:-practacu-press-api:development}
     build:
       context: .
-      dockerfile: deploy/docker/api.Dockerfile
+      dockerfile: deploy/docker/Dockerfile
       args:
         VERSION: ${PP_VERSION:-development}
     restart: unless-stopped

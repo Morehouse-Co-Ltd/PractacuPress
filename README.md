@@ -190,7 +190,7 @@ curl -fsS http://127.0.0.1:8080/api/healthz
 - **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 便携包一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。Docker 端口映射会隐藏客户端地址，所以默认开启 `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定；它只在回环端口上安全，完成安装后可设为 `0`。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
 - **日志与运维**：`docker compose logs -f`、`docker compose exec api migrate`、`docker compose exec api seed`，镜像里还带有 `backup`、`media-gc`、`searchindex`。
 - **生产部署**：同一份 `docker-compose.yml` 配合 `--env-file .env.prod` 提供 production 语义、持久 JWT 私钥与 Secure Cookie；`deploy/production/nginx.conf` 负责 TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
-- **单独构建镜像**：`docker build -f deploy/docker/api.Dockerfile .`。
+- **单独构建镜像**：`docker build -f deploy/docker/Dockerfile .`。
 
 > 默认 API 镜像与 compose 栈已在 Docker 中构建并启动验证：API healthy，`/api/healthz`、`/api/readyz`、RSS/Atom/sitemap/robots、首个管理员注册与登录、媒体上传（含内置安全检查）和整库备份均跑通；`docker compose config` 通过。宿主机 TLS 反代仍需在预发环境按部署文档验证证书与 HSTS。
 

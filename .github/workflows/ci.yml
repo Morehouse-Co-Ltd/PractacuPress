@@ -7,7 +7,7 @@
 #
 # The Go job runs on both target families (Windows is the primary distribution
 # target, Linux is what Docker deploys), the web job matches the Node version in
-# deploy/docker/api.Dockerfile, and the migrations job uses disposable MySQL and
+# deploy/docker/Dockerfile, and the migrations job uses disposable MySQL and
 # PostgreSQL service containers to exercise the reviewed SQL change sets up and
 # down.
 

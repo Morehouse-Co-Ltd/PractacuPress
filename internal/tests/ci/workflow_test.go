@@ -213,7 +213,7 @@ func TestWebJob(t *testing.T) {
 		if strings.HasPrefix(uses, "actions/setup-node@") {
 			with := lookup(step, "with")
 			if got := scalar(lookup(with, "node-version")); got != "22" {
-				t.Errorf("setup-node node-version = %q, want 22 (matches deploy/docker/api.Dockerfile)", got)
+				t.Errorf("setup-node node-version = %q, want 22 (matches deploy/docker/Dockerfile)", got)
 			}
 			if scalar(lookup(with, "cache")) != "npm" {
 				t.Error("setup-node must cache npm")
