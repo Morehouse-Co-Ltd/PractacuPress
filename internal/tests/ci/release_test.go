@@ -9,7 +9,7 @@ import (
 )
 
 // TestReleaseWorkflow keeps the release pipeline structurally complete: version
-// detection, both registries, both Docker architectures, and one package job per
+// detection, the fixed Docker Hub image, both Docker architectures, and one package job per
 // OS/architecture family. It is deliberately a structure test, not a build.
 func TestReleaseWorkflow(t *testing.T) {
 	root := repoRoot(t)
@@ -28,9 +28,6 @@ func TestReleaseWorkflow(t *testing.T) {
 	permissions := lookup(doc, "permissions")
 	if got := scalar(lookup(permissions, "contents")); got != "write" {
 		t.Errorf("permissions.contents = %q, want write (GitHub Release)", got)
-	}
-	if got := scalar(lookup(permissions, "packages")); got != "write" {
-		t.Errorf("permissions.packages = %q, want write (GHCR)", got)
 	}
 
 	triggers := lookup(doc, "on")
@@ -55,7 +52,8 @@ func TestReleaseWorkflow(t *testing.T) {
 	for _, want := range []string{
 		"release-version.mjs",
 		"stamp-version.mjs",
-		"ghcr.io",
+		"practacupress/press",
+		":latest",
 		"DOCKERHUB_USERNAME",
 		"linux/amd64,linux/arm64",
 		"Dockerfile",
@@ -71,6 +69,12 @@ func TestReleaseWorkflow(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("release workflow does not reference %q", want)
 		}
+	}
+	if strings.Contains(body, "ghcr.io") {
+		t.Error("release workflow must not push to GHCR; the image is practacupress/press on Docker Hub")
+	}
+	if !strings.Contains(body, `${IMAGE}:${TAG},${IMAGE}:latest`) {
+		t.Error("Docker image tags must be exactly practacupress/press:<version> and practacupress/press:latest")
 	}
 
 	windows := lookup(jobs, "windows")

@@ -180,17 +180,15 @@ self-checks, tar.gz + sha256 in `release/`).
 Pushing a commit whose message contains a version (`v1.0.0` stable, `v1.0.1-beta1` beta;
 upper- or lower-case `v`) triggers [.github/workflows/release.yml](.github/workflows/release.yml):
 it creates a GitHub Release with Windows x64/arm64 portable zips, Linux x86_64/aarch64 tar.gz,
-deb and rpm, macOS x86_64/arm64 tar.gz and `SHA256SUMS`, and pushes the api / security
-images for `linux/amd64,linux/arm64` to GHCR and Docker Hub. A beta only updates the version
-tag and `beta`; it never overwrites `latest`.
+deb and rpm, macOS x86_64/arm64 tar.gz and `SHA256SUMS`, and pushes the image for
+`linux/amd64,linux/arm64` to Docker Hub as `practacupress/press`. Both stable and beta
+releases update the `<version>` and `latest` tags.
 
-- Repository secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the built-in
-  `GITHUB_TOKEN`; Docker Hub is skipped when the username is empty).
-- Image names: `ghcr.io/<owner>/practacu-press:<tag>` and
-  `<dockerhub-user>/practacu-press:<tag>`.
+- Repository secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`.
+- Images: `practacupress/press:<version>` and `practacupress/press:latest`.
 - Run a published image with
-  `PP_IMAGE=ghcr.io/<owner>/practacu-press:v1.0.0 docker compose pull`, then
-  `PP_IMAGE=ghcr.io/<owner>/practacu-press:v1.0.0 docker compose up -d`.
+  `PP_IMAGE=practacupress/press:v1.0.0 docker compose pull`, then
+  `PP_IMAGE=practacupress/press:v1.0.0 docker compose up -d`.
 - You can also dispatch the workflow manually with a version, or push a `v*` / `V*` tag. Full
   details: [docs/deployment/releases.md](docs/deployment/releases.md).
 
