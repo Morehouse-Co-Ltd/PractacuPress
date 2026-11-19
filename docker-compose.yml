@@ -1,26 +1,6 @@
-# Practacu Press —— Docker 自托管部署（单站点）
-# Practacu Press — single-site Docker deployment
-#
-# 开发 / Development:
-#   docker compose up -d --build
-#
-# 生产 / Production:
-#   cp deploy/production/env.prod.example .env.prod
-#   docker compose --env-file .env.prod up -d --build
-#
-# 使用已发布镜像 / Prebuilt image:
-#   PP_IMAGE=practacupress/press:v1.2.3 docker compose pull
-#   PP_IMAGE=practacupress/press:v1.2.3 docker compose up -d
-#
-# 默认只绑定 127.0.0.1；生产在前面加 TLS 反代，不要把未安装完的实例暴露到公网。
-# Bound to 127.0.0.1 by default; put a TLS proxy in front for public deployments.
-# 详细步骤 / Full guide: docs/deployment/production-profile.md
-
 name: practacu-press
 
 services:
-  # 单容器：Practacu Press + 内嵌 SPA + 进程内安全检查。
-  # One container: Practacu Press, embedded SPA and in-process security checks.
   practacu-press:
     container_name: practacu-press
     image: ${PP_IMAGE:-practacu-press:development}
