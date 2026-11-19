@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Comment, ContentKind, ReportReason, ToggleResult } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
@@ -32,6 +32,7 @@ import { ArticleProvider } from '../../components/blocks/ArticleContext';
 import { ScreenRenderer } from '../../components/blocks';
 import { hasArticleContent, screenHasBlocks } from '../../lib/blocks';
 import { useCustomization } from '../../lib/customize';
+import { contentPermalink } from '../../lib/permalinks';
 import { coverImageStyle, useCoverHidden, visibleCoverFor } from '../../lib/covers';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { usePermissions } from '../../lib/usePermissions';
@@ -216,9 +217,19 @@ function CommentItem({
   );
 }
 
-export function ContentDetailPage({ kind }: { kind: ContentKind }) {
+export function ContentDetailPage({
+  kind,
+  contentKey,
+  initialItem,
+}: {
+  kind: ContentKind;
+  contentKey?: string;
+  initialItem?: import('../../types').Content;
+}) {
   const t = useT();
-  const { id = '' } = useParams();
+  const params = useParams();
+  const location = useLocation();
+  const id = contentKey ?? params.id ?? '';
   const { me, site } = useAuth();
   const { customization } = useCustomization();
   // 文章页附加区块：在正文与评论区之间渲染，由「页面编排 → 文章页」维护。
@@ -265,8 +276,21 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   const [unlockBusy, setUnlockBusy] = useState(false);
   const [unlockError, setUnlockError] = useState('');
 
-  const content = useAsync(() => backend.getContent(kind, id), [backend, kind, id]);
-  const item = content.data;
+  const content = useAsync(
+    () => (initialItem ? Promise.resolve(initialItem) : backend.getContent(kind, id)),
+    [backend, kind, id, initialItem?.id],
+  );
+  const item = initialItem ?? content.data;
+  const publicPath = item
+    ? contentPermalink(item, customization.seo.permalinks)
+    : `/${kind === 'article' ? 'a' : 'p'}/${id}`;
+  useEffect(() => {
+    if (!item || location.pathname === publicPath) return;
+    navigate(
+      { pathname: publicPath, search: location.search, hash: location.hash },
+      { replace: true },
+    );
+  }, [item, location.hash, location.pathname, location.search, navigate, publicPath]);
   // 内容响应只带 author_id，不带作者名。作者名缺失时补一次公开资料请求；
   // author_name 已经在响应里（或内容没有作者）时完全不发请求。依赖里带 author_id，
   // useAsync 会按作者去重，同一篇文章不会重复请求。
@@ -324,7 +348,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   useSeo({
     title: item?.title,
     description: item?.summary,
-    path: `/${kind === 'article' ? 'a' : 'p'}/${id}`,
+    path: publicPath,
     type: 'article',
     image: item ? firstImage(item.rendered_html) : undefined,
     publishedAt: item?.published_at,
@@ -336,7 +360,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       ? [
           articleJsonLd({
             content: item,
-            url: `${window.location.origin}/${kind === 'article' ? 'a' : 'p'}/${item.id}`,
+            url: `${window.location.origin}${publicPath}`,
             siteName: site?.name ?? 'Practacu Press',
             publisher: customization.seo.publisher || site?.name || 'Practacu Press',
             image: firstImage(item.rendered_html),
@@ -348,7 +372,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
               name: kind === 'article' ? t('文章') : t('帖子'),
               url: `${window.location.origin}/${kind === 'article' ? 'articles' : 'posts'}`,
             },
-            { name: item.title, url: `${window.location.origin}/${kind === 'article' ? 'a' : 'p'}/${item.id}` },
+            { name: item.title, url: `${window.location.origin}${publicPath}` },
           ]),
         ]
       : [],
@@ -723,7 +747,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
     );
   }
 
-  const url = `/${kind === 'article' ? 'a' : 'p'}/${item.id}`;
+  const url = publicPath;
   // 作者名优先用响应里的字段；缺失时用公开资料补齐，真正读不到时才退回「作者」。
   const authorLabel = authorName ?? t('作者');
   const isUnpublished = item.status !== 'published';
@@ -965,7 +989,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
 
           <nav className="article-pager" aria-label={t('上一篇与下一篇')}>
             {neighbors.previous ? (
-              <Link className="article-pager-item is-prev" to={contentPath(neighbors.previous)}>
+              <Link className="article-pager-item is-prev" to={contentPath(neighbors.previous, customization.seo.permalinks)}>
                 <span>
                   <Icon name="arrow-left" size={12} /> {t('上一篇')}
                 </span>
@@ -980,7 +1004,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
               </span>
             )}
             {neighbors.next ? (
-              <Link className="article-pager-item is-next" to={contentPath(neighbors.next)}>
+              <Link className="article-pager-item is-next" to={contentPath(neighbors.next, customization.seo.permalinks)}>
                 <span>
                   {t('下一篇')} <Icon name="arrow-right" size={12} />
                 </span>
@@ -1159,7 +1183,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
                 <span className="story-index">·</span>
                 <div className="story-body">
                   <h3>
-                    <Link to={contentPath(entry)}>{entry.title}</Link>
+                    <Link to={contentPath(entry, customization.seo.permalinks)}>{entry.title}</Link>
                   </h3>
                   <div className="story-meta">
                     <span>{entry.author_name ?? t('编辑部')}</span>

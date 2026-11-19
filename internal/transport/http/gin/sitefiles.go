@@ -58,7 +58,7 @@ func sitemapFile(deps SiteFilesDependencies, trusted middleware.TrustedProxies) 
 				_ = c.Error(apperr.Internal(listErr).WithRequestID(middleware.RequestIDFrom(c)))
 				return
 			}
-			entries = sitefiles.Build(origin, items, pages)
+			entries = sitefiles.Build(origin, items, pages, seo.Permalinks)
 		}
 
 		c.Header("Cache-Control", "public, max-age=300")

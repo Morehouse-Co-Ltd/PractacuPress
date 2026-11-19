@@ -17,12 +17,12 @@ import (
 	"errors"
 	"html"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/practacu/practacu-press/internal/content"
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/site"
 	"github.com/practacu/practacu-press/internal/taxonomy"
@@ -59,7 +59,8 @@ type Settings struct {
 	// IncludeTaxonomy exposes the per category and per tag feeds.
 	IncludeTaxonomy bool
 	// Language is the BCP 47 language of the site, for RSS <language>.
-	Language string
+	Language   string
+	Permalinks permalink.Settings
 }
 
 // SEO is the subset of the design document that decides whether crawlers may read
@@ -67,6 +68,7 @@ type Settings struct {
 type SEO struct {
 	Indexable     bool
 	CanonicalBase string
+	Permalinks    permalink.Settings
 }
 
 // Defaults returns the feed settings of a site that never saved a design document.
@@ -82,6 +84,7 @@ func Defaults() Settings {
 		Limit:           DefaultLimit,
 		IncludeTaxonomy: true,
 		Language:        "zh-CN",
+		Permalinks:      permalink.Defaults(),
 	}
 }
 
@@ -108,13 +111,16 @@ func ParseCustomization(document []byte) (Settings, SEO) {
 		} `json:"feed"`
 		Language string `json:"language"`
 		SEO      *struct {
-			Indexable     *bool  `json:"indexable"`
-			CanonicalBase string `json:"canonical_base"`
+			Indexable     *bool               `json:"indexable"`
+			CanonicalBase string              `json:"canonical_base"`
+			Permalinks    *permalink.Settings `json:"permalinks"`
 		} `json:"seo"`
 	}
 	if err := json.Unmarshal(document, &decoded); err != nil {
 		return settings, seo
 	}
+	settings.Permalinks = permalink.ParseCustomization(document)
+	seo.Permalinks = settings.Permalinks
 
 	if decoded.Feed != nil {
 		if decoded.Feed.Enabled != nil {
@@ -366,7 +372,7 @@ func Build(ctx context.Context, source Source, request Request) (Channel, error)
 		if item.AccessMode != "" && item.AccessMode != content.AccessPublic {
 			continue
 		}
-		link := itemURL(channel.SiteURL, item)
+		link := itemURL(channel.SiteURL, item, settings.Permalinks)
 		if link == "" {
 			continue
 		}
@@ -428,35 +434,27 @@ func lookupAuthor(ctx context.Context, lookup AuthorLookup, siteID, userID strin
 	return strings.TrimSpace(member.DisplayName)
 }
 
-// itemURL builds the public address of one content item.
-//
-// The route shape mirrors the frontend and the sitemap (J5): /a/{slug} for articles and
-// /p/{slug} for posts, with the id as the fallback for content that never got a slug.
-// An author supplied canonical URL wins over both, because the author declared it to be
-// the authoritative address for this entry.
-func itemURL(origin string, item content.Content) string {
+// itemURL builds the public address of one content item. An author supplied canonical
+// URL wins over the configured site structure.
+func itemURL(origin string, item content.Content, settings permalink.Settings) string {
 	if canonical := strings.TrimSpace(item.CanonicalURL); canonical != "" {
 		return canonical
 	}
 
-	prefix := ""
-	switch item.Kind {
-	case content.KindArticle:
-		prefix = "/a/"
-	case content.KindPost:
-		prefix = "/p/"
-	default:
+	if item.Kind != content.KindArticle && item.Kind != content.KindPost {
 		return ""
 	}
-
-	key := strings.TrimSpace(item.Slug)
-	if key == "" {
-		key = item.ID
+	date := item.CreatedAt
+	if item.PublishedAt != nil {
+		date = *item.PublishedAt
 	}
-	if key == "" {
+	path := permalink.Path(settings, permalink.Item{
+		Kind: string(item.Kind), ID: item.ID, Slug: item.Slug, Date: date,
+	})
+	if path == "" {
 		return ""
 	}
-	return strings.TrimRight(origin, "/") + prefix + url.PathEscape(key)
+	return strings.TrimRight(origin, "/") + path
 }
 
 // fullText returns the sanitized body when the owner enabled full text, otherwise

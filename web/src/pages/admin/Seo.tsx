@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import type { Content } from '../../types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Content, PermalinkPattern } from '../../types';
 import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
@@ -13,9 +13,10 @@ import {
   siteOrigin,
   sitemapXml,
 } from '../../lib/seo';
-import { Button, Callout, CopyButton, Field, Input, Textarea, Toggle } from '../../components/ui';
+import { Button, Callout, CopyButton, Field, Input, Select, Textarea, Toggle } from '../../components/ui';
 import { NumberField } from '../../components/NumberField';
 import { RoleGate } from '../../components/Guards';
+import { isValidPermalinkTemplate, permalinkStructureFor } from '../../lib/permalinks';
 
 function downloadFile(name: string, content: string, type: string) {
   const blob = new Blob([content], { type: `${type};charset=utf-8` });
@@ -27,6 +28,36 @@ function downloadFile(name: string, content: string, type: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function previewPermalink(
+  structure: string,
+  custom: string,
+  kind: 'article' | 'post',
+): string {
+  if (structure === 'legacy') return kind === 'article' ? '/a/example-article' : '/p/example-post';
+  if (structure === 'date_name') return '/2026/11/19/example-post';
+  if (structure === 'month_name') return '/2026/11/example-post';
+  if (structure === 'numeric') return '/archives/123';
+  if (structure === 'post_name') return '/example-post';
+  return custom
+    .replaceAll('%year%', '2026')
+    .replaceAll('%monthnum%', '11')
+    .replaceAll('%day%', '19')
+    .replaceAll('%postname%', kind === 'article' ? 'example-article' : 'example-post')
+    .replaceAll('%post_id%', '123');
+}
+
+function appendPermalinkAlias(
+  existing: PermalinkPattern[] | undefined,
+  previous: PermalinkPattern,
+): PermalinkPattern[] {
+  const aliases = [...(existing ?? [])];
+  const duplicate = aliases.some(
+    (item) => item.structure === previous.structure && item.custom === previous.custom,
+  );
+  if (!duplicate) aliases.push(previous);
+  return aliases.slice(-12);
 }
 
 export function SeoPage() {
@@ -48,6 +79,8 @@ function SeoWorkspace() {
   const feed = customization.feed;
   const toast = useToast();
   const [tab, setTab] = useState<'meta' | 'files'>('meta');
+  const [articleCustom, setArticleCustom] = useState(seo.permalinks.article_custom);
+  const [postCustom, setPostCustom] = useState(seo.permalinks.post_custom);
 
   const origin = siteOrigin(seo, window.location.origin);
   const siteName = site?.name ?? 'Practacu Press';
@@ -89,6 +122,38 @@ function SeoWorkspace() {
 
   const patch = (next: Partial<typeof seo>) => update({ seo: { ...seo, ...next } });
   const patchFeed = (next: Partial<typeof feed>) => update({ feed: { ...feed, ...next } });
+
+  useEffect(() => setArticleCustom(seo.permalinks.article_custom), [seo.permalinks.article_custom]);
+  useEffect(() => setPostCustom(seo.permalinks.post_custom), [seo.permalinks.post_custom]);
+
+  const patchPermalinks = (next: Partial<typeof seo.permalinks>) => {
+    const current = seo.permalinks;
+    const updated = { ...current, ...next };
+    const articleChanged =
+      current.article_structure !== updated.article_structure || current.article_custom !== updated.article_custom;
+    const previousPost = permalinkStructureFor('post', current);
+    const nextPost = permalinkStructureFor('post', updated);
+    const postChanged = previousPost.structure !== nextPost.structure || previousPost.custom !== nextPost.custom;
+
+    if (articleChanged) updated.article_aliases = appendPermalinkAlias(current.article_aliases, {
+      structure: current.article_structure,
+      custom: current.article_custom,
+    });
+    if (postChanged) updated.post_aliases = appendPermalinkAlias(current.post_aliases, {
+      structure: previousPost.structure,
+      custom: previousPost.custom,
+    });
+    patch({ permalinks: updated });
+  };
+
+  const structureOptions = [
+    ['date_name', t('日期和名称型')],
+    ['month_name', t('月份和名称型')],
+    ['numeric', t('数字型')],
+    ['post_name', t('文章名')],
+    ['custom', t('自定义结构')],
+    ['legacy', t('默认类型路径')],
+  ] as const;
 
   return (
     <>
@@ -223,6 +288,95 @@ function SeoWorkspace() {
                     label={t('允许搜索引擎收录')}
                     description={t('成员限定站点会自动关闭；后台、登录页与搜索结果页始终不收录。')}
                   />
+                  <div className="form-stack">
+                    <div>
+                      <h4>{t('文章链接结构')}</h4>
+                      <p className="field-hint">{t('选择文章和帖子的固定链接格式。修改后旧链接仍可访问并跳转。')}</p>
+                    </div>
+                    <Field label={t('文章')} htmlFor="article-permalink-structure">
+                      <Select
+                        id="article-permalink-structure"
+                        value={seo.permalinks.article_structure}
+                        onChange={(event) =>
+                          patchPermalinks({ article_structure: event.target.value as typeof seo.permalinks.article_structure })
+                        }
+                      >
+                        {structureOptions.map(([value, label]) => (
+                          <option value={value} key={value}>{label}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    {seo.permalinks.article_structure === 'custom' ? (
+                      <Field
+                        label={t('文章自定义结构')}
+                        htmlFor="article-permalink-custom"
+                        hint={t('可用占位符 %year%、%monthnum%、%day%、%postname% 和 %post_id%。')}
+                        error={!isValidPermalinkTemplate(articleCustom) ? t('结构必须以 / 开头，并包含 %postname% 或 %post_id%。') : undefined}
+                      >
+                        <Input
+                          id="article-permalink-custom"
+                          value={articleCustom}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setArticleCustom(value);
+                            if (isValidPermalinkTemplate(value)) patchPermalinks({ article_custom: value });
+                          }}
+                          aria-invalid={!isValidPermalinkTemplate(articleCustom)}
+                          placeholder="/%year%/%monthnum%/%day%/%postname%"
+                          maxLength={200}
+                        />
+                      </Field>
+                    ) : null}
+                    <p className="small mono">{t('文章预览')} · {previewPermalink(seo.permalinks.article_structure, articleCustom, 'article')}</p>
+                    <Toggle
+                      checked={seo.permalinks.posts_follow_articles}
+                      onChange={(posts_follow_articles) => patchPermalinks({ posts_follow_articles })}
+                      label={t('帖子跟随文章链接结构')}
+                    />
+                    {!seo.permalinks.posts_follow_articles ? (
+                      <>
+                        <Field label={t('帖子')} htmlFor="post-permalink-structure">
+                          <Select
+                            id="post-permalink-structure"
+                            value={seo.permalinks.post_structure}
+                            onChange={(event) =>
+                              patchPermalinks({ post_structure: event.target.value as typeof seo.permalinks.post_structure })
+                            }
+                          >
+                            {structureOptions.map(([value, label]) => (
+                              <option value={value} key={value}>{label}</option>
+                            ))}
+                          </Select>
+                        </Field>
+                        {seo.permalinks.post_structure === 'custom' ? (
+                          <Field
+                            label={t('帖子自定义结构')}
+                            htmlFor="post-permalink-custom"
+                            hint={t('可用占位符 %year%、%monthnum%、%day%、%postname% 和 %post_id%。')}
+                            error={!isValidPermalinkTemplate(postCustom) ? t('结构必须以 / 开头，并包含 %postname% 或 %post_id%。') : undefined}
+                          >
+                            <Input
+                              id="post-permalink-custom"
+                              value={postCustom}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setPostCustom(value);
+                                if (isValidPermalinkTemplate(value)) patchPermalinks({ post_custom: value });
+                              }}
+                              aria-invalid={!isValidPermalinkTemplate(postCustom)}
+                              placeholder="/%postname%"
+                              maxLength={200}
+                            />
+                          </Field>
+                        ) : null}
+                      </>
+                    ) : null}
+                    <p className="small mono">{t('帖子预览')} · {previewPermalink(
+                      seo.permalinks.posts_follow_articles ? seo.permalinks.article_structure : seo.permalinks.post_structure,
+                      seo.permalinks.posts_follow_articles ? articleCustom : postCustom,
+                      'post',
+                    )}</p>
+                  </div>
                   <Field
                     label={t('站点地址')}
                     htmlFor="seo-canonical"

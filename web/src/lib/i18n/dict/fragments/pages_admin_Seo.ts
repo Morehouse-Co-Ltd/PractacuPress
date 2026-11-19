@@ -43,6 +43,26 @@ const fragment: Dictionary = {
   '允许搜索引擎收录': 'Allow search engines to index the site',
   '成员限定站点会自动关闭；后台、登录页与搜索结果页始终不收录。':
     'Sites limited to members turn this off automatically; the dashboard, sign-in page, and search results are never indexed.',
+  '文章链接结构': 'Permalink structure',
+  '选择文章和帖子的固定链接格式。修改后旧链接仍可访问并跳转。':
+    'Choose the permalink format for articles and posts. Existing links continue to redirect.',
+  '文章': 'Articles',
+  '帖子': 'Posts',
+  '日期和名称型': 'Day and name',
+  '月份和名称型': 'Month and name',
+  '数字型': 'Numeric',
+  '文章名': 'Post name',
+  '自定义结构': 'Custom structure',
+  '默认类型路径': 'Default type path',
+  '文章自定义结构': 'Article custom structure',
+  '帖子自定义结构': 'Post custom structure',
+  '可用占位符 %year%、%monthnum%、%day%、%postname% 和 %post_id%。':
+    'Available tokens are %year%, %monthnum%, %day%, %postname%, and %post_id%.',
+  '结构必须以 / 开头，并包含 %postname% 或 %post_id%。':
+    'The structure must start with / and include %postname% or %post_id%.',
+  '文章预览': 'Article preview',
+  '帖子预览': 'Post preview',
+  '帖子跟随文章链接结构': 'Use the article permalink structure for posts',
   '站点地址': 'Site address',
   '用于 canonical 与 sitemap；留空取当前访问地址。':
     'Used for canonical and sitemap; leave it empty to use the current address.',

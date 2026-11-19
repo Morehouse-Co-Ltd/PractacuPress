@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/site"
 )
@@ -17,9 +18,10 @@ const hitIncrementTimeout = 5 * time.Second
 
 // Service implements the redirect use cases.
 type Service struct {
-	repo    Repository
-	locator ContentLocator
-	now     func() time.Time
+	repo       Repository
+	locator    ContentLocator
+	permalinks PermalinkSettingsFunc
+	now        func() time.Time
 	// launch runs a best effort background task. The default starts a goroutine;
 	// tests replace it with a synchronous call so a counter assertion is deterministic.
 	launch func(func())
@@ -39,7 +41,8 @@ type ServiceConfig struct {
 	// Locator resolves content paths for the public resolve endpoint. Nil means only
 	// the redirect table is consulted, which is the state of a deployment whose
 	// content service is not wired (and of the contract router, which only mounts).
-	Locator ContentLocator
+	Locator    ContentLocator
+	Permalinks PermalinkSettingsFunc
 	// Now overrides the clock in tests.
 	Now func() time.Time
 }
@@ -54,10 +57,11 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		now = func() time.Time { return time.Now().UTC() }
 	}
 	return &Service{
-		repo:    cfg.Repository,
-		locator: cfg.Locator,
-		now:     now,
-		launch:  func(task func()) { go task() },
+		repo:       cfg.Repository,
+		locator:    cfg.Locator,
+		permalinks: cfg.Permalinks,
+		now:        now,
+		launch:     func(task func()) { go task() },
 	}, nil
 }
 
@@ -158,36 +162,55 @@ func (s *Service) ResolvePath(ctx context.Context, siteID, rawPath string) (Reso
 		}, nil
 	}
 
-	kind, key, isContent := splitContentPath(normalized)
-	if !isContent || s.locator == nil {
+	if s.locator == nil {
 		return missingResolution(normalized), nil
 	}
-
-	contentID, slug, title, ok, err := s.locator.Locate(ctx, siteID, kind, key)
-	if err != nil {
-		return Resolution{}, err
+	settings := permalink.Defaults()
+	if s.permalinks != nil {
+		settings, err = s.permalinks(ctx, siteID)
+		if err != nil {
+			return Resolution{}, err
+		}
 	}
-	if !ok || contentID == "" {
-		return missingResolution(normalized), nil
-	}
+	for _, candidate := range permalink.Match(normalized, settings) {
+		var contentID, slug, title string
+		var publishedAt, createdAt time.Time
+		var ok bool
+		if detailed, supportsDetails := s.locator.(DetailedContentLocator); supportsDetails {
+			contentID, slug, title, publishedAt, createdAt, ok, err = detailed.LocateAddress(
+				ctx, siteID, candidate.Kind, candidate.Key,
+			)
+		} else {
+			contentID, slug, title, ok, err = s.locator.Locate(ctx, siteID, candidate.Kind, candidate.Key)
+		}
+		if err != nil {
+			return Resolution{}, err
+		}
+		if !ok || contentID == "" {
+			continue
+		}
 
-	// The address already carries the slug: it is the canonical URL, so the page is
-	// served directly instead of bouncing through a redirect.
-	canonical := normalized
-	status := httpStatusOK
-	if key != slug && key == contentID && slug != "" {
-		canonical = contentKindPrefix(kind) + slug
-		status = httpStatusMovedPermanently
+		date := createdAt
+		if !publishedAt.IsZero() {
+			date = publishedAt
+		}
+		canonical := permalink.Path(settings, permalink.Item{
+			Kind: candidate.Kind, ID: contentID, Slug: slug, Date: date,
+		})
+		status := httpStatusOK
+		if canonical != normalized {
+			status = httpStatusMovedPermanently
+		}
+		return Resolution{
+			Kind:          KindContent,
+			CanonicalPath: canonical,
+			Status:        status,
+			ContentID:     contentID,
+			Slug:          slug,
+			Title:         title,
+		}, nil
 	}
-
-	return Resolution{
-		Kind:          KindContent,
-		CanonicalPath: canonical,
-		Status:        status,
-		ContentID:     contentID,
-		Slug:          slug,
-		Title:         title,
-	}, nil
+	return missingResolution(normalized), nil
 }
 
 // HTTP statuses used in a Resolution. They are the page server's answer, not this

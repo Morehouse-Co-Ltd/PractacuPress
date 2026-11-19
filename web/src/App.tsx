@@ -43,7 +43,7 @@ import { RequireAuth } from './components/Guards';
 import { HomePage } from './pages/site/Home';
 import { ArchivePage } from './pages/site/Archive';
 import { CategoriesPage, CategoryPage, TagsPage, TagPage } from './pages/site/Taxonomy';
-import { ContentDetailPage } from './pages/site/ContentDetail';
+import { PublicPathRoute } from './pages/site/PublicPathRoute';
 import { SearchPage } from './pages/site/SearchPage';
 import { ProfilePage } from './pages/site/Profile';
 import { MePage } from './pages/site/Me';
@@ -89,7 +89,6 @@ import { ThemesPage } from './pages/admin/Themes';
 import { ChooseThemePage } from './pages/admin/ChooseTheme';
 import { ExtensionsPage } from './pages/admin/Extensions';
 import { SeoPage } from './pages/admin/Seo';
-import { CustomPage } from './pages/site/CustomPage';
 import { PageLoading } from './components/ui';
 import { ExtensionBoot } from './components/ExtensionBoot';
 import { AdminExtensionPage } from './components/AdminExtensionPage';
@@ -571,8 +570,8 @@ export default function App() {
                 <Route path="category/:slug" element={<CategoryPage />} />
                 <Route path="tags" element={<TagsPage />} />
                 <Route path="tag/:slug" element={<TagPage />} />
-                <Route path="a/:id" element={<ContentDetailPage kind="article" />} />
-                <Route path="p/:id" element={<ContentDetailPage kind="post" />} />
+                <Route path="a/:id" element={<PublicPathRoute />} />
+                <Route path="p/:id" element={<PublicPathRoute />} />
                 <Route path="search" element={<SearchPage />} />
                 <Route path="u/:id" element={<ProfilePage />} />
                 <Route
@@ -629,8 +628,8 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
-                <Route path=":slug" element={<CustomPage />} />
-                <Route path="*" element={<NotFoundPage />} />
+                <Route path=":slug" element={<PublicPathRoute />} />
+                <Route path="*" element={<PublicPathRoute />} />
               </Route>
 
               {/* 写作台：普通成员写稿的独立页面，不带任何后台导航。 */}

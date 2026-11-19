@@ -12,15 +12,16 @@ import { useSeo } from '../../lib/seo';
 import { useT } from '../../lib/i18n';
 
 /** 自定义页面：路径由安装配置里的 pages 决定，没有对应后端端点。 */
-export function CustomPage() {
+export function CustomPage({ pageSlug }: { pageSlug?: string } = {}) {
   const t = useT();
   const { slug = '' } = useParams();
+  const resolvedSlug = pageSlug ?? slug;
   const { customization } = useCustomization();
   const { me } = useAuth();
-  const page = customization.pages.find((entry) => entry.slug === slug);
+  const page = customization.pages.find((entry) => entry.slug === resolvedSlug);
   useSeo({
     title: page?.title ?? t('页面不存在'),
-    path: `/${slug}`,
+    path: `/${resolvedSlug}`,
     description: page?.summary,
     noindex: !page || page.status !== 'published',
     jsonLd: page

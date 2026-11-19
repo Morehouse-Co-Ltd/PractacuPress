@@ -55,6 +55,7 @@ import (
 	"github.com/practacu/practacu-press/internal/notifications"
 	"github.com/practacu/practacu-press/internal/observability"
 	"github.com/practacu/practacu-press/internal/outbox"
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/config"
 	"github.com/practacu/practacu-press/internal/platform/emailgateway"
 	"github.com/practacu/practacu-press/internal/platform/fieldcrypto"
@@ -513,8 +514,19 @@ func run() error {
 	// records an automatic 301 when a published slug moves, and the public resolver
 	// answers the page server. The two services reference each other, so the mutual
 	// edges are wired after both exist.
+	permalinkSettings := func(ctx context.Context, siteID string) (permalink.Settings, error) {
+		customization, err := siteService.Customization(ctx, siteID)
+		if errors.Is(err, site.ErrCustomizationNotFound) {
+			return permalink.Defaults(), nil
+		}
+		if err != nil {
+			return permalink.Settings{}, err
+		}
+		return permalink.ParseCustomization(customization.Document), nil
+	}
 	redirectService, err := redirect.NewService(redirect.ServiceConfig{
 		Repository: redirectstore.New(handle.Client),
+		Permalinks: permalinkSettings,
 	})
 	if err != nil {
 		return fmt.Errorf("build redirect service: %w", err)
@@ -542,6 +554,7 @@ func run() error {
 		ReviewNotifier: contentReviewNotifier{notifications: notificationService},
 		// Beta 1.2: when a published slug changes the old path keeps working.
 		RedirectRecorder: redirectService,
+		Permalinks:       permalinkSettings,
 	})
 	if err != nil {
 		return fmt.Errorf("build content service: %w", err)

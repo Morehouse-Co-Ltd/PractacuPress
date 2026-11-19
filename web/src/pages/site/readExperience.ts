@@ -1,4 +1,6 @@
 import type { Content, ContentKind } from '../../types';
+import type { PermalinkSettings } from '../../types';
+import { contentPermalink } from '../../lib/permalinks';
 
 /**
  * 阅读端体验的纯函数与本地偏好存储。
@@ -19,8 +21,8 @@ export function contentTime(item: Content): string {
   return item.published_at ?? item.created_at;
 }
 
-export function contentPath(item: Content): string {
-  return `/${item.kind === 'article' ? 'a' : 'p'}/${item.id}`;
+export function contentPath(item: Content, settings?: PermalinkSettings): string {
+  return contentPermalink(item, settings);
 }
 
 export function isPublished(item: Content): boolean {

@@ -5367,10 +5367,10 @@ paths:
       tags: [sites]
       summary: Resolve a public path to its canonical URL
       description: |
-        The static server calls this before serving a page: an id style URL is answered
-        with its slug form and a 301 so the canonical URL wins, a hit in the redirect
-        table answers with the rule, and an unknown path answers 404. It is public and
-        cached for a minute, because it sits in front of every page view.
+        Resolves legacy paths and the site's current or previously configured permalink
+        structures. A noncanonical content path is answered with its current canonical
+        path and a 301. Explicit redirect rules take precedence, and unknown paths answer
+        404. It is public and cached for a minute.
       security: []
       parameters:
         - name: path

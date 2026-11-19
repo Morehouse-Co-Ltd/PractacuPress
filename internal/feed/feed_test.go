@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/practacu/practacu-press/internal/content"
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/site"
 	"github.com/practacu/practacu-press/internal/taxonomy"
@@ -289,6 +290,24 @@ func TestBuildUsesSlugCanonicalAndIDFallbacks(t *testing.T) {
 	require.Equal(t, "https://press.example.com/a/hello-world", channel.Items[0].URL)
 	require.Equal(t, "https://elsewhere.example/republished", channel.Items[1].URL)
 	require.Equal(t, "https://press.example.com/a/legacy", channel.Items[2].URL)
+}
+
+func TestBuildUsesConfiguredPermalinkStructure(t *testing.T) {
+	published := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	lister := &stubContent{items: []content.Content{{
+		ID: "a1", SiteID: "site_1", Kind: content.KindArticle,
+		Status: content.StatusPublished, Title: "Slugged", Slug: "hello-world",
+		PublishedAt: &published, CreatedAt: published, UpdatedAt: published,
+	}}}
+	settings := Defaults()
+	settings.Permalinks.ArticleStructure = permalink.StructureDateName
+
+	channel, err := Build(context.Background(), Source{Content: lister}, Request{
+		SiteID: "site_1", SiteName: "Press", Origin: "https://press.example.com",
+		Settings: settings,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://press.example.com/2026/11/06/hello-world", channel.Items[0].URL)
 }
 
 func TestBuildFullTextFallsBackToExcerpt(t *testing.T) {

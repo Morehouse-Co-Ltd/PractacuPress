@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/practacu/practacu-press/internal/permalink"
 	apperr "github.com/practacu/practacu-press/internal/platform/errors"
 	"github.com/practacu/practacu-press/internal/platform/page"
 )
@@ -277,11 +278,8 @@ func NormalizeQuery(raw string) (string, error) {
 	return query, nil
 }
 
-// splitContentPath maps a public content path to the locator kind and key.
-//
-// Only the two permalink prefixes exist: /a/{key} for articles and /p/{key} for posts.
-// A different path (a custom page, the root) is not content, so it can only match the
-// redirect table.
+// splitContentPath maps the legacy /a/{key} and /p/{key} paths to their kind and key.
+// Configured permalink structures are parsed by the permalink package.
 func splitContentPath(path string) (kind, key string, ok bool) {
 	prefixes := []struct {
 		prefix string
@@ -357,6 +355,17 @@ type Page struct {
 type ContentLocator interface {
 	Locate(ctx context.Context, siteID, kind, key string) (contentID, slug, title string, ok bool, err error)
 }
+
+type DetailedContentLocator interface {
+	LocateAddress(ctx context.Context, siteID, kind, key string) (
+		contentID, slug, title string,
+		publishedAt, createdAt time.Time,
+		ok bool,
+		err error,
+	)
+}
+
+type PermalinkSettingsFunc func(context.Context, string) (permalink.Settings, error)
 
 // RedirectRecorder is the write side the content service calls when a published
 // item's slug changes.

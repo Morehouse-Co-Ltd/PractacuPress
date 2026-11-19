@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/practacu/practacu-press/internal/content"
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 )
 
@@ -30,14 +31,15 @@ const (
 
 // Item is one published content item that belongs in the sitemap.
 //
-// Slug is the permalink the site now advertises (J5): /a/{slug} and /p/{slug}. ID is
-// kept as the fallback for content that never got a slug, and CanonicalURL overrides
-// both when the author pinned an external canonical address.
+// Slug and ID are rendered through the site's permalink structure. CanonicalURL
+// overrides that path when the author pinned an external canonical address.
 type Item struct {
 	ID           string
 	Slug         string
 	Kind         content.Kind
 	CanonicalURL string
+	PublishedAt  time.Time
+	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
 
@@ -62,6 +64,7 @@ type SEO struct {
 	// frontend default.
 	Indexable     bool
 	CanonicalBase string
+	Permalinks    permalink.Settings
 }
 
 // ParseCustomization reads the SEO settings and pages out of a stored design
@@ -71,21 +74,23 @@ type SEO struct {
 // an unreadable document yields the defaults instead of an error. A broken design
 // must not take the sitemap offline, and the frontend would show the same defaults.
 func ParseCustomization(document []byte) (SEO, []Page) {
-	seo := SEO{Indexable: true}
+	seo := SEO{Indexable: true, Permalinks: permalink.Defaults()}
 	if len(bytes.TrimSpace(document)) == 0 {
 		return seo, nil
 	}
 
 	var decoded struct {
 		SEO *struct {
-			Indexable     *bool  `json:"indexable"`
-			CanonicalBase string `json:"canonical_base"`
+			Indexable     *bool               `json:"indexable"`
+			CanonicalBase string              `json:"canonical_base"`
+			Permalinks    *permalink.Settings `json:"permalinks"`
 		} `json:"seo"`
 		Pages []Page `json:"pages"`
 	}
 	if err := json.Unmarshal(document, &decoded); err != nil {
 		return seo, nil
 	}
+	seo.Permalinks = permalink.ParseCustomization(document)
 
 	if decoded.SEO != nil {
 		if decoded.SEO.Indexable != nil {
@@ -155,6 +160,8 @@ func Published(ctx context.Context, lister ContentLister, siteID string) ([]Item
 				Slug:         item.Slug,
 				Kind:         item.Kind,
 				CanonicalURL: item.CanonicalURL,
+				PublishedAt:  publishedAt(item),
+				CreatedAt:    item.CreatedAt,
 				UpdatedAt:    item.UpdatedAt,
 			})
 		}
@@ -171,13 +178,15 @@ func Published(ctx context.Context, lister ContentLister, siteID string) ([]Item
 
 // Build renders the sitemap entries for a site.
 //
-// The route shape mirrors the frontend: /a/{slug} for articles, /p/{slug} for posts
-// and /{slug} for custom pages. A content item without a slug falls back to its id, so
-// a sitemap still advertises a reachable URL for legacy content. An author supplied
-// canonical URL wins over both (J5). origin is trimmed of its trailing slash so the
-// locs never contain a double slash.
-func Build(origin string, items []Item, pages []Page) []Entry {
+// Content URLs follow the site's article and post structures. Custom pages remain at
+// /{slug}; items without a slug fall back to their ID, and author canonical URLs win.
+// origin is trimmed of its trailing slash so locs never contain a double slash.
+func Build(origin string, items []Item, pages []Page, permalinkSettings ...permalink.Settings) []Entry {
 	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	settings := permalink.Defaults()
+	if len(permalinkSettings) > 0 {
+		settings = permalinkSettings[0]
+	}
 
 	entries := make([]Entry, 0, len(items)+len(pages)+3)
 	entries = append(entries,
@@ -187,7 +196,7 @@ func Build(origin string, items []Item, pages []Page) []Entry {
 	)
 
 	for _, item := range items {
-		loc := itemLoc(origin, item)
+		loc := itemLoc(origin, item, settings)
 		if loc == "" {
 			continue
 		}
@@ -223,35 +232,31 @@ func Build(origin string, items []Item, pages []Page) []Entry {
 // republished article), and rewriting it would defeat the author's decision. Inside the
 // site the slug is the permalink; the id is only a fallback so content that predates
 // the slug rule stays crawlable.
-func itemLoc(origin string, item Item) string {
+func itemLoc(origin string, item Item, settings permalink.Settings) string {
 	if canonical := strings.TrimSpace(item.CanonicalURL); canonical != "" {
 		return canonical
 	}
-	prefix := contentPrefix(item.Kind)
-	if prefix == "" {
+	if item.Kind != content.KindArticle && item.Kind != content.KindPost {
 		return ""
 	}
-	key := strings.TrimSpace(item.Slug)
-	if key == "" {
-		key = item.ID
+	date := item.CreatedAt
+	if !item.PublishedAt.IsZero() {
+		date = item.PublishedAt
 	}
-	if key == "" {
+	path := permalink.Path(settings, permalink.Item{
+		Kind: string(item.Kind), ID: item.ID, Slug: item.Slug, Date: date,
+	})
+	if path == "" {
 		return ""
 	}
-	return origin + prefix + url.PathEscape(key)
+	return origin + path
 }
 
-// contentPrefix returns the public permalink prefix of a kind, or an empty string for
-// a kind that has no page.
-func contentPrefix(kind content.Kind) string {
-	switch kind {
-	case content.KindArticle:
-		return "/a/"
-	case content.KindPost:
-		return "/p/"
-	default:
-		return ""
+func publishedAt(item content.Content) time.Time {
+	if item.PublishedAt != nil {
+		return *item.PublishedAt
 	}
+	return time.Time{}
 }
 
 // XML renders the sitemap document.

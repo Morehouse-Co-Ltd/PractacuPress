@@ -56,10 +56,14 @@ func (s *Service) IssuePreview(ctx context.Context, actor Actor, contentID strin
 	if err != nil {
 		return PreviewGrant{}, err
 	}
+	path, err := s.contentPath(ctx, item)
+	if err != nil {
+		return PreviewGrant{}, err
+	}
 	return PreviewGrant{
 		Token:     token,
 		ExpiresAt: expiresAt,
-		Path:      ContentPath(item) + "?preview_token=" + url.QueryEscape(token),
+		Path:      path + "?preview_token=" + url.QueryEscape(token),
 	}, nil
 }
 

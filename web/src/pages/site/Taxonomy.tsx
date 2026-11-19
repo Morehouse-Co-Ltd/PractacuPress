@@ -4,6 +4,7 @@ import type { Content, TaxonomyTerm } from '../../types';
 import { useBackend } from '../../lib/backend';
 import { useAsync } from '../../lib/hooks';
 import { useTaxonomy } from '../../lib/useTaxonomy';
+import { useCustomization } from '../../lib/customize';
 import { KIND_LABEL, formatDate, readingTime } from '../../lib/format';
 import { useSeo } from '../../lib/seo';
 import { useT } from '../../lib/i18n';
@@ -272,6 +273,7 @@ function safeDecode(value: string): string {
 
 function ArchiveRows({ items }: { items: Content[] }) {
   const t = useT();
+  const { customization } = useCustomization();
   return (
     <div className="archive-list">
       {items.map((item) => (
@@ -285,7 +287,7 @@ function ArchiveRows({ items }: { items: Content[] }) {
               </span>
             </div>
             <h2>
-              <Link to={contentPath(item)}>{item.title}</Link>
+              <Link to={contentPath(item, customization.seo.permalinks)}>{item.title}</Link>
             </h2>
             <p>{item.summary ?? ''}</p>
           </div>

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/safety"
 	"github.com/practacu/practacu-press/internal/site"
@@ -271,8 +272,9 @@ type Service struct {
 	redirects RedirectRecorder
 	// views is the in-process de-duplication table of the read counter. It is bound
 	// to the service clock so a test can move time across the window.
-	views *viewGate
-	now   func() time.Time
+	views      *viewGate
+	now        func() time.Time
+	permalinks func(context.Context, string) (permalink.Settings, error)
 }
 
 // ServiceConfig configures a Service.
@@ -303,6 +305,7 @@ type ServiceConfig struct {
 	// RedirectRecorder receives the 301 rule a published item's slug change creates
 	// (contract J4). Nil skips the recording without failing the save.
 	RedirectRecorder RedirectRecorder
+	Permalinks       func(context.Context, string) (permalink.Settings, error)
 	Now              func() time.Time
 }
 
@@ -327,6 +330,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		preview:     cfg.PreviewSigner,
 		redirects:   cfg.RedirectRecorder,
 		now:         cfg.Now,
+		permalinks:  cfg.Permalinks,
 	}
 	// The Beta 1.2 features are storage capabilities of the same repository, so they
 	// are detected here instead of being threaded through a second config field: the
@@ -613,7 +617,9 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	// optional redirect port. The save has already committed, so a failed recording is
 	// not turned into a failed edit; the rule can also be created by hand afterwards.
 	if wasPublished {
-		s.recordSlugChange(ctx, item.SiteID, item.Kind, previousSlug, saved.Slug)
+		previous := item
+		previous.Slug = previousSlug
+		s.recordSlugChange(ctx, previous, saved)
 	}
 	return saved, securityErr
 }

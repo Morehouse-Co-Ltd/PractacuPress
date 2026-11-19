@@ -79,6 +79,7 @@ import {
 } from './permissions';
 import { t } from './i18n';
 import { liveCatalog } from './i18n/live';
+import { DEFAULT_PERMALINKS, normalizePermalinks } from './permalinks';
 import { normalizeLocale, type Locale } from './i18n/locales';
 import { CURRENT_SCHEMA_VERSION, migrateCustomization } from './migrate';
 import { publishMigrationReport } from './migrationNotice';
@@ -500,6 +501,7 @@ export const DEFAULT_SEO: SeoSettings = {
   indexable: true,
   canonical_base: '',
   publisher: '',
+  permalinks: DEFAULT_PERMALINKS,
   verification: { google: '', baidu: '', bing: '' },
 };
 
@@ -1468,6 +1470,7 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
       indexable: bool(raw.seo?.indexable, DEFAULT_SEO.indexable),
       canonical_base: text(raw.seo?.canonical_base, '', 300).replace(/\/+$/, ''),
       publisher: text(raw.seo?.publisher, '', 120),
+      permalinks: normalizePermalinks(raw.seo?.permalinks),
       verification: {
         google: text(raw.seo?.verification?.google, '', 120),
         baidu: text(raw.seo?.verification?.baidu, '', 120),

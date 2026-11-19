@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/practacu/practacu-press/internal/content"
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/sitefiles"
 )
@@ -63,6 +64,18 @@ func TestBuildEscapesSlugsAndLocations(t *testing.T) {
 	})
 	body = string(sitefiles.XML(entries))
 	require.Contains(t, body, `<loc>https://press.example.com/a%20b%2Fc</loc>`)
+}
+
+func TestBuildUsesConfiguredPermalinkStructure(t *testing.T) {
+	published := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	settings := permalink.Defaults()
+	settings.ArticleStructure = permalink.StructureMonthName
+	entries := sitefiles.Build("https://press.example.com", []sitefiles.Item{{
+		ID: "a1", Slug: "hello-world", Kind: content.KindArticle,
+		PublishedAt: published, CreatedAt: published,
+	}}, nil, settings)
+
+	require.Equal(t, "https://press.example.com/2026/11/hello-world", entries[3].Loc)
 }
 
 func TestXMLIsWellFormedAndKeepsPriority(t *testing.T) {

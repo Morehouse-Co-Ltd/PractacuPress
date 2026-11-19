@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/practacu/practacu-press/internal/permalink"
 	"github.com/practacu/practacu-press/internal/platform/page"
 	"github.com/practacu/practacu-press/internal/site"
 )
@@ -670,6 +671,24 @@ func TestResolvePathWithoutLocatorIsMissing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, KindContent, resolution.Kind)
 	require.Equal(t, "content_1", resolution.ContentID)
+}
+
+func TestResolvePathRedirectsPreviousPermalinkStructure(t *testing.T) {
+	locator := newFakeLocator()
+	locator.add(LocateKindArticle, "hello", "content_1", "hello", "Hello")
+	service := newTestService(t, newFakeRepo(), locator)
+	service.permalinks = func(context.Context, string) (permalink.Settings, error) {
+		settings := permalink.Defaults()
+		settings.ArticleStructure = permalink.StructurePostName
+		settings.ArticleAliases = []permalink.Pattern{{Structure: permalink.StructureLegacy}}
+		return settings, nil
+	}
+
+	resolution, err := service.ResolvePath(context.Background(), "site_1", "/a/hello")
+	require.NoError(t, err)
+	require.Equal(t, KindContent, resolution.Kind)
+	require.Equal(t, "/hello", resolution.CanonicalPath)
+	require.Equal(t, 301, resolution.Status)
 }
 
 func TestResolvePathRejectsBadPath(t *testing.T) {

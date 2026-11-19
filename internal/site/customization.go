@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/practacu/practacu-press/internal/permalink"
 )
 
 // MaxCustomizationBytes bounds one design document.
@@ -143,6 +145,9 @@ func validateCustomizationDocument(document []byte) error {
 	var root map[string]any
 	if err := json.Unmarshal(trimmed, &root); err != nil {
 		return fmt.Errorf("%w: document must be a JSON object", ErrInvalidInput)
+	}
+	if err := permalink.ValidateCustomization(trimmed); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	return validateCustomizationContent(root)
 }

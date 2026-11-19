@@ -2204,11 +2204,35 @@ export interface SeoSettings {
   canonical_base: string;
   /** 发布者名称，写入结构化数据。 */
   publisher: string;
+  permalinks: PermalinkSettings;
   verification: {
     google: string;
     baidu: string;
     bing: string;
   };
+}
+
+export type PermalinkStructure =
+  | 'legacy'
+  | 'date_name'
+  | 'month_name'
+  | 'numeric'
+  | 'post_name'
+  | 'custom';
+
+export interface PermalinkSettings {
+  article_structure: PermalinkStructure;
+  article_custom: string;
+  article_aliases?: PermalinkPattern[];
+  posts_follow_articles: boolean;
+  post_structure: PermalinkStructure;
+  post_custom: string;
+  post_aliases?: PermalinkPattern[];
+}
+
+export interface PermalinkPattern {
+  structure: PermalinkStructure;
+  custom?: string;
 }
 
 /**

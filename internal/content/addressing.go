@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
+
+	"github.com/practacu/practacu-press/internal/permalink"
 )
 
 // Stable content addressing (Beta 1.2 contract J) and the two structured lookups the
@@ -35,7 +38,29 @@ func PathFor(kind Kind, slug, id string) string {
 
 // ContentPath is PathFor applied to a loaded item.
 func ContentPath(item Content) string {
-	return PathFor(item.Kind, item.Slug, item.ID)
+	return ContentPathWithSettings(item, permalink.Defaults())
+}
+
+func ContentPathWithSettings(item Content, settings permalink.Settings) string {
+	date := item.CreatedAt
+	if item.PublishedAt != nil {
+		date = *item.PublishedAt
+	}
+	return permalink.Path(settings, permalink.Item{
+		Kind: string(item.Kind), ID: item.ID, Slug: item.Slug, Date: date,
+	})
+}
+
+func (s *Service) contentPath(ctx context.Context, item Content) (string, error) {
+	settings := permalink.Defaults()
+	if s.permalinks != nil {
+		resolved, err := s.permalinks(ctx, item.SiteID)
+		if err != nil {
+			return "", err
+		}
+		settings = resolved
+	}
+	return ContentPathWithSettings(item, settings), nil
 }
 
 // lookupByKey loads the item a URL key addresses.
@@ -142,23 +167,35 @@ func (s *Service) Locate(
 	ctx context.Context,
 	siteID, kind, key string,
 ) (contentID, slug, title string, ok bool, err error) {
+	contentID, slug, title, _, _, ok, err = s.LocateAddress(ctx, siteID, kind, key)
+	return
+}
+
+func (s *Service) LocateAddress(
+	ctx context.Context,
+	siteID, kind, key string,
+) (contentID, slug, title string, publishedAt, createdAt time.Time, ok bool, err error) {
 	siteID = strings.TrimSpace(siteID)
 	contentKind := Kind(strings.TrimSpace(kind))
 	if siteID == "" || strings.TrimSpace(key) == "" || !contentKind.Valid() {
-		return "", "", "", false, nil
+		return "", "", "", time.Time{}, time.Time{}, false, nil
 	}
 
 	item, err := s.lookupByKey(ctx, siteID, contentKind, key, false)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return "", "", "", false, nil
+			return "", "", "", time.Time{}, time.Time{}, false, nil
 		}
-		return "", "", "", false, err
+		return "", "", "", time.Time{}, time.Time{}, false, err
 	}
 	if item.Kind != contentKind || item.Status != StatusPublished {
-		return "", "", "", false, nil
+		return "", "", "", time.Time{}, time.Time{}, false, nil
 	}
-	return item.ID, item.Slug, item.Title, true, nil
+	publishedAt = time.Time{}
+	if item.PublishedAt != nil {
+		publishedAt = *item.PublishedAt
+	}
+	return item.ID, item.Slug, item.Title, publishedAt, item.CreatedAt, true, nil
 }
 
 // Digest renders the three fields a newsletter needs (contract N6).
@@ -185,7 +222,11 @@ func (s *Service) Digest(
 		}
 		return "", "", "", false, err
 	}
-	return item.Title, item.Summary, ContentPath(item), true, nil
+	path, err := s.contentPath(ctx, item)
+	if err != nil {
+		return "", "", "", false, err
+	}
+	return item.Title, item.Summary, path, true, nil
 }
 
 // SetRedirectRecorder wires the slug change recorder after construction.
@@ -200,19 +241,24 @@ func (s *Service) SetRedirectRecorder(recorder RedirectRecorder) { s.redirects =
 // It is best effort by design: the save is already committed, and a redirect module
 // that is down must not turn a successful edit into an API error. An unchanged or
 // empty slug records nothing, because there is no old address to keep alive.
-func (s *Service) recordSlugChange(ctx context.Context, siteID string, kind Kind, previous, next string) {
+func (s *Service) recordSlugChange(ctx context.Context, previous, next Content) {
 	if s.redirects == nil {
 		return
 	}
-	previous = strings.TrimSpace(previous)
-	next = strings.TrimSpace(next)
-	if previous == "" || next == "" || previous == next {
+	if strings.TrimSpace(previous.Slug) == "" || strings.TrimSpace(next.Slug) == "" || previous.Slug == next.Slug {
 		return
+	}
+	settings := permalink.Defaults()
+	if s.permalinks != nil {
+		resolved, err := s.permalinks(ctx, next.SiteID)
+		if err == nil {
+			settings = resolved
+		}
 	}
 	_ = s.redirects.RecordSlugChange(
 		ctx,
-		siteID,
-		KindPathPrefix(kind)+previous,
-		KindPathPrefix(kind)+next,
+		next.SiteID,
+		ContentPathWithSettings(previous, settings),
+		ContentPathWithSettings(next, settings),
 	)
 }

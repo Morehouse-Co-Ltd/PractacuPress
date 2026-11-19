@@ -220,6 +220,15 @@ func TestSaveCustomizationRejectsOversizedCustomCSS(t *testing.T) {
 	require.Contains(t, err.Error(), "exceeds")
 }
 
+func TestSaveCustomizationValidatesPermalinkTemplates(t *testing.T) {
+	invalid := `{"seo":{"permalinks":{"article_structure":"custom","article_custom":"/stories/%unknown%","post_structure":"legacy"}}}`
+	err := saveDocumentWithJSON(t, invalid)
+	require.ErrorIs(t, err, ErrInvalidInput)
+
+	valid := `{"seo":{"permalinks":{"article_structure":"custom","article_custom":"/stories/%year%/%postname%","posts_follow_articles":false,"post_structure":"post_name","post_custom":"/%postname%"}}}`
+	require.NoError(t, saveDocumentWithJSON(t, valid))
+}
+
 // TestSaveCustomizationSkipsSandboxedExtensionPayloads documents the deliberate gap:
 // extensions are an explicit "run custom code" feature, so their payloads are not
 // marker-checked (the sandbox, not a string filter, is their boundary).

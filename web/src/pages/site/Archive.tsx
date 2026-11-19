@@ -12,6 +12,7 @@ import { ContentCover } from '../../components/Cover';
 import { useSeo } from '../../lib/seo';
 import { useT } from '../../lib/i18n';
 import { usePermissions } from '../../lib/usePermissions';
+import { useCustomization } from '../../lib/customize';
 import { contentPath, groupArchiveByMonth } from './readExperience';
 
 type ArchiveView = 'list' | 'cards';
@@ -36,6 +37,7 @@ function saveArchiveView(view: ArchiveView): void {
 export function ArchivePage({ kind }: { kind: ContentKind }) {
   const t = useT();
   const { site, status, config } = useAuth();
+  const { customization } = useCustomization();
   const { adminEntry } = usePermissions();
   const backend = useBackend();
   const pageSize = readPerformance(config).archive_limit;
@@ -225,7 +227,7 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
                     {group.months.flatMap((month) => month.items).map((item) => (
                       <article className="archive-card" key={item.id}>
                         <Link
-                          to={contentPath(item)}
+                          to={contentPath(item, customization.seo.permalinks)}
                           className="archive-card-cover"
                           aria-label={item.title}
                           tabIndex={-1}
@@ -241,7 +243,7 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
                             ) : null}
                           </div>
                           <h2>
-                            <Link to={contentPath(item)}>{item.title}</Link>
+                            <Link to={contentPath(item, customization.seo.permalinks)}>{item.title}</Link>
                           </h2>
                           {item.summary ? <p>{item.summary}</p> : null}
                           <div className="archive-card-foot">
@@ -288,7 +290,7 @@ export function ArchivePage({ kind }: { kind: ContentKind }) {
                                 ) : null}
                               </div>
                               <h2>
-                                <Link to={contentPath(item)}>{item.title}</Link>
+                                <Link to={contentPath(item, customization.seo.permalinks)}>{item.title}</Link>
                               </h2>
                               <p>{item.summary ?? ''}</p>
                             </div>
