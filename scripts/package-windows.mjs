@@ -1,27 +1,30 @@
 #!/usr/bin/env node
 /**
- * Practacu Press · Windows x64 便携包一键打包
+ * Practacu Press · Windows 便携包一键打包
  *
- *   node scripts/package-windows.mjs
+ *   node scripts/package-windows.mjs                        # 当前机器架构
+ *   node scripts/package-windows.mjs --arch amd64
+ *   node scripts/package-windows.mjs --arch arm64 --version v1.0.1-beta1
  *
  * 默认流程（每一步失败都会立刻停下并打印原因）：
- *   1. 构建前端（apps/web → dist），缺少 node_modules 时自动安装依赖
- *   2. 编译 Rust 安全服务（services/security，release）
- *   3. 把前端产物同步进启动器的 go:embed 目录
- *   4. 编译 Go 启动器（apps/launcher）与 Go API（apps/api/cmd/server，amd64）
- *   5. 组装干净的分发目录（exe + README.txt）
- *   6. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/healthz、/readyz、
- *      注册、文章创建（Rust 清洗）与发布
- *   7. 压缩成 release/PractacuPress-Windows-x64.zip，并同步 release/PractacuPress
+ *   1. 构建前端（web → dist），缺少 node_modules 时自动安装依赖
+ *   2. 把前端产物同步进 API 的 go:embed 目录
+ *   3. 编译 Go API（Windows，目标架构）
+ *   4. 组装干净的分发目录（PractacuPressAPI.exe + README.txt + VERSION）
+ *   5. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/api/healthz、/api/readyz、
+ *      注册、文章创建（Go 内嵌安全清洗）与发布（仅本机架构可执行时）
+ *   6. 压缩成 release/PractacuPress-Windows-<x64|arm64>.zip
  *
  * 常用参数：
- *   --skip-security     不编译也不附带 Rust 安全服务（发布与上传会 fail-closed）
- *   --skip-smoke        跳过自检（不推荐，自检是“保持原有功能”的保障）
- *   --no-zip            只生成 release/PractacuPress 目录，不压缩
- *   --release-dir <目录> 输出目录（默认 <仓库>/release，也可用 PP_RELEASE_DIR）
- *   --port <端口>       自检时固定使用该端口（默认自动挑空闲端口）
- *   --keep-staging      保留 release/.staging 中间目录，便于排查
- *   --help              打印本说明
+ *   --arch amd64|arm64   目标架构（默认当前 Node 架构）
+ *   --version <tag>      发布版本（写入 VERSION 与 web/version.json）
+ *   --skip-web           复用 web/dist（CI 已单独构建时）
+ *   --skip-smoke         跳过自检（不推荐；跨架构构建会自动跳过）
+ *   --no-zip             只生成 release/PractacuPress 目录，不压缩
+ *   --release-dir <目录>  输出目录（默认 <仓库>/release，也可用 PP_RELEASE_DIR）
+ *   --port <端口>        自检时固定使用该端口（默认自动挑空闲端口）
+ *   --keep-staging       保留 release/.staging 中间目录，便于排查
+ *   --help               打印本说明
  *
  * 环境变量：
  *   PP_RELEASE_DIR      同 --release-dir
@@ -30,7 +33,7 @@
  * 导致 “vite:esbuild-transpile remove ... Access is denied”。脚本把所有子进程的
  * TEMP/TMP 指到仓库内的 .tmpbuild/tmp，绕开系统临时目录的删除限制。
  *
- * 这个脚本只处理 Windows x64 包；Go 部分可以交叉编译，Rust 部分需要本机 Windows 工具链。
+ * 架构说明：Go 可以交叉编译；CI 用 x64 与 arm64 的 Windows runner 原生构建。
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -40,13 +43,11 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
+import { syncEmbeddedWeb } from './lib/embed-web.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const webDir = path.join(root, 'apps', 'web');
-const launcherDir = path.join(root, 'apps', 'launcher');
+const webDir = path.join(root, 'web');
 const distDir = path.join(webDir, 'dist');
-const embedDir = path.join(launcherDir, 'web', 'dist');
-const securityExe = path.join(root, 'services', 'security', 'target', 'release', 'practacu-security.exe');
 const tmpRoot = path.join(root, '.tmpbuild', 'tmp');
 
 const options = parseOptions(process.argv.slice(2));
@@ -55,16 +56,25 @@ if (options.help) {
   process.exit(0);
 }
 
+const HOST_ARCH = process.arch === 'arm64' ? 'arm64' : 'amd64';
+const ARCH = options.arch || HOST_ARCH;
+const NATIVE_ARCH = ARCH === HOST_ARCH;
+const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x64';
+const RELEASE_VERSION = String(options.version || '').replace(/^v/i, '');
+if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
+  throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-betaN，收到 ${options.version}`);
+}
+
 const releaseDir = path.resolve(options.releaseDir || process.env.PP_RELEASE_DIR || path.join(root, 'release'));
 const stagingRoot = path.join(releaseDir, '.staging');
-const stagingDir = path.join(stagingRoot, 'PractacuPress');
-const packageDir = path.join(releaseDir, 'PractacuPress');
-const zipPath = path.join(releaseDir, 'PractacuPress-Windows-x64.zip');
+const stagingDir = path.join(stagingRoot, `PractacuPress-Windows-${ARCH_LABEL}`);
+const hostPackageDir = path.join(releaseDir, 'PractacuPress');
+const zipPath = path.join(releaseDir, `PractacuPress-Windows-${ARCH_LABEL}.zip`);
 
 // 所有子进程共享的临时目录：避开系统 %TEMP% 的删除限制（见文件头说明）。
 fs.mkdirSync(tmpRoot, { recursive: true });
 const baseEnv = { ...process.env, TEMP: tmpRoot, TMP: tmpRoot };
-const goEnv = { ...baseEnv, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' };
+const goEnv = { ...baseEnv, GOOS: 'windows', GOARCH: ARCH, CGO_ENABLED: '0' };
 
 main().catch((err) => {
   process.stdout.write(`\n打包失败：${err && err.message ? err.message : err}\n`);
@@ -74,7 +84,7 @@ main().catch((err) => {
 
 async function main() {
   if (process.platform !== 'win32') {
-    throw new Error('这个打包脚本生成的是 Windows x64 便携包，请在 Windows 上运行。');
+    throw new Error('这个打包脚本生成的是 Windows 便携包，请在 Windows 上运行。');
   }
 
   step('检查工具链');
@@ -83,61 +93,35 @@ async function main() {
   const goVersion = capture(go, ['version']);
   console.log(`  Node    ${process.version}`);
   console.log(`  Go      ${goVersion}  (${go})`);
+  console.log(`  目标    windows/${ARCH}${NATIVE_ARCH ? '（本机）' : `（交叉，宿主机 ${HOST_ARCH}）`}`);
 
-  let cargo = null;
-  if (options.skipSecurity) {
-    console.log('  Rust    跳过（--skip-security：不编译也不附带安全服务）');
-  } else {
-    cargo = resolveCargo();
-    console.log(`  Rust    ${capture(cargo.cmd, [...cargo.prefix, '--version'])}`);
-  }
 
   fs.mkdirSync(releaseDir, { recursive: true });
   rmrf(stagingRoot);
   fs.mkdirSync(stagingDir, { recursive: true });
 
   step('构建前端');
-  ensureWebDeps();
-  runShell('npm run build', webDir, 'npm run build');
-  requireFile(path.join(distDir, 'index.html'), '前端构建完成但没有 apps/web/dist/index.html');
-  console.log('  dist/index.html 已生成');
-
-  let securityBundled = false;
-  if (!options.skipSecurity) {
-    step('编译 Rust 安全服务（release，首次打包约 3–5 分钟）');
-    const cargoDir = path.join(root, 'services', 'security');
-    run(cargo.cmd, [...cargo.prefix, 'build', '--release'], cargoDir, baseEnv, 'cargo build --release');
-    requireFile(securityExe, `cargo build 成功但找不到 ${securityExe}`);
-    fs.copyFileSync(securityExe, path.join(stagingDir, 'practacu-security.exe'));
-    securityBundled = true;
-    console.log(`  practacu-security.exe  ${formatSize(fs.statSync(securityExe).size)}`);
+  if (options.skipWeb) {
+    requireFile(path.join(distDir, 'index.html'), '--skip-web 但 web/dist 不存在；先运行 npm run build');
+    console.log('  复用 web/dist');
   } else {
-    console.log('  注意：这个包不包含安全服务，发布文章与完成上传会返回 503。');
+    ensureWebDeps();
+    runShell('npm run build', webDir, 'npm run build');
+    requireFile(path.join(distDir, 'index.html'), '前端构建完成但没有 web/dist/index.html');
+    console.log('  dist/index.html 已生成');
   }
+  stampWebVersion(distDir);
 
-  step('把前端产物同步进启动器（go:embed）');
-  rmrf(embedDir);
-  fs.mkdirSync(embedDir, { recursive: true });
-  fs.cpSync(distDir, embedDir, { recursive: true });
-  console.log(`  ${countFiles(embedDir)} 个文件`);
 
-  step('编译 Windows 启动器（amd64）');
-  const launcherExe = path.join(stagingDir, 'PractacuPress.exe');
-  run(
-    go,
-    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', launcherExe, '.'],
-    launcherDir,
-    goEnv,
-    'go build launcher',
-  );
-  requireFile(launcherExe, '启动器没有编译出来');
-  console.log(`  PractacuPress.exe  ${formatSize(fs.statSync(launcherExe).size)}`);
+  step('把前端产物同步进 Go API（go:embed）');
+  syncEmbeddedWeb({ root, dist: distDir });
+  console.log('  internal/web/dist');
 
-  step('编译 Go API（amd64）');
+  step(`编译 Go API（windows/${ARCH}）`);
   const apiExe = path.join(stagingDir, 'PractacuPressAPI.exe');
   run(
     go,
-    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', apiExe, './apps/api/cmd/server'],
+    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', apiExe, './cmd/server'],
     root,
     goEnv,
     'go build api',
@@ -147,11 +131,16 @@ async function main() {
 
   step('写入发布说明');
   writeReleaseReadme();
+  fs.writeFileSync(path.join(stagingDir, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
+  writeLocalEnv();
+  writeStartScript();
+  fs.mkdirSync(path.join(stagingDir, 'data', 'media'), { recursive: true });
+  fs.mkdirSync(path.join(stagingDir, 'data', 'backups'), { recursive: true });
 
-  if (options.skipSmoke) {
-    console.log('\n注意：--skip-smoke 已跳过自检。发布前建议再跑一次不带这个参数的打包。');
+  if (options.skipSmoke || !NATIVE_ARCH) {
+    console.log('\n注意：已跳过运行自检（--skip-smoke 或跨架构构建）。');
   } else {
-    await smokeTest(stagingDir, securityBundled);
+    await smokeTest(stagingDir);
   }
 
   let zipResult = null;
@@ -164,29 +153,31 @@ async function main() {
     fs.writeFileSync(`${zipResult.path}.sha256`, `${zipResult.sha256}  ${path.basename(zipResult.path)}\n`, 'utf8');
   }
 
-  step('同步 release/PractacuPress（保留 data/ 与 practacu-web.json）');
-  try {
-    syncPackageDir();
-  } catch (err) {
-    throw new Error(
-      `写入 ${packageDir} 失败（${err.code || err.message}）。` +
-        '如果旧版 PractacuPress.exe 正在运行，请先关闭它再重试；本次 zip 已经生成。',
-    );
+  if (NATIVE_ARCH) {
+    step('同步 release/PractacuPress（保留 data/）');
+    try {
+      syncPackageDir();
+    } catch (err) {
+      throw new Error(
+        `写入 ${hostPackageDir} 失败（${err.code || err.message}）。` +
+          '如果旧版 PractacuPressAPI.exe 正在运行，请先关闭它再重试；本次 zip 已经生成。',
+      );
+    }
+    console.log(`  ${hostPackageDir}`);
+  } else {
+    console.log(`\n跨架构包只写 zip，不同步本机 release/PractacuPress。`);
   }
-  console.log(`  ${packageDir}`);
 
   if (!options.keepStaging) rmrf(stagingRoot);
 
   step('完成');
-  console.log(`  启动器     ${path.join(packageDir, 'PractacuPress.exe')}`);
-  console.log(`  API        ${path.join(packageDir, 'PractacuPressAPI.exe')}`);
-  console.log(`  安全服务   ${securityBundled ? `已附带 ${path.join(packageDir, 'practacu-security.exe')}` : '未附带（发布与上传会被拒绝）'}`);
+  console.log(`  架构       windows/${ARCH}`);
+  if (NATIVE_ARCH) console.log(`  程序       ${path.join(hostPackageDir, 'PractacuPressAPI.exe')}`);
   if (zipResult) {
     console.log(`  压缩包     ${zipResult.path}`);
     console.log(`  大小       ${formatSize(zipResult.size)}`);
     console.log(`  SHA256     ${zipResult.sha256}`);
   }
-  console.log(`  解压后双击 ${path.join(packageDir, 'PractacuPress.exe')}`);
   console.log('');
 }
 
@@ -197,11 +188,13 @@ async function main() {
 function parseOptions(argv) {
   const parsed = {
     help: false,
-    skipSecurity: false,
     skipSmoke: false,
+    skipWeb: false,
     noZip: false,
     keepStaging: false,
     releaseDir: '',
+    arch: '',
+    version: '',
     port: 0,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -211,17 +204,27 @@ function parseOptions(argv) {
       case '-h':
         parsed.help = true;
         break;
-      case '--skip-security':
-        parsed.skipSecurity = true;
-        break;
       case '--skip-smoke':
         parsed.skipSmoke = true;
+        break;
+      case '--skip-web':
+        parsed.skipWeb = true;
         break;
       case '--no-zip':
         parsed.noZip = true;
         break;
       case '--keep-staging':
         parsed.keepStaging = true;
+        break;
+      case '--arch':
+        parsed.arch = argv[++i] || '';
+        if (!['amd64', 'arm64'].includes(parsed.arch)) {
+          throw new Error('--arch 只能是 amd64 或 arm64。');
+        }
+        break;
+      case '--version':
+        parsed.version = argv[++i] || '';
+        if (!parsed.version) throw new Error('--version 需要一个版本号。');
         break;
       case '--release-dir':
         parsed.releaseDir = argv[++i] || '';
@@ -250,8 +253,10 @@ function printHelp() {
   node scripts/package-windows.mjs [参数]
 
 参数：
-  --skip-security      不编译也不附带 Rust 安全服务
-  --skip-smoke         跳过打包后的自检（不推荐）
+  --arch amd64|arm64   目标架构（默认当前 Node 架构）
+  --version <tag>      发布版本（写入 VERSION 与 web/version.json）
+  --skip-web           复用 web/dist
+  --skip-smoke         跳过打包后的自检（跨架构构建会自动跳过）
   --no-zip             只生成 release/PractacuPress 目录
   --release-dir <目录> 输出目录（默认 <仓库>/release，也可用 PP_RELEASE_DIR）
   --port <端口>        自检固定端口（默认自动挑选空闲端口）
@@ -259,9 +264,8 @@ function printHelp() {
   --help               显示这段说明
 
 产物：
-  release/PractacuPress/                可双击运行的分发目录
-  release/PractacuPress-Windows-x64.zip 分发压缩包
-  release/PractacuPress-Windows-x64.zip.sha256
+  release/PractacuPress-Windows-<x64|arm64>.zip
+  release/PractacuPress-Windows-<x64|arm64>.zip.sha256
 
 更省事的方式：在仓库根目录双击 打包.bat（内部调用 scripts/package.ps1）。`);
 }
@@ -320,20 +324,6 @@ function resolveGo() {
   throw new Error('没有找到 Go。请安装 Go 1.26+，并确保 go 在 PATH 里。');
 }
 
-function resolveCargo() {
-  const msvcToolchain = 'stable-x86_64-pc-windows-msvc';
-  const rustup = spawnSync('rustup', ['toolchain', 'list'], { encoding: 'utf8', env: baseEnv, windowsHide: true });
-  if (rustup.status === 0 && String(rustup.stdout).includes(msvcToolchain)) {
-    return { cmd: 'rustup', prefix: ['run', msvcToolchain, 'cargo'] };
-  }
-  const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8', env: baseEnv, windowsHide: true });
-  if (cargo.status === 0) return { cmd: 'cargo', prefix: [] };
-  throw new Error(
-    '没有找到可用的 Rust 工具链。请先安装 Rust（https://rustup.rs），' +
-      '或者加 --skip-security 打一个不带安全服务的包。',
-  );
-}
-
 function capture(command, args) {
   const result = spawnSync(command, args, { encoding: 'utf8', env: baseEnv, windowsHide: true });
   if (result.error || result.status !== 0) {
@@ -363,7 +353,7 @@ function runShell(command, cwd, label) {
 
 function ensureWebDeps() {
   if (fs.existsSync(path.join(webDir, 'node_modules'))) return;
-  console.log('  没有 apps/web/node_modules，先安装前端依赖（首次打包需要联网）');
+  console.log('  没有 web/node_modules，先安装前端依赖（首次打包需要联网）');
   if (fs.existsSync(path.join(webDir, 'package-lock.json'))) {
     runShell('npm ci --no-audit --no-fund', webDir, 'npm ci');
   } else {
@@ -371,6 +361,59 @@ function ensureWebDeps() {
   }
 }
 
+function stampWebVersion(dir) {
+  if (!RELEASE_VERSION) return;
+  const file = path.join(dir, 'version.json');
+  const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const beta = /-beta/i.test(RELEASE_VERSION);
+  fs.writeFileSync(
+    file,
+    `${JSON.stringify(
+      {
+        title: current.title || 'Practacu Press',
+        describe:
+          current.describe ||
+          '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
+        version: RELEASE_VERSION,
+        style: beta ? 'beta' : 'stable',
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
+}
+
+function writeLocalEnv() {
+  const env = [
+    '# Local Windows package / 本地 Windows 包',
+    'APP_ENV=development',
+    'PP_DESKTOP=true',
+    'HTTP_ADDR=127.0.0.1:8080',
+    'DATABASE_DRIVER=sqlite',
+    'DATABASE_DSN=file:./data/practacu.db',
+    'STORAGE_DRIVER=local',
+    'STORAGE_DIR=./data/media',
+    'BACKUP_DIR=./data/backups',
+    'PUBLIC_BASE_URL=http://127.0.0.1:8080',
+    '',
+  ].join('\r\n');
+  fs.writeFileSync(path.join(stagingDir, '.env'), env, 'utf8');
+  console.log('  .env');
+}
+
+function writeStartScript() {
+  const script = [
+    '@echo off',
+    'chcp 65001 >nul',
+    'cd /d "%~dp0"',
+    'start "" "http://127.0.0.1:8080"',
+    'PractacuPressAPI.exe',
+    '',
+  ].join('\r\n');
+  fs.writeFileSync(path.join(stagingDir, '启动.cmd'), script, 'utf8');
+  console.log('  启动.cmd');
+}
 function writeReleaseReadme() {
   const templatePath = path.join(root, 'scripts', 'release-readme.txt');
   if (!fs.existsSync(templatePath)) throw new Error(`缺少发布说明模板：${templatePath}`);
@@ -392,7 +435,7 @@ function createZip(sourceDir) {
     fs.renameSync(partial, target);
   } catch (err) {
     const stamp = timestamp();
-    const fallback = path.join(releaseDir, `PractacuPress-Windows-x64-${stamp}.zip`);
+    const fallback = path.join(releaseDir, `PractacuPress-Windows-${ARCH_LABEL}-${stamp}.zip`);
     try {
       fs.renameSync(partial, fallback);
       finalPath = fallback;
@@ -527,14 +570,14 @@ function writeZip(file, folder, sourceDir) {
 /* ------------------------------------------------------------------ */
 
 function syncPackageDir() {
-  fs.mkdirSync(packageDir, { recursive: true });
-  for (const name of fs.readdirSync(packageDir)) {
-    if (name === 'data' || name === 'practacu-web.json') continue;
-    rmrf(path.join(packageDir, name));
+  fs.mkdirSync(hostPackageDir, { recursive: true });
+  for (const name of fs.readdirSync(hostPackageDir)) {
+    if (name === 'data' || name === '.env') continue;
+    rmrf(path.join(hostPackageDir, name));
   }
   for (const name of fs.readdirSync(stagingDir)) {
     const source = path.join(stagingDir, name);
-    const target = path.join(packageDir, name);
+    const target = path.join(hostPackageDir, name);
     fs.cpSync(source, target, { recursive: true, force: true });
   }
 }
@@ -543,13 +586,14 @@ function syncPackageDir() {
 /* 自检                                                                */
 /* ------------------------------------------------------------------ */
 
-async function smokeTest(builtDir, securityBundled) {
-  step('自检：启动打包产物，验证站点、API 与安全服务');
+async function smokeTest(builtDir) {
+  step('自检：启动 API，验证站点、API 与内容清洗');
   const smokeRoot = path.join(root, '.tmpbuild', 'smoke', `run-${Date.now()}`);
   const copyDir = path.join(smokeRoot, 'PractacuPress');
   fs.mkdirSync(smokeRoot, { recursive: true });
   fs.cpSync(builtDir, copyDir, { recursive: true });
   const dataDir = path.join(copyDir, 'data');
+  fs.mkdirSync(dataDir, { recursive: true });
   if (options.port) {
     const available = await isPortFree(options.port);
     if (!available) {
@@ -557,12 +601,29 @@ async function smokeTest(builtDir, securityBundled) {
     }
   }
   const port = options.port || (await findFreePort());
-  const exe = path.join(copyDir, 'PractacuPress.exe');
+  const exe = path.join(copyDir, 'PractacuPressAPI.exe');
   const base = `http://127.0.0.1:${port}`;
+  const dbPath = path.join(dataDir, 'practacu.db').replaceAll('\\', '/');
 
-  const child = spawn(exe, ['--port', String(port), '--no-browser', '--mode', 'live'], {
+  const child = spawn(exe, [], {
     cwd: copyDir,
-    env: { ...baseEnv },
+    env: {
+      ...baseEnv,
+      APP_ENV: 'development',
+      PP_DESKTOP: 'true',
+      HTTP_ADDR: `127.0.0.1:${port}`,
+      DATABASE_DRIVER: 'sqlite',
+      DATABASE_DSN: `file:${dbPath}`,
+      STORAGE_DRIVER: 'local',
+      STORAGE_DIR: path.join(dataDir, 'media'),
+      BACKUP_DIR: path.join(dataDir, 'backups'),
+      PUBLIC_BASE_URL: base,
+      COOKIE_SECURE: 'false',
+      RATE_LIMIT_PER_MINUTE: '100000',
+      AUTH_CREDENTIAL_RATE_LIMIT_PER_MINUTE: '1000',
+      NO_PROXY: 'localhost,127.0.0.1',
+      no_proxy: 'localhost,127.0.0.1',
+    },
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -574,18 +635,12 @@ async function smokeTest(builtDir, securityBundled) {
   child.on('exit', (code, signal) => { exited = true; exitText = `code=${code} signal=${signal}`; });
 
   try {
-    const runtime = await waitFor(async () => {
-      if (exited) throw fatal(`启动器提前退出（${exitText}）：\n${tail(output)}`);
-      const response = await httpJSON(`${base}/__pp/runtime`);
-      return response && response.body && response.body.name === 'practacu-press' ? response.body : null;
-    }, 120000, 400, '启动器 /__pp/runtime');
-
-    check(runtime.dist_ready === true, '站点文件没有内嵌进启动器');
-    check(runtime.runtime_mode === 'live', `运行方式应为 live，实际是 ${runtime.runtime_mode}`);
-    check(runtime.api && runtime.api.managed === true, '本机 API 没有由启动器托管');
-    check(runtime.api.ready === true, '本机 API 没有就绪');
-    if (securityBundled) check(runtime.api.security === true, '安全服务没有启动');
-    console.log(`  ✓ /__pp/runtime：live，API 就绪${securityBundled ? '，安全服务已连接' : ''}`);
+    await waitFor(async () => {
+      if (exited) throw fatal(`API 提前退出（${exitText}）：\n${tail(output)}`);
+      const health = await httpJSON(`${base}/api/healthz`);
+      return health.status === 200 && health.body && health.body.status === 'ok';
+    }, 120000, 400, 'API /api/healthz');
+    console.log('  ✓ API 启动');
 
     const index = await httpText(`${base}/`);
     check(index.status === 200, `首页返回 ${index.status}`);
@@ -600,11 +655,11 @@ async function smokeTest(builtDir, securityBundled) {
     check(spa.status === 200 && spa.text.includes('<div id="root">'), 'SPA 路由没有回退到 index.html');
     console.log('  ✓ SPA 路由回退');
 
-    const health = await httpJSON(`${base}/healthz`);
-    check(health.status === 200 && health.body && health.body.status === 'ok', '/healthz 不正常');
-    const ready = await httpJSON(`${base}/readyz`);
-    check(ready.status === 200 && ready.body && ready.body.status === 'ready', '/readyz 不正常');
-    console.log('  ✓ /healthz 与 /readyz');
+    const health = await httpJSON(`${base}/api/healthz`);
+    check(health.status === 200 && health.body && health.body.status === 'ok', '/api/healthz 不正常');
+    const ready = await httpJSON(`${base}/api/readyz`);
+    check(ready.status === 200 && ready.body && ready.body.status === 'ready', '/api/readyz 不正常');
+    console.log('  ✓ /api/healthz 与 /api/readyz');
 
     const email = `smoke+${Date.now()}@example.test`;
     const registered = await httpJSON(`${base}/api/v1/auth/register/email`, {
@@ -627,41 +682,34 @@ async function smokeTest(builtDir, securityBundled) {
         source_body: '<h1>Hello</h1><script>alert(1)</script>',
       }),
     });
+    check(draft.status === 201, `创建文章失败（HTTP ${draft.status}）：${draft.text.slice(0, 300)}`);
+    const rendered = String((draft.body && draft.body.rendered_html) || '');
+    check(/<h1[^>]*>\s*Hello\s*<\/h1>/i.test(rendered), 'Markdown/HTML 渲染不正确');
+    check(!/<script/i.test(rendered), 'Go 安全清洗没有移除 <script>');
+    console.log('  ✓ 文章创建 + Go 内容清洗');
 
-    if (securityBundled) {
-      check(draft.status === 201, `创建文章失败（HTTP ${draft.status}）：${draft.text.slice(0, 300)}`);
-      const rendered = String((draft.body && draft.body.rendered_html) || '');
-      check(/<h1[^>]*>\s*Hello\s*<\/h1>/i.test(rendered), 'Markdown/HTML 渲染不正确');
-      check(!/<script/i.test(rendered), 'Rust 安全服务没有清除 <script>');
-      console.log('  ✓ 文章创建 + Rust 内容清洗');
+    const published = await httpJSON(`${base}/api/v1/articles/${draft.body.id}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    check(
+      published.status === 200 && published.body && published.body.status === 'published',
+      `发布失败（HTTP ${published.status}）：${published.text.slice(0, 300)}`,
+    );
+    console.log('  ✓ 文章发布');
 
-      const published = await httpJSON(`${base}/api/v1/articles/${draft.body.id}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: '{}',
-      });
-      check(
-        published.status === 200 && published.body && published.body.status === 'published',
-        `发布失败（HTTP ${published.status}）：${published.text.slice(0, 300)}`,
-      );
-      console.log('  ✓ 文章发布');
-
-      const list = await httpJSON(`${base}/api/v1/articles?limit=5`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      check(
-        list.status === 200 &&
-          list.body &&
-          Array.isArray(list.body.items) &&
-          list.body.items.some((item) => item.id === draft.body.id),
-        '文章列表里找不到刚发布的文章',
-      );
-      console.log('  ✓ 文章列表');
-    } else {
-      // 没有安全服务时创建必须 fail-closed 返回 503，而不是静默成功。
-      check(draft.status === 503, `不带安全服务时创建文章应返回 503，实际是 ${draft.status}`);
-      console.log('  ✓ 安全服务缺失时按设计 fail-closed（503）');
-    }
+    const list = await httpJSON(`${base}/api/v1/articles?limit=5`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    check(
+      list.status === 200 &&
+        list.body &&
+        Array.isArray(list.body.items) &&
+        list.body.items.some((item) => item.id === draft.body.id),
+      '文章列表里找不到刚发布的文章',
+    );
+    console.log('  ✓ 文章列表');
 
     check(fs.existsSync(path.join(dataDir, 'practacu.db')), '没有生成 data/practacu.db');
     console.log('  ✓ data/practacu.db 已生成');
@@ -671,7 +719,6 @@ async function smokeTest(builtDir, securityBundled) {
     rmrf(smokeRoot);
   }
 }
-
 function fatal(message) {
   const error = new Error(message);
   error.fatal = true;

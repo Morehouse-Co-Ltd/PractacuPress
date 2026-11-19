@@ -71,12 +71,12 @@ if [ "$ASSUME_YES" != "1" ]; then
 fi
 
 log "停止并移除 systemd 服务"
-for unit in practacu-press-api practacu-press-security; do
+for unit in practacu-press-api; do
     systemctl stop "$unit" 2>/dev/null || true
     systemctl disable "$unit" 2>/dev/null || true
     rm -f "/etc/systemd/system/$unit.service"
 done
-systemctl daemon-reload
+systemctl daemon-reload 2>/dev/null || true
 systemctl reset-failed 2>/dev/null || true
 ok "服务已移除"
 

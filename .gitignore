@@ -1,3 +1,12 @@
+# 本地部署密钥（.env.example 仍然入库）
+.env
+.env.*
+!.env.example
+
+# 编辑器与本地工具目录
+/.idea/
+/.workbuddy/
+
 # Build artifacts
 *.exe
 *.test
@@ -12,9 +21,8 @@
 
 # Dependencies and generated caches
 node_modules/
-/apps/web/dist/
-/apps/web/.runtime/
-/apps/launcher/web/dist/
+/web/dist/
+/web/.runtime/
 .DS_Store
 Thumbs.db
 
@@ -27,7 +35,7 @@ target/
 
 # 本地临时产物（冒烟测试打包输出）
 .tmp/
-apps/web/.tmp/
+web/.tmp/
 
 # 扩展打包产物（scripts/package-extension.ps1 输出）与示例的 WASM 构建产物
 /dist/
@@ -39,9 +47,8 @@ plugins/examples/**/backend/*.wasm
 
 # 冒烟测试遗留的注册凭据（含 JWT）
 /.reg.json
-/.workbuddy/
 
-# pnpm 本地内容寻址存储（依赖缓存，勿入库）
+# pnpm 本地内容寻址存储（历史遗留的依赖缓存，勿入库）
 /.pnpm-store/
 
 # 本地打好的发行压缩包（约 1 GB，超过 GitHub 单文件上限，只在本地留存）
@@ -50,3 +57,7 @@ plugins/examples/**/backend/*.wasm
 # 设计与审计文档只留在本地（约 36 MB，含大量截图），不进仓库也不再推送。
 # 需要分享时单独脱敏后发送，或临时 `git add -f docs/...`。
 /docs/
+
+# Generated frontend embedded into the Go API; only the marker is committed.
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep

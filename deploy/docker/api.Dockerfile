@@ -1,52 +1,98 @@
-# syntax=docker/dockerfile:1
-# Go API 镜像。构建上下文是仓库根目录：
+# Go API image. Build from the repository root:
 #   docker build -f deploy/docker/api.Dockerfile .
 #
-# 纯静态二进制：SQLite 走 modernc.org/sqlite（纯 Go），所以 CGO 关闭也能用。
+# The runtime is Alpine and the binary is fully static: SQLite uses
+# modernc.org/sqlite (pure Go), so CGO can stay disabled and no glibc is needed.
+# The image carries the operator commands next to the server so
+# `docker compose exec api migrate` (and backup / media-gc / searchindex) work
+# without a second image.
 
-FROM golang:1.26-bookworm AS build
+# The frontend is part of the API image: Go's //go:embed cannot read outside its
+# package, so the build stage first produces web/dist and copies it into
+# internal/web/dist before compiling. One container now serves both the
+# SPA and the API, with no separate Nginx container in the default stack.
+FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
+
+WORKDIR /web
+COPY web ./
+
+ARG VERSION=development
+ENV VERSION=$VERSION
+RUN npm ci --no-audit --no-fund \
+ && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION||'development';j.version=v.replace(/^v/i,'');j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
+ && npm run build \
+ && test -f dist/index.html
+
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm AS build
+
 WORKDIR /src
 
-# 先只拷依赖清单，让 go mod download 的层可以复用。
+# Cross-compile from the native build platform instead of running the Go
+# toolchain under QEMU for linux/arm64. TARGETOS/TARGETARCH are injected by
+# buildx; a plain `docker build` leaves them at the build platform defaults.
+ARG TARGETOS=linux
+ARG TARGETARCH
+ENV GOOS=$TARGETOS \
+    GOARCH=$TARGETARCH
+
+# GOTOOLCHAIN=local makes the build fail instead of silently downloading the
+# toolchain declared in go.mod. The image tag above already matches it.
+ENV CGO_ENABLED=0 \
+    GOTOOLCHAIN=local \
+    GOFLAGS=-mod=readonly
+
+# Dependency layer: only the module files, so a source edit does not re-download.
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
-COPY . .
+# Only the packages the binaries import. The web app itself is copied in from the
+# web stage above; docs and tests never enter this layer.
+COPY cmd ./cmd
+COPY internal ./internal
+COPY --from=web /web/dist ./internal/web/dist
 
-ENV CGO_ENABLED=0
-RUN go build -trimpath -ldflags "-s -w" -o /out/api ./apps/api/cmd/server \
- && go build -trimpath -ldflags "-s -w" -o /out/migrate ./apps/api/cmd/migrate \
- && go build -trimpath -ldflags "-s -w" -o /out/seed ./apps/api/cmd/seed
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/api ./cmd/server \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/migrate ./cmd/migrate \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/seed ./cmd/seed \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/backup ./cmd/backup \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/media-gc ./cmd/media-gc \
+ && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/searchindex ./cmd/searchindex
 
+FROM alpine:3.24 AS runtime
 
-FROM debian:bookworm-slim AS runtime
-
-# curl 只用于 HEALTHCHECK；其余包一律不装。
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl \
- && rm -rf /var/lib/apt/lists/* \
- && useradd --uid 10001 --create-home --shell /usr/sbin/nologin practacu \
+# ca-certificates is required for SMTP, OAuth, captcha and S3 over TLS; tzdata
+# keeps timestamps readable for operators who set TZ.
+RUN apk add --no-cache ca-certificates tzdata \
+ && addgroup --gid 10001 practacu \
+ && adduser --uid 10001 --ingroup practacu --disabled-password --no-create-home \
+        --shell /sbin/nologin practacu \
  && mkdir -p /data \
- && chown -R practacu:practacu /data
+ && chown 10001:10001 /data
 
 COPY --from=build /out/ /usr/local/bin/
 
-USER practacu
+USER 10001:10001
 WORKDIR /data
 
-# 容器里必须监听 0.0.0.0，并由 PP_ALLOW_REMOTE_API 显式放行（默认只允许回环）。
+# The container listens on all interfaces; PP_ALLOW_REMOTE_API is what lets the
+# process accept that instead of insisting on loopback.
 ENV HTTP_ADDR=0.0.0.0:8080 \
     PP_ALLOW_REMOTE_API=1 \
     DATABASE_DRIVER=sqlite \
     DATABASE_DSN=file:/data/practacu.db \
     STORAGE_DRIVER=local \
     STORAGE_DIR=/data/media \
-    SECURITY_GRPC_ADDR=security:9001
+    BACKUP_DIR=/data/backups
 
 EXPOSE 8080
+STOPSIGNAL SIGTERM
 
+# wget is BusyBox's, already present in the base image.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=25s --retries=5 \
-  CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
 
-# 传参可执行迁移与种子命令：docker compose exec api migrate / seed
+# Subcommands are available for `docker compose exec api <command>`.
 CMD ["api"]

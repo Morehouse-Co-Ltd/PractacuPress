@@ -4,12 +4,11 @@
 #   bash scripts/e2e.sh
 #   PP_E2E_SKIP_WEB_BUILD=1 bash scripts/e2e.sh
 #
-# Requires: Go 1.26+, Node.js 22+, the Rust security service built
-# (cargo build --release in services/security) and Google Chrome or Chromium.
-# The harness starts the API, security service and static web server itself.
+# Requires: Go 1.26+, Node.js 22+, and Google Chrome or Chromium.
+# The harness starts the API and static web server itself.
 #
 # Output: .tmp/e2e/artifacts (HTML/JSON report, screenshots, failed traces)
-#         .tmp/e2e/logs (API, security and web server logs)
+#         .tmp/e2e/logs (API and web server logs)
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,7 +20,7 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 set +e
-node apps/web/e2e/harness.mjs
+node web/e2e/harness.mjs
 code=$?
 set -e
 

@@ -174,8 +174,8 @@ go build -trimpath -ldflags="-s -w" -o backend/hello.wasm .
 
 ```powershell
 # 仓库根目录
-powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir plugins\examples\hello-admin
-powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir plugins\examples\hello
+powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir internal\plugins\examples\hello-admin
+powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir internal\plugins\examples\hello
 # 产物：dist\extensions\<id>-<version>.zip
 ```
 
@@ -260,8 +260,8 @@ curl -s -X DELETE "$BASE/extensions/com.example.hello-admin" \
 
 ## 9. 参考实现
 
-- 纯前端后台页面：[`plugins/examples/hello-admin`](../../plugins/examples/hello-admin/README.md)
-- 前端 + Go/WASM 后端：[`plugins/examples/hello`](../../plugins/examples/hello/README.md)（来源与
+- 纯前端后台页面：[`internal/plugins/examples/hello-admin`](../../internal/plugins/examples/hello-admin/README.md)
+- 前端 + Go/WASM 后端：[`internal/plugins/examples/hello`](../../internal/plugins/examples/hello/README.md)（来源与
   `apps/api/internal/plugins/testdata/hello` 相同）
 - 宿主实现：`apps/api/internal/plugins/host.go`、`manifest.go`；运行时：
   `apps/web/src/lib/plugins/runtime.ts`、`adminRegistry.ts`

@@ -3,7 +3,7 @@
 
 map $http_upgrade $pp_connection_upgrade {
     default upgrade;
-    ''      close;
+    ''      '';
 }
 
 server {

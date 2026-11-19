@@ -38,7 +38,7 @@ run_go() {
     test_args+=(-race)
   fi
   test_args+=(-count=1)
-  test_args+=(./...)
+  test_args+=("./...")
   log "go ${test_args[*]}"
   "$go_bin" "${test_args[@]}"
 }
@@ -46,14 +46,14 @@ run_go() {
 run_web() {
   local install_mode="${PP_WEB_INSTALL:-auto}"
   (
-    cd apps/web
+    cd web
     if [[ "$install_mode" == "ci" || ( "$install_mode" == "auto" && ! -d node_modules ) ]]; then
-      log "npm ci (apps/web)"
+      log "npm ci (web)"
       "$npm_bin" ci --no-audit --no-fund
     elif [[ "$install_mode" == "skip" ]]; then
       log "npm install skipped by PP_WEB_INSTALL=skip"
     else
-      log "using existing apps/web/node_modules"
+      log "using existing web/node_modules"
     fi
 
     log "npm run typecheck"
@@ -65,20 +65,23 @@ run_web() {
     log "npm test (vitest)"
     "$npm_bin" test
   )
+
+  log "node --test scripts/release-version.test.mjs"
+  node --test scripts/release-version.test.mjs
 }
 
 run_migrate_twice() {
   local dialect="$1" dsn="$2"
   log "cmd/migrate $dialect (first run)"
-  "$go_bin" run ./apps/api/cmd/migrate -driver "$dialect" -dsn "$dsn"
+  "$go_bin" run ./cmd/migrate -driver "$dialect" -dsn "$dsn"
   log "cmd/migrate $dialect (second run, must be idempotent)"
-  "$go_bin" run ./apps/api/cmd/migrate -driver "$dialect" -dsn "$dsn"
+  "$go_bin" run ./cmd/migrate -driver "$dialect" -dsn "$dsn"
 }
 
 run_migrations() {
   log "reviewed migration pairs and SQL up/down round trip"
   # SQLite always runs; MySQL/PostgreSQL run when their DSNs are exported.
-  "$go_bin" test -v -count=1 ./tests/migrations/...
+  "$go_bin" test -v -count=1 ./internal/tests/migrations/...
 
   local tmp="${PP_VERIFY_TMP_DIR:-.tmp/verify}"
   mkdir -p "$tmp"
@@ -108,17 +111,12 @@ run_migrations() {
 
 run_config() {
   log "migration pairs, workflows, Compose files and scripts"
-  "$go_bin" test -v -count=1 ./tests/ci/...
+  "$go_bin" test -v -count=1 ./internal/tests/ci/...
 
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    log "docker compose config (default profile)"
+    log "docker compose config (single compose file)"
     docker compose -f docker-compose.yml config -q
 
-    log "docker compose config (production overlay)"
-    # The production overlay requires a persistent key; any non-empty value is
-    # enough to validate the merged configuration.
-    AUTH_JWT_ED25519_PRIVATE_KEY=ci-placeholder \
-      docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
   else
     log "docker not available: compose config skipped"
     log "(workflow/Compose YAML and script checks above are Docker-independent)"
@@ -127,6 +125,7 @@ run_config() {
 
 case "$task" in
   go) run_go ;;
+
   web) run_web ;;
   migrations) run_migrations ;;
   config) run_config ;;

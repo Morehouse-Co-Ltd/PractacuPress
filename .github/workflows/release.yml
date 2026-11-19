@@ -1,0 +1,430 @@
+# Publish a GitHub Release, OS packages and multi-arch Docker images.
+#
+# A push whose commit message contains a version (or a pushed version tag, or a
+# manual dispatch with `version`) runs the pipeline:
+#
+#   v1.0.0           stable  -> Docker :v1.0.0 and :latest
+#   v1.0.1-beta1     beta    -> Docker :v1.0.1-beta1 and :beta, GitHub prerelease
+#
+# Assets per release:
+#   Windows  x64 + arm64        PractacuPress-Windows-{x64,arm64}.zip
+#   Linux    x86_64 + aarch64   tar.gz, .deb and .rpm
+#   macOS    x86_64 + arm64     PractacuPress-macOS-{x86_64,arm64}.tar.gz
+#   SHA256SUMS
+#
+# Required repository secrets for Docker Hub (the GitHub Container Registry uses
+# the built-in GITHUB_TOKEN):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+# Docker Hub publishing is skipped when DOCKERHUB_USERNAME is empty.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*', 'V*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. v1.0.1-beta1'
+        required: true
+        type: string
+      force:
+        description: 'Re-upload assets if the release already exists'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  version:
+    name: Detect release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      version: ${{ steps.detect.outputs.version }}
+      tag: ${{ steps.detect.outputs.tag }}
+      base_version: ${{ steps.detect.outputs.base_version }}
+      prerelease: ${{ steps.detect.outputs.prerelease }}
+      channel: ${{ steps.detect.outputs.channel }}
+      pkg_release: ${{ steps.detect.outputs.pkg_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Resolve version from message, tag or input
+        id: detect
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          node scripts/release-version.mjs \
+            --github-output "$GITHUB_OUTPUT" \
+            --message "$COMMIT_MESSAGE" \
+            --ref "$REF_NAME" \
+            --input "$REQUESTED_VERSION"
+          if [ "$(grep -c '^should_release=true$' "$GITHUB_OUTPUT" || true)" -eq 0 ]; then
+            echo "No vX.Y.Z[-betaN] in the push message; skipping the release jobs."
+          else
+            echo "Releasing $(grep '^tag=' "$GITHUB_OUTPUT" | tail -n1 | cut -d= -f2)"
+          fi
+
+  web:
+    name: Build frontend
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build and stamp the release manifest
+        run: |
+          set -euo pipefail
+          cd web
+          npm ci --no-audit --no-fund
+          npm run build
+          cd ../..
+          node scripts/stamp-version.mjs \
+            --dist web/dist \
+            --version "${{ needs.version.outputs.version }}"
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: web-dist
+          path: web/dist/
+          if-no-files-found: error
+          retention-days: 3
+
+  docker:
+    name: Docker (${{ matrix.service }})
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api]
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up QEMU (linux/arm64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          tags="${REGISTRY}/${owner}/practacu-press-${{ matrix.service }}:${TAG}"
+          if [ "$PRERELEASE" = "true" ]; then
+            tags="${tags},${REGISTRY}/${owner}/practacu-press-${{ matrix.service }}:beta"
+          else
+            tags="${tags},${REGISTRY}/${owner}/practacu-press-${{ matrix.service }}:latest"
+          fi
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            hub_user="$(printf '%s' "$DOCKERHUB_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            hub="${hub_user}/practacu-press-${{ matrix.service }}"
+            tags="${tags},${hub}:${TAG}"
+            if [ "$PRERELEASE" = "true" ]; then
+              tags="${tags},${hub}:beta"
+            else
+              tags="${tags},${hub}:latest"
+            fi
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "Building $tags"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/${{ matrix.service }}.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ needs.version.outputs.tag }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: true
+
+  linux:
+    name: Linux packages
+    needs: [version, web]
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node (packaging scripts)
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Download frontend
+        uses: actions/download-artifact@v5
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Install nfpm
+        run: |
+          set -euo pipefail
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.49.0
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Assemble tar.gz, .deb and .rpm
+        env:
+          VERSION: ${{ needs.version.outputs.tag }}
+          NFPM_VERSION: ${{ needs.version.outputs.base_version }}
+          NFPM_RELEASE: ${{ needs.version.outputs.pkg_release }}
+        run: |
+          set -euo pipefail
+          # package-linux.mjs removes .tmp/linuxpkg on every run, so build the
+          # deb/rpm for an architecture immediately after assembling its tree.
+          for arch in amd64 arm64; do
+            if [ "$arch" = "amd64" ]; then
+              stage="$PWD/.tmp/linuxpkg/PractacuPress-Linux-x64"
+            else
+              stage="$PWD/.tmp/linuxpkg/PractacuPress-Linux-arm64"
+            fi
+            node scripts/package-linux.mjs --arch "$arch" --skip-web --version "$VERSION" --out release
+            for packager in deb rpm; do
+              NFPM_ARCH="$arch" NFPM_STAGE="$stage" \
+                nfpm package --config deploy/package/nfpm.yaml --packager "$packager" --target release
+            done
+          done
+          ls -lh release
+
+      - name: Upload Linux assets
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-linux
+          path: |
+            release/*.tar.gz
+            release/*.tar.gz.sha256
+            release/*.deb
+            release/*.rpm
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    needs: [version, web]
+    if: needs.version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: amd64
+          # Native arm64 runner; the Windows package and API are pure Go.
+          - runner: windows-11-vs2026-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Download frontend
+        uses: actions/download-artifact@v5
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Build Windows package
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.tag }}
+        run: |
+          node scripts/package-windows.mjs --arch ${{ matrix.arch }} --version "$env:VERSION" --skip-web
+
+      - name: Upload Windows assets
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-windows-${{ matrix.arch }}
+          path: |
+            release/PractacuPress-Windows-*.zip
+            release/PractacuPress-Windows-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: macOS packages
+    needs: [version, web]
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node (packaging scripts)
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Download frontend
+        uses: actions/download-artifact@v5
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Assemble macOS packages
+        env:
+          VERSION: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/package-macos.mjs --arch arm64 --skip-web --version "$VERSION"
+          node scripts/package-macos.mjs --arch amd64 --skip-web --version "$VERSION"
+
+      - name: Upload macOS assets
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-macos
+          path: |
+            release/PractacuPress-macOS-*.tar.gz
+            release/PractacuPress-macOS-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: [version, linux, windows, macos]
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (release notes)
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download every asset
+        uses: actions/download-artifact@v5
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git log -1 --pretty=%B > release-notes.md
+          printf '\n\nArtifacts\n---------\n- Windows x64/arm64 portable zip\n- Linux x86_64/aarch64 tar.gz, deb and rpm\n- macOS x86_64/arm64 tar.gz\n- Multi-arch Docker images (linux/amd64, linux/arm64)\n' >> release-notes.md
+
+          prerelease_flag=""
+          if [ "$PRERELEASE" = "true" ]; then prerelease_flag="--prerelease"; else prerelease_flag="--prerelease=false"; fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Practacu Press $VERSION" --notes-file release-notes.md $prerelease_flag
+          elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            # A tag push already created the ref; asking gh to create it with
+            # --target would conflict.
+            gh release create "$TAG" --title "Practacu Press $VERSION" \
+              --notes-file release-notes.md $prerelease_flag
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" \
+              --title "Practacu Press $VERSION" --notes-file release-notes.md $prerelease_flag
+          fi
+          gh release upload "$TAG" release-assets/* --clobber
+          echo "Published $TAG"

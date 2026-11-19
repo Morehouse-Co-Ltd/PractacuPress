@@ -75,7 +75,7 @@ die()  { printf '%s[错误]%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
 on_error() {
     printf '\n%s[错误]%s 安装脚本在第 %s 行失败。已完成的步骤保留在磁盘上，修好问题后可以重跑。\n' \
         "$C_RED" "$C_RESET" "$1" >&2
-    printf '        查看日志：journalctl -u practacu-press-api -u practacu-press-security -n 80 --no-pager\n' >&2
+    printf '        查看日志：journalctl -u practacu-press-api -n 80 --no-pager\n' >&2
 }
 trap 'on_error "$LINENO"' ERR
 
@@ -195,16 +195,21 @@ need_systemd() {
     [ -d /run/systemd/system ] || die "systemd 未在运行；容器环境请改用 Docker 部署"
 }
 need_arch() {
+    local host_arch pkg_arch
     case "$(uname -m)" in
-        x86_64|amd64) ;;
-        *) die "这个包是 x86_64 版本，当前机器是 $(uname -m)。arm64 请用源码安装或 Docker 部署。" ;;
+        x86_64|amd64) host_arch="amd64" ;;
+        aarch64|arm64) host_arch="arm64" ;;
+        *) die "不支持的 CPU 架构：$(uname -m)（支持 x86_64 与 aarch64）" ;;
     esac
+    pkg_arch="$(cat "$SELF_DIR/ARCH" 2>/dev/null | tr -d '[:space:]' || true)"
+    if [ -n "$pkg_arch" ] && [ "$pkg_arch" != "$host_arch" ]; then
+        die "这个包是 ${pkg_arch} 版本，当前机器是 ${host_arch}。请下载对应架构的安装包。"
+    fi
 }
 
 check_package() {
     [ -x "$SELF_DIR/bin/practacu-api" ]  || die "安装包不完整：缺少 bin/practacu-api"
     [ -x "$SELF_DIR/bin/practacu-seed" ] || die "安装包不完整：缺少 bin/practacu-seed"
-    [ -f "$SELF_DIR/web/index.html" ]    || die "安装包不完整：缺少 web/index.html"
     [ -d "$TEMPLATE_DIR/nginx" ]         || die "安装包不完整：缺少 deploy/nginx 模板"
     [ -d "$TEMPLATE_DIR/systemd" ]       || die "安装包不完整：缺少 deploy/systemd 模板"
 }
@@ -229,6 +234,8 @@ pkg_install() {
         yum install -y "$@"
     elif command -v zypper >/dev/null 2>&1; then
         zypper --non-interactive install "$@"
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm --needed "$@"
     else
         return 1
     fi
@@ -356,7 +363,7 @@ write_env_file() {
     local tmp="$ENV_FILE.tmp"
     cat > "$tmp" <<EOF
 # Practacu Press 服务环境（由 install.sh 生成，含签名私钥，root 0600）
-# 改完执行：sudo systemctl restart practacu-press-api practacu-press-security
+# 改完执行：sudo systemctl restart practacu-press-api
 # 注意：APP_ENV=production 与 PP_DESKTOP=true 互斥；切换访问形态请用
 #       sudo $INSTALL_DIR/install.sh --finalize
 APP_ENV=$APP_ENV
@@ -366,11 +373,12 @@ DATABASE_DSN=file:$DATA_DIR/data/practacu.db
 STORAGE_DRIVER=local
 STORAGE_DIR=$DATA_DIR/data/media
 BACKUP_DIR=$DATA_DIR/data/backups
-SECURITY_GRPC_ADDR=127.0.0.1:9001
-SECURITY_GRPC_BIND=127.0.0.1:9001
 # Nginx 从本机回环转发，信任它送来的 X-Forwarded-*（真实客户端 IP）。
 TRUSTED_PROXIES=127.0.0.1/32
 PP_DESKTOP=$PP_DESKTOP
+# 安装引导经 Nginx 回环反代到达 API，端口映射/代理会隐藏客户端地址；
+# 只放宽「首个管理员」判定，APP_ENV=production 时忽略。完成安装后可删掉。
+PP_FIRST_ADMIN_TRUST_PROXY=1
 PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 AUTH_JWT_ED25519_PRIVATE_KEY=$JWT_KEY
 EOF
@@ -382,15 +390,7 @@ write_units() {
     render_template "$TEMPLATE_DIR/systemd/practacu-press-api.service.in" \
         "/etc/systemd/system/practacu-press-api.service" \
         "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "SERVICE_USER=$SERVICE_USER" "ENV_FILE=$ENV_FILE"
-    if [ -x "$INSTALL_DIR/bin/practacu-security" ]; then
-        render_template "$TEMPLATE_DIR/systemd/practacu-press-security.service.in" \
-            "/etc/systemd/system/practacu-press-security.service" \
-            "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "SERVICE_USER=$SERVICE_USER" "ENV_FILE=$ENV_FILE"
-        systemctl enable practacu-press-security >/dev/null
-    else
-        rm -f /etc/systemd/system/practacu-press-security.service
-        warn "包里没有 Linux 版安全服务（practacu-security）：站点仍可浏览/写作，但发布文章与完成上传会返回 503。"
-    fi
+    rm -f /etc/systemd/system/practacu-press-security.service
     systemctl daemon-reload
     systemctl enable practacu-press-api >/dev/null
 }
@@ -411,7 +411,6 @@ run_as_service() {
         STORAGE_DRIVER="local" \
         STORAGE_DIR="$DATA_DIR/data/media" \
         BACKUP_DIR="$DATA_DIR/data/backups" \
-        SECURITY_GRPC_ADDR="127.0.0.1:9001" \
         PP_DESKTOP="$PP_DESKTOP" \
         PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
         AUTH_JWT_ED25519_PRIVATE_KEY="$JWT_KEY" \
@@ -428,7 +427,6 @@ seed_database() {
 # ---- Nginx 配置 -----------------------------------------------------------
 write_locations() {
     render_template "$TEMPLATE_DIR/nginx/locations.conf.in" "$LOCATIONS_CONF" \
-        "WEB_ROOT=$INSTALL_DIR/web" \
         "API_ADDR=127.0.0.1:$API_PORT" \
         "ACME_ROOT=$ACME_ROOT"
 }
@@ -449,7 +447,7 @@ write_tls_site() {
 
 ensure_nginx() {
     [ "$NGINX_ENABLED" = "yes" ] || {
-        warn "已按 --no-nginx 跳过 Nginx；请自行把 $INSTALL_DIR/web 与 /api 反代到 127.0.0.1:$API_PORT"
+        warn "已按 --no-nginx 跳过 Nginx；请自行把 / 与 /api 反代到 127.0.0.1:$API_PORT"
         return 0
     }
     if ! command -v nginx >/dev/null 2>&1; then
@@ -549,19 +547,25 @@ do_install() {
     if [ "$upgrading" = "yes" ]; then
         log "停止服务以便替换程序"
         systemctl stop practacu-press-api 2>/dev/null || true
-        systemctl stop practacu-press-security 2>/dev/null || true
     fi
 
     log "安装程序文件到 $INSTALL_DIR"
-    rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/web" "$INSTALL_DIR/deploy"
-    cp -a "$SELF_DIR/bin" "$INSTALL_DIR/bin"
-    cp -a "$SELF_DIR/web" "$INSTALL_DIR/web"
-    cp -a "$TEMPLATE_DIR" "$INSTALL_DIR/deploy"
-    cp -a "$SELF_DIR/install.sh" "$INSTALL_DIR/install.sh"
-    if [ -f "$SELF_DIR/uninstall.sh" ]; then cp -a "$SELF_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"; fi
-    cp -a "$SELF_DIR/INSTALL.md" "$INSTALL_DIR/INSTALL.md"
-    cp -a "$SELF_DIR/README.txt" "$INSTALL_DIR/README.txt"
-    cp -a "$SELF_DIR/VERSION" "$INSTALL_DIR/VERSION"
+    if [ -d "$INSTALL_DIR" ] && [ "$(cd "$SELF_DIR" && pwd -P)" = "$(cd "$INSTALL_DIR" && pwd -P)" ]; then
+        # Running the installed copy (for example after package postinst already
+        # placed the files): deleting bin/ first would delete the source binaries.
+        # Only refresh service state; upgrading binaries requires a new package.
+        log "从安装目录内运行：跳过程序文件复制"
+    else
+        rm -rf "$INSTALL_DIR/bin" "$INSTALL_DIR/deploy"
+        cp -a "$SELF_DIR/bin" "$INSTALL_DIR/bin"
+        cp -a "$TEMPLATE_DIR" "$INSTALL_DIR/deploy"
+        cp -a "$SELF_DIR/install.sh" "$INSTALL_DIR/install.sh"
+        if [ -f "$SELF_DIR/uninstall.sh" ]; then cp -a "$SELF_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"; fi
+        cp -a "$SELF_DIR/INSTALL.md" "$INSTALL_DIR/INSTALL.md"
+        cp -a "$SELF_DIR/README.txt" "$INSTALL_DIR/README.txt"
+        cp -a "$SELF_DIR/VERSION" "$INSTALL_DIR/VERSION"
+        if [ -f "$SELF_DIR/ARCH" ]; then cp -a "$SELF_DIR/ARCH" "$INSTALL_DIR/ARCH"; fi
+    fi
     chmod 0755 "$INSTALL_DIR/bin"/*
     chmod 0755 "$INSTALL_DIR/install.sh"
     if [ -f "$INSTALL_DIR/uninstall.sh" ]; then chmod 0755 "$INSTALL_DIR/uninstall.sh"; fi
@@ -582,19 +586,16 @@ do_install() {
     seed_database
 
     log "启动服务"
-    if [ -f /etc/systemd/system/practacu-press-security.service ]; then
-        systemctl restart practacu-press-security
-    fi
     systemctl restart practacu-press-api
-    if ! wait_http "http://127.0.0.1:$API_PORT/healthz" 60; then
+    if ! wait_http "http://127.0.0.1:$API_PORT/api/healthz" 60; then
         systemctl status practacu-press-api --no-pager -n 20 >&2 || true
-        die "API 没有在 60 秒内通过 /healthz，请查看上面的状态或 journalctl -u practacu-press-api"
+        die "API 没有在 60 秒内通过 /api/healthz，请查看上面的状态或 journalctl -u practacu-press-api"
     fi
-    ok "API 已就绪：http://127.0.0.1:$API_PORT/healthz"
-    if wait_http "http://127.0.0.1:$API_PORT/readyz" 20; then
-        ok "就绪检查通过（/readyz）"
+    ok "API 已就绪：http://127.0.0.1:$API_PORT/api/healthz"
+    if wait_http "http://127.0.0.1:$API_PORT/api/readyz" 20; then
+        ok "就绪检查通过（/api/readyz）"
     else
-        warn "/readyz 尚未通过：通常是安全服务未启动。发布文章与上传会返回 503，其余功能可用。"
+        warn "/api/readyz 尚未通过：通常是数据库未迁移或数据目录权限不对。发布文章与上传会按设计 fail-closed。"
     fi
 
     if [ "$upgrading" = "yes" ] && [ "$MODE" != "setup" ]; then
@@ -629,7 +630,7 @@ print_next_steps() {
         printf '           ssh -L %s:127.0.0.1:%s %s@<服务器地址>\n' "$SETUP_PORT" "$SETUP_PORT" "$ssh_user"
         printf '         然后打开 http://127.0.0.1:%s\n' "$SETUP_PORT"
     else
-        printf '       · 你选了 --no-nginx：请把 %s/web 与 /api 反代到 127.0.0.1:%s 后访问\n' "$INSTALL_DIR" "$API_PORT"
+        printf '       · 你选了 --no-nginx：请把 / 与 /api 反代到 127.0.0.1:%s 后访问\n' "$API_PORT"
     fi
     printf '  2. 七步引导里创建的第一个账户就是平台管理员。\n'
     printf '  3. 引导完成后，回到服务器执行其一：\n'
@@ -684,10 +685,10 @@ finalize_lan() {
     nginx_reload
 
     systemctl restart practacu-press-api
-    wait_http "http://127.0.0.1:$API_PORT/healthz" 60 \
-        || die "API 重启后没有通过 /healthz，请查看 journalctl -u practacu-press-api"
-    if ! curl -fsS --max-time 5 -H "Host: $LAN_HOST" "http://127.0.0.1:$PUBLIC_PORT/healthz" >/dev/null 2>&1; then
-        warn "经 Nginx 的 /healthz 检查未通过：确认端口 $PUBLIC_PORT 未被其它站点占用、防火墙已放行。"
+    wait_http "http://127.0.0.1:$API_PORT/api/healthz" 60 \
+        || die "API 重启后没有通过 /api/healthz，请查看 journalctl -u practacu-press-api"
+    if ! curl -fsS --max-time 5 -H "Host: $LAN_HOST" "http://127.0.0.1:$PUBLIC_PORT/api/healthz" >/dev/null 2>&1; then
+        warn "经 Nginx 的 /api/healthz 检查未通过：确认端口 $PUBLIC_PORT 未被其它站点占用、防火墙已放行。"
     fi
 
     MODE="lan"
@@ -758,10 +759,10 @@ EOF
     nginx_reload
 
     systemctl restart practacu-press-api
-    wait_http "http://127.0.0.1:$API_PORT/healthz" 60 \
-        || die "API 以生产语义启动后没有通过 /healthz；查看 journalctl -u practacu-press-api（常见原因：JWT 私钥缺失或损坏）"
-    if ! curl -fsS --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/healthz" >/dev/null 2>&1; then
-        warn "本机经 HTTPS 的 /healthz 未通过（证书/DNS/防火墙）；用 curl --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/healthz 排查。"
+    wait_http "http://127.0.0.1:$API_PORT/api/healthz" 60 \
+        || die "API 以生产语义启动后没有通过 /api/healthz；查看 journalctl -u practacu-press-api（常见原因：JWT 私钥缺失或损坏）"
+    if ! curl -fsS --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/healthz" >/dev/null 2>&1; then
+        warn "本机经 HTTPS 的 /api/healthz 未通过（证书/DNS/防火墙）；用 curl --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/api/healthz 排查。"
     else
         ok "HTTPS 链路检查通过"
     fi
@@ -792,7 +793,7 @@ do_finalize() {
     load_jwt_key
     [ -n "$JWT_KEY" ] || die "环境文件里没有 JWT 私钥（$ENV_FILE）；请先重跑 sudo ./install.sh"
 
-    curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1 \
+    curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1 \
         || die "API 服务未运行：sudo systemctl start practacu-press-api 后重试"
     if ! check_admin_ready; then
         die "安装引导还没完成（没有管理员账户）。请先在浏览器里走完八步安装引导，再执行 --finalize。"
@@ -830,7 +831,7 @@ do_status() {
         printf '  反向代理：由你自行配置（API 在 127.0.0.1:%s）\n' "$API_PORT"
     fi
     printf '  API 健康：'
-    if curl -fsS --max-time 3 "http://127.0.0.1:$API_PORT/healthz" >/dev/null 2>&1; then
+    if curl -fsS --max-time 3 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1; then
         printf '正常\n'
     else
         printf '不可达\n'

@@ -1,7 +1,8 @@
 # Practacu Press · Linux 安装引导
 
-这是 `PractacuPress-Linux-x64.tar.gz` 里的安装说明。目标是让一台 x86_64 的 Linux 服务器
-（systemd 发行版，Debian / Ubuntu / RHEL / Rocky / Alma 等）用两条命令跑起来：
+这是 `PractacuPress-Linux-x64.tar.gz` / `PractacuPress-Linux-arm64.tar.gz` 里的安装说明。
+目标是一台 x86_64 或 aarch64 的 Linux 服务器（systemd 发行版，Debian / Ubuntu /
+RHEL / Rocky / Alma / Fedora / openSUSE 等）用两条命令跑起来：
 
 1. `sudo ./install.sh` —— 装程序、建数据库、起服务，**只监听本机回环**；
 2. 在浏览器里走完产品自带的八步安装引导，创建第一个账户（平台管理员）；
@@ -16,46 +17,64 @@
 ## 1. 包内容
 
 ```
-PractacuPress-Linux-x64/
+PractacuPress-Linux-<x64|arm64>/
 ├── install.sh                 安装 / 升级 / 切换形态的向导
 ├── uninstall.sh               卸载（默认保留数据）
 ├── INSTALL.md                 本文件
 ├── README.txt                 一页快速上手
 ├── VERSION
+├── ARCH                       本包的架构（amd64 / arm64）
 ├── bin/
-│   ├── practacu-api           Go API（静态链接，含 SQLite 驱动）
-│   ├── practacu-seed          建表 + 创建默认站点（幂等）
+│   ├── practacu-api           Go API（内嵌前端静态文件 + SQLite 驱动）
 │   ├── practacu-migrate       只应用数据库结构（升级/排障用）
-│   └── practacu-security      Rust 安全服务（Argon2id、HTML 白名单、上传检查）
-├── web/                       前端静态文件（含八步安装引导）
+│   ├── practacu-seed          建表 + 创建默认站点（幂等）
+│   ├── practacu-backup        整库备份 / 恢复 / 校验
+│   ├── practacu-media-gc      清理无引用的媒体对象
+│   ├── practacu-searchindex   重建全文搜索索引
 └── deploy/
     ├── systemd/*.service.in   systemd 单元模板（安装器渲染后写入 /etc/systemd/system）
     └── nginx/*.conf.in        Nginx 站点模板（安装器渲染后写入 /etc/nginx）
 ```
 
-包里的 Go 与 Rust 程序都是 **Linux x86_64 静态二进制**，目标机不需要安装 Go / Node / Rust，
-也不需要 Docker。
+包里的程序都是 **对应架构的 Linux 二进制**，目标机不需要安装
+Go / Node，也不需要 Docker。
 
 ## 2. 前置条件
 
 | 要求 | 说明 |
 | --- | --- |
-| Linux x86_64 | `uname -m` 应为 `x86_64`。arm64 请用源码或 Docker 部署。 |
+| Linux x86_64 / aarch64 | `uname -m` 应为 `x86_64` 或 `aarch64`；安装器会核对包里的 `ARCH`。 |
 | systemd | 安装器用 systemd 管理两个服务。容器环境请改用 Docker Compose。 |
 | root | 安装、切形态、卸载都需要 `sudo`。 |
-| curl、openssl | 缺失时安装器会尝试用 apt / dnf / zypper 自动安装。 |
-| Nginx | 静态站与同源反向代理需要它；缺失时安装器会提示并尝试自动安装。也可以 `--no-nginx` 自备反代。 |
+| curl、openssl | 缺失时安装器会尝试用 apt / dnf / yum / zypper / pacman 自动安装。 |
+| Nginx | TLS、域名与边缘反向代理需要它；缺失时安装器会提示并尝试自动安装。也可以 `--no-nginx` 自备反代。 |
 | 域名 + 证书（可选） | 只有「公网 HTTPS」形态需要。内网 / 单机形态不需要域名。 |
 
 服务器最低配置：1 核 / 1 GB 内存 / 1 GB 磁盘可跑；上传与备份占空间时按需加盘。
+
+### 2.1 .deb / .rpm 安装（可选）
+
+发布页同时提供 Debian/Ubuntu 的 `.deb` 与 RHEL/Fedora/openSUSE 的 `.rpm`
+（`amd64` / `arm64` 各自独立）。包内是同一套 `/usr/lib/practacu-press` 便携树，
+安装后会自动执行一次非交互安装（创建服务用户、数据目录、systemd、Nginx 与密钥）：
+
+```bash
+sudo apt install ./practacu-press_<version>_<arch>.deb
+# 或
+sudo dnf install ./practacu-press-<version>.<arch>.rpm
+```
+
+包依赖 `nginx`、`curl`、`openssl`、`ca-certificates`。卸载会停止服务并保留
+`/var/lib/practacu-press` 与 `/etc/practacu-press`；彻底删除请再用安装目录里的
+`uninstall.sh --purge`。容器或非 systemd 环境请使用 tar.gz + 手动命令或 Docker。
 
 ## 3. 快速开始（推荐流程）
 
 ### 3.1 解压并运行安装向导
 
 ```bash
-tar -xzf PractacuPress-Linux-x64.tar.gz
-cd PractacuPress-Linux-x64
+tar -xzf PractacuPress-Linux-<x64|arm64>.tar.gz
+cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
 ```
 
@@ -71,7 +90,7 @@ sudo ./install.sh
 | 系统用户 | `practacu` | 服务以这个用户运行 |
 | API 回环端口 | `8081` | 只监听 127.0.0.1，不对外 |
 | 安装引导端口 | `8080` | 只监听 127.0.0.1，装完后由 `--finalize` 接管 |
-| 是否安装/配置 Nginx | 是 | 选 n 则你需要自己把 `web/` 与 `/api` 反代到 API 端口 |
+| 是否安装/配置 Nginx | 是 | 选 n 则你需要自己把 `/` 与 `/api` 反代到 API 端口 |
 
 非交互安装（全部用默认值）：
 
@@ -153,9 +172,8 @@ sudo /opt/practacu-press/install.sh --status
 | `/etc/practacu-press/practacu.env` | 服务环境变量（含 JWT 私钥，root 0600） |
 | `/etc/practacu-press/install.conf` | 安装记录：目录、端口、站点形态 |
 | `/etc/systemd/system/practacu-press-api.service` | Go API |
-| `/etc/systemd/system/practacu-press-security.service` | Rust 安全服务 |
 | `/etc/nginx/conf.d/practacu-press.conf` | Http / Https 站点（安装器生成） |
-| `/etc/nginx/practacu-press-locations.conf` | 静态站与反代规则（安装器生成） |
+| `/etc/nginx/practacu-press-locations.conf` | 全站反向代理规则（安装器生成） |
 | `/var/www/practacu-acme/` | certbot 的 HTTP-01 挑战目录 |
 
 两个 systemd 单元都启用了 `ProtectSystem=strict`、`PrivateTmp`、`NoNewPrivileges`，
@@ -174,8 +192,8 @@ sudo journalctl -u practacu-press-api -f
 sudo journalctl -u practacu-press-security -f
 
 # 健康检查
-curl -fsS http://127.0.0.1:8081/healthz
-curl -fsS http://127.0.0.1:8081/readyz
+curl -fsS http://127.0.0.1:8081/api/healthz
+curl -fsS http://127.0.0.1:8081/api/readyz
 ```
 
 **备份**：数据都在 `/var/lib/practacu-press/data/`，停机或低峰期复制即可：
@@ -191,10 +209,12 @@ sudo systemctl start practacu-press-api
 **升级**：用新版本的包覆盖解压后重新执行安装器，它会保留数据目录、密钥与访问形态：
 
 ```bash
-tar -xzf PractacuPress-Linux-x64-<新版本>.tar.gz
-cd PractacuPress-Linux-x64
+tar -xzf PractacuPress-Linux-<x64|arm64>-<新版本>.tar.gz
+cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
 ```
+
+也可以直接用新版本的 deb/rpm 覆盖安装；postinst 会执行同一套升级流程。
 
 升级会停止服务、替换程序、应用数据库结构（幂等）、重新渲染 systemd / Nginx 配置并重启。
 升级前建议先备份 `data/`。
@@ -206,7 +226,7 @@ sudo ./install.sh
 ## 6. 安全说明
 
 - 安装引导与内网形态的监听范围由 Nginx 配置决定；公网形态只开放 80 / 443，
-  API 与安全服务始终只在回环上。
+  API 始终只在回环上。
 - 首个管理员只能从回环地址注册（产品 V-16 修复）；安装器不会提供绕过入口。
 - `/etc/practacu-press/practacu.env` 含 Ed25519 签名私钥，权限 0600，不要外传；
   丢失它等于所有会话失效（重新生成后全员重登）。
@@ -214,7 +234,7 @@ sudo ./install.sh
   **不要直接暴露到公网**。
 - 安全响应头（CSP、HSTS、X-Frame-Options 等）由 Nginx 统一下发，模板已包含。
 - 防火墙建议只放行需要的端口（80/443，或内网形态的 HTTP 端口），
-  API 端口（默认 8081）与安全服务端口（9001）不需要对外开放。
+  API 端口（默认 8081）不需要对外开放。
 
 ## 7. 故障排查
 
@@ -223,13 +243,13 @@ sudo ./install.sh
 | 安装脚本报端口被占用 | 换 `--api-port` / `--setup-port`，或停掉占用端口的服务后重跑 |
 | 浏览器打不开 `127.0.0.1:8080` | 确认 SSH 隧道方向正确；`ss -ltn \| grep 8080` 确认 Nginx 在听；看 `journalctl -u nginx` |
 | 安装引导里注册后不是管理员 | 必须通过回环访问（`http://127.0.0.1:8080` 或 SSH 隧道），不要用服务器 IP / 域名访问 |
-| `/readyz` 不通过、发布文章返回 503 | 安全服务没起来：`systemctl status practacu-press-security`、`journalctl -u practacu-press-security` |
-| 包里的安全服务缺失（安装时警告） | 站点可浏览/写作，但发布与上传按设计返回 503；换完整包重装即可 |
+| `/api/readyz` 不通过 | 查看 `journalctl -u practacu-press-api -n 100`；通常是数据库未迁移或数据目录权限不对 |
+| 发布文章/上传返回 503 | 查看 API 日志中的安全检查错误；内置检查失败时按设计 fail-closed |
 | `--finalize --mode public` 提示域名不能服务 | 先到管理后台完成域名设置与 DNS TXT 验证，确认 `curl -H 'Host: 域名' http://127.0.0.1:8081/api/v1/setup/status` 返回 `installed: true` |
 | certbot 申请失败 | 检查 DNS 是否指向本机、80 端口公网可达、云安全组与防火墙；也可手动 `certbot certonly --webroot -w /var/www/practacu-acme -d 域名` 后重跑 `--finalize` |
 | Nginx 配置检查失败 | `sudo nginx -t` 看具体行；安装器生成的文件在 `/etc/nginx/conf.d/practacu-press.conf` 与 `/etc/nginx/practacu-press-locations.conf` |
 | API 启动即退出 | `journalctl -u practacu-press-api -n 100`；常见原因是 `practacu.env` 被误改（`APP_ENV=production` 时必须有 JWT 私钥、不能 `PP_DESKTOP=true`） |
-| RHEL / CentOS / Rocky 上 Nginx 访问 API 被拒 | SELinux 默认会拦反向代理：`sudo setsebool -P httpd_can_network_connect 1`；若静态文件 403，给前端目录打标签：`sudo semanage fcontext -a -t httpd_sys_content_t '/opt/practacu-press/web(/.*)?'` 然后 `sudo restorecon -R /opt/practacu-press/web` |
+| RHEL / CentOS / Rocky 上 Nginx 访问 API 被拒 | SELinux 默认会拦反向代理：`sudo setsebool -P httpd_can_network_connect 1` |
 
 ## 8. 卸载
 
@@ -244,14 +264,15 @@ sudo /opt/practacu-press/uninstall.sh --purge   # 连数据、系统用户、环
 ## 9. 校验与重新打包
 
 ```bash
-sha256sum -c PractacuPress-Linux-x64.tar.gz.sha256
+sha256sum -c PractacuPress-Linux-<x64|arm64>.tar.gz.sha256
 ```
 
-这个安装包由仓库里的 `scripts/package-linux.mjs` 生成（前端构建 + Go/Rust 交叉编译 +
-模板渲染 + 自检 + tar.gz）。修改 `deploy/linux/` 下的模板或安装器后重新打包：
+这个安装包由仓库里的 `scripts/package-linux.mjs` 生成（前端构建 + Go 交叉编译 +
+模板渲染 + 自检 + tar.gz）。修改 `deploy/linux/` 下的模板或安装器后重新打包（架构用
+`--arch amd64` 或 `--arch arm64`）：
 
 ```bash
-node scripts/package-linux.mjs
+node scripts/package-linux.mjs --arch amd64
 ```
 
 产物在 `release/`：`PractacuPress-Linux-x64/`（目录）、`.tar.gz` 与 `.sha256`。

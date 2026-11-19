@@ -1,8 +1,8 @@
 # Package an extension directory into an importable zip.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir plugins\examples\hello-admin
-#   powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir plugins\examples\hello -Out .tmp\hello.zip
+#   powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir internal\plugins\examples\hello-admin
+#   powershell -ExecutionPolicy Bypass -File scripts\package-extension.ps1 -Dir internal\plugins\examples\hello -Out .tmp\hello.zip
 #
 # The directory must contain plugin.json at its root. When backend/ is declared,
 # the script checks (or builds) the WASM entry before zipping.

@@ -23,16 +23,16 @@ if errorlevel 1 goto :fail
 
 if /I "%~1"=="--check" (
     echo [check] 环境检查通过。
-    echo [check] 将启动：scripts\dev.ps1 和 apps\web 的 Vite 开发服务器。
+    echo [check] 将启动：scripts\dev.ps1 和 web 的 Vite 开发服务器。
     exit /b 0
 )
 
 rem ------------------------------------------------------------------
 rem 1. 前端依赖
 rem ------------------------------------------------------------------
-if not exist "%ROOT%\apps\web\node_modules" (
+if not exist "%ROOT%\web\node_modules" (
     echo [1/4] 首次启动，正在安装前端依赖...
-    pushd "%ROOT%\apps\web"
+    pushd "%ROOT%\web"
     call npm install
     if errorlevel 1 (
         popd
@@ -65,7 +65,7 @@ if "%WEB_RUNNING%"=="1" (
     echo [3/4] 检测到前端已在 5173 运行，直接复用。
 ) else (
     echo [3/4] 启动前端开发服务器...
-    start "Practacu Press - Web" /D "%ROOT%\apps\web" cmd /k npm run dev -- --port 5173 --host 127.0.0.1 --strictPort
+    start "Practacu Press - Web" /D "%ROOT%\web" cmd /k npm run dev -- --port 5173 --host 127.0.0.1 --strictPort
 )
 
 rem ------------------------------------------------------------------
@@ -152,8 +152,8 @@ if errorlevel 1 (
     echo [错误] 未找到 npm。请先安装 Node.js 22 或更新版本。
     exit /b 1
 )
-if not exist "%ROOT%\apps\web\package.json" (
-    echo [错误] 找不到 apps\web\package.json，请确认脚本位于项目根目录。
+if not exist "%ROOT%\web\package.json" (
+    echo [错误] 找不到 web\package.json，请确认脚本位于项目根目录。
     exit /b 1
 )
 if not exist "%ROOT%\scripts\dev.ps1" (
