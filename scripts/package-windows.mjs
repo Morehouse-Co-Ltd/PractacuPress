@@ -10,7 +10,7 @@
  *   1. 构建前端（web → dist），缺少 node_modules 时自动安装依赖
  *   2. 把前端产物同步进 API 的 go:embed 目录
  *   3. 编译 Go API（Windows，目标架构）
- *   4. 组装干净的分发目录（PractacuPressAPI.exe + README.txt + VERSION）
+ *   4. 组装干净的分发目录（PractacuPress.exe + README.txt + VERSION）
  *   5. 自检：用随机端口在临时目录启动打包产物，验证静态站点、/api/healthz、/api/readyz、
  *      注册、文章创建（Go 内嵌安全清洗）与发布（仅本机架构可执行时）
  *   6. 压缩成 release/PractacuPress-Windows-<x64|arm64>.zip
@@ -118,7 +118,7 @@ async function main() {
   console.log('  internal/web/dist');
 
   step(`编译 Go API（windows/${ARCH}）`);
-  const apiExe = path.join(stagingDir, 'PractacuPressAPI.exe');
+  const apiExe = path.join(stagingDir, 'PractacuPress.exe');
   run(
     go,
     ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', apiExe, './cmd/server'],
@@ -127,7 +127,7 @@ async function main() {
     'go build api',
   );
   requireFile(apiExe, 'API 没有编译出来');
-  console.log(`  PractacuPressAPI.exe  ${formatSize(fs.statSync(apiExe).size)}`);
+  console.log(`  PractacuPress.exe  ${formatSize(fs.statSync(apiExe).size)}`);
 
   step('写入发布说明');
   writeReleaseReadme();
@@ -160,7 +160,7 @@ async function main() {
     } catch (err) {
       throw new Error(
         `写入 ${hostPackageDir} 失败（${err.code || err.message}）。` +
-          '如果旧版 PractacuPressAPI.exe 正在运行，请先关闭它再重试；本次 zip 已经生成。',
+          '如果旧版 PractacuPress.exe 正在运行，请先关闭它再重试；本次 zip 已经生成。',
       );
     }
     console.log(`  ${hostPackageDir}`);
@@ -172,7 +172,7 @@ async function main() {
 
   step('完成');
   console.log(`  架构       windows/${ARCH}`);
-  if (NATIVE_ARCH) console.log(`  程序       ${path.join(hostPackageDir, 'PractacuPressAPI.exe')}`);
+  if (NATIVE_ARCH) console.log(`  程序       ${path.join(hostPackageDir, 'PractacuPress.exe')}`);
   if (zipResult) {
     console.log(`  压缩包     ${zipResult.path}`);
     console.log(`  大小       ${formatSize(zipResult.size)}`);
@@ -408,7 +408,7 @@ function writeStartScript() {
     'chcp 65001 >nul',
     'cd /d "%~dp0"',
     'start "" "http://127.0.0.1:8080"',
-    'PractacuPressAPI.exe',
+    'PractacuPress.exe',
     '',
   ].join('\r\n');
   fs.writeFileSync(path.join(stagingDir, '启动.cmd'), script, 'utf8');
@@ -601,7 +601,7 @@ async function smokeTest(builtDir) {
     }
   }
   const port = options.port || (await findFreePort());
-  const exe = path.join(copyDir, 'PractacuPressAPI.exe');
+  const exe = path.join(copyDir, 'PractacuPress.exe');
   const base = `http://127.0.0.1:${port}`;
   const dbPath = path.join(dataDir, 'practacu.db').replaceAll('\\', '/');
 

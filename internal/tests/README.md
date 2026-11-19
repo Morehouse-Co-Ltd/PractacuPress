@@ -11,7 +11,7 @@ in `go.mod`, and fails when:
 - the workflow loses a trigger, job, timeout, cache or failure-log artifact;
 - an action is unpinned, unknown, or points at a branch instead of a tag/SHA;
 - the Go matrix stops covering Linux or Windows, or the web job drifts from the
-  Node version in `deploy/docker/api.Dockerfile`;
+  Node version in `../../Dockerfile`;
 - the migration job loses its MySQL/PostgreSQL service containers or DSNs;
 - a Compose build context references a Dockerfile that does not exist;
 - the local `scripts/ci/verify.sh`, `scripts/verify.ps1` or `Makefile` targets

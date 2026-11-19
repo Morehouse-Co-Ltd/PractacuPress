@@ -37,7 +37,7 @@ function htmlResponse(status = 200): Response {
 const settings = { server_url: UPDATE_SERVERS[0].url };
 
 describe('update client', () => {
-  it('uses the server-side check when the launcher answers', async () => {
+  it('uses the server-side check when the app answers', async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
       jsonResponse({
         ok: true,

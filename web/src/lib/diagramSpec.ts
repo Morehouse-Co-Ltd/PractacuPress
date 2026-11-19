@@ -2,7 +2,7 @@
  * 文章图表：规格类型、白名单归一化与 Markdown 围栏互转。
  *
  * 为什么是「围栏代码块 + JSON」而不是内联 SVG：
- * 文章正文要经过服务端 goldmark 渲染和 Rust 白名单清洗，白名单里没有
+ * 文章正文要经过服务端 goldmark 渲染和 内置白名单清洗，白名单里没有
  * svg / figure / div，也没有 data-* 与 style。围栏代码块会被渲染成
  * `<pre><code class="language-pp-diagram">…</code></pre>`，正好在白名单内；
  * 前端拿到 `rendered_html` 后再把它水合成 SVG（见 lib/diagramHydrate.ts）。

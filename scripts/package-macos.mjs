@@ -114,7 +114,7 @@ function main() {
   syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
   const go = goCommand();
   const targets = [
-    { pkg: './cmd/server', name: 'practacu-api' },
+    { pkg: './cmd/server', name: 'practacu-press' },
     { pkg: './cmd/migrate', name: 'practacu-migrate' },
     { pkg: './cmd/seed', name: 'practacu-seed' },
     { pkg: './cmd/backup', name: 'practacu-backup' },

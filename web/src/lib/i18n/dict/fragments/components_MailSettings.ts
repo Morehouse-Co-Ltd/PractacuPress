@@ -53,7 +53,7 @@ const fragment: Dictionary = {
   // ---- 服务端环境变量片段 ----
   服务端环境变量: 'Server environment variables',
   '复制到 .env，或写进启动器的环境变量；重启 API 后生效。':
-    'Copy into .env, or into the launcher environment variables; restart the API to apply.',
+    'Copy into .env, or into the app environment variables; restart to apply.',
   '复制 .env': 'Copy .env',
   收起: 'Collapse',
   展开: 'Expand',

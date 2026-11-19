@@ -33,13 +33,13 @@ Go / Node / Docker。
      · PUBLIC_BASE_URL=https://你的域名
      · AUTH_JWT_ED25519_PRIVATE_KEY 必须是持久密钥
    然后重启服务：
-     sudo launchctl kickstart -k system/com.practacu.press-api
+     sudo launchctl kickstart -k system/com.practacu.press
 
 常用命令
 --------
-  sudo launchctl print system/com.practacu.press-api       查看 API 服务
-  sudo launchctl kickstart -k system/com.practacu.press-api 重启 API
-  tail -f /usr/local/var/practacu-press/api.err.log        看 API 错误
+  sudo launchctl print system/com.practacu.press       查看 API 服务
+  sudo launchctl kickstart -k system/com.practacu.press 重启 API
+  tail -f /usr/local/var/practacu-press/practacu-press.err.log  看程序错误
   sudo /usr/local/practacu-press/uninstall.sh              卸载（保留数据）
   sudo /usr/local/practacu-press/uninstall.sh --purge      连数据一起删除
 

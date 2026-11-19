@@ -275,7 +275,7 @@ async function main() {
 
   const go = findGo();
   log('building Go API');
-  const apiExe = join(BIN, process.platform === 'win32' ? 'practacu-api.exe' : 'practacu-api');
+  const apiExe = join(BIN, process.platform === 'win32' ? 'practacu-press.exe' : 'practacu-press');
   const build = await runLogged('go-build', go, ['build', '-o', apiExe, './cmd/server'], ROOT);
   if (build.code !== 0) fail(`go build failed with code ${build.code}; see .tmp/e2e/logs/go-build.log`);
 

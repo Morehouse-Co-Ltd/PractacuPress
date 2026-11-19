@@ -126,7 +126,7 @@ type SamplerConfig struct {
 	// Interval between samples; zero means DefaultInterval.
 	Interval time.Duration
 	// AppNames maps a normalized executable base name (lower case, no .exe) to the
-	// role shown in the panel, for example {"practacu-api": "api"}.
+	// role shown in the panel, for example {"practacu-press": "api"}.
 	AppNames map[string]string
 	// AppDirs are directories that identify this installation. A process whose
 	// executable or command line lives under one of them is attributed to the app
@@ -142,14 +142,14 @@ type SamplerConfig struct {
 // DefaultAppNames returns the executable names this installation ships.
 //
 // The API binary is built under different names depending on how the installation
-// runs: the packaged release ships PractacuPressAPI.exe, and a plain `go build` may
+// runs: the packaged release ships PractacuPress.exe, and a plain `go build` may
 // leave server.exe. The current process is additionally recognised by pid (see
 // roleOf) so every spelling is attributed to "api" instead of falling through to
 // "app".
 func DefaultAppNames() map[string]string {
 	return map[string]string{
-		"practacu-api":     "api",
-		"practacupressapi": "api",
+		"practacu-press":     "api",
+		"practacupress": "api",
 	}
 }
 
@@ -527,7 +527,7 @@ func processCPUPercent(deltaSeconds, windowSeconds float64, cores int) float64 {
 
 // roleOf decides whether a process belongs to this installation and which role it
 // plays. The sampler's own process is always the API (whatever the executable is
-// called: practacu-api.exe, PractacuPressAPI.exe or server.exe). Known executable
+// called: practacu-press.exe, PractacuPress.exe or server.exe). Known executable
 // names win next; then command line / executable path under one of the installation
 // directories (this is how the Vite dev server is attributed).
 func (s *Sampler) roleOf(proc *process.Process, name string) string {

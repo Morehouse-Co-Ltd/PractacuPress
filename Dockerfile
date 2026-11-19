@@ -1,16 +1,16 @@
-# Go API image. Build from the repository root:
-#   docker build -f deploy/docker/api.Dockerfile .
+# Practacu Press image. Build from the repository root:
+#   docker build -f Dockerfile .
 #
 # The runtime is Alpine and the binary is fully static: SQLite uses
 # modernc.org/sqlite (pure Go), so CGO can stay disabled and no glibc is needed.
 # The image carries the operator commands next to the server so
-# `docker compose exec api migrate` (and backup / media-gc / searchindex) work
+# `docker compose exec practacu-press migrate` (and backup / media-gc / searchindex) work
 # without a second image.
 
-# The frontend is part of the API image: Go's //go:embed cannot read outside its
+# The frontend is part of the application image: Go's //go:embed cannot read outside its
 # package, so the build stage first produces web/dist and copies it into
 # internal/web/dist before compiling. One container now serves both the
-# SPA and the API, with no separate Nginx container in the default stack.
+# SPA and the application, with no separate Nginx container in the default stack.
 FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
 
 WORKDIR /web
@@ -54,7 +54,7 @@ COPY --from=web /web/dist ./internal/web/dist
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/api ./cmd/server \
+    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/practacu-press ./cmd/server \
  && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/migrate ./cmd/migrate \
  && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/seed ./cmd/seed \
  && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/backup ./cmd/backup \
@@ -94,5 +94,5 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=15s --timeout=3s --start-period=25s --retries=5 \
     CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
 
-# Subcommands are available for `docker compose exec api <command>`.
-CMD ["api"]
+# Subcommands are available for `docker compose exec practacu-press <command>`.
+CMD ["practacu-press"]

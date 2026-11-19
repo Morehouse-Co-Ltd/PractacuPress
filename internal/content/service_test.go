@@ -467,7 +467,7 @@ func TestCreateDraftSanitizesAndStoresHTML(t *testing.T) {
 // an outage must hold content, not publish it unchecked.
 func TestCreateDraftFailsClosedWhenSanitizerUnavailable(t *testing.T) {
 	repo := newFakeRepo()
-	sanitizer := &fakeSanitizer{err: errors.New("grpc unavailable")}
+	sanitizer := &fakeSanitizer{err: errors.New("security unavailable")}
 	service := newService(t, repo, sanitizer, site.PublishModeOpen)
 
 	item, err := service.CreateDraft(context.Background(), actor("author", site.RoleMember), KindArticle, sampleDraft())
@@ -596,7 +596,7 @@ func TestPublishedRevisionFailsClosedWhenSanitizerIsUnavailable(t *testing.T) {
 		Status: StatusPublished, SourceBody: "old", RenderedHTML: "<p>old</p>",
 		PolicyVersion: "p1", Revision: 2,
 	}
-	sanitizer := &fakeSanitizer{err: errors.New("grpc unavailable")}
+	sanitizer := &fakeSanitizer{err: errors.New("security unavailable")}
 	service := newService(t, repo, sanitizer, site.PublishModeOpen)
 
 	_, err := service.UpdateDraft(context.Background(), actor("author", site.RoleMember), "c1", sampleDraft())

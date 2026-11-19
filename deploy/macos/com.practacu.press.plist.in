@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.practacu.press-api</string>
+    <string>com.practacu.press</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>set -a; . "@@ENV_FILE@@"; set +a; exec "@@INSTALL_DIR@@/bin/practacu-api"</string>
+        <string>set -a; . "@@ENV_FILE@@"; set +a; exec "@@INSTALL_DIR@@/bin/practacu-press"</string>
     </array>
     <key>UserName</key>
     <string>@@RUN_USER@@</string>

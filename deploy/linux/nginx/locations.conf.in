@@ -39,7 +39,7 @@ location /.well-known/acme-challenge/ {
 # 其余全部交给 API：它同时提供内嵌 SPA、/api、RSS/Atom、sitemap/robots
 # 与扩展 bundle。读超时放宽到 30 分钟，覆盖媒体下载与 WebSocket。
 location / {
-    proxy_pass http://@@API_ADDR@@;
+    proxy_pass http://@@APP_ADDR@@;
     proxy_set_header Host              $http_host;
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;

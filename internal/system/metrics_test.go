@@ -19,8 +19,8 @@ import (
 func TestDefaultAppNamesCoversBuildSpellings(t *testing.T) {
 	names := normalizeAppNames(DefaultAppNames())
 	want := map[string]string{
-		"practacu-api":     "api", // scripts/dev.ps1
-		"practacupressapi": "api", // packaged PractacuPressAPI.exe
+		"practacu-press":     "api", // scripts/dev.ps1
+		"practacupress": "api", // packaged PractacuPress.exe
 	}
 	for exe, role := range want {
 		if got := names[exe]; got != role {
@@ -31,7 +31,7 @@ func TestDefaultAppNamesCoversBuildSpellings(t *testing.T) {
 
 func TestCurrentProcessIsAPI(t *testing.T) {
 	sampler := NewSampler(SamplerConfig{
-		AppNames: map[string]string{"practacu-api": "api"},
+		AppNames: map[string]string{"practacu-press": "api"},
 		// Even when the test binary happens to live under an install directory, the
 		// pid check must win: the running API is always the "api" role.
 		AppDirs: []string{repoRootForTest()},
@@ -44,7 +44,7 @@ func TestCurrentProcessIsAPI(t *testing.T) {
 	if got := sampler.roleOf(self, "server.exe"); got != "api" {
 		t.Fatalf("role of current process = %q, want api", got)
 	}
-	if got := sampler.roleOf(self, "practacu-api.exe"); got != "api" {
+	if got := sampler.roleOf(self, "practacu-press.exe"); got != "api" {
 		t.Fatalf("role of current process with known name = %q, want api", got)
 	}
 }
@@ -87,7 +87,7 @@ func TestAggregateProcessesAttribution(t *testing.T) {
 	procs := []sampledProcess{
 		// Windows idle pseudo process: must be ignored everywhere.
 		{pid: 0, name: "System Idle Process", cpuPercent: 80, memoryBytes: 1 << 30},
-		{pid: 100, name: "PractacuPressAPI.exe", role: "api", cpuPercent: 1.5, memoryBytes: 100},
+		{pid: 100, name: "PractacuPress.exe", role: "api", cpuPercent: 1.5, memoryBytes: 100},
 		{pid: 101, name: "node.exe", role: "web", cpuPercent: 2.0, memoryBytes: 200},
 		{pid: 200, name: "chrome.exe", cpuPercent: 3.0, memoryBytes: 300},
 		{pid: 201, name: "chrome.exe", cpuPercent: 4.0, memoryBytes: 400},
@@ -217,7 +217,7 @@ func TestNewMemoryUsage(t *testing.T) {
 func TestNormalizeProcessName(t *testing.T) {
 	cases := map[string]string{
 		"PractacuPress.exe": "practacupress",
-		"practacu-api.EXE":  "practacu-api",
+		"practacu-press.EXE":  "practacu-press",
 		"node":              "node",
 		"  Report.exe  ":    "report",
 		"":                  "",
@@ -231,7 +231,7 @@ func TestNormalizeProcessName(t *testing.T) {
 
 func TestClassifyProcess(t *testing.T) {
 	names := normalizeAppNames(map[string]string{
-		"practacu-api": "api",
+		"practacu-press": "api",
 	})
 	// Both spellings are always configured, and the same cases are asserted on every
 	// platform: the classification must not depend on the host that runs the test.
@@ -243,7 +243,7 @@ func TestClassifyProcess(t *testing.T) {
 		cmdline string
 		want    string
 	}{
-		{"practacu-api.exe", `C:\Users\owner\Practacu Press\data\practacu-api.exe`, "", "api"},
+		{"practacu-press.exe", `C:\Users\owner\Practacu Press\data\practacu-press.exe`, "", "api"},
 		{"node.exe", `C:\Program Files\nodejs\node.exe`, `node "C:\Users\owner\Practacu Press\web\node_modules\vite\bin\vite.js"`, "web"},
 		{"esbuild.exe", `C:\Users\owner\AppData\Local\npm-cache\esbuild.exe`, `esbuild --service --cwd C:\Users\owner\Practacu Press\web`, "app"},
 		// A terminal or automation host that merely mentions the directory is not us.
@@ -480,7 +480,7 @@ func TestMetricsServesSnapshot(t *testing.T) {
 		SampledAt: snapshotAt,
 		CPU:       CPUUsage{UsagePercent: 12.5, Cores: 8},
 		App: AppUsage{
-			Processes:  []ProcessSample{{PID: 10, Name: "practacu-api", Role: "api", CPUPercent: 1, MemoryBytes: 2048}},
+			Processes:  []ProcessSample{{PID: 10, Name: "practacu-press", Role: "api", CPUPercent: 1, MemoryBytes: 2048}},
 			CPUPercent: 1,
 		},
 		Others: OtherUsage{

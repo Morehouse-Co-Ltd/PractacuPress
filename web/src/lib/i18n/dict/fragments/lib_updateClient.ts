@@ -4,7 +4,7 @@ import type { Dictionary } from '../../plural';
 const fragment: Dictionary = {
   '还没有选择更新源。': 'No update source is selected yet.',
   '当前服务器不支持服务端检查更新，请用启动器或 npm start 启动站点。':
-    'This server does not support server-side update checks; start the site with the launcher or npm start.',
+    'This server does not support server-side update checks; start the site with the app or npm start.',
   '无法连接更新源，请检查网络后重试。':
     'Could not reach the update source; check the network and try again.',
   '更新源返回的不是有效的版本清单。': 'The update source did not return a valid version manifest.',

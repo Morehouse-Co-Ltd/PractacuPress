@@ -54,11 +54,11 @@ web-start:
 web-package:
 	node scripts/package-windows.mjs
 
-# Same pipeline as scripts/package.ps1: builds web + Rust + Go, runs the packaged
+# Same pipeline as scripts/package.ps1: builds web + Go, runs the packaged
 # smoke test, then writes release/PractacuPress and the zip.
 package: web-package
 
-# Linux x86_64 install package: prebuilt Go + Rust binaries, install.sh wizard,
+# Linux x86_64 install package: prebuilt Go binaries, install.sh wizard,
 # systemd/Nginx templates, tar.gz + sha256 in release/.
 package-linux:
 	node scripts/package-linux.mjs
