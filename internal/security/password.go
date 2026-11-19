@@ -58,11 +58,9 @@ var (
 
 // maxVerifyMemoryKiB bounds the Argon2 memory a stored PHC string may ask for.
 //
-// The previous sidecar hands the parsed parameters to Argon2 without a cap (the
-// transport deadline limits the caller, not the blocking hash). Go cannot abort
-// an allocation the same way, so a pathological hash is treated as a mismatch
-// instead of asking the runtime for an unbounded buffer. 1 GiB is 16x the
-// default cost, so every hash either implementation writes is well inside it.
+// Stored PHC parameters can be corrupt or attacker-controlled, so cap memory
+// before invoking Argon2. 1 GiB is 16x the default cost, so hashes written by
+// this implementation are well inside the limit.
 const maxVerifyMemoryKiB = 1024 * 1024
 
 // Argon2Params are the Argon2id cost parameters.

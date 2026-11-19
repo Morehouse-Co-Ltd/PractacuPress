@@ -160,7 +160,7 @@ func TestPopularPassesNarrowingThrough(t *testing.T) {
 		"wrong-kind": {ID: "wrong-kind", SiteID: "s1", Status: StatusPublished, AccessMode: AccessPublic,
 			Kind: KindArticle, CategoryID: "cat_a", Tags: []string{"Go"}, ViewCount: 7, PublishedAt: &recent},
 		"wrong-tag": {ID: "wrong-tag", SiteID: "s1", Status: StatusPublished, AccessMode: AccessPublic,
-			Kind: KindPost, CategoryID: "cat_a", Tags: []string{"Rust"}, ViewCount: 7, PublishedAt: &recent},
+			Kind: KindPost, CategoryID: "cat_a", Tags: []string{"TypeScript"}, ViewCount: 7, PublishedAt: &recent},
 	}
 	service := newViewsService(t, repo, clock)
 

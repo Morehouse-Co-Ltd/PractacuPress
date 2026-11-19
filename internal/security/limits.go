@@ -26,7 +26,7 @@ type Limits struct {
 	Timeout     time.Duration
 }
 
-// ResolveLimits reads the same environment variables the old sidecar used.
+// ResolveLimits reads the Argon2 resource limits from environment variables.
 func ResolveLimits() Limits {
 	return Limits{
 		Concurrency: resolveConcurrency(os.Getenv("SECURITY_ARGON2_CONCURRENCY"), runtime.NumCPU()),

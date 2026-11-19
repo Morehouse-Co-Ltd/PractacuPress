@@ -129,8 +129,8 @@ func Sanitize(format, source string) (Sanitized, error) {
 		return Sanitized{}, err
 	}
 
-	// Like the previous sidecar, record violations against the string the sanitizer
-	// actually sees: for "plain" that is the escaped <p> wrapper, so escaped
+	// Record violations against the string the sanitizer actually sees: for "plain"
+	// that is the escaped <p> wrapper, so escaped
 	// markup is not reported as a violation.
 	violations := recordViolations(input)
 	return Sanitized{
@@ -283,7 +283,7 @@ func isAllowedClass(token string) bool {
 	return false
 }
 
-// urlAllowed applies the previous sidecar's URL rules to one href/src value.
+// urlAllowed applies the sanitizer URL policy to one href/src value.
 //
 // An absolute URL survives only when its scheme is allow-listed; a relative URL
 // passes through unchanged because ammonia's url_relative policy is
@@ -304,9 +304,8 @@ func urlAllowed(raw string) bool {
 		return false
 	}
 
-	// Validate the absolute URL the same way the previous sidecar's URL parser
-	// does: a value with an allowed scheme but no parseable authority (for
-	// example "http://") is dropped instead of stored.
+	// A value with an allowed scheme but no parseable authority (for example
+	// "http://") is dropped instead of stored.
 	parsed, err := url.Parse(candidate)
 	if err != nil || strings.ToLower(parsed.Scheme) != scheme {
 		return false

@@ -104,8 +104,7 @@ func TestPlainFormatWrapsInParagraph(t *testing.T) {
 }
 
 func TestMarkdownIsTreatedAsHTML(t *testing.T) {
-	// The Go API renders Markdown before calling this service, so "markdown" is
-	// already HTML. The previous sidecar behaves the same way.
+	// The API renders Markdown before sanitization, so "markdown" is already HTML.
 	out, err := Sanitize("markdown", "<h1>Title</h1>")
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Title</h1>", out.HTML)
@@ -182,7 +181,7 @@ func TestKeepsMarkdownEcosystemClasses(t *testing.T) {
 		source   string
 		expected string
 	}{
-		{`<pre class="hljs"><code class="language-rust">fn main() {}</code></pre>`, "hljs"},
+		{`<pre class="hljs"><code class="language-go">func main() {}</code></pre>`, "hljs"},
 		{`<p class="footnotes">notes</p>`, "footnotes"},
 		{`<ol class="footnotes"><li class="footnote-ref">x</li></ol>`, "footnote-ref"},
 		{`<ul class="task-list contains-task-list"><li class="task-list-item">x</li></ul>`, "contains-task-list"},

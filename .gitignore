@@ -29,7 +29,7 @@ Thumbs.db
 # Windows 启动器打包产物
 /release/
 
-# Rust build artifacts
+# Build outputs
 target/
 .tmpbuild/
 

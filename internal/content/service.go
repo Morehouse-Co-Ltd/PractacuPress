@@ -12,7 +12,7 @@ import (
 	"github.com/practacu/practacu-press/internal/site"
 )
 
-// Sanitized is the security service's verdict on a revision.
+// Sanitized is the sanitizer's result for a revision.
 type Sanitized struct {
 	HTML          string
 	PolicyVersion string
@@ -355,7 +355,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 
 // CreateDraft stores a new draft after sanitizing it.
 //
-// If the security service is unavailable the item is stored in
+// If sanitization is unavailable the item is stored in
 // pending_security_check and the error is returned: the content is preserved for the
 // author, but it cannot be published until a real sanitization succeeds.
 //

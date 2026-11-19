@@ -9,9 +9,8 @@ import (
 	securitygo "github.com/practacu/practacu-press/internal/security"
 )
 
-// Local is the in-process implementation of the security contract. It runs the
-// Go security package inside the API process: no sidecar, no gRPC hop, and no
-// second port to expose or monitor.
+// Local implements the security contract with the Go security package inside
+// the API process.
 type Local struct {
 	limits  securitygo.Limits
 	permits chan struct{}
@@ -19,8 +18,7 @@ type Local struct {
 
 var _ Client = (*Local)(nil)
 
-// NewLocal builds the in-process client using the same Argon2 limits as the old
-// service (SECURITY_ARGON2_CONCURRENCY / SECURITY_ARGON2_TIMEOUT_MS).
+// NewLocal builds the in-process client using the configured Argon2 limits.
 func NewLocal() *Local {
 	limits := securitygo.ResolveLimits()
 	return &Local{
@@ -99,8 +97,7 @@ func (l *Local) InspectUpload(_ context.Context, input UploadInput) (ScanResult,
 // remote dependency.
 func (*Local) Ping(context.Context) error { return nil }
 
-// runArgon2 bounds concurrent Argon2 memory and enforces the same per-call
-// deadline the sidecar used.
+// runArgon2 bounds concurrent Argon2 memory and enforces the configured deadline.
 func (l *Local) runArgon2(ctx context.Context, work func() error) error {
 	if l.limits.Concurrency <= 0 {
 		l.limits.Concurrency = 1

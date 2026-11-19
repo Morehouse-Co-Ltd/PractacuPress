@@ -135,10 +135,9 @@ func TestVerifyRejectsOversizedEncoded(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidHash)
 }
 
-func TestVerifyAcceptsreferenceArgon2CrateTestVector(t *testing.T) {
-	// From the argon2 crate's tests/phc_strings.rs (adapted from the reference
-	// implementation's test vectors). reference's argon2 0.5 verifier accepts it, and
-	// so must ours: this is the PHC compatibility contract.
+func TestVerifyAcceptsReferenceArgon2TestVector(t *testing.T) {
+	// The reference Argon2id verifier accepts this PHC test vector, and so must
+	// ours: this is the PHC compatibility contract.
 	const encoded = "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$CTFhFdXPJO1aFaMaO6Mm5c8y7cJHAph8ArZWb2GRPPc"
 
 	matches, err := VerifyPassword("password", encoded)
@@ -150,14 +149,14 @@ func TestVerifyAcceptsreferenceArgon2CrateTestVector(t *testing.T) {
 	require.False(t, matches)
 }
 
-func TestVerifyAcceptsCapturedreferenceServiceHash(t *testing.T) {
-	// Captured from the previous sidecar during the
-	// Go-first rollout verification: HashPassword("correct horse battery").
+func TestVerifyAcceptsLegacyArgon2Hash(t *testing.T) {
+	// Captured from a previous Argon2id implementation:
+	// HashPassword("correct horse battery").
 	const encoded = "$argon2id$v=19$m=65536,t=3,p=2$EYKj8Ww9yXvsPVGOTx4YPw$lxF+MwcGn7GR3zVB2apC0eY2fvde7NmbUwaKS6opg80"
 
 	matches, err := VerifyPassword("correct horse battery", encoded)
 	require.NoError(t, err)
-	require.True(t, matches, "hashes written by the previous sidecar must verify in Go")
+	require.True(t, matches, "legacy Argon2id hashes must verify in Go")
 
 	matches, err = VerifyPassword("wrong password", encoded)
 	require.NoError(t, err)

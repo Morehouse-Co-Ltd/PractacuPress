@@ -123,7 +123,7 @@ End-to-end (production bundle on :8099, demo mode):
 - e2e-i18n             PASS 19 / FAIL 0
 - e2e-features         PASS 42 / FAIL 0   (needs PP_E2E_BASE=http://127.0.0.1:8099)
 
-Real backend smoke (scripts/dev.ps1 -SkipSecurity, SQLite):
+Real backend smoke (scripts/dev.ps1, SQLite):
 - /healthz 200 ok, /readyz 200 ready, /setup/status 200 (installed, real site_id)
 - GET /sites/{id}/customization 200 (revision 6, real design)
 - GET /articles?sort=oldest|tag=nope|since=2030 -> 200; sort=popular -> 400 (validation works)
