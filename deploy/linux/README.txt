@@ -35,8 +35,8 @@ Practacu Press · Linux 安装包
 常用命令
 --------
   sudo /opt/practacu-press/install.sh --status          查看安装状态与访问地址
-  sudo journalctl -u practacu-press-api -f              看 API 日志
-  sudo systemctl restart practacu-press-api             重启 API
+  sudo journalctl -u practacu-press -f              看 API 日志
+  sudo systemctl restart practacu-press             重启 API
   sudo /opt/practacu-press/install.sh                   升级（保留数据与密钥）
   sudo /opt/practacu-press/uninstall.sh                 卸载（保留数据）
 

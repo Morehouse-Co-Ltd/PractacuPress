@@ -25,7 +25,7 @@ PractacuPress-Linux-<x64|arm64>/
 ├── VERSION
 ├── ARCH                       本包的架构（amd64 / arm64）
 ├── bin/
-│   ├── practacu-api           Go API（内嵌前端静态文件 + SQLite 驱动）
+│   ├── practacu-press           Go API（内嵌前端静态文件 + SQLite 驱动）
 │   ├── practacu-migrate       只应用数据库结构（升级/排障用）
 │   ├── practacu-seed          建表 + 创建默认站点（幂等）
 │   ├── practacu-backup        整库备份 / 恢复 / 校验
@@ -99,8 +99,8 @@ sudo ./install.sh --yes
 ```
 
 安装器会自动完成：创建系统用户与目录、生成 Ed25519 签名私钥、写
-`/etc/practacu-press/practacu.env`、注册并启动 `practacu-press-security` /
-`practacu-press-api`、应用数据库结构并创建默认站点、写好 Nginx 配置。
+`/etc/practacu-press/practacu.env`、注册并启动 `practacu-press`、
+应用数据库结构并创建默认站点、写好 Nginx 配置。
 
 ### 3.2 打开安装引导（关键一步）
 
@@ -171,7 +171,7 @@ sudo /opt/practacu-press/install.sh --status
 | `/var/lib/practacu-press/data/` | `practacu.db`、`media/`、`backups/` |
 | `/etc/practacu-press/practacu.env` | 服务环境变量（含 JWT 私钥，root 0600） |
 | `/etc/practacu-press/install.conf` | 安装记录：目录、端口、站点形态 |
-| `/etc/systemd/system/practacu-press-api.service` | Go API |
+| `/etc/systemd/system/practacu-press.service` | Go API |
 | `/etc/nginx/conf.d/practacu-press.conf` | Http / Https 站点（安装器生成） |
 | `/etc/nginx/practacu-press-locations.conf` | 全站反向代理规则（安装器生成） |
 | `/var/www/practacu-acme/` | certbot 的 HTTP-01 挑战目录 |
@@ -184,12 +184,11 @@ Cookie 与 WebSocket 都不需要额外跨域配置。
 
 ```bash
 # 服务状态
-sudo systemctl status practacu-press-api practacu-press-security
+sudo systemctl status practacu-press
 systemctl status nginx
 
 # 日志
-sudo journalctl -u practacu-press-api -f
-sudo journalctl -u practacu-press-security -f
+sudo journalctl -u practacu-press -f
 
 # 健康检查
 curl -fsS http://127.0.0.1:8081/api/healthz
@@ -199,9 +198,9 @@ curl -fsS http://127.0.0.1:8081/api/readyz
 **备份**：数据都在 `/var/lib/practacu-press/data/`，停机或低峰期复制即可：
 
 ```bash
-sudo systemctl stop practacu-press-api
+sudo systemctl stop practacu-press
 sudo tar -czf "practacu-backup-$(date +%F).tar.gz" -C /var/lib/practacu-press data
-sudo systemctl start practacu-press-api
+sudo systemctl start practacu-press
 ```
 
 也可以使用后台「数据」页生成整站备份；`data/backups/` 是它写入的位置。
@@ -221,7 +220,7 @@ sudo ./install.sh
 
 **修改端口 / 域名 / 配置**：优先用 `--finalize` 重跑；直接改
 `/etc/practacu-press/practacu.env` 或 Nginx 配置也可以，改完
-`sudo systemctl restart practacu-press-api`、`sudo nginx -t && sudo systemctl reload nginx`。
+`sudo systemctl restart practacu-press`、`sudo nginx -t && sudo systemctl reload nginx`。
 
 ## 6. 安全说明
 
@@ -240,15 +239,15 @@ sudo ./install.sh
 
 | 现象 | 处理 |
 | --- | --- |
-| 安装脚本报端口被占用 | 换 `--api-port` / `--setup-port`，或停掉占用端口的服务后重跑 |
+| 安装脚本报端口被占用 | 换 `--port` / `--setup-port`，或停掉占用端口的服务后重跑 |
 | 浏览器打不开 `127.0.0.1:8080` | 确认 SSH 隧道方向正确；`ss -ltn \| grep 8080` 确认 Nginx 在听；看 `journalctl -u nginx` |
 | 安装引导里注册后不是管理员 | 必须通过回环访问（`http://127.0.0.1:8080` 或 SSH 隧道），不要用服务器 IP / 域名访问 |
-| `/api/readyz` 不通过 | 查看 `journalctl -u practacu-press-api -n 100`；通常是数据库未迁移或数据目录权限不对 |
+| `/api/readyz` 不通过 | 查看 `journalctl -u practacu-press -n 100`；通常是数据库未迁移或数据目录权限不对 |
 | 发布文章/上传返回 503 | 查看 API 日志中的安全检查错误；内置检查失败时按设计 fail-closed |
 | `--finalize --mode public` 提示域名不能服务 | 先到管理后台完成域名设置与 DNS TXT 验证，确认 `curl -H 'Host: 域名' http://127.0.0.1:8081/api/v1/setup/status` 返回 `installed: true` |
 | certbot 申请失败 | 检查 DNS 是否指向本机、80 端口公网可达、云安全组与防火墙；也可手动 `certbot certonly --webroot -w /var/www/practacu-acme -d 域名` 后重跑 `--finalize` |
 | Nginx 配置检查失败 | `sudo nginx -t` 看具体行；安装器生成的文件在 `/etc/nginx/conf.d/practacu-press.conf` 与 `/etc/nginx/practacu-press-locations.conf` |
-| API 启动即退出 | `journalctl -u practacu-press-api -n 100`；常见原因是 `practacu.env` 被误改（`APP_ENV=production` 时必须有 JWT 私钥、不能 `PP_DESKTOP=true`） |
+| API 启动即退出 | `journalctl -u practacu-press -n 100`；常见原因是 `practacu.env` 被误改（`APP_ENV=production` 时必须有 JWT 私钥、不能 `PP_DESKTOP=true`） |
 | RHEL / CentOS / Rocky 上 Nginx 访问 API 被拒 | SELinux 默认会拦反向代理：`sudo setsebool -P httpd_can_network_connect 1` |
 
 ## 8. 卸载

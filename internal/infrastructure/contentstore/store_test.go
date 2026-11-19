@@ -154,7 +154,7 @@ func TestContentLifecycle(t *testing.T) {
 
 func TestCreateDraftFailsClosedAndPersists(t *testing.T) {
 	h := newHarness(t, site.PublishModeOpen)
-	h.sanit.err = errors.New("grpc down")
+	h.sanit.err = errors.New("security down")
 
 	item, err := h.service.CreateDraft(context.Background(), h.author(), content.KindPost, draftInput())
 

@@ -113,7 +113,7 @@ const fragment: Dictionary = {
   '保存不会让服务器立刻换存储': 'Saving does not switch storage on the server right away',
   '把片段写进 API 的': 'Put the snippet into the API’s',
   '（或启动器环境变量）并重启后才会生效。':
-    '(or the launcher environment variables) and restart before it takes effect.',
+    '(or the app environment variables) and restart before it takes effect.',
   '切换存储不会自动搬运已有文件：旧目录里的图片仍在旧目录，旧桶里的对象仍在旧桶，':
     'Switching storage never moves existing files: images in the old directory stay there, objects in the old bucket stay there,',
   '需要自己用 rclone / aws s3 sync 之类同步，或继续保留旧路径。':

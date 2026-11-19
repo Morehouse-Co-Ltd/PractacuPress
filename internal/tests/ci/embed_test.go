@@ -22,7 +22,7 @@ func TestFrontendIsEmbedded(t *testing.T) {
 		t.Error("internal/web/embed.go does not embed all:dist")
 	}
 
-	dockerfile, err := os.ReadFile(filepath.Join(root, "deploy", "docker", "Dockerfile"))
+	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
 	if err != nil {
 		t.Fatalf("read Dockerfile: %v", err)
 	}

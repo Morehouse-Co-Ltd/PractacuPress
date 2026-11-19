@@ -23,7 +23,7 @@ DATA_DIR="/usr/local/var/practacu-press"
 ENV_ROOT="/usr/local/etc/practacu-press"
 ENV_FILE="$ENV_ROOT/practacu.env"
 LAUNCH_DIR="/Library/LaunchDaemons"
-API_PORT="8081"
+APP_PORT="8081"
 SITE_PORT="8080"
 RUN_USER="${SUDO_USER:-$(id -un)}"
 NGINX_ENABLED="yes"
@@ -59,7 +59,7 @@ if [ -n "$PKG_ARCH" ] && [ "$PKG_ARCH" != "$HOST_ARCH" ]; then
     die "这个包是 ${PKG_ARCH} 版本，当前机器是 ${HOST_ARCH}。"
 fi
 
-[ -x "$SELF_DIR/bin/practacu-api" ] || die "安装包不完整：缺少 bin/practacu-api"
+[ -x "$SELF_DIR/bin/practacu-press" ] || die "安装包不完整：缺少 bin/practacu-press"
 
 log "安装程序文件到 $INSTALL_DIR"
 install -d -m 0755 "$INSTALL_DIR"
@@ -102,7 +102,7 @@ if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" <<EOF
 # Practacu Press 服务环境（macOS launchd 读取）
 APP_ENV=development
-HTTP_ADDR=127.0.0.1:$API_PORT
+HTTP_ADDR=127.0.0.1:$APP_PORT
 DATABASE_DRIVER=sqlite
 DATABASE_DSN=file:$DATA_DIR/data/practacu.db
 STORAGE_DRIVER=local
@@ -138,26 +138,26 @@ brew_prefix() {
 
 log "注册 launchd 服务"
 install -d -m 0755 "$LAUNCH_DIR"
-render "$SELF_DIR/deploy/macos/com.practacu.press-api.plist.in" \
-    "$LAUNCH_DIR/com.practacu.press-api.plist" \
+render "$SELF_DIR/deploy/macos/com.practacu.press.plist.in" \
+    "$LAUNCH_DIR/com.practacu.press.plist" \
     "INSTALL_DIR=$INSTALL_DIR" "DATA_DIR=$DATA_DIR" "ENV_FILE=$ENV_FILE" "RUN_USER=$RUN_USER"
 chmod 0644 "$LAUNCH_DIR/com.practacu.press-"*.plist
 
-for label in com.practacu.press-api; do
+for label in com.practacu.press; do
     launchctl bootout "system/$label" 2>/dev/null || true
 done
-launchctl bootstrap system "$LAUNCH_DIR/com.practacu.press-api.plist"
+launchctl bootstrap system "$LAUNCH_DIR/com.practacu.press.plist"
 
 log "等待 API 就绪"
 for _ in $(seq 1 60); do
-    if curl -fsS --max-time 2 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1; then
-        ok "API 已就绪：http://127.0.0.1:$API_PORT/api/healthz"
+    if curl -fsS --max-time 2 "http://127.0.0.1:$APP_PORT/api/healthz" >/dev/null 2>&1; then
+        ok "服务已就绪：http://127.0.0.1:$APP_PORT/api/healthz"
         break
     fi
     sleep 1
 done
-if ! curl -fsS --max-time 2 "http://127.0.0.1:$API_PORT/api/healthz" >/dev/null 2>&1; then
-    warn "API 还没有通过健康检查，查看 $DATA_DIR/api.err.log 与 launchctl print system/com.practacu.press-api"
+if ! curl -fsS --max-time 2 "http://127.0.0.1:$APP_PORT/api/healthz" >/dev/null 2>&1; then
+    warn "服务还没有通过健康检查，查看 $DATA_DIR/api.err.log 与 launchctl print system/com.practacu.press"
 fi
 
 if [ "$NGINX_ENABLED" = "yes" ]; then
@@ -173,7 +173,7 @@ if [ "$NGINX_ENABLED" = "yes" ]; then
             install -d -m 0755 "$DATA_DIR/acme"
             LOCATIONS_CONF="$NGINX_CONF_DIR/practacu-press-locations.conf"
             render "$SELF_DIR/deploy/linux/nginx/locations.conf.in" "$LOCATIONS_CONF" \
-                "API_ADDR=127.0.0.1:$API_PORT" \
+                "APP_ADDR=127.0.0.1:$APP_PORT" \
                 "ACME_ROOT=$DATA_DIR/acme" "LOCATIONS_CONF=$LOCATIONS_CONF"
             render "$SELF_DIR/deploy/linux/nginx/site.conf.in" "$NGINX_CONF_DIR/servers/practacu-press.conf" \
                 "LISTEN=127.0.0.1:$SITE_PORT" "SERVER_NAME=_" "LOCATIONS_CONF=$LOCATIONS_CONF"
@@ -192,7 +192,7 @@ if [ "$NGINX_ENABLED" = "yes" ]; then
         fi
     else
         warn "没有找到 Nginx。先安装：brew install nginx，然后重新运行 sudo ./install.sh"
-        warn "或加 --no-nginx 自行用 Caddy/其他反代：/ -> 127.0.0.1:$API_PORT（前端已内嵌在 API）"
+        warn "或加 --no-nginx 自行用 Caddy/其他反代：/ -> 127.0.0.1:$APP_PORT（前端已内嵌）"
     fi
 fi
 
@@ -202,6 +202,6 @@ cat <<EOF
   打开：http://127.0.0.1:$SITE_PORT
   数据：$DATA_DIR
   环境：$ENV_FILE（含密钥，权限 0600）
-  服务：launchctl print system/com.practacu.press-api
+  服务：launchctl print system/com.practacu.press
   卸载：sudo $INSTALL_DIR/uninstall.sh
 EOF

@@ -2654,7 +2654,7 @@ export interface SiteImportReport {
 export interface SystemProcess {
   pid: number;
   name: string;
-  /** api / security / launcher / web / app；由服务端按进程名与安装目录识别。 */
+  /** api / web / app；由服务端按进程名与安装目录识别。 */
   role: string;
   cpu_percent: number;
   memory_bytes: number;

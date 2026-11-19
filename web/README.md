@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 然后在临时端口启动产物做自检（首页与 SPA、`/api/healthz`、注册、文章创建与 Go 内置清洗、发布），
 最后生成 `release/PractacuPress-Windows-x64.zip` 并同步 `release/PractacuPress`。
 
-解压后双击 `启动.cmd`（或运行 `PractacuPressAPI.exe`），浏览器打开
+解压后双击 `启动.cmd`（或运行 `PractacuPress.exe`），浏览器打开
 `http://127.0.0.1:8080`。单个 API 同时提供前台、后台、安装引导与 `/api`，
 不需要 Node 或额外服务；数据库与媒体在 `data/`。
 

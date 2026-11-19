@@ -7,11 +7,10 @@ title Practacu Press 一键启动
 set "ROOT=%CD%"
 set "WEB_URL=http://127.0.0.1:5173"
 set "OPEN_URL=%WEB_URL%/?mode=live"
-set "API_HEALTH=http://127.0.0.1:8080/healthz"
+set "API_HEALTH=http://127.0.0.1:8080/api/healthz"
 set "API_RUNNING=0"
 set "WEB_RUNNING=0"
 set "API_READY=0"
-set "SECURITY_ARG="
 
 echo ============================================================
 echo   Practacu Press 一键启动
@@ -52,9 +51,8 @@ if "%API_RUNNING%"=="1" (
     echo [2/4] 检测到 API 已在 8080 运行，直接复用。
     echo [提示] 如果这是修复前启动的旧 API 进程，请先关闭 API 窗口再重跑本脚本，以启用桌面管理员模式。
 ) else (
-    call :choose_security
     echo [2/4] 启动 API 与 SQLite 数据库...
-    start "Practacu Press - API" /D "%ROOT%" cmd /k powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\dev.ps1" !SECURITY_ARG!
+    start "Practacu Press" /D "%ROOT%" cmd /k powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\dev.ps1"
 )
 
 rem ------------------------------------------------------------------
@@ -125,15 +123,15 @@ echo   启动完成
 echo ============================================================
 echo   站点          %WEB_URL%
 echo   真实环境入口  %OPEN_URL%
-echo   API 健康检查  %API_HEALTH%
+echo   服务健康检查  %API_HEALTH%
 if "%API_READY%"=="1" (
-    echo   API 状态      已就绪
+    echo   服务状态      已就绪
 ) else (
-    echo   API 状态      启动中（请看 API 窗口）
+    echo   服务状态      启动中（请看 API 窗口）
 )
 echo.
 echo   停止方式：
-echo     - 在“Practacu Press - API”窗口按 Ctrl+C
+echo     - 在“Practacu Press”窗口按 Ctrl+C
 echo     - 关闭“Practacu Press - Web”窗口
 echo.
 echo   数据目录：%ROOT%\data
@@ -172,20 +170,6 @@ exit /b 0
 set "WEB_RUNNING=0"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri '%WEB_URL%'; if ($r.StatusCode -eq 200) { exit 0 } } catch { }; exit 1" >nul 2>nul
 if not errorlevel 1 set "WEB_RUNNING=1"
-exit /b 0
-
-:choose_security
-set "SECURITY_ARG="
-if exist "%ROOT%\services\security\target\release\practacu-security.exe" exit /b 0
-where cargo >nul 2>nul
-if errorlevel 1 (
-    set "SECURITY_ARG=-SkipSecurity"
-    echo [提示] 未找到 Rust 安全服务，API 将以无安全服务方式启动。
-    echo        发布文章和完成上传会返回 503，其他功能不受影响。
-) else (
-    echo [提示] 未找到安全服务构建产物，首次启动会先编译 Rust 服务。
-    echo        这可能需要几分钟；之后启动会直接复用。
-)
 exit /b 0
 
 :fail

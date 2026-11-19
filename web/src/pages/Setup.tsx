@@ -256,7 +256,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const probingRef = useRef(false);
   const errorRef = useRef<HTMLDivElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
-  // 启动器托管的本机 API 信息；开发服务器与 npm start 没有这个接口，读不到就是 null。
+  // 程序托管的本机 API 信息；开发服务器与 npm start 没有这个接口，读不到就是 null。
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
   /**
    * 阶段卡片滚动区的真实状态。
@@ -1280,7 +1280,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   <div className="mt-16">
                     {launcherLive ? (
                       <Callout tone="warn" icon="alert" title={t('本机 API 没有通过就绪检查')}>
-                        {t('启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在')}
+                        {t('程序已经把 API 拉起来了，但接口还没准备好。程序窗口里有退出原因，完整日志在')}
                         <code className="mono"> {launcherApi?.log ?? 'data/api.err.log'}</code>
                         {t('。')}
                         {launcherApi?.error ? (
@@ -1288,10 +1288,10 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                         ) : null}
                       </Callout>
                     ) : runtime ? (
-                      <Callout tone="warn" icon="alert" title={t('这个启动器没有运行本机 API')}>
+                      <Callout tone="warn" icon="alert" title={t('这个程序没有运行本机 API')}>
                         {launcherApi?.error
-                          ? t('启动器尝试启动本机 API 失败了，原因如下：')
-                          : t('启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。')}
+                          ? t('程序尝试启动本机 API 失败了，原因如下：')
+                          : t('程序以静态方式运行，没有找到 PractacuPress.exe，所以同源与 8080 都没有后端。')}
                         {launcherApi?.error ? (
                           <pre className="connect-commands">{launcherApi.error}</pre>
                         ) : (
@@ -1299,7 +1299,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                             {t('请使用完整的 Windows 压缩包重新解压（里面应同时有')}
                             <code className="mono"> PractacuPress.exe </code>
                             {t('与')}
-                            <code className="mono"> PractacuPressAPI.exe</code>
+                            <code className="mono"> PractacuPress.exe</code>
                             {t('），或按下面的命令手动启动 Go API。')}
                           </p>
                         )}

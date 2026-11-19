@@ -115,19 +115,19 @@ The first build pulls base images and compiles the API and security-service imag
 Then check health:
 
 ```bash
-docker compose ps                      # api / security running; api and security healthy
+docker compose ps                      # practacu-press running / healthy
 curl -fsS http://127.0.0.1:8080/api/healthz
 ```
 
 Open **http://localhost:8080** and complete the seven-step wizard; **the first account it creates is the platform administrator**.
 
-- **What runs**: `api` (one Go binary with the embedded SPA and security checks, serving `/api`, static assets and the SPA fallback). Only `api` is published to the host; there is no separate web/Nginx or security container.
+- **What runs**: `practacu-press` (one Go binary with the embedded SPA and security checks, serving `/api`, static assets and the SPA fallback). Only `practacu-press` is published to the host; there is no separate web/Nginx or security container.
 - **Loopback by default**: the mapping is `127.0.0.1:8080:8080`, so an unfinished install cannot be claimed by the public internet. After setup, use `.env.prod` plus a host TLS proxy; do not expose an unfinished instance on `0.0.0.0:8080`.
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
 - **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows package (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
-- **Operations**: `docker compose logs -f`, `docker compose exec api migrate`, `docker compose exec api seed`; the image also ships `backup`, `media-gc` and `searchindex`.
+- **Operations**: `docker compose logs -f`, `docker compose exec practacu-press migrate`, `docker compose exec practacu-press seed`; the image also ships `backup`, `media-gc` and `searchindex`.
 - **Production deployment**: the same `docker-compose.yml` with `--env-file .env.prod` provides production semantics, a persistent JWT signing key and Secure cookies; `deploy/production/nginx.conf` handles TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [docs/deployment/production-profile.md](docs/deployment/production-profile.md).
-- **Build one image**: `docker build -f deploy/docker/Dockerfile .`.
+- **Build one image**: `docker build -f Dockerfile .`.
 
 > The default API image (embedded frontend and in-process security checks) and the compose stack have been built and started for real: the API reports healthy, and `/api/healthz`, `/api/readyz`, RSS/Atom/sitemap/robots, first-admin registration and login, media upload and a whole-instance backup were exercised. `docker compose config` passes. The host TLS proxy still needs a staging run to validate certificates and HSTS.
 
@@ -186,11 +186,11 @@ tag and `beta`; it never overwrites `latest`.
 
 - Repository secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses the built-in
   `GITHUB_TOKEN`; Docker Hub is skipped when the username is empty).
-- Image names: `ghcr.io/<owner>/practacu-press-api:<tag>` and
-  `<dockerhub-user>/practacu-press-api:<tag>`.
+- Image names: `ghcr.io/<owner>/practacu-press:<tag>` and
+  `<dockerhub-user>/practacu-press:<tag>`.
 - Run a published image with
-  `PP_IMAGE=ghcr.io/<owner>/practacu-press-api:v1.0.0 docker compose pull`, then
-  `PP_IMAGE=ghcr.io/<owner>/practacu-press-api:v1.0.0 docker compose up -d`.
+  `PP_IMAGE=ghcr.io/<owner>/practacu-press:v1.0.0 docker compose pull`, then
+  `PP_IMAGE=ghcr.io/<owner>/practacu-press:v1.0.0 docker compose up -d`.
 - You can also dispatch the workflow manually with a version, or push a `v*` / `V*` tag. Full
   details: [docs/deployment/releases.md](docs/deployment/releases.md).
 
@@ -377,7 +377,7 @@ Any failing step stops immediately and prints the reason; a failing self-test ne
 
 Artifacts:
 
-- `release/PractacuPress/PractacuPressAPI.exe`: one Go binary with the site, admin console, setup wizard and security checks embedded;
+- `release/PractacuPress/PractacuPress.exe`: one Go binary with the site, admin console, setup wizard and security checks embedded;
 - `release/PractacuPress/启动.cmd`: starts it and opens `http://127.0.0.1:8080`;
 - `release/PractacuPress-Windows-<x64|arm64>.zip` (plus a matching `.sha256`): the whole folder zipped.
 
@@ -394,7 +394,7 @@ Common `scripts/package.ps1` parameters:
 CI can call the underlying script directly (same pipeline):
 `node scripts\package-windows.mjs --arch amd64|arm64 [--skip-smoke] [--no-zip] [--release-dir <dir>]`.
 
-After unzipping, double-click `启动.cmd` (or run `PractacuPressAPI.exe` in that directory) and open
+After unzipping, double-click `启动.cmd` (or run `PractacuPress.exe` in that directory) and open
 `http://127.0.0.1:8080`. The database, media and backups live in `data/` next to it.
 
 ---

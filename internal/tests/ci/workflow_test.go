@@ -213,7 +213,7 @@ func TestWebJob(t *testing.T) {
 		if strings.HasPrefix(uses, "actions/setup-node@") {
 			with := lookup(step, "with")
 			if got := scalar(lookup(with, "node-version")); got != "22" {
-				t.Errorf("setup-node node-version = %q, want 22 (matches deploy/docker/Dockerfile)", got)
+				t.Errorf("setup-node node-version = %q, want 22 (matches Dockerfile)", got)
 			}
 			if scalar(lookup(with, "cache")) != "npm" {
 				t.Error("setup-node must cache npm")
@@ -345,20 +345,20 @@ func TestComposeConfiguration(t *testing.T) {
 	if services == nil {
 		t.Fatal("docker-compose.yml has no services")
 	}
-	for _, service := range []string{"api"} {
+	for _, service := range []string{"practacu-press"} {
 		if lookup(services, service) == nil {
 			t.Errorf("docker-compose.yml has no %s service", service)
 		}
 	}
 
-	api := lookup(services, "api")
+	api := lookup(services, "practacu-press")
 	if test := lookup(lookup(api, "healthcheck"), "test"); test == nil {
-		t.Error("api service has no healthcheck")
+		t.Error("practacu-press service has no healthcheck")
 	} else if !scalarsContain(test, "healthz") {
-		t.Error("api healthcheck does not probe /api/healthz")
+		t.Error("practacu-press healthcheck does not probe /api/healthz")
 	}
-	if ports := lookup(lookup(services, "api"), "ports"); ports == nil || !scalarsContain(ports, "8080") {
-		t.Error("api service must publish the embedded frontend/API on 8080")
+	if ports := lookup(lookup(services, "practacu-press"), "ports"); ports == nil || !scalarsContain(ports, "8080") {
+		t.Error("practacu-press service must publish the embedded frontend/API on 8080")
 	}
 
 	// One compose file serves local, production and prebuilt-image deployments.
@@ -373,14 +373,14 @@ func TestComposeConfiguration(t *testing.T) {
 	} {
 		got := scalar(lookup(apiEnv, key))
 		if !strings.Contains(got, "${") || !strings.Contains(got, want) {
-			t.Errorf("api %s = %q, want an interpolation default containing %q", key, got, want)
+			t.Errorf("practacu-press %s = %q, want an interpolation default containing %q", key, got, want)
 		}
 	}
 	if got := scalar(lookup(api, "image")); !strings.Contains(got, "PP_IMAGE") {
-		t.Errorf("api image = %q, want PP_IMAGE override for published images", got)
+		t.Errorf("practacu-press image = %q, want PP_IMAGE override for published images", got)
 	}
 	if files := lookup(api, "env_file"); files == nil || !scalarsContain(files, ".env.prod") {
-		t.Error("api env_file must allow the optional .env.prod production file")
+		t.Error("practacu-press env_file must allow the optional .env.prod production file")
 	}
 
 	// Every build context must point at a Dockerfile that exists in the repo.

@@ -26,11 +26,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Windows 启动器打包产物
+# Windows 便携包产物
 /release/
 
-# Rust build artifacts
-target/
+# Build artifacts
 .tmpbuild/
 
 # 本地临时产物（冒烟测试打包输出）
@@ -39,7 +38,7 @@ web/.tmp/
 
 # 扩展打包产物（scripts/package-extension.ps1 输出）与示例的 WASM 构建产物
 /dist/
-plugins/examples/**/backend/*.wasm
+internal/plugins/examples/**/backend/*.wasm
 
 # 本地浏览器 profile（截图/审计工具产生的 Chrome 缓存，含 Cookie，勿入库）
 *.prof/

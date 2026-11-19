@@ -58,7 +58,7 @@ func TestReleaseWorkflow(t *testing.T) {
 		"ghcr.io",
 		"DOCKERHUB_USERNAME",
 		"linux/amd64,linux/arm64",
-		"deploy/docker/Dockerfile",
+		"Dockerfile",
 		"nfpm package",
 		"deploy/package/nfpm.yaml",
 		"package-linux.mjs",
