@@ -4,7 +4,7 @@
 
 | 站点前台（默认主题：原版 · 纸白浅色） | 管理后台（仪表盘） |
 | :---: | :---: |
-| ![站点前台](docs/assets/readme/frontend.png) | ![管理后台](docs/assets/readme/admin.png) |
+| ![站点前台](github/readme/frontend.png) | ![管理后台](github/readme/admin.png) |
 
 > **自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
 > Go API（内嵌前端与安全检查）+ React 前台与后台，由同一份 OpenAPI 3.1 契约对齐；

@@ -4,7 +4,7 @@
 
 | Site frontend (default theme: Original · paper light) | Admin dashboard |
 | :---: | :---: |
-| ![Site frontend](docs/assets/readme/frontend.png) | ![Admin dashboard](docs/assets/readme/admin.png) |
+| ![Site frontend](github/readme/frontend.png) | ![Admin dashboard](github/readme/admin.png) |
 
 > **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
 > A Go API with in-process security checks, and a React frontend plus admin — all aligned by one
