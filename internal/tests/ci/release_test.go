@@ -77,6 +77,15 @@ func TestReleaseWorkflow(t *testing.T) {
 		t.Error("Docker image tags must be exactly practacupress/press:<version> and practacupress/press:latest")
 	}
 
+	web := lookup(jobs, "web")
+	webBody := strings.Join(collectScalars(web), "\n")
+	if strings.Contains(webBody, "cd ../..") {
+		t.Error("web job must not leave the repository root after cd web")
+	}
+	if !strings.Contains(webBody, `cd "$GITHUB_WORKSPACE"`) {
+		t.Error("web job must return to GITHUB_WORKSPACE before running stamp-version.mjs")
+	}
+
 	windows := lookup(jobs, "windows")
 	windowsBody := strings.Join(collectScalars(windows), "\n")
 	for _, want := range []string{"windows-2022", "windows-11-vs2026-arm", "amd64", "arm64"} {
