@@ -111,7 +111,7 @@ const FREQUENCY_IDS = new Set<string>(UPDATE_FREQUENCIES.map((item) => item.id))
 const MODE_IDS = new Set<string>(UPDATE_MODES.map((item) => item.id));
 const STYLE_IDS = new Set<string>(UPDATE_STYLES.map((item) => item.id));
 
-/** 版本号形状：`1.2.3`、`v1.2.3`、`0.1.1-beta`，可选构建元数据。 */
+/** 版本号形状：`1.2.3`、`v1.2.3`、`0.1.2-beta`，可选构建元数据。 */
 const VERSION_PATTERN = /^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
 
 /**

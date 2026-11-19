@@ -7,7 +7,7 @@
  *   node scripts/release-version.mjs --github-output "$GITHUB_OUTPUT" --ref refs/tags/v1.2.0
  *
  * Accepted forms (case-insensitive `v`, optional beta suffix):
- *   v1.0.0   V1.0.0   v1.0.1-beta1   V1.0.1-beta.1
+ *   v1.0.0   V1.0.0   v1.0.1-beta   v1.0.1-beta1   V1.0.1-beta.1
  *
  * The tag is canonicalised to a lower-case `v` prefix because Docker tags and
  * GitHub release names are usually matched literally, and a mixed-case tag would
@@ -16,21 +16,23 @@
 import fs from 'node:fs';
 
 const VERSION_RE =
-  /(?<![0-9A-Za-z])v(\d+)\.(\d+)\.(\d+)(?:-beta[.-]?(\d+))?(?!\.\d)(?![0-9A-Za-z])/i;
+  /(?<![0-9A-Za-z])v(\d+)\.(\d+)\.(\d+)(?:-beta(?:[.-]?(\d+))?)?(?![-.0-9A-Za-z])/i;
 
 function parseVersion(raw) {
   const match = String(raw || '').match(VERSION_RE);
   if (!match) return null;
-  const [, major, minor, patch, beta] = match;
+  const [, major, minor, patch, betaNumber] = match;
   const base = `${Number(major)}.${Number(minor)}.${Number(patch)}`;
+  const beta = /-beta/i.test(match[0]);
+  const suffix = beta ? `-beta${betaNumber ? Number(betaNumber) : ''}` : '';
   return {
     should_release: true,
-    version: beta ? `${base}-beta${Number(beta)}` : base,
+    version: `${base}${suffix}`,
     base_version: base,
-    tag: `v${base}${beta ? `-beta${Number(beta)}` : ''}`,
-    prerelease: Boolean(beta),
+    tag: `v${base}${suffix}`,
+    prerelease: beta,
     channel: beta ? 'beta' : 'stable',
-    pkg_release: beta ? `beta${Number(beta)}` : '1',
+    pkg_release: beta ? `beta${betaNumber ? Number(betaNumber) : ''}` : '1',
   };
 }
 

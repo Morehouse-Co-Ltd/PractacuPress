@@ -31,6 +31,15 @@ test('beta release message', () => {
   assert.equal(result.pkg_release, 'beta1');
 });
 
+test('beta without a number is valid', () => {
+  const result = run(['--message', 'release: v0.1.2-beta']);
+  assert.equal(result.version, '0.1.2-beta');
+  assert.equal(result.tag, 'v0.1.2-beta');
+  assert.equal(result.prerelease, true);
+  assert.equal(result.channel, 'beta');
+  assert.equal(result.pkg_release, 'beta');
+});
+
 test('beta with a dot separator is normalised', () => {
   const result = run(['--message', 'chore: V2.0.0-Beta.2']);
   assert.equal(result.version, '2.0.0-beta2');

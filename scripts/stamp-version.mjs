@@ -26,7 +26,7 @@ function parseArgs(argv) {
         break;
       case '--help':
       case '-h':
-        console.log('usage: stamp-version.mjs --dist <dir> --version <vX.Y.Z[-betaN]> [--channel stable|beta]');
+        console.log('usage: stamp-version.mjs --dist <dir> --version <vX.Y.Z[-beta[N]]> [--channel stable|beta]');
         process.exit(0);
         break;
       default:
@@ -39,11 +39,13 @@ function parseArgs(argv) {
 }
 
 function normalizeVersion(raw) {
-  const match = String(raw).trim().match(/^v?(\d+\.\d+\.\d+)(?:-beta[.-]?(\d+))?$/i);
-  if (!match) throw new Error(`unsupported version: ${raw} (want vX.Y.Z or vX.Y.Z-betaN)`);
+  const value = String(raw).trim();
+  const match = value.match(/^v?(\d+\.\d+\.\d+)(?:-beta(?:[.-]?(\d+))?)?$/i);
+  if (!match) throw new Error(`unsupported version: ${raw} (want vX.Y.Z or vX.Y.Z-beta)`);
+  const beta = /-beta/i.test(value);
   return {
-    version: match[2] ? `${match[1]}-beta${Number(match[2])}` : match[1],
-    channel: match[2] ? 'beta' : 'stable',
+    version: beta ? `${match[1]}-beta${match[2] ? Number(match[2]) : ''}` : match[1],
+    channel: beta ? 'beta' : 'stable',
   };
 }
 

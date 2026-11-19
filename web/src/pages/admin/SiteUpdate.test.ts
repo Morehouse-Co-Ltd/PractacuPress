@@ -142,7 +142,7 @@ describe('站点更新页', () => {
 
   it('检查更新会请求服务端并显示远端版本与说明', async () => {
     state.checkForUpdate.mockResolvedValue({
-      local: { title: 'Practacu Press', describe: '本地', version: '0.1.1-beta', style: 'beta' },
+      local: { title: 'Practacu Press', describe: '本地', version: '0.1.2-beta', style: 'beta' },
       remote,
       source: state.config.update.server_url,
       checked_at: '2026-11-15T04:00:00Z',
@@ -193,7 +193,7 @@ describe('站点更新页', () => {
   it('手动更新：把构建目录交给服务端，并给出可重新载入的提示', async () => {
     state.applyUpdateFromDir.mockResolvedValue({
       version: '0.2.0',
-      previous: '0.1.1-beta',
+      previous: '0.1.2-beta',
       active: 'dist-0.2.0',
     });
     await render();
