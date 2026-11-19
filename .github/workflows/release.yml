@@ -101,7 +101,7 @@ jobs:
           cd web
           npm ci --no-audit --no-fund
           npm run build
-          cd ../..
+          cd "$GITHUB_WORKSPACE"
           node scripts/stamp-version.mjs \
             --dist web/dist \
             --version "${{ needs.version.outputs.version }}"
