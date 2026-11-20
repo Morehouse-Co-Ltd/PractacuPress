@@ -376,3 +376,139 @@ details.pp-collapse > p + p {
     min-height: 320px;
   }
 }
+
+/* =========================================================
+   表格上下文工具条（.pp-table-toolbar）
+   - 光标在表格里时显示在编辑区上方；节点是 contenteditable 的兄弟，
+     不会进入正文、不会被存盘或复制。
+   - 颜色全部走主题令牌，站点亮 / 暗色与后台两套主题都跟着变。
+   - 窄屏用 flex-wrap 换行，不用横向滚动，也不会压住正文。
+   ========================================================= */
+
+.pp-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line, #e7e7e1);
+  border-radius: var(--r-md, 6px);
+  background: var(--bg-subtle, #fafaf7);
+  color: var(--ink-soft, #4f4f47);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+
+.pp-table-toolbar-title {
+  margin-right: 2px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint, #a8a89f);
+  white-space: nowrap;
+}
+
+.pp-table-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-soft, #4f4f47);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pp-table-tool:hover:not(:disabled) {
+  border-color: var(--line, #e7e7e1);
+  background: var(--bg, #fff);
+  color: var(--ink, #14140f);
+}
+
+.pp-table-tool:focus-visible {
+  outline: 2px solid var(--accent, #1f5c4a);
+  outline-offset: 1px;
+}
+
+.pp-table-tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 当前对齐 / 表头状态：与 hover 区分开，切换后能看出生效的是哪一个。 */
+.pp-table-tool.is-active {
+  border-color: var(--accent, #1f5c4a);
+  background: var(--accent-soft, #eef4f0);
+  color: var(--accent, #1f5c4a);
+}
+
+.pp-table-tool.is-danger {
+  color: var(--danger, #a33a2b);
+}
+
+.pp-table-tool.is-danger:hover:not(:disabled) {
+  border-color: var(--danger, #a33a2b);
+  background: var(--danger-soft, #fbf1ee);
+  color: var(--danger, #a33a2b);
+}
+
+.pp-table-toolbar-sep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  background: var(--line, #e7e7e1);
+}
+
+/* 「不能增删行列」的原因占一整行，按钮再多也不会把提示挤成半截。 */
+.pp-table-toolbar-note {
+  flex-basis: 100%;
+  color: var(--muted, #83837a);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+  .pp-table-toolbar {
+    gap: 3px;
+    padding: 4px 6px;
+  }
+  .pp-table-tool {
+    min-height: 24px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+  .pp-table-toolbar-title {
+    display: none;
+  }
+}
+
+/* =========================================================
+   表格单元格对齐（.pp-align-*）
+   - 编辑器只写 class（服务端只保留 class，会剥掉 style），公开页靠这里渲染。
+   - 选择器必须带上 .pp-table td / th：styles.css 里的
+     `.pp-table td { text-align: left }` 特异性更高，只写 .pp-align-center
+     会被压回左对齐。
+   ========================================================= */
+
+.pp-table th.pp-align-left,
+.pp-table td.pp-align-left {
+  text-align: left;
+}
+
+.pp-table th.pp-align-center,
+.pp-table td.pp-align-center {
+  text-align: center;
+}
+
+.pp-table th.pp-align-right,
+.pp-table td.pp-align-right {
+  text-align: right;
+}

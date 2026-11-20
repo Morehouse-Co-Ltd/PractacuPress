@@ -62,6 +62,22 @@ const fragment: Dictionary = {
     'Only PNG / JPEG / WebP / GIF images can be uploaded.',
   '也可以直接粘贴或拖入图片，上传后插入正文。':
     'You can also paste or drop an image; it is uploaded and inserted into the body.',
+
+  // ---- 表格上下文工具条 ----
+  表格工具: 'Table tools',
+  上方插入行: 'Insert row above',
+  下方插入行: 'Insert row below',
+  左侧插入列: 'Insert column left',
+  右侧插入列: 'Insert column right',
+  删除当前行: 'Delete row',
+  删除当前列: 'Delete column',
+  切换表头: 'Toggle header row',
+  左对齐: 'Align left',
+  居中对齐: 'Align center',
+  右对齐: 'Align right',
+  删除表格: 'Delete table',
+  '表格含合并单元格，暂不支持增删行列。':
+    'This table has merged cells; rows and columns cannot be added or removed.',
 };
 
 export default fragment;

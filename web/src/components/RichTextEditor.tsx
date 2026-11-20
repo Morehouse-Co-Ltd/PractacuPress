@@ -22,6 +22,20 @@ import { blockMarkerFor } from '../lib/editorBlockMarker';
 import { caretAnchor, firstLineAnchor } from '../lib/caretRect';
 import type { CaretAnchor } from '../lib/caretRect';
 import { imageBlock, collapseBlock, tipBlock, warningBlock } from '../lib/richBlocks';
+import {
+  deleteCurrentColumn,
+  deleteCurrentRow,
+  deleteTable,
+  insertColumnLeft,
+  insertColumnRight,
+  insertRowAbove,
+  insertRowBelow,
+  isLayoutTable,
+  setCellAlign,
+  tableContextAt,
+  toggleHeader,
+} from '../lib/tableEditing';
+import type { TableCapabilities, TableContext } from '../lib/tableEditing';
 import { useT } from '../lib/i18n';
 import { EditorToolbar } from './EditorToolbar';
 import { SlashMenu } from './SlashMenu';
@@ -314,6 +328,113 @@ export interface EditorStats {
   text: number;
 }
 
+/** 表格工具条上的操作；与 `lib/tableEditing` 的纯函数一一对应。 */
+type TableCommand =
+  | 'row-above'
+  | 'row-below'
+  | 'column-left'
+  | 'column-right'
+  | 'delete-row'
+  | 'delete-column'
+  | 'toggle-header'
+  | 'align-left'
+  | 'align-center'
+  | 'align-right'
+  | 'delete-table';
+
+/** 选区每次移动都会重算按钮状态；结构没变时不重渲染工具条。 */
+function sameTableCapabilities(a: TableCapabilities, b: TableCapabilities): boolean {
+  return (
+    a.rowCount === b.rowCount &&
+    a.columnCount === b.columnCount &&
+    a.hasHeader === b.hasHeader &&
+    a.hasMergedCells === b.hasMergedCells &&
+    a.align === b.align &&
+    a.canInsertRow === b.canInsertRow &&
+    a.canInsertColumn === b.canInsertColumn &&
+    a.canDeleteRow === b.canDeleteRow &&
+    a.canDeleteColumn === b.canDeleteColumn &&
+    a.canToggleHeader === b.canToggleHeader
+  );
+}
+
+/**
+ * 表格上下文工具条。
+ *
+ * 渲染在编辑区上方、contenteditable 之外：按钮一旦进入编辑区子树，存盘的 Markdown、
+ * 字数统计与复制粘贴都会把它们带上。按钮全部 `onMouseDown` 阻止默认行为，点按钮时
+ * contenteditable 不丢焦点，选区也就还在原单元格里。
+ */
+function TableToolbar({
+  capabilities,
+  onCommand,
+  t,
+}: {
+  capabilities: TableCapabilities;
+  onCommand: (command: TableCommand) => void;
+  t: (text: string) => string;
+}) {
+  const renderButton = (
+    command: TableCommand,
+    label: string,
+    isDisabled: boolean,
+    pressed?: boolean,
+    danger = false,
+  ) => (
+    <button
+      key={command}
+      type="button"
+      className={`pp-table-tool${danger ? ' is-danger' : ''}${pressed ? ' is-active' : ''}`}
+      aria-label={label}
+      aria-pressed={pressed === undefined ? undefined : pressed}
+      title={label}
+      disabled={isDisabled}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => onCommand(command)}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div
+      className="pp-table-toolbar"
+      role="toolbar"
+      aria-label={t('表格工具')}
+      data-pp-table-toolbar="1"
+    >
+      <span className="pp-table-toolbar-title" aria-hidden="true">
+        {t('表格工具')}
+      </span>
+      {renderButton('row-above', t('上方插入行'), !capabilities.canInsertRow)}
+      {renderButton('row-below', t('下方插入行'), !capabilities.canInsertRow)}
+      {renderButton('column-left', t('左侧插入列'), !capabilities.canInsertColumn)}
+      {renderButton('column-right', t('右侧插入列'), !capabilities.canInsertColumn)}
+      <span className="pp-table-toolbar-sep" aria-hidden="true" />
+      {renderButton('delete-row', t('删除当前行'), !capabilities.canDeleteRow)}
+      {renderButton('delete-column', t('删除当前列'), !capabilities.canDeleteColumn)}
+      <span className="pp-table-toolbar-sep" aria-hidden="true" />
+      {renderButton(
+        'toggle-header',
+        t('切换表头'),
+        !capabilities.canToggleHeader,
+        capabilities.hasHeader,
+      )}
+      <span className="pp-table-toolbar-sep" aria-hidden="true" />
+      {renderButton('align-left', t('左对齐'), false, capabilities.align === 'left')}
+      {renderButton('align-center', t('居中对齐'), false, capabilities.align === 'center')}
+      {renderButton('align-right', t('右对齐'), false, capabilities.align === 'right')}
+      <span className="pp-table-toolbar-sep" aria-hidden="true" />
+      {renderButton('delete-table', t('删除表格'), false, undefined, true)}
+      {capabilities.hasMergedCells ? (
+        <span className="pp-table-toolbar-note">
+          {t('表格含合并单元格，暂不支持增删行列。')}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function RichTextEditor({
   initialHtml,
   revision,
@@ -348,6 +469,8 @@ export function RichTextEditor({
   const [hint, setHint] = useState('');
   /** 上传失败的持久提示：几秒就消失的 toast 不足以让作者看清原因。 */
   const [uploadError, setUploadError] = useState('');
+  /** 光标落在可编辑表格里时的上下文；有值才渲染表格工具条。 */
+  const [tableTools, setTableTools] = useState<TableContext | null>(null);
   const uploading = useRef(false);
   const [marker, setMarker] = useState<{
     text: string;
@@ -410,6 +533,7 @@ export function RichTextEditor({
     root.dataset.empty = isEmpty ? 'true' : 'false';
     // 整块内容被换掉，旧的光标位置已经没有意义。
     setMarker(null);
+    setTableTools(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision]);
 
@@ -514,6 +638,40 @@ export function RichTextEditor({
       }
       return { text, top, height, left };
     });
+  }, [disabled]);
+
+  /**
+   * 同步「光标在不在表格里」。
+   *
+   * 只看选区锚点，不插探针、不改正文：工具条要出现在编辑区上方，不能在
+   * contenteditable 子树里留下任何节点。分栏 / 图集也是 table，但它们有自己的
+   * 版式语义，不提供数据表格的增删行列。
+   */
+  const syncTableTools = useCallback(() => {
+    const root = surfaceRef.current;
+    if (!root || disabled) {
+      setTableTools(null);
+      return;
+    }
+    const selection = window.getSelection();
+    const node = selection?.anchorNode ?? null;
+    if (!node || !root.contains(node)) {
+      setTableTools(null);
+      return;
+    }
+    const context = tableContextAt(node);
+    if (!context || !root.contains(context.table) || isLayoutTable(context.table)) {
+      setTableTools(null);
+      return;
+    }
+    setTableTools((prev) =>
+      prev &&
+      prev.table === context.table &&
+      prev.cell === context.cell &&
+      sameTableCapabilities(prev.capabilities, context.capabilities)
+        ? prev
+        : context,
+    );
   }, [disabled]);
 
   /**
@@ -959,6 +1117,7 @@ export function RichTextEditor({
     const flush = () => {
       frame = 0;
       syncMarker();
+      syncTableTools();
       if (slashOpen) updateSlashMenu();
     };
     const schedule = () => {
@@ -975,11 +1134,14 @@ export function RichTextEditor({
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
     };
-  }, [slashOpen, syncMarker, updateSlashMenu]);
+  }, [slashOpen, syncMarker, syncTableTools, updateSlashMenu]);
 
-  // 切成只读后不再有"当前行"，标记留着只会误导。
+  // 切成只读后不再有"当前行"、也没有可编辑表格，标记与工具条一起收起。
   useEffect(() => {
-    if (disabled) setMarker(null);
+    if (disabled) {
+      setMarker(null);
+      setTableTools(null);
+    }
   }, [disabled]);
 
   /** 斜杠面板选中一项：先删掉 `/query`，再执行指令或转交弹窗。 */
@@ -1219,6 +1381,7 @@ export function RichTextEditor({
     const target = event.target as HTMLElement;
     // 点击也会移动光标（块级元素上点击不一定触发 selectionchange），顺手同步一次。
     syncMarker();
+    syncTableTools();
     // 编辑时点击链接不应该跳走。
     if (target.closest('a')) event.preventDefault();
     // 折叠块标题的原生点击会切换 open：编辑区里正文一收起就没法继续改，
@@ -1246,9 +1409,111 @@ export function RichTextEditor({
     toolbarOpen.current?.('diagram');
   };
 
+  /** 把光标放进单元格开头：表格结构变化后尽量留在原单元格继续输入。 */
+  const focusTableCell = (cell: HTMLTableCellElement) => {
+    const root = surfaceRef.current;
+    if (!root || !cell.isConnected) return;
+    root.focus({ preventScroll: true });
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  };
+
+  /** 删除表格后把光标交给相邻块，避免选区悬在一个已经不存在的节点上。 */
+  const removeTableAndFocus = (table: HTMLTableElement) => {
+    const root = surfaceRef.current;
+    if (!root) return;
+    const next = table.nextElementSibling;
+    const previous = table.previousElementSibling;
+    if (!deleteTable(table)) return;
+    const target =
+      next && root.contains(next) ? next : previous && root.contains(previous) ? previous : null;
+    root.focus({ preventScroll: true });
+    const range = document.createRange();
+    if (target) {
+      range.selectNodeContents(target);
+      range.collapse(true);
+    } else {
+      range.selectNodeContents(root);
+      range.collapse(false);
+    }
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    emit();
+    syncTableTools();
+  };
+
+  /** 表格工具条：改 DOM → 还原光标 → emit 保存 → 刷新按钮状态。 */
+  const runTableCommand = (command: TableCommand) => {
+    if (disabled) return;
+    // 选区刚移动时 rAF 还没把按钮状态刷新完，操作按「此刻的真实选区」走更稳；
+    // 取不到实时上下文（例如选区已经离开表格）才退回渲染时的快照。
+    const root = surfaceRef.current;
+    const live = root ? tableContextAt(window.getSelection()?.anchorNode ?? null) : null;
+    const context =
+      root && live && root.contains(live.table) && !isLayoutTable(live.table) ? live : tableTools;
+    if (!context) return;
+    const { cell, table } = context;
+    if (command === 'delete-table') {
+      removeTableAndFocus(table);
+      return;
+    }
+
+    let focus: HTMLTableCellElement | null = null;
+    switch (command) {
+      case 'row-above':
+        focus = insertRowAbove(cell);
+        break;
+      case 'row-below':
+        focus = insertRowBelow(cell);
+        break;
+      case 'column-left':
+        focus = insertColumnLeft(cell);
+        break;
+      case 'column-right':
+        focus = insertColumnRight(cell);
+        break;
+      case 'delete-row':
+        focus = deleteCurrentRow(cell);
+        break;
+      case 'delete-column':
+        focus = deleteCurrentColumn(cell);
+        break;
+      case 'toggle-header':
+        focus = toggleHeader(cell);
+        break;
+      case 'align-left':
+        focus = setCellAlign(cell, 'left');
+        break;
+      case 'align-center':
+        focus = setCellAlign(cell, 'center');
+        break;
+      case 'align-right':
+        focus = setCellAlign(cell, 'right');
+        break;
+    }
+    if (!focus) return;
+    focusTableCell(focus);
+    emit();
+    syncTableTools();
+  };
+
   return (
     <div className={`rich-editor${disabled ? ' is-readonly' : ''}`}>
       <EditorToolbar commands={commands} disabled={disabled} onReady={handleToolbarReady} />
+
+      {tableTools && tableTools.table.isConnected ? (
+        // 与编辑区同级、位于正文上方：工具条节点不能进 contenteditable 子树。
+        <TableToolbar
+          capabilities={tableTools.capabilities}
+          onCommand={runTableCommand}
+          t={t}
+        />
+      ) : null}
 
       <div className="rich-surface-shell" ref={shellRef}>
         <div
