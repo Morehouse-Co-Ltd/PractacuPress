@@ -175,6 +175,8 @@ export function PermissionsPage() {
 
   const commitRename = async (item: PermissionGroupConfig) => {
     if (editingKey !== item.key) return;
+    // 保存中重复按 Enter 不应再发一次写请求；按钮本身也已禁用。
+    if (saving[item.key]) return;
     const latest = draftRef.current.find((entry) => entry.key === item.key) ?? item;
     const next = normalizeGroupConfig({ ...latest, name: editingName.trim().slice(0, 60) });
     const ok = await persist(next, latest);
@@ -328,11 +330,19 @@ export function PermissionsPage() {
                   return (
                     <th key={item.key} style={{ textAlign: 'center', minWidth: 116 }}>
                       {editingKey === item.key ? (
-                        <div className="perm-rename">
+                        // 紧凑的内联编辑卡片：标签 + 自适应输入框 + 保存 / 取消。
+                        // 保存中整张卡片进入 disabled 态（按钮禁用、输入框只读展示）。
+                        <div className={cx('perm-rename', busy && 'is-busy')} aria-busy={busy}>
+                          <span className="perm-rename-label">
+                            <Icon name="edit" size={11} />
+                            <span>{t('名称')}</span>
+                          </span>
                           <Input
+                            className="perm-rename-input"
                             value={editingName}
                             maxLength={60}
                             autoFocus
+                            readOnly={busy}
                             aria-label={t('重命名 {group}', { group: label })}
                             placeholder={label}
                             onChange={(event) => setEditingName(event.target.value)}
@@ -347,42 +357,53 @@ export function PermissionsPage() {
                           <div className="perm-rename-actions">
                             <button
                               type="button"
-                              className="link-btn"
+                              className={cx('perm-rename-btn', 'perm-rename-save', busy && 'is-busy')}
                               aria-label={t('保存名称')}
+                              title={t('保存名称')}
                               disabled={busy}
                               onClick={() => void commitRename(item)}
                             >
-                              <Icon name="check" size={12} />
+                              {busy ? (
+                                <span className="spinner spinner-sm" aria-hidden />
+                              ) : (
+                                <Icon name="check" size={11} />
+                              )}
+                              <span>{busy ? t('保存中') : t('保存')}</span>
                             </button>
                             <button
                               type="button"
-                              className="link-btn"
+                              className="perm-rename-btn perm-rename-cancel"
                               aria-label={t('取消重命名')}
+                              title={t('取消重命名')}
+                              disabled={busy}
                               onClick={() => setEditingKey(null)}
                             >
-                              <Icon name="x" size={12} />
+                              <Icon name="x" size={11} />
+                              <span>{t('取消')}</span>
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          className="perm-group-name"
-                          title={t('重命名 {group}', { group: label })}
-                          disabled={personal}
-                          onClick={() => startRename(item)}
-                        >
-                          <span>{label}</span>
-                          <Icon name={busy ? 'refresh' : 'edit'} size={12} />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className={cx('perm-group-name', busy && 'is-busy')}
+                            title={t('重命名 {group}', { group: label })}
+                            disabled={personal}
+                            onClick={() => startRename(item)}
+                          >
+                            <span>{label}</span>
+                            <Icon name={busy ? 'refresh' : 'edit'} size={12} />
+                          </button>
+                          <span className="tiny faint" style={{ display: 'block', marginTop: 2 }}>
+                            {item.builtin
+                              ? item.base_role
+                                ? ROLE_LABEL[item.base_role]
+                                : t('无账户')
+                              : t('自定义 · {role}', { role: ROLE_LABEL[item.base_role ?? 'member'] })}
+                          </span>
+                        </>
                       )}
-                      <span className="tiny faint" style={{ display: 'block', marginTop: 2 }}>
-                        {item.builtin
-                          ? item.base_role
-                            ? ROLE_LABEL[item.base_role]
-                            : t('无账户')
-                          : t('自定义 · {role}', { role: ROLE_LABEL[item.base_role ?? 'member'] })}
-                      </span>
                     </th>
                   );
                 })}

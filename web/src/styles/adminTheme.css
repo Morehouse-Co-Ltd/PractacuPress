@@ -235,115 +235,99 @@ html[data-surface='admin'][data-admin-theme='dark'] .builder-fullscreen .builder
   background: var(--admin-glass);
 }
 
-/* Admin native selects share the same compact surface in light and dark themes. */
-.admin-shell .select-wrap {
-  min-width: 0;
-}
-.admin-shell .select {
-  min-width: 0;
-  height: 42px;
-  padding: 0 46px 0 14px;
-  border: 1px solid var(--admin-border-soft, var(--line-strong));
-  border-radius: 8px;
+/* ---------- 下拉框：后台只补暗色与密度，几何全部来自 styles.css ----------
+   亮色后台复用全局下拉框（--bg / --line-strong / --accent 在后台令牌下已经是
+   纸白与墨绿）；深色下需要更暗的渐变、更强的阴影与更亮的状态色，否则黑底上的
+   控件会糊成一块。工具栏与时间线里的紧凑变体在 styles.css 里已经按高度收窄
+   内边距，这里不再重复。 */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select {
+  border-color: var(--admin-border-soft);
   background: linear-gradient(
     180deg,
-    var(--admin-panel, var(--bg)) 0%,
-    color-mix(in srgb, var(--admin-panel-alt, var(--bg-subtle)) 48%, var(--admin-panel, var(--bg))) 100%
+    var(--admin-panel) 0%,
+    color-mix(in srgb, var(--admin-panel-alt) 55%, var(--admin-panel)) 100%
   );
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 500;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 1px 2px rgb(20 20 15 / 0.035);
-  transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    box-shadow 140ms ease,
-    transform 140ms ease;
-}
-.admin-shell .select:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--admin-border-soft, var(--line-strong)));
-  background: var(--admin-panel, var(--bg));
-  box-shadow: 0 2px 5px rgb(20 20 15 / 0.055);
-}
-.admin-shell .select:focus-visible,
-.admin-shell .select:open {
-  border-color: var(--accent);
-  outline: none;
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent),
-    0 2px 5px rgb(20 20 15 / 0.06);
-}
-.admin-shell .select:disabled {
-  border-color: var(--admin-border, var(--line));
-  background: var(--admin-panel-alt, var(--bg-subtle));
-  color: var(--muted);
-  cursor: not-allowed;
-  opacity: 0.78;
-}
-.admin-shell .select-wrap > svg {
-  right: 9px;
-  width: 26px;
-  height: 26px;
-  padding: 6px;
-  border: 1px solid var(--admin-border, var(--line));
-  border-radius: 6px;
-  background: var(--admin-panel-alt, var(--bg-subtle));
-  color: var(--accent);
-  transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    color 140ms ease,
-    transform 140ms ease;
-}
-.admin-shell .select:hover:not(:disabled) + svg,
-.admin-shell .select:focus-visible + svg,
-.admin-shell .select:open + svg {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--admin-border, var(--line)));
-  background: color-mix(in srgb, var(--accent) 8%, var(--admin-panel, var(--bg)));
-  color: var(--accent);
-}
-.admin-shell .select:open + svg {
-  transform: rotate(180deg);
-}
-.admin-shell .select option {
-  padding: 8px 12px;
-  background: var(--admin-panel, var(--bg));
-  color: var(--ink);
-  font-weight: 400;
-}
-.admin-shell .select option:checked {
-  background: var(--accent);
-  color: #fff;
-}
-html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 1px 3px rgb(0 0 0 / 0.22);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
 }
 html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 60%, var(--admin-border-soft));
-  box-shadow: 0 2px 7px rgb(0 0 0 / 0.28);
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--admin-border-soft));
+  background: var(--admin-panel-alt);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:focus,
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:focus-visible {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.28);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:disabled {
+  border-color: var(--admin-border);
+  background: var(--admin-panel-alt);
+  color: var(--muted);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select option {
+  background: var(--admin-panel);
+  color: var(--ink);
 }
 html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select-wrap > svg {
+  color: color-mix(in srgb, var(--ink) 52%, var(--muted));
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:hover:not(:disabled) + svg,
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:focus + svg,
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .select:focus-visible + svg {
+  color: var(--accent);
+}
+
+/* ---------- 用户组名称：内联编辑卡片的暗色层次 ---------- */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename {
+  border-color: var(--admin-border-soft);
+  background: var(--admin-panel-alt);
+  box-shadow: 0 6px 18px -6px rgb(0 0 0 / 0.55);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--admin-border-soft));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 6px 18px -6px rgb(0 0 0 / 0.55);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename .perm-rename-input {
   border-color: var(--admin-border);
-  background: color-mix(in srgb, var(--admin-panel-alt) 88%, var(--accent) 12%);
+  background: var(--admin-panel);
 }
-.admin-shell .toolbar .select {
-  height: 34px;
-  padding: 0 38px 0 10px;
-  font-size: 12.5px;
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename .perm-rename-input:focus,
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename .perm-rename-input:focus-visible {
+  border-color: var(--accent);
+  background: var(--admin-panel);
 }
-.admin-shell .toolbar .select-wrap > svg,
-.admin-shell .pin-cell .select-wrap > svg {
-  right: 7px;
-  width: 20px;
-  height: 20px;
-  padding: 4px;
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename-btn {
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+  color: var(--ink-soft);
 }
-.admin-shell .pin-cell .select-wrap {
-  flex: none;
-  width: 92px;
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--admin-border) 55%, var(--muted));
+  background: var(--admin-hover);
+  color: var(--ink);
 }
-.admin-shell .pin-cell .select {
-  height: 32px;
-  padding: 0 32px 0 8px;
-  font-size: 12.5px;
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename-save {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink, #08101f);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename-save:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 84%, var(--ink));
+  color: var(--accent-ink, #08101f);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-rename.is-busy .perm-rename-input {
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+  color: var(--muted);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-group-name {
+  color: var(--ink);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-shell .perm-group-name:hover:not(:disabled) {
+  border-color: var(--admin-border-soft);
+  background: var(--admin-hover);
 }

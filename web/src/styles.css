@@ -493,23 +493,92 @@ img {
   box-shadow: 0 0 0 3px rgba(31, 92, 74, 0.1);
 }
 
+/* 下拉框：与 .input 同高、同圆角、同一套边框令牌；箭头由 ui.tsx 的
+   <Select> 在 select 之后渲染，所以 chevron 的位置与状态都用相邻兄弟选择器联动。 */
 .select-wrap {
   position: relative;
   display: flex;
   align-items: center;
-}
-
-.select-wrap svg {
-  position: absolute;
-  right: 12px;
-  pointer-events: none;
-  color: var(--muted);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .select {
   appearance: none;
-  padding-right: 34px;
+  -webkit-appearance: none;
+  max-width: 100%;
+  padding: 0 38px 0 12px;
+  border-color: var(--line-strong);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-subtle) 100%);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgb(20 20 15 / 0.04);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line-strong));
+  background: var(--bg);
+}
+
+.select:focus,
+.select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent),
+    0 1px 2px rgb(20 20 15 / 0.04);
+}
+
+.select:disabled {
+  border-color: var(--line);
+  background: var(--bg-sunken);
+  color: var(--faint);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.select option {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.select-wrap > svg {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 15px;
+  height: 15px;
+  margin-top: -7.5px;
+  pointer-events: none;
+  color: var(--muted);
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+.select:hover:not(:disabled) + svg {
+  color: var(--ink-soft);
+}
+
+.select:focus + svg,
+.select:focus-visible + svg {
+  color: var(--accent);
+}
+
+.select:disabled + svg {
+  color: var(--faint);
+}
+
+/* Chromium 展开原生 select 时会命中 :open，顺手把箭头旋转半圈；
+   不支持的浏览器会忽略这一条，不影响其它状态。 */
+.select:open + svg {
+  transform: rotate(180deg);
 }
 
 .form-grid {
@@ -2918,7 +2987,8 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   margin-bottom: 18px;
 }
 .toolbar .input { max-width: 260px; height: 34px; font-size: 12.5px; }
-.toolbar .select { height: 34px; font-size: 12.5px; }
+.toolbar .select { height: 34px; padding: 0 32px 0 10px; font-size: 12.5px; }
+.toolbar .select-wrap > svg { right: 9px; width: 14px; height: 14px; margin-top: -7px; }
 .toolbar-spacer { flex: 1; }
 
 .inline-search {
@@ -3678,6 +3748,162 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
 .perm-cell.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .perm-cell:disabled { cursor: not-allowed; opacity: 0.55; }
 .perm-cell.is-on:disabled { opacity: 0.85; }
+
+/* ---------- 用户组名称：显示按钮 + 表头内联编辑卡片 ---------- */
+.perm-group-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.perm-group-name > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.perm-group-name > svg {
+  flex: none;
+  color: var(--faint);
+  transition: color 140ms ease;
+}
+.perm-group-name:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--bg-subtle);
+  color: var(--ink);
+}
+.perm-group-name:hover:not(:disabled) > svg { color: var(--accent); }
+.perm-group-name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.perm-group-name:disabled { cursor: default; opacity: 0.72; }
+/* 切换能力时按钮上的刷新图标转起来，让保存中状态在表头也看得见。 */
+.perm-group-name.is-busy > svg {
+  color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+/* 内联编辑卡片：标签 + 自适应输入框 + 保存 / 取消；保存中整卡进入禁用态。 */
+.perm-rename {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 5px 4px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: 0 2px 10px -2px rgb(20 20 15 / 0.16);
+  text-align: left;
+  letter-spacing: normal;
+  text-transform: none;
+  vertical-align: middle;
+}
+.perm-rename:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+    0 2px 10px -2px rgb(20 20 15 / 0.16);
+}
+.perm-rename-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.perm-rename-label > svg { color: var(--accent); flex: none; }
+.perm-rename .perm-rename-input {
+  flex: 1 1 84px;
+  width: 84px;
+  min-width: 56px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: none;
+}
+.perm-rename .perm-rename-input:focus,
+.perm-rename .perm-rename-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.perm-rename-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.perm-rename-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, opacity 140ms ease;
+}
+.perm-rename-btn:hover:not(:disabled) {
+  border-color: var(--muted);
+  background: var(--bg);
+  color: var(--ink);
+}
+.perm-rename-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.perm-rename-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.perm-rename-save {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+}
+.perm-rename-save:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 86%, var(--ink));
+  color: var(--accent-ink, #fff);
+}
+.perm-rename-save .spinner {
+  width: 11px;
+  height: 11px;
+  border-width: 1.4px;
+  border-color: color-mix(in srgb, var(--accent-ink, #fff) 35%, transparent);
+  border-top-color: var(--accent-ink, #fff);
+}
+.perm-rename.is-busy .perm-rename-input {
+  border-color: var(--line);
+  background: var(--bg-subtle);
+  color: var(--muted);
+}
 
 .danger-zone {
   border: 1px solid #e8d2cc;
@@ -4947,7 +5173,8 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
 /* 「首页精选」单元格：置顶开关 + 占格下拉，压到表格里不撑高行 */
 .pin-cell { display: flex; align-items: center; gap: 8px; }
 .pin-cell .select-wrap { flex: none; width: 92px; }
-.pin-cell .select { height: 32px; padding: 0 8px; font-size: 12.5px; }
+.pin-cell .select { height: 32px; padding: 0 25px 0 8px; font-size: 12.5px; }
+.pin-cell .select-wrap > svg { right: 7px; width: 13px; height: 13px; margin-top: -6.5px; }
 .page-editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .page-editor-preview {
   border: 1px solid var(--line);
@@ -7008,7 +7235,9 @@ html[data-mode='light'] .nf-hero-left {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: #fff;
+  /* 用令牌而不是 #fff：后台深色下这两个弹窗（Permissions / Members）是 portal
+     到 body 的，拿不到 .admin-shell 的暗色覆盖，硬编码白底会变成白卡片白字。 */
+  background: var(--bg);
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;

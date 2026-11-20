@@ -75,7 +75,9 @@ export function ChooseThemePage() {
   const [createName, setCreateName] = useState('');
   const [createNote, setCreateNote] = useState('');
   const [createVariant, setCreateVariant] = useState<LayoutVariant>('classic');
-  const [createBase, setCreateBase] = useState<'current' | 'blank'>('current');
+  // 新主题默认从「空白」起步（按版式取默认配色），不再隐式复制当前主题，
+  // 免得在微调过的主题上新建时把旧配色一起带进去。
+  const [createBase, setCreateBase] = useState<'current' | 'blank'>('blank');
   const [createSections, setCreateSections] = useState<AppearanceSectionId[]>(
     DEFAULT_APPEARANCE_SECTIONS,
   );
@@ -314,7 +316,7 @@ export function ChooseThemePage() {
     setCreateNote('');
     // 白昼版式已下架；旧站点打开新建弹窗时从单栏开始，不把 legacy 变体再写出去。
     setCreateVariant(layout.variant === 'daylight' ? 'classic' : layout.variant);
-    setCreateBase('current');
+    setCreateBase('blank');
     setCreateSections([...DEFAULT_APPEARANCE_SECTIONS]);
     setCreateError('');
     setCreateOpen(true);
