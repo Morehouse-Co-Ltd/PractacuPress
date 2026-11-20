@@ -304,7 +304,7 @@ func TestScheduledPublishRetryIsCancelled(t *testing.T) {
 	require.NoError(t, err)
 
 	// Force the stored row into a draft with no sanitized revision, which is the
-	// state a security service outage leaves behind.
+	// state a failed security check leaves behind.
 	_, err = h.db.Client.ContentItem.UpdateOneID(item.ID).
 		SetRenderedHTML("").
 		SetPolicyVersion("").

@@ -330,7 +330,7 @@ func TestCompleteUploadMarksCleanAsset(t *testing.T) {
 // an inspection outage must not produce a referenceable asset.
 func TestCompleteUploadFailsClosedWhenScannerUnavailable(t *testing.T) {
 	repo := newFakeRepo()
-	scanner := &fakeScanner{err: errors.New("grpc down")}
+	scanner := &fakeScanner{err: errors.New("scanner unavailable")}
 	service := newService(t, repo, scanner)
 	ctx := context.Background()
 

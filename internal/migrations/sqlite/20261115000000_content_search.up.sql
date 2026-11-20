@@ -12,7 +12,7 @@
 -- engines return the same vocabulary for Chinese, Japanese and Korean text.
 --
 -- The table is not the source of truth. The review/apply path writes it after the
--- content row commits, and "go run ./apps/api/cmd/searchindex -rebuild" re-derives
+-- content row commits, and "go run ./cmd/searchindex -rebuild" re-derives
 -- every row after this change set has been applied, which is the backfill step for
 -- items that existed before the index did.
 --

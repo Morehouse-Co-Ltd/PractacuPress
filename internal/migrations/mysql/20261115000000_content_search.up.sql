@@ -14,7 +14,7 @@
 --
 -- ngram_token_size stays at its default of 2, which is why the API requires a
 -- term of at least two characters. The backfill is the same command as the other
--- dialects: go run ./apps/api/cmd/searchindex -rebuild.
+-- dialects: go run ./cmd/searchindex -rebuild.
 
 CREATE TABLE IF NOT EXISTS content_search (
     content_id VARCHAR(64) NOT NULL,

@@ -484,7 +484,7 @@ function ReviewQueue({ embedded = false }: { embedded?: boolean }) {
                       </div>
                     </div>
                     <p className="review-excerpt">
-                      {t('内容已保留，但安全服务在写入时不可用。服务恢复后重试，或让作者重新提交。')}
+                      {t('内容已保留，但安全检查在写入时不可用。重试，或让作者重新提交。')}
                     </p>
                   </div>
                 );

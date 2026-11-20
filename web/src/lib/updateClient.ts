@@ -13,7 +13,7 @@ import { manifestUrlOf, parseUpdateManifest } from './siteUpdate';
  * 这里只负责「发请求 + 校验响应」，不碰 React；结果统一收敛成 `UpdateCheck`。
  */
 
-/** 服务端更新接口：启动器与 `npm start` 的静态服务都实现它。 */
+/** 服务端更新接口：只有 `npm start` 的静态服务实现它，Go API 没有这个端点。 */
 export const UPDATE_ENDPOINT = '/__pp/update';
 
 /** 更新检查失败的原因；页面据此给出不同提示。 */
@@ -88,7 +88,7 @@ export function updateErrorMessage(code: UpdateCheckErrorCode): string {
     case 'no_source':
       return '还没有选择更新源。';
     case 'unsupported':
-      return '当前服务器不支持服务端检查更新，请用启动器或 npm start 启动站点。';
+      return '当前服务器不支持服务端检查更新，浏览器也无法直接读取版本清单。';
     case 'network':
       return '无法连接更新源，请检查网络后重试。';
     case 'invalid':
@@ -228,9 +228,10 @@ export interface UpdateApplyResult {
 /**
  * 手动更新：把本机已解压的构建目录交给服务端换上。
  *
- * 服务端（Windows 启动器）在**不停进程**的前提下原子切换站点文件，其他设备与访客的
- * 请求不受影响；已经在读的页面继续用旧资源（启动器保留上一份构建做兜底），下一次
- * 加载才会拿到新版本。真正的“自动下载并安装”属于还没实现的服务端部分。
+ * 服务端（`npm start` 的静态服务）在**不停进程**的前提下原子切换站点文件，其他设备与访客的
+ * 请求不受影响；已经在读的页面继续用旧资源（服务端保留上一份构建做兜底），下一次
+ * 加载才会拿到新版本。Go API 构建没有这个端点，调用会返回不支持。真正的“自动下载并安装”
+ * 属于还没实现的服务端部分。
  */
 export async function applyUpdateFromDir(
   dir: string,

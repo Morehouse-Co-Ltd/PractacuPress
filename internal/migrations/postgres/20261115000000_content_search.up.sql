@@ -15,7 +15,7 @@
 -- The tsvector column is generated: it is never written by the application, so an
 -- index write only updates the three token columns and the vector follows.
 -- The backfill is the same command as the other dialects:
--- go run ./apps/api/cmd/searchindex -rebuild.
+-- go run ./cmd/searchindex -rebuild.
 
 CREATE TABLE IF NOT EXISTS content_search (
     content_id VARCHAR(64) PRIMARY KEY,

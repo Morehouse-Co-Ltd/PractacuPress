@@ -35,7 +35,7 @@ type Storage interface {
 
 // HeadSampleSize is how many leading bytes inspection receives.
 //
-// The security service checks the complete magic number of every accepted type (the
+// Upload inspection checks the complete magic number of every accepted type (the
 // longest is 12 bytes for WebP) and additionally scans the sample for HTML/SVG polyglot
 // markers, so it gets more than a bare signature: 512 bytes is enough for the marker
 // scan while keeping the read cheap. The sample is never the whole file.

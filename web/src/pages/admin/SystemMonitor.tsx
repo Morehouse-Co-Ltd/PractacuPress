@@ -134,10 +134,6 @@ export function SystemMonitorPage() {
     switch (role) {
       case 'api':
         return t('服务器 API');
-      case 'security':
-        return t('安全服务');
-      case 'launcher':
-        return t('启动器');
       case 'web':
         return t('前端（开发服务器）');
       case 'app':

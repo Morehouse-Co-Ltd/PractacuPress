@@ -277,7 +277,7 @@ export function buildPerformanceEnvSnippet(performance: PerformanceSettings): st
 export function buildPerformanceGatewaySnippet(performance: PerformanceSettings): string {
   const lines = [
     t('# 由 Practacu Press「性能优化」生成'),
-    t('# 内置启动器已对带 hash 的资源设置长缓存；公网部署时把以下规则合并进 Nginx。'),
+    t('# API 已对带 hash 的资源设置长缓存；公网部署时把以下规则合并进 Nginx。'),
     '',
     t('# http {} 层'),
     `keepalive_timeout ${performance.keepalive_timeout}s;`,

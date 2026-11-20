@@ -92,13 +92,11 @@ const fragment: Dictionary = {
     'A front-end hint only; it does not change the server-side limit.',
   '非服务端参数': 'Not a server-side setting',
   '单文件上限提示': 'Per-file size hint',
-  'API 与安全服务默认限制 25 MiB；要传更大的文件，需要同时调整 API 与安全服务，而不是只改这里。':
-    'The API and the security service default to a 25 MiB limit; to upload larger files, adjust both of them rather than only changing this value.',
+  'API 默认限制 25 MiB；要传更大的文件，需要同时调整 API 与反向代理的请求体上限，而不是只改这里。':
+    'The API defaults to a 25 MiB limit; to upload larger files, raise the request body limit on both the API and the reverse proxy rather than only changing this value.',
   '超过 API 默认的 25 MiB 附件上限': 'Above the API default of 25 MiB per attachment',
-  '这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 与安全服务的':
-    'This value only affects the page hint. Before uploading large files for real, adjust the',
-  '请求体上限，否则请求会被更早的一层拒绝。':
-    'request body limits of the API and the security service to match the server, otherwise the request is rejected by an earlier layer.',
+  '这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 的请求体上限，否则请求会被更早的一层拒绝。':
+    'This value only affects the page hint. Before uploading large files for real, raise the API request body limit to match the server, otherwise the request is rejected by an earlier layer.',
 
   // ---- 部署片段 ----
   '部署片段': 'Deployment snippet',
@@ -111,9 +109,6 @@ const fragment: Dictionary = {
   '只用于生成 .env 片段，不写入浏览器配置，保存后也不会回显；服务器只有一套 STORAGE_S3_SECRET_KEY，所有云策略共用它。':
     'Used only to generate the .env snippet. It is not written to the browser config and is not shown again after saving; the server has a single STORAGE_S3_SECRET_KEY that every cloud strategy shares.',
   '保存不会让服务器立刻换存储': 'Saving does not switch storage on the server right away',
-  '把片段写进 API 的': 'Put the snippet into the API’s',
-  '（或启动器环境变量）并重启后才会生效。':
-    '(or the launcher environment variables) and restart before it takes effect.',
   '切换存储不会自动搬运已有文件：旧目录里的图片仍在旧目录，旧桶里的对象仍在旧桶，':
     'Switching storage never moves existing files: images in the old directory stay there, objects in the old bucket stay there,',
   '需要自己用 rclone / aws s3 sync 之类同步，或继续保留旧路径。':

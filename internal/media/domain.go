@@ -1,7 +1,7 @@
 // Package media owns uploads: what may be uploaded, how the two phase flow works,
 // and when a file becomes referenceable.
 //
-// A file is only usable after the security service has inspected it. Until then it is
+// A file is only usable after the in-process upload inspection has cleared it. Until then it is
 // pending and must not be linked from content, because a scan bypass is exactly how a
 // malware distribution channel gets built (design §7.6).
 package media
@@ -78,7 +78,7 @@ var (
 	// ErrScanRejected means the inspection rejected the file.
 	ErrScanRejected = errors.New("media: file rejected by security scan")
 	// ErrSecurityUnavailable means inspection could not run, so the file stays pending.
-	ErrSecurityUnavailable = errors.New("media: security service unavailable")
+	ErrSecurityUnavailable = errors.New("media: security inspection unavailable")
 	// ErrAlreadyCompleted means the session was completed before.
 	ErrAlreadyCompleted = errors.New("media: upload already completed")
 	// ErrStorageMissing means the deployment has no storage adapter, so bytes cannot
@@ -250,7 +250,7 @@ type Asset struct {
 	// purpose: a download or delete has to pick the same adapter the bytes were
 	// written to, and only the record knows which one that was.
 	Purpose Purpose
-	// ReasonCode is the security service's stable explanation for a non clean verdict.
+	// ReasonCode is the scanner's stable explanation for a non clean verdict.
 	ReasonCode string
 	CreatedAt  time.Time
 }
@@ -282,7 +282,7 @@ func (f AssetFilter) Validate() error {
 	return nil
 }
 
-// ScanResult is the security service verdict.
+// ScanResult is the scanner verdict.
 type ScanResult struct {
 	Status     ScanStatus
 	ReasonCode string

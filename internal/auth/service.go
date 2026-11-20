@@ -562,7 +562,7 @@ func (s *Service) LoginPassword(ctx context.Context, siteID string, in LoginInpu
 // It is the single path for "no usable identity": an unknown email, an unknown
 // username, an ambiguous display name or a malformed identifier. The hasher error is
 // propagated, not swallowed: otherwise an unknown identifier would answer 401 while a
-// known one answers 5xx when the security service is down, which is itself an
+// known one answers 5xx when the security checks are down, which is itself an
 // existence oracle.
 func (s *Service) rejectUnknownIdentifier(
 	ctx context.Context,

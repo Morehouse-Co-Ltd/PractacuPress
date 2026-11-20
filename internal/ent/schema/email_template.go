@@ -11,7 +11,7 @@ import (
 // The shipped defaults are code constants; a row here overrides one of them for a
 // site. key is the stable identifier the sending code uses (for example
 // "newsletter_welcome" or "subscriber_confirm"), so renaming the template never
-// breaks a send path. body_html is sanitized by the security service before it is
+// breaks a send path. body_html is sanitized by the in-process security checks before it is
 // stored, because a template is rendered into a mail body that the operator builds
 // from the dashboard.
 type EmailTemplate struct{ ent.Schema }

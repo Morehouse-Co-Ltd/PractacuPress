@@ -147,7 +147,7 @@ const FALLBACK_MESSAGE: Record<number, { code: string; message: () => string }> 
   404: { code: 'not_found', message: () => t('资源不存在，或不在当前站点内。') },
   409: { code: 'conflict', message: () => t('资源状态已变化，请刷新后重试。') },
   429: { code: 'rate_limited', message: () => t('操作过于频繁，请稍后再试。') },
-  503: { code: 'security_unavailable', message: () => t('安全服务暂不可用，操作已被暂存。') },
+  503: { code: 'security_unavailable', message: () => t('安全检查暂不可用，操作已被暂存。') },
 };
 
 export function fallbackProblem(status: number): ProblemBody {

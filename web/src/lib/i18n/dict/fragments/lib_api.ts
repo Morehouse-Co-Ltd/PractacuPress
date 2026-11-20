@@ -9,7 +9,7 @@ const fragment: Dictionary = {
   '资源不存在，或不在当前站点内。': 'The resource does not exist, or is not in this site.',
   '资源状态已变化，请刷新后重试。': 'The resource changed. Refresh and try again.',
   '操作过于频繁，请稍后再试。': 'Too many requests. Please try again later.',
-  '安全服务暂不可用，操作已被暂存。': 'The security service is unavailable; the action has been queued.',
+  '安全检查暂不可用，操作已被暂存。': 'In-process security checks are unavailable; the action has been queued.',
   '服务暂时不可用。': 'The service is temporarily unavailable.',
 
   // ---- 连接与上传 ----

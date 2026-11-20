@@ -60,7 +60,7 @@ type HandlerConfig struct {
 	//
 	// The process wide limiter is sized for ordinary browsing; these endpoints are the
 	// ones worth brute forcing, and every accepted attempt costs an Argon2 hash (64 MiB
-	// of memory in the security service). A separate, far tighter budget keeps a
+	// of memory in-process). A separate, far tighter budget keeps a
 	// credential stuffing run from saturating the hashing path.
 	CredentialLimiter gin.HandlerFunc
 	// FirstAdminAllowed decides whether this request may create the install's first

@@ -9,10 +9,10 @@
 # ----
 # 前台是单页应用。`/a/{id}`、`/p/{id}` 的内容元数据有两条来源：
 #
-#   1. 浏览器里：`apps/web/src/lib/seo.ts` 在 React 渲染后写 <head>；
+#   1. 浏览器里：`web/src/lib/seo.ts` 在 React 渲染后写 <head>；
 #   2. 抓取器：**不执行 JS**，只能读 HTML 源码。
 #
-# `apps/web/scripts/serve.mjs`（`npm start` 起的静态服务器）已经把第 2 条补上了：
+# `web/scripts/serve.mjs`（`npm start` 起的静态服务器）已经把第 2 条补上了：
 # 先 `GET {PP_API_BASE}/api/v1/{articles|posts}/{id}` 取内容元数据，把 <title> /
 # description / og:* / twitter:card / canonical / robots 注入 `dist/index.html`
 # 再返回；按 (Host, 路径) 缓存 60 秒，超时 800ms，失败就原样返回外壳。
@@ -27,8 +27,7 @@
 #
 # 何时用哪个
 # ----------
-# * 同机能跑 Node（Windows 启动器、`npm start`、docker-compose 里的 web 服务、
-#   Linux 安装目录里加一个 systemd 单元）
+# * 同机能跑 Node（`npm start`，或给 Linux 安装目录加一个 systemd 单元）
 #     → 用 A。零额外依赖，源站行为和桌面版一致；代价是多一次本机反向代理。
 # * 纯静态托管（对象存储 / CDN / 只给 FTP 的空间）
 #     → 用 B2 的 prerender；或干脆关掉这条路，接受默认卡片。
@@ -41,8 +40,8 @@
 # 方案 A —— 把内容页的 HTML 请求转给 Node 静态服务器
 #
 # 前置（示例路径，按你的部署改）：
-#   /opt/pp-static/scripts/serve.mjs   ← 复制自 apps/web/scripts/serve.mjs
-#   /opt/pp-static/dist/               ← apps/web/dist 的内容（serve.mjs 按
+#   /opt/pp-static/scripts/serve.mjs   ← 复制自 web/scripts/serve.mjs
+#   /opt/pp-static/dist/               ← web/dist 的内容（serve.mjs 按
 #                                          “脚本上一级 + /dist” 找静态产物）
 #
 # 启动（只监听回环，由 Nginx 对外）：

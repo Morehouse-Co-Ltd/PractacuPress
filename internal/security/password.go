@@ -178,8 +178,8 @@ func VerifyPassword(plain, encoded string) (bool, error) {
 
 	// Matches the reference implementation's observable behaviour for every hash
 	// this project can produce. The differences (Argon2i/Argon2d hashes and
-	// Argon2 v0x10 hashes) are documented in
-	// docs/security/go-security-service.md and never occur for stored accounts.
+	// Argon2 v0x10 hashes) can still be parsed, but this project never produces
+	// them for stored accounts.
 	if hash.algorithm != "argon2id" || hash.version != argon2.Version {
 		return false, nil
 	}

@@ -67,7 +67,7 @@ function requestSignal(timeoutMs: number): AbortSignal | undefined {
 export async function probeServerInstall(
   options: VisitorBootstrapOptions = {},
 ): Promise<SetupStatusProbe | null> {
-  // `origin` 为空时 probeSetupStatus 用同源相对地址（Vite 代理与启动器都支持）。
+  // `origin` 为空时 probeSetupStatus 用同源相对地址（Vite 代理与静态服务都支持）。
   const origin = options.origin ? resolveOrigin(options.origin) : '';
   return probeSetupStatus(origin, {
     fetchImpl: options.fetchImpl,

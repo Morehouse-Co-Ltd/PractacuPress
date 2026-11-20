@@ -365,7 +365,7 @@ export function PerformancePage() {
             <div className="panel-head">
               <div>
                 <h3>{t('静态资源与网关缓存')}</h3>
-                <p>{t('用于自建 Nginx 的压缩、缓存与超时参数；内置启动器已处理静态资源缓存。')}</p>
+                <p>{t('用于自建 Nginx 的压缩、缓存与超时参数；API 已处理静态资源缓存。')}</p>
               </div>
               <Badge tone="muted">{t('需部署')}</Badge>
             </div>

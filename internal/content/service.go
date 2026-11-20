@@ -22,8 +22,8 @@ type Sanitized struct {
 
 // Sanitizer turns author supplied source into safe HTML.
 //
-// It is a narrow interface so this package does not depend on the security client or
-// on gRPC, and so a test can control exactly when sanitization fails.
+// It is a narrow interface so this package does not depend on the security client's
+// implementation, and so a test can control exactly when sanitization fails.
 type Sanitizer interface {
 	Sanitize(ctx context.Context, format SourceFormat, source string) (Sanitized, error)
 }

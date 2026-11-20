@@ -350,7 +350,7 @@ func (s *Service) importOne(
 			importer.cleanup(mediaCreated)
 			return item, saveErr
 		}
-		// The security service can be down while the row is already committed;
+		// The security checks can fail while the row is already committed;
 		// the content is held for review, which is a successful import with a
 		// warning rather than a failed one.
 		reportWarning(importer, fmt.Sprintf("%s: saved but held for a security retry: %v", ref.Path, saveErr))

@@ -21,7 +21,7 @@ type PasswordHasher interface {
 	Verify(ctx context.Context, plain, encoded string) (bool, error)
 }
 
-// SecurityHasher is the subset of the security service client that hashing needs.
+// SecurityHasher is the subset of the security client that hashing needs.
 //
 // Declaring it structurally keeps this package from importing the infrastructure
 // package that implements it.
@@ -30,9 +30,9 @@ type SecurityHasher interface {
 	VerifyPassword(ctx context.Context, plain, encoded string) (bool, error)
 }
 
-// NewSecurityPasswordHasher adapts the security service client.
+// NewSecurityPasswordHasher adapts the security client.
 //
-// When the service is unavailable every call fails: callers must surface a retryable
+// When the checks are unavailable every call fails: callers must surface a retryable
 // error rather than fall back to a weaker local hash.
 func NewSecurityPasswordHasher(client SecurityHasher) PasswordHasher {
 	return securityPasswordHasher{client: client}

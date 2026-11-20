@@ -39,7 +39,7 @@ func (UserIdentity) Fields() []ent.Field {
 		field.String("provider_subject").MaxLen(512).NotEmpty(),
 		field.String("email").MaxLen(512).Optional().Nillable(),
 		field.String("phone").MaxLen(512).Optional().Nillable(),
-		// password_hash holds a PHC formatted hash produced by the security service.
+		// password_hash holds a PHC formatted hash produced by the in-process password hasher.
 		// It is empty for pure OAuth identities.
 		field.String("password_hash").MaxLen(255).Optional().Nillable().Sensitive(),
 		field.Time("verified_at").Optional().Nillable(),

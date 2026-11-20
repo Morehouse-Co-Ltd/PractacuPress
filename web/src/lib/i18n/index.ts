@@ -112,7 +112,7 @@ const ERROR_MESSAGE_EN: Record<string, string> = {
   site_not_found: 'This site does not exist or is not available here.',
   site_domain_unverified: 'This domain has not been verified for the site yet.',
   content_state_invalid: 'The content is not in a state that allows this action.',
-  security_unavailable: 'The security service is unavailable; the action is queued.',
+  security_unavailable: 'In-process security checks are unavailable; the action is queued.',
   provider_not_configured: 'This sign-in provider is not configured.',
   invalid_database_driver: 'The database driver is not supported.',
   email_not_configured: 'Outgoing email is not configured.',

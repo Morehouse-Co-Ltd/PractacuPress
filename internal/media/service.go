@@ -11,7 +11,7 @@ import (
 	"github.com/practacu/practacu-press/internal/site"
 )
 
-// ScanInput is what the security service inspects.
+// ScanInput is what upload inspection looks at.
 type ScanInput struct {
 	FileName     string
 	DeclaredMIME string
@@ -23,8 +23,8 @@ type ScanInput struct {
 
 // Scanner inspects an uploaded object.
 //
-// It is a narrow port so this package does not depend on gRPC, and so tests can make
-// inspection fail on demand.
+// It is a narrow port so this package does not depend on the scanner implementation,
+// and so tests can make inspection fail on demand.
 type Scanner interface {
 	Inspect(ctx context.Context, in ScanInput) (ScanResult, error)
 }

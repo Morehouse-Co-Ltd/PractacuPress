@@ -16,8 +16,8 @@ import { Badge, Button, Callout, Field, Input } from './ui';
 /**
  * 访问端口面板：默认 8080，可以在后台直接改成其他端口。
  *
- * 只有 `npm start`（scripts/serve.mjs）或 Windows 启动器提供的静态服务支持运行中切换；
- * Vite 开发服务器的端口在启动时确定，这里会给出重启命令而不是假装能改。
+ * 只有 `npm start`（scripts/serve.mjs）提供的静态服务支持运行中切换；
+ * Vite 开发服务器与 Go API 的端口在启动时确定，这里会给出重启命令而不是假装能改。
  */
 export function AccessPortPanel() {
   const t = useT();

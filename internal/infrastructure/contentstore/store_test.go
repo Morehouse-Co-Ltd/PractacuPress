@@ -36,7 +36,7 @@ type harness struct {
 	siteID  string
 	// now is the service clock; tests move it forward to trigger a schedule.
 	now time.Time
-	// hasher and unlocks are the deterministic stand-ins for the security service
+	// hasher and unlocks are the deterministic stand-ins for the security client
 	// and the signed unlock grant.
 	hasher  content.AccessPasswordHasher
 	unlocks content.UnlockTokens
@@ -154,7 +154,7 @@ func TestContentLifecycle(t *testing.T) {
 
 func TestCreateDraftFailsClosedAndPersists(t *testing.T) {
 	h := newHarness(t, site.PublishModeOpen)
-	h.sanit.err = errors.New("grpc down")
+	h.sanit.err = errors.New("sanitizer failed")
 
 	item, err := h.service.CreateDraft(context.Background(), h.author(), content.KindPost, draftInput())
 

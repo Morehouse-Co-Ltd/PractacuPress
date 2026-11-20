@@ -25,7 +25,7 @@ import {
 import { DEFAULT_AUTH } from '../lib/authProviders';
 import { errorText, useTitle } from '../lib/hooks';
 import { LOCALES, normalizeLocale, setLocale, useT, type Locale } from '../lib/i18n';
-import { currentPort, readRuntime, type RuntimeInfo } from '../lib/runtime';
+import { currentPort } from '../lib/runtime';
 import { PUBLISH_LABEL, ROLE_LABEL, VISIBILITY_LABEL, slugify } from '../lib/format';
 import {
   Button,
@@ -256,8 +256,6 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const probingRef = useRef(false);
   const errorRef = useRef<HTMLDivElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
-  // 启动器托管的本机 API 信息；开发服务器与 npm start 没有这个接口，读不到就是 null。
-  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
   /**
    * 阶段卡片滚动区的真实状态。
    *
@@ -295,16 +293,6 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   }, [step]);
 
 
-  useEffect(() => {
-    let alive = true;
-    void readRuntime().then((info) => {
-      if (alive) setRuntime(info);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   // 服务端已配置 PUBLIC_BASE_URL 时不再显示“需要重启”的提示。
   useEffect(() => {
     let alive = true;
@@ -330,9 +318,6 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   useEffect(() => {
     setLocale(draft.language);
   }, [draft.language]);
-
-  const launcherApi = runtime?.api;
-  const launcherLive = runtime?.runtime_mode === 'live' && !!launcherApi?.managed;
 
   useEffect(() => {
     const safe: Draft = {
@@ -1278,50 +1263,18 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
 
                 {!connected && attempts >= 2 ? (
                   <div className="mt-16">
-                    {launcherLive ? (
-                      <Callout tone="warn" icon="alert" title={t('本机 API 没有通过就绪检查')}>
-                        {t('启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在')}
-                        <code className="mono"> {launcherApi?.log ?? 'data/api.err.log'}</code>
-                        {t('。')}
-                        {launcherApi?.error ? (
-                          <pre className="connect-commands">{launcherApi.error}</pre>
-                        ) : null}
-                      </Callout>
-                    ) : runtime ? (
-                      <Callout tone="warn" icon="alert" title={t('这个启动器没有运行本机 API')}>
-                        {launcherApi?.error
-                          ? t('启动器尝试启动本机 API 失败了，原因如下：')
-                          : t('启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。')}
-                        {launcherApi?.error ? (
-                          <pre className="connect-commands">{launcherApi.error}</pre>
-                        ) : (
-                          <p>
-                            {t('请使用完整的 Windows 压缩包重新解压（里面应同时有')}
-                            <code className="mono"> PractacuPress.exe </code>
-                            {t('与')}
-                            <code className="mono"> PractacuPressAPI.exe</code>
-                            {t('），或按下面的命令手动启动 Go API。')}
-                          </p>
-                        )}
-                        {launcherApi?.error ? null : (
-                          <pre className="connect-commands">{`go run ./cmd/migrate
+                    <Callout tone="warn" icon="alert" title={t('后端还没有启动')}>
+                      {t('前端会自动尝试同源接口与本机')}{' '}
+                      <code className="mono">http://127.0.0.1:8080</code>
+                      {t('。在仓库根目录启动 Go API 后会自动连上；开发时用')}{' '}
+                      <code className="mono">npm run dev</code>
+                      {t('（')}
+                      <code className="mono">/api</code>{' '}
+                      {t('会代理到 8080），生产用同域反向代理。')}
+                      <pre className="connect-commands">{`go run ./cmd/migrate
 go run ./cmd/seed -driver sqlite -dsn ./data/practacu.db
 go run ./cmd/server`}</pre>
-                        )}
-                      </Callout>
-                    ) : (
-                      <Callout tone="warn" icon="alert" title={t('后端还没有启动')}>
-                        {t('前端会自动尝试同源与')} <code className="mono">http://127.0.0.1:8080</code>
-                        {t('。在仓库根目录启动 Go API 后会自动连上；开发时用')}{' '}
-                        <code className="mono">npm run dev</code>
-                        {t('（')}
-                        <code className="mono">/api</code>{' '}
-                        {t('会代理到 8080），生产用同域反向代理。')}
-                        <pre className="connect-commands">{`go run ./cmd/migrate
-go run ./cmd/seed -driver sqlite -dsn ./data/practacu.db
-go run ./cmd/server`}</pre>
-                      </Callout>
-                    )}
+                    </Callout>
                   </div>
                 ) : null}
 

@@ -57,8 +57,8 @@ const fragment: Dictionary = {
   '一行一个 origin，例如 https://cdn.example.com；只保留 http(s)，最多 8 个。':
     'One origin per line, for example https://cdn.example.com; only http(s) is kept, up to 8.',
   '静态资源与网关缓存': 'Static assets and gateway cache',
-  '用于自建 Nginx 的压缩、缓存与超时参数；内置启动器已处理静态资源缓存。':
-    'Compression, caching, and timeout settings for your own Nginx; the bundled launcher already caches static assets.',
+  '用于自建 Nginx 的压缩、缓存与超时参数；API 已处理静态资源缓存。':
+    'Compression, caching, and timeout settings for your own Nginx; the API already caches static assets.',
   '需部署': 'Needs deployment',
   '网关开启 gzip': 'Enable gzip at the gateway',
   '压缩 JS/CSS/JSON/SVG，减少传输时间；HTTPS 下应同时开启 gzip_vary。':

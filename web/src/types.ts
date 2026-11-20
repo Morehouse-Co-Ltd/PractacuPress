@@ -2466,7 +2466,7 @@ export interface StorageSettings {
   scopes: Record<StorageScope, string>;
   /** 每个用途的完整分配；旧配置缺省时由 `scopes` 迁移成单策略。 */
   allocations?: Record<StorageScope, StorageScopeAllocation>;
-  /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 与安全服务决定。 */
+  /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 决定。 */
   max_upload_mb: number;
 }
 
@@ -2679,7 +2679,7 @@ export interface SiteImportReport {
 export interface SystemProcess {
   pid: number;
   name: string;
-  /** api / security / launcher / web / app；由服务端按进程名与安装目录识别。 */
+  /** api / web / app；由服务端按进程名与安装目录识别。 */
   role: string;
   cpu_percent: number;
   memory_bytes: number;

@@ -228,7 +228,7 @@ export function MailSettingsEditor({
         <div className="auth-env-head">
           <div>
             <strong>{t('服务端环境变量')}</strong>
-            <p>{t('复制到 .env，或写进启动器的环境变量；重启 API 后生效。')}</p>
+            <p>{t('复制到 .env（或进程环境变量）；重启 API 后生效。')}</p>
           </div>
           <div className="row gap-8">
             <CopyButton value={smtpEnvSnippet(value, password)} label={t('复制 .env')} />

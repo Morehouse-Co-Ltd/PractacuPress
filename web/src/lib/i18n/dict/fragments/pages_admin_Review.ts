@@ -54,8 +54,8 @@ const fragment: Dictionary = {
   '等待安全检查': 'Waiting for the security check',
   '安全检查通过前不会公开': 'Not public until the security check passes',
   重试安全检查: 'Retry security check',
-  '内容已保留，但安全服务在写入时不可用。服务恢复后重试，或让作者重新提交。':
-    'The content was saved, but the security service was unavailable when it was written. Retry once the service is back, or ask the author to submit again.',
+  '内容已保留，但安全检查在写入时不可用。重试，或让作者重新提交。':
+    'The content was saved, but the in-process security checks were unavailable when it was written. Retry, or ask the author to submit again.',
 
   // ---- 操作反馈 ----
   '{action}成功': '{action} succeeded',

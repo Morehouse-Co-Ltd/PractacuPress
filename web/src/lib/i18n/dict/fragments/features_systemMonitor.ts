@@ -22,7 +22,7 @@ const fragment: Dictionary = {
     'Server metrics include the hostname, filesystem paths and process names, so only platform administrators can read them.',
   '演示模式没有服务器指标': 'Demo mode has no server metrics',
   '演示数据只存在浏览器里，没有可采样的服务端；连接真实后端（启动.bat 或部署实例）后，这里会显示本机进程与磁盘占用。':
-    'Demo data lives only in the browser, so there is no server to sample. Connect a real backend (the one-click launcher or a deployed instance) and this page will show local processes and disk usage.',
+    'Demo data lives only in the browser, so there is no server to sample. Connect a real backend (the portable package or a deployed instance) and this page will show local processes and disk usage.',
   '正在读取服务器指标': 'Reading server metrics',
   '无法读取服务器指标': 'Could not read server metrics',
   '无法读取服务器指标。': 'Could not read server metrics.',
@@ -93,8 +93,6 @@ const fragment: Dictionary = {
 
   // ---- 角色 ----
   '服务器 API': 'Server API',
-  '安全服务': 'Security service',
-  '启动器': 'Launcher',
   '前端（开发服务器）': 'Frontend (dev server)',
   '附加进程': 'Attached process',
   '未知角色': 'Unknown role',

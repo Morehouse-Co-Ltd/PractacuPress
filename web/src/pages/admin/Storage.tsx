@@ -1152,7 +1152,7 @@ export function StoragePage() {
               <NumberField
                 id="storage-max-upload"
                 label={t('单文件上限提示')}
-                hint={t('API 与安全服务默认限制 25 MiB；要传更大的文件，需要同时调整 API 与安全服务，而不是只改这里。')}
+                hint={t('API 默认限制 25 MiB；要传更大的文件，需要同时调整 API 与反向代理的请求体上限，而不是只改这里。')}
                 value={draft.max_upload_mb}
                 min={1}
                 max={2048}
@@ -1162,8 +1162,7 @@ export function StoragePage() {
             </div>
             {draft.max_upload_mb > 25 ? (
               <Callout tone="warn" icon="alert" title={t('超过 API 默认的 25 MiB 附件上限')}>
-                {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 与安全服务的')}{' '}
-                {t('请求体上限，否则请求会被更早的一层拒绝。')}
+                {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 的请求体上限，否则请求会被更早的一层拒绝。')}
               </Callout>
             ) : null}
           </div>

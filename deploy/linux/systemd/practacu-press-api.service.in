@@ -1,10 +1,9 @@
 [Unit]
 Description=Practacu Press API
 Documentation=file://@@INSTALL_DIR@@/INSTALL.md
-After=network-online.target practacu-press-security.service
+After=network-online.target
 Wants=network-online.target
-# 安全服务是可选的：装包时若没有 Linux 版二进制，这个依赖指向的单元不存在，
-# systemd 会忽略它，API 以降级模式运行（发布文章与完成上传返回 503）。
+# 安全检查、HTML 清洗与上传扫描都在 API 进程内完成，没有独立的安全服务单元。
 
 [Service]
 Type=simple

@@ -4,7 +4,7 @@ import type { SourceFormat } from '../types';
  * 演示数据与编辑器预览使用的渲染器。
  *
  * 真实内容一律以服务端返回的 `rendered_html` 为准；服务端会先用 goldmark 把
- * Markdown 转成 HTML，再交给安全服务按白名单清洗。这里的实现保持同一套语法与
+ * Markdown 转成 HTML，再交给进程内的安全检查按白名单清洗。这里的实现保持同一套语法与
  * 同一批类名，目的是让「写作 → 预览 → 发布」三处看起来一致。
  *
  * 所有作者输入先转义再拼装；原文里的 HTML 区块会经过 sanitizeHtml 过滤。

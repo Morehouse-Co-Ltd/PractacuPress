@@ -126,7 +126,7 @@ type routeKey struct {
 }
 
 // buildRouter mounts every handler. The services are nil on purpose: mounting only
-// registers routes, so no database or security service is needed to inspect them.
+// registers routes, so no database or handler dependencies are needed to inspect them.
 func buildRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 

@@ -148,8 +148,6 @@ const fragment: Dictionary = {
     'No backend needed. Ships with articles, members, comments, and notifications to explore the full interface and review flow.',
   '推荐 · 立即可用': 'Recommended · ready now',
   '真实环境': 'Live environment',
-  '启动器已经在本机跑起 Go API 与 SQLite，直接连接同源接口，不需要填写地址。':
-    'The launcher already runs the Go API and SQLite on this machine; it connects to the same-origin API, so no address is needed.',
   '自动连接同源接口或本机 8080 的 Go API，不需要填写地址。':
     'Connects automatically to the same-origin API or the Go API on local 8080; no address is needed.',
   '本机 API 已就绪 · 零配置': 'Local API ready · zero config',
@@ -165,23 +163,10 @@ const fragment: Dictionary = {
   '重新检测': 'Check again',
   '更换地址': 'Change address',
   '连接': 'Connect',
-  '本机 API 没有通过就绪检查': 'The local API did not pass the readiness check',
-  '启动器已经把 API 拉起来了，但接口还没准备好。启动器窗口里有退出原因，完整日志在':
-    'The launcher started the API, but the endpoints are not ready yet. The launcher window shows why it exited; the full log is in',
   '。': '.',
-  '这个启动器没有运行本机 API': 'This launcher is not running a local API',
-  '启动器尝试启动本机 API 失败了，原因如下：':
-    'The launcher failed to start the local API. The reason is below:',
-  '启动器以静态方式运行，没有找到 PractacuPressAPI.exe，所以同源与 8080 都没有后端。':
-    'The launcher is running statically and could not find PractacuPressAPI.exe, so neither the same origin nor 8080 has a backend.',
-  '请使用完整的 Windows 压缩包重新解压（里面应同时有':
-    'Unzip the complete Windows archive again (it should contain both',
   '与': 'and',
-  '），或按下面的命令手动启动 Go API。': '), or start the Go API manually with the commands below.',
   '不用填地址，但后端需要先启动': 'No address needed, but start the backend first',
-  '前端会自动尝试同源与': 'The front end automatically tries the same origin and',
-  '。在仓库根目录启动 Go API 后点「重试」即可；如果只是想先看界面，可以直接切到演示数据。 后端已启动仍失败时，多半是跨域限制：开发时用':
-    '. Start the Go API from the repository root and click Retry; if you only want to look at the interface, switch to demo data. If it still fails with the backend running, it is usually CORS: in development use',
+  '前端会自动尝试同源接口与本机': 'The front end automatically tries the same-origin API and',
   '（': '(',
   '会代理到 8080），生产用同域反向代理。':
     'proxies to 8080), and use a same-domain reverse proxy in production.',
@@ -386,7 +371,7 @@ const fragment: Dictionary = {
   '仪表盘 · 内容库 · 媒体库 · 站点设置':
     'Dashboard · Content · Media library · Site settings',
   '两步上传：先开会话，再传字节，最后由内置安全检查。':
-    'Two-step upload: open a session, send the bytes, then the security service checks them.',
+    'Two-step upload: open a session, send the bytes, then the in-process security checks inspect them.',
   '只影响这台电脑上的管理后台，不影响访客看到的页面。':
     'Only affects the dashboard on this computer; visitors do not see this change.',
   前台正文字号: 'Frontend body text size',

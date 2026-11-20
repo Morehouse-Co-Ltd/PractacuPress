@@ -177,4 +177,4 @@ var errUnavailable = &unavailableError{}
 
 type unavailableError struct{}
 
-func (*unavailableError) Error() string { return "grpc down" }
+func (*unavailableError) Error() string { return "scanner unavailable" }
