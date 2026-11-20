@@ -8,12 +8,14 @@ import type {
   CaptchaScene,
   LocalCaptchaAnswer,
   LocalCaptchaChallenge,
+  LocalCaptchaKind,
   LocalCaptchaPoint,
 } from '../types';
 import { captchaCellIndex, captchaPointFromEvent } from '../lib/captcha';
 import { useBackend } from '../lib/backend';
 import { useT } from '../lib/i18n';
-import { Button, Callout } from './ui';
+import { Icon } from './Icon';
+import { Badge, Button, Callout } from './ui';
 
 /**
  * 本地（自托管）人机验证组件。
@@ -122,12 +124,31 @@ export function LocalCaptchaField({
     [backend, busy, challenge, load, onToken, report, scene, t],
   );
 
-  if (loading) {
-    return <p className="field-hint">{t('正在获取验证题…')}</p>;
-  }
+  const state = solved ? 'solved' : loading ? 'loading' : 'challenge';
+  // 有题就说明题型；加载中给一句进度；失败时由下方 Callout 说明原因，头部不重复。
+  const hint = challenge
+    ? localCaptchaKindHint(t, challenge.kind)
+    : loading
+      ? t('正在获取验证题…')
+      : '';
 
   return (
-    <div className="captcha-field" aria-live="polite">
+    <div className="captcha-field" aria-live="polite" data-state={state}>
+      <div className="captcha-head">
+        <span className="captcha-head-icon" aria-hidden="true">
+          <Icon name={solved ? 'check-circle' : 'shield'} size={16} />
+        </span>
+        <div className="captcha-head-text">
+          <p className="captcha-head-title">{t('安全验证')}</p>
+          {hint ? <p className="captcha-head-hint">{hint}</p> : null}
+        </div>
+        {solved ? (
+          <Badge tone="ok" dot>
+            {t('已完成')}
+          </Badge>
+        ) : null}
+      </div>
+      {loading ? <div className="captcha-skeleton" aria-hidden="true" /> : null}
       {challenge && !solved ? (
         <ChallengeBody
           key={challenge.challenge_id}
@@ -142,10 +163,25 @@ export function LocalCaptchaField({
           {failure}
         </Callout>
       ) : solved ? (
-        <p className="field-hint">{t('已完成本地人机验证。')}</p>
+        <div className="captcha-done">
+          <Icon name="check-circle" size={17} />
+          <p className="field-hint">{t('已完成本地人机验证。')}</p>
+        </div>
       ) : null}
     </div>
   );
+}
+
+/** 卡片头部的一句话题型提示；动词开头，说明这一步的交互。 */
+function localCaptchaKindHint(t: (text: string) => string, kind: LocalCaptchaKind): string {
+  switch (kind) {
+    case 'click':
+      return t('点选图中的星星');
+    case 'select':
+      return t('选出含圆形的格子');
+    default:
+      return t('拖动拼图对齐缺口');
+  }
 }
 
 function ChallengeBody({
@@ -212,6 +248,35 @@ function ActionRow({
   );
 }
 
+/** 进度条 + 计数：让「还差几个」一眼可见，而不是只读一行小字。 */
+function CaptchaProgress({
+  selected,
+  total,
+  label,
+}: {
+  selected: number;
+  total: number;
+  label: string;
+}) {
+  const t = useT();
+  const percent = total > 0 ? Math.min(100, Math.round((selected / total) * 100)) : 0;
+  return (
+    <div className="captcha-progress-row">
+      <div
+        className="captcha-progress"
+        role="progressbar"
+        aria-label={t('作答进度')}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={selected}
+      >
+        <span className="captcha-progress-fill" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="field-hint captcha-progress-label">{label}</p>
+    </div>
+  );
+}
+
 /** 滑块题：拖动圆形拼图，让它落进图里的缺口。 */
 function SliderChallenge({
   challenge,
@@ -265,7 +330,7 @@ function SliderChallenge({
 
   return (
     <div className="form-stack">
-      <p className="field-hint">{t('拖动圆形拼图，让它落进图中的缺口，然后点「验证」。')}</p>
+      <p className="field-hint captcha-prompt">{t('拖动圆形拼图，让它落进图中的缺口，然后点「验证」。')}</p>
       <div
         ref={stage}
         className="captcha-stage"
@@ -299,7 +364,7 @@ function SliderChallenge({
         onChange={(event) => setOffset(Number(event.target.value))}
       />
       <ActionRow disabled={disabled} onReload={onReload}>
-        <Button size="sm" disabled={disabled} onClick={() => onSubmit({ x: offset })}>
+        <Button size="sm" icon="check" disabled={disabled} onClick={() => onSubmit({ x: offset })}>
           {t('验证')}
         </Button>
       </ActionRow>
@@ -336,7 +401,7 @@ function ClickChallenge({
 
   return (
     <div className="form-stack">
-      <p className="field-hint">
+      <p className="field-hint captcha-prompt">
         {t('点击图中的所有星星（共 {count} 个），然后点「验证」。', { count: targetCount })}
       </p>
       <div
@@ -367,12 +432,18 @@ function ClickChallenge({
           </span>
         ))}
       </div>
-      <p className="field-hint">
-        {t('已选 {selected} / {total} 个', { selected: points.length, total: targetCount })}
-      </p>
+      <CaptchaProgress
+        selected={points.length}
+        total={targetCount}
+        label={t('已选 {selected} / {total} 个', {
+          selected: points.length,
+          total: targetCount,
+        })}
+      />
       <ActionRow disabled={disabled} onReload={onReload}>
         <Button
           size="sm"
+          icon="check"
           disabled={disabled || points.length !== targetCount}
           onClick={() => onSubmit({ points })}
         >
@@ -381,6 +452,7 @@ function ClickChallenge({
         <Button
           size="sm"
           variant="ghost"
+          icon="close"
           disabled={disabled || points.length === 0}
           onClick={() => setPoints([])}
         >
@@ -426,7 +498,7 @@ function SelectChallenge({
 
   return (
     <div className="form-stack">
-      <p className="field-hint">
+      <p className="field-hint captcha-prompt">
         {t('选择所有包含圆形的图片（共 {count} 张），然后点「验证」。', { count: targetCount })}
       </p>
       <div
@@ -463,16 +535,27 @@ function SelectChallenge({
           );
         })}
       </div>
-      <p className="field-hint">
-        {t('已选 {selected} / {total} 张', { selected: tiles.length, total: targetCount })}
-      </p>
+      <CaptchaProgress
+        selected={tiles.length}
+        total={targetCount}
+        label={t('已选 {selected} / {total} 张', {
+          selected: tiles.length,
+          total: targetCount,
+        })}
+      />
       <ActionRow disabled={disabled} onReload={onReload}>
-        <Button size="sm" disabled={disabled || tiles.length === 0} onClick={() => onSubmit({ tiles })}>
+        <Button
+          size="sm"
+          icon="check"
+          disabled={disabled || tiles.length === 0}
+          onClick={() => onSubmit({ tiles })}
+        >
           {t('验证')}
         </Button>
         <Button
           size="sm"
           variant="ghost"
+          icon="close"
           disabled={disabled || tiles.length === 0}
           onClick={() => setTiles([])}
         >

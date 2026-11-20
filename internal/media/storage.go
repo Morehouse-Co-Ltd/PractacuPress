@@ -201,6 +201,58 @@ func (s *LocalStorage) List(ctx context.Context) ([]string, error) {
 	return keys, nil
 }
 
+// Usage returns the total bytes stored under the root.
+//
+// Capacity switching needs a starting point after a restart. Walking the media
+// directory is cheap compared with re-uploading a file into the wrong strategy.
+func (s *LocalStorage) Usage(ctx context.Context) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	var total int64
+	err := filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		total += info.Size()
+		return nil
+	})
+	return total, err
+}
+
+// Size returns the stored object size, used to keep the quota counter honest on
+// delete without a full rescan.
+func (s *LocalStorage) Size(ctx context.Context, key string) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	path, err := s.resolve(key)
+	if err != nil {
+		return 0, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, ErrStorageObjectMissing
+		}
+		return 0, err
+	}
+	if info.IsDir() {
+		return 0, errors.New("media: storage object is a directory")
+	}
+	return info.Size(), nil
+}
+
 // resolve maps a key to a path inside the root.
 //
 // The containment check runs on the cleaned absolute path, so an implementation bug

@@ -6,6 +6,7 @@ import type {
   VisibilityMode,
   ContentAction,
   ActivityEntry,
+  SystemLogEntry,
 } from '../types';
 import { getLocale, t, type Locale } from './i18n';
 import { labelMap } from './i18n/labels';
@@ -250,12 +251,27 @@ export function downloadJson(name: string, data: unknown) {
   URL.revokeObjectURL(url);
 }
 
+/** 一条 CSV 记录：值一律加引号，内部引号翻倍（RFC 4180），逗号与换行因此可以原样保留。 */
+function csvRow(values: readonly unknown[]): string {
+  return values.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+}
+
 export function activityCsv(entries: ActivityEntry[]): string {
   const head = 'time,actor,action,target,detail';
+  const rows = entries.map((e) => csvRow([e.at, e.actor, e.action, e.target, e.detail ?? '']));
+  return [head, ...rows].join('\n');
+}
+
+/**
+ * 请求日志 CSV：列与请求日志表一致。
+ *
+ * 与 `activityCsv` 共用同一套转义；状态码与耗时按数字输出（CSV 里仍是带引号的文本，
+ * 表格软件会自行识别），请求号里常见的 `"` 与逗号不会撑破列。
+ */
+export function requestCsv(entries: SystemLogEntry[]): string {
+  const head = 'time,method,path,status,duration_ms,request_id';
   const rows = entries.map((e) =>
-    [e.at, e.actor, e.action, e.target, e.detail ?? '']
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(','),
+    csvRow([e.time, e.method, e.path, e.status, e.duration_ms, e.request_id]),
   );
   return [head, ...rows].join('\n');
 }

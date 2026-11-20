@@ -359,9 +359,85 @@ img {
 }
 
 /* ---- 人机验证：本地图形题（滑块 / 点击 / 选择图形） ---- */
+/* 组件本身渲染成一张卡片：标题栏说明题型，舞台是卡片里的“图片”，操作行是底部按钮。
+   明暗两套都用主题令牌，只有舞台底色与骨架动画需要额外声明。 */
 .captcha-field {
   display: grid;
+  gap: 12px;
+  padding: 14px 14px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(140% 120% at 100% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 58%),
+    var(--bg);
+  box-shadow: 0 1px 2px rgb(20 20 15 / 4%), 0 16px 34px -26px rgb(20 20 15 / 45%);
+}
+
+.captcha-head {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  min-width: 0;
+}
+
+.captcha-head-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.captcha-field[data-state='solved'] .captcha-head-icon {
+  border-color: color-mix(in srgb, var(--ok) 26%, var(--line));
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.captcha-head-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.captcha-head-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.captcha-head-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.captcha-head > .badge {
+  flex: none;
+  margin-left: auto;
+}
+
+.captcha-prompt {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.captcha-skeleton {
+  height: 104px;
+  border-radius: var(--r-md);
+  background: linear-gradient(100deg, var(--bg-sunken) 20%, var(--bg-subtle) 42%, var(--bg-sunken) 64%);
+  background-size: 240% 100%;
+  animation: captcha-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes captcha-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
 }
 
 .captcha-stage {
@@ -369,7 +445,13 @@ img {
   margin: 0 auto;
   border-radius: var(--r-md);
   overflow: hidden;
-  background: #f1f4f8;
+  background: #eef2f8;
+  /* 用 box-shadow 画一圈描边而不是 border：舞台尺寸必须和图片原始像素一致，
+     定位碎片与点击换算都按显示尺寸计算，多 1px 的边框会引入缩放。 */
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--line-strong) 75%, transparent),
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 12px 24px -20px rgb(20 20 15 / 65%);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -383,45 +465,60 @@ img {
 
 .captcha-stage.is-clickable {
   cursor: crosshair;
+  transition: box-shadow 140ms ease;
+}
+
+.captcha-stage.is-clickable:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 1px 0 rgb(255 255 255 / 55%) inset,
+    0 12px 24px -20px rgb(20 20 15 / 65%);
 }
 
 .captcha-piece {
   position: absolute;
   height: auto;
   cursor: grab;
-  filter: drop-shadow(0 2px 6px rgb(15 23 42 / 35%));
+  filter: drop-shadow(0 4px 10px rgb(15 23 42 / 32%));
+  transition: filter 140ms ease;
 }
 
 .captcha-piece:active {
   cursor: grabbing;
+  filter: drop-shadow(0 6px 14px rgb(15 23 42 / 42%));
 }
 
 .captcha-marker {
   position: absolute;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border: 2px solid color-mix(in srgb, #fff 82%, transparent);
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 2px 6px rgb(15 23 42 / 30%);
+  box-shadow: 0 3px 10px rgb(15 23 42 / 34%);
   pointer-events: none;
+  animation: captcha-pop 180ms ease-out;
 }
 
 .captcha-cell {
   position: absolute;
   pointer-events: none;
   box-sizing: border-box;
-  border-radius: 6px;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  transition: border-color 130ms ease, background-color 130ms ease;
 }
 
 .captcha-cell.is-selected {
-  border: 2px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #fff 45%, transparent) inset;
 }
 
 .captcha-cell-check {
@@ -435,17 +532,129 @@ img {
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
+  box-shadow: 0 2px 6px rgb(15 23 42 / 28%);
+  animation: captcha-pop 160ms ease-out;
+}
+
+@keyframes captcha-pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .captcha-range {
   width: 100%;
+  height: 26px;
   accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.captcha-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.captcha-range:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+.captcha-progress-row {
+  display: grid;
+  gap: 6px;
+}
+
+.captcha-progress {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.captcha-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #7aa6c9));
+  transition: width 180ms ease;
+}
+
+.captcha-progress-label {
+  font-variant-numeric: tabular-nums;
 }
 
 .captcha-actions {
   align-items: center;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.captcha-actions .btn-primary {
+  min-width: 84px;
+}
+
+.captcha-actions .btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.captcha-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--ok) 26%, var(--line));
+  border-radius: var(--r-md);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.captcha-done .field-hint {
+  color: inherit;
+  font-size: 12.5px;
+}
+
+/* 明暗模式：主题令牌由 #pp-theme 注入，这里只补硬编码的舞台底色与骨架动画。 */
+:root[data-mode='dark'] .captcha-field {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 35%), 0 18px 40px -28px rgb(0 0 0 / 80%);
+}
+
+:root[data-mode='dark'] .captcha-stage {
+  background: #191d24;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 9%),
+    0 1px 0 rgb(255 255 255 / 6%) inset,
+    0 14px 28px -22px rgb(0 0 0 / 85%);
+}
+
+:root[data-mode='dark'] .captcha-marker {
+  border-color: rgb(255 255 255 / 55%);
+}
+
+:root[data-mode='dark'] .captcha-skeleton {
+  background: linear-gradient(100deg, #1c2027 20%, #242932 42%, #1c2027 64%);
+  background-size: 240% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .captcha-marker,
+  .captcha-cell-check {
+    animation: none;
+  }
+
+  .captcha-skeleton {
+    animation: none;
+    background: var(--bg-sunken);
+  }
+
+  .captcha-piece,
+  .captcha-cell,
+  .captcha-progress-fill,
+  .captcha-stage.is-clickable {
+    transition: none;
+  }
 }
 
 .field-invalid .input,

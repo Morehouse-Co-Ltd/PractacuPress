@@ -85,6 +85,13 @@ type Repository interface {
 	DeleteAsset(ctx context.Context, siteID, assetID string) error
 }
 
+// StorageResolver resolves the adapter for a purpose at request time. The runtime
+// storage manager implements it, so a strategy switch is visible to the next byte
+// without rebuilding the media service.
+type StorageResolver interface {
+	StorageFor(purpose Purpose) Storage
+}
+
 // Service implements the two phase upload flow.
 type Service struct {
 	repo          Repository
@@ -94,6 +101,7 @@ type Service struct {
 	scanner       Scanner
 	storage       Storage
 	storages      map[Purpose]Storage
+	resolver      StorageResolver
 	references    PublishedReferenceChecker
 	design        DesignReferenceChecker
 	now           func() time.Time
@@ -124,6 +132,9 @@ type ServiceConfig struct {
 	// Storages optionally routes each purpose to its own adapter. A missing entry
 	// falls back to Storage, which keeps old deployments unchanged.
 	Storages map[Purpose]Storage
+	// Resolver, when set, wins over Storage and Storages: it is the runtime
+	// switching path. The fields above remain for the CLI and tests.
+	Resolver StorageResolver
 	// References lets the read path serve a content image anonymously once it is
 	// referenced by published content. Nil denies that case altogether.
 	References PublishedReferenceChecker
@@ -170,6 +181,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		scanner:         cfg.Scanner,
 		storage:         cfg.Storage,
 		storages:        storages,
+		resolver:        cfg.Resolver,
 		references:      cfg.References,
 		design:          cfg.Design,
 		usage:           usageChecker(cfg),
@@ -203,6 +215,11 @@ func usageChecker(cfg ServiceConfig) AssetUsageChecker {
 // must agree on the adapter, and the only reliable key is the purpose recorded with
 // the upload or asset. Nil means no adapter is configured at all.
 func (s *Service) storageFor(purpose Purpose) Storage {
+	if s.resolver != nil {
+		if storage := s.resolver.StorageFor(purpose); storage != nil {
+			return storage
+		}
+	}
 	if storage, ok := s.storages[purpose]; ok {
 		return storage
 	}

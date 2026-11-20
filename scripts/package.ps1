@@ -1,6 +1,6 @@
 # Practacu Press - Windows portable package
 #
-# Double-click 打包.bat, or run:
+# Run from the repository root:
 #   powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 #
 # The Node script does the actual frontend build, API build, self-test and zip.

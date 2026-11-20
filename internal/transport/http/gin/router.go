@@ -203,7 +203,7 @@ func New(deps Dependencies) *gin.Engine {
 		}))
 	}
 
-	if deps.Auth != nil || deps.Sites != nil || deps.Platform != nil || deps.Content != nil || deps.Community != nil || deps.Reports != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil || deps.Audit != nil || deps.Safety != nil || deps.Backups != nil || deps.Captcha != nil || deps.System != nil || deps.Extensions != nil || deps.Redirect != nil || deps.Ops != nil || deps.BackupSchedule != nil || deps.Newsletter != nil {
+	if deps.Auth != nil || deps.Sites != nil || deps.Platform != nil || deps.Content != nil || deps.Community != nil || deps.Reports != nil || deps.Media != nil || deps.Events != nil || deps.Notifications != nil || deps.Messages != nil || deps.WS != nil || deps.Analytics != nil || deps.Taxonomy != nil || deps.Audit != nil || deps.Safety != nil || deps.Backups != nil || deps.Captcha != nil || deps.System != nil || deps.Extensions != nil || deps.Redirect != nil || deps.Ops != nil || deps.BackupSchedule != nil || deps.StorageAdmin != nil || deps.Newsletter != nil {
 		var guard, optionalAuth gin.HandlerFunc
 		if deps.AccessTokens != nil {
 			// The guard binds the token to the resolved site: a token minted on site A
@@ -309,6 +309,11 @@ func New(deps Dependencies) *gin.Engine {
 		if deps.BackupSchedule != nil {
 			// The schedule the process actually runs with, plus its artifacts.
 			deps.BackupSchedule.Routes(v1, guard)
+		}
+		if deps.StorageAdmin != nil {
+			// Runtime media storage: site administrators can read the resolved view;
+			// only the platform administrator can apply a new document.
+			deps.StorageAdmin.Routes(v1, guard)
 		}
 		if deps.Newsletter != nil {
 			// Public subscription endpoints, the account preference, and the site

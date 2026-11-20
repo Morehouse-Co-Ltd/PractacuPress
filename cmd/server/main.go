@@ -68,6 +68,7 @@ import (
 	"github.com/practacu/practacu-press/internal/redirect"
 	"github.com/practacu/practacu-press/internal/safety"
 	"github.com/practacu/practacu-press/internal/site"
+	"github.com/practacu/practacu-press/internal/storageadmin"
 	"github.com/practacu/practacu-press/internal/system"
 	"github.com/practacu/practacu-press/internal/taxonomy"
 	ginrouter "github.com/practacu/practacu-press/internal/transport/http/gin"
@@ -264,7 +265,15 @@ func run() error {
 		return fmt.Errorf("build event replayer: %w", err)
 	}
 
-	mediaStorage, mediaStorages, err := buildStorage(startupCtx, cfg, logger)
+	storageDataDir := ""
+	if strings.TrimSpace(cfg.StorageDir) != "" {
+		storageDataDir = filepath.Dir(cfg.StorageDir)
+	}
+	storageManager, err := storageadmin.NewManager(storageadmin.Config{
+		Env:     cfg,
+		DataDir: storageDataDir,
+		Logger:  logger,
+	})
 	if err != nil {
 		return fmt.Errorf("open media storage: %w", err)
 	}
@@ -277,8 +286,9 @@ func run() error {
 	mediaService, err := media.NewService(media.ServiceConfig{
 		Repository: mediastore.New(handle.Client),
 		Scanner:    securityScanner{client: securityClient},
-		Storage:    mediaStorage,
-		Storages:   mediaStorages,
+		// StorageFor resolves the live runtime strategy on every byte path, so a
+		// dashboard apply takes effect for the next upload/read without a restart.
+		Resolver:   storageManager,
 		References: contentRepo,
 		Design:     sitestore.NewDesignReferences(handle.Client),
 		QuotaDefaults: media.QuotaDefaults{
@@ -669,15 +679,17 @@ func run() error {
 		DSN:           cfg.DatabaseDSN,
 		EncryptionKey: backupKey,
 		Snapshotter:   handle,
-		MediaRoots:    backupMediaRoots(cfg),
-		Designs:       backup.NewDBDesignSource(handle),
-		BackupDir:     cfg.BackupDir,
-		SchemaVersion: db.SchemaVersion,
-		AppVersion:    backup.BuildVersion(),
-		Sites:         siteService,
-		Content:       contentService,
-		Taxonomy:      taxonomyService,
-		Media:         mediaService,
+		// Read at archive time: the automatic backup follows the storage strategies
+		// that are live when it runs, not the ones present at boot.
+		MediaRootsProvider: func() []backup.MediaRoot { return backupRootsFromManager(storageManager) },
+		Designs:            backup.NewDBDesignSource(handle),
+		BackupDir:          cfg.BackupDir,
+		SchemaVersion:      db.SchemaVersion,
+		AppVersion:         backup.BuildVersion(),
+		Sites:              siteService,
+		Content:            contentService,
+		Taxonomy:           taxonomyService,
+		Media:              mediaService,
 	})
 	if err != nil {
 		return fmt.Errorf("build backup service: %w", err)
@@ -692,7 +704,9 @@ func run() error {
 	// process metrics in the background and serves them to platform administrators.
 	// PP_SYSTEM_METRICS=off removes the route entirely, which is how a deployment that
 	// does not want to expose host details disables the panel.
-	systemHandler := buildSystemHandler(ctx, cfg, logger)
+	systemHandler := buildSystemHandler(ctx, cfg, logger, func() system.StorageRuntime {
+		return storageRuntimeSnapshot(storageManager)
+	})
 
 	// Extensions are installed packages that may carry a browser half and a WASM
 	// backend. The host is the sandbox; the manager owns the package directory and the
@@ -756,6 +770,12 @@ func run() error {
 		Ops: systemOps,
 		// The auto backup schedule the process is actually running with.
 		BackupSchedule: backupScheduleHandler,
+		// Runtime media storage: read for site administrators, applied by the platform
+		// administrator, persisted next to the database and effective immediately.
+		StorageAdmin: storageadmin.NewHandler(storageManager, storageadmin.HandlerConfig{
+			Audit:  auditStore,
+			Logger: logger,
+		}),
 		// Public path resolution for the page server plus the site level redirect
 		// rules the permalink change depends on.
 		Redirect: redirect.NewHandler(redirectService, redirect.HandlerConfig{
@@ -1333,6 +1353,7 @@ func buildSystemHandler(
 	ctx context.Context,
 	cfg config.Config,
 	logger *slog.Logger,
+	storage func() system.StorageRuntime,
 ) *system.Handler {
 	if systemMetricsDisabled() {
 		logger.Info("system metrics panel disabled by PP_SYSTEM_METRICS")
@@ -1349,6 +1370,7 @@ func buildSystemHandler(
 				return string(principal.Role), true
 			},
 			Deployment: func() config.Config { return cfg },
+			Storage:    storage,
 		})
 	}
 	appDirs := make([]string, 0, 3)
@@ -1381,8 +1403,11 @@ func buildSystemHandler(
 			return string(principal.Role), true
 		},
 		// Beta 1.2: the storage and access panels report the values this process really
-		// loaded, so a site owner can tell a saved setting from an applied one.
+		// loaded, so a site owner can tell a saved setting from an applied one. The
+		// storage rows come from the runtime manager, which may have been changed since
+		// boot; the rest stays the .env snapshot.
 		Deployment: func() config.Config { return cfg },
+		Storage:    storage,
 	})
 }
 
@@ -1779,6 +1804,32 @@ func backupMediaRoots(cfg config.Config) []backup.MediaRoot {
 		}
 	}
 	return roots
+}
+
+// backupRootsFromManager translates the runtime roots to the backup port.
+func backupRootsFromManager(manager *storageadmin.Manager) []backup.MediaRoot {
+	roots := manager.MediaRoots()
+	out := make([]backup.MediaRoot, 0, len(roots))
+	for _, root := range roots {
+		out = append(out, backup.MediaRoot{Alias: root.Alias, Driver: root.Driver, Dir: root.Dir})
+	}
+	return out
+}
+
+// storageRuntimeSnapshot maps the manager view onto the system package's
+// dependency-free mirror, keeping the transport layer out of the storage package.
+func storageRuntimeSnapshot(manager *storageadmin.Manager) system.StorageRuntime {
+	status := manager.Status()
+	rows := make([]system.EffectiveStorage, 0, len(status.Effective))
+	for _, row := range status.Effective {
+		rows = append(rows, system.EffectiveStorage{
+			Scope: row.Scope, Driver: row.Driver, LocalDir: row.LocalDir,
+			S3Bucket: row.S3Bucket, S3Region: row.S3Region, S3Prefix: row.S3Prefix,
+		})
+	}
+	return system.StorageRuntime{
+		Rows: rows, Live: status.Live, Source: status.Source, UpdatedAt: status.UpdatedAt,
+	}
 }
 
 // buildStorage selects the media storage implementations.

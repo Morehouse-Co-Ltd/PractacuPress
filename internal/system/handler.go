@@ -23,12 +23,16 @@ type HandlerConfig struct {
 	// endpoint failing closed with 500 while the resource panel keeps working, which
 	// is the right trade for a composition root that was not updated.
 	Deployment func() config.Config
+	// Storage overlays the media storage rows with the values the runtime manager
+	// is actually serving. Nil keeps the pure env snapshot (the pre-runtime view).
+	Storage func() StorageRuntime
 }
 
 // Handler serves the resource snapshot of this installation.
 type Handler struct {
 	latest     func() Snapshot
 	deployment func() config.Config
+	storage    func() StorageRuntime
 	principal  PrincipalFunc
 }
 
@@ -43,7 +47,7 @@ func NewHandler(latest func() Snapshot, cfg HandlerConfig) *Handler {
 	if principal == nil {
 		principal = func(*gin.Context) (string, bool) { return "", false }
 	}
-	return &Handler{latest: latest, deployment: cfg.Deployment, principal: principal}
+	return &Handler{latest: latest, deployment: cfg.Deployment, storage: cfg.Storage, principal: principal}
 }
 
 // Routes mounts the system endpoints under /api/v1.

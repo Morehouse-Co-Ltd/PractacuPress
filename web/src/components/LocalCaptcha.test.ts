@@ -174,4 +174,64 @@ describe('LocalCaptchaField', () => {
       answer: { tiles: [0, 4] },
     });
   });
+
+  it('进度条随已选数量更新，并带可读的 aria 数值', async () => {
+    await mount(
+      baseChallenge({
+        kind: 'click',
+        width: 320,
+        height: 200,
+        image: 'data:image/png;base64,picture',
+        target_count: 3,
+      }),
+    );
+
+    const picture = container.querySelector('img');
+    expect(picture).not.toBeNull();
+    stubRect(picture as Element, 320, 200);
+
+    const progress = () =>
+      container.querySelector('.captcha-progress')?.getAttribute('aria-valuenow');
+    expect(progress()).toBe('0');
+    expect(container.querySelector('.captcha-progress-fill')).not.toBeNull();
+
+    await click(picture as Element, 80, 50);
+    expect(progress()).toBe('1');
+  });
+
+  it('卡片头部展示题型提示，验证通过后切换为已完成状态', async () => {
+    const { verify, onToken } = await mount(
+      baseChallenge({
+        kind: 'slider',
+        width: 320,
+        height: 180,
+        background: 'data:image/png;base64,background',
+        piece: 'data:image/png;base64,piece',
+        piece_size: 52,
+        piece_top: 40,
+        max_offset: 268,
+      }),
+    );
+
+    // 头部属于卡片结构：图标 + 标题 + 题型提示。这里只断言「存在且非空」，
+    // 具体中文/英文文案由 i18n 覆盖测试守，避免改一句话就弄断交互测试。
+    expect(container.querySelector('.captcha-field')?.getAttribute('data-state')).toBe('challenge');
+    const head = container.querySelector('.captcha-head');
+    expect(head).not.toBeNull();
+    expect(head?.querySelector('.captcha-head-icon svg')).not.toBeNull();
+    expect(head?.querySelector('.captcha-head-title')?.textContent?.trim()).toBeTruthy();
+    expect(head?.querySelector('.captcha-head-hint')?.textContent?.trim()).toBeTruthy();
+
+    await act(async () => {
+      button('验证').click();
+    });
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(onToken).toHaveBeenCalledWith('solved-token');
+
+    // 通过后同一张卡片切到已完成态：出现完成徽标与成功提示，题目本体收起。
+    expect(container.querySelector('.captcha-field')?.getAttribute('data-state')).toBe('solved');
+    expect(container.querySelector('.captcha-head .badge')).not.toBeNull();
+    expect(container.querySelector('.captcha-done')).not.toBeNull();
+    expect(container.querySelector('.captcha-stage')).toBeNull();
+  });
 });

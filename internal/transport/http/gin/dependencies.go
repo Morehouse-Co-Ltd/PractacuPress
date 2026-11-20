@@ -28,6 +28,7 @@ import (
 	"github.com/practacu/practacu-press/internal/redirect"
 	"github.com/practacu/practacu-press/internal/safety"
 	"github.com/practacu/practacu-press/internal/site"
+	"github.com/practacu/practacu-press/internal/storageadmin"
 	"github.com/practacu/practacu-press/internal/system"
 	"github.com/practacu/practacu-press/internal/taxonomy"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/middleware"
@@ -148,6 +149,9 @@ type Dependencies struct {
 	Ops *system.OpsHandler
 	// BackupSchedule mounts the automatic backup status endpoint.
 	BackupSchedule *backup.ScheduleHandler
+	// StorageAdmin mounts the runtime storage read/apply endpoints. Nil keeps them
+	// out of the process for partial routers that do not own deployment storage.
+	StorageAdmin *storageadmin.Handler
 	// Newsletter mounts the public subscription endpoints, the account preference and
 	// the site level subscriber, template, log and send endpoints.
 	Newsletter *newsletter.Handler

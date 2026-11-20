@@ -18,6 +18,16 @@ const fragment: Dictionary = {
   '已完成本地人机验证。': 'Local human verification complete.',
   '答案不正确或已过期，请重新作答。':
     'The answer was wrong or expired. Please solve the new challenge.',
+
+  // 卡片头与进度
+  '安全验证': 'Security check',
+  '已完成': 'Completed',
+  '作答进度': 'Answer progress',
+  '拖动拼图对齐缺口': 'Drag the piece into the gap',
+  '点选图中的星星': 'Click every star',
+  '选出含圆形的格子': 'Pick the tiles with a circle',
+
+  // 按钮（标签保持不变，只换语言）
   验证: 'Verify',
   换一题: 'New challenge',
   重选: 'Clear selection',

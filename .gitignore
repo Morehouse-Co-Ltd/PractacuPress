@@ -26,6 +26,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# 根目录启动/打包脚本已下架，统一走 scripts/（旧副本留在本机但不入库）
+/启动.bat
+/打包.bat
+
 # Windows 启动器打包产物
 /release/
 

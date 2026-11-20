@@ -103,8 +103,12 @@ type Config struct {
 	DSN         string
 	Snapshotter Snapshotter
 	MediaRoots  []MediaRoot
-	Designs     DesignSource
-	BackupDir   string
+	// MediaRootsProvider, when set, is read at the start of every archive. The
+	// runtime storage manager uses it so a strategy switch is reflected without a
+	// process restart. MediaRoots stays as the static CLI/test form.
+	MediaRootsProvider func() []MediaRoot
+	Designs            DesignSource
+	BackupDir          string
 	// SchemaVersion is the migration level this binary expects.
 	SchemaVersion string
 	// EncryptionKey enables at-rest encryption of whole-instance packages. It
@@ -123,16 +127,17 @@ type Config struct {
 
 // Service owns package creation, verification, restore and site transfer.
 type Service struct {
-	driver        string
-	dsn           string
-	snapshotter   Snapshotter
-	mediaRoots    []MediaRoot
-	designs       DesignSource
-	backupDir     string
-	schemaVersion string
-	appVersion    string
-	now           func() time.Time
-	encryptionKey []byte
+	driver             string
+	dsn                string
+	snapshotter        Snapshotter
+	mediaRoots         []MediaRoot
+	mediaRootsProvider func() []MediaRoot
+	designs            DesignSource
+	backupDir          string
+	schemaVersion      string
+	appVersion         string
+	now                func() time.Time
+	encryptionKey      []byte
 
 	sites    SiteReader
 	content  ContentStore
@@ -162,20 +167,21 @@ func NewService(cfg Config) (*Service, error) {
 		return nil, err
 	}
 	return &Service{
-		driver:        cfg.Driver,
-		dsn:           cfg.DSN,
-		snapshotter:   cfg.Snapshotter,
-		mediaRoots:    append([]MediaRoot(nil), cfg.MediaRoots...),
-		designs:       cfg.Designs,
-		backupDir:     cfg.BackupDir,
-		schemaVersion: cfg.SchemaVersion,
-		appVersion:    cfg.AppVersion,
-		now:           cfg.Now,
-		encryptionKey: key,
-		sites:         cfg.Sites,
-		content:       cfg.Content,
-		taxonomy:      cfg.Taxonomy,
-		media:         cfg.Media,
+		driver:             cfg.Driver,
+		dsn:                cfg.DSN,
+		snapshotter:        cfg.Snapshotter,
+		mediaRoots:         append([]MediaRoot(nil), cfg.MediaRoots...),
+		mediaRootsProvider: cfg.MediaRootsProvider,
+		designs:            cfg.Designs,
+		backupDir:          cfg.BackupDir,
+		schemaVersion:      cfg.SchemaVersion,
+		appVersion:         cfg.AppVersion,
+		now:                cfg.Now,
+		encryptionKey:      key,
+		sites:              cfg.Sites,
+		content:            cfg.Content,
+		taxonomy:           cfg.Taxonomy,
+		media:              cfg.Media,
 	}, nil
 }
 
@@ -196,6 +202,15 @@ func normalizeEncryptionKey(key []byte) ([]byte, error) {
 
 // BackupDir returns the directory packages are written to.
 func (s *Service) BackupDir() string { return s.backupDir }
+
+// mediaRootList resolves the roots for one archive. The provider is read on every
+// call so a runtime strategy switch is visible to the next backup.
+func (s *Service) mediaRootList() []MediaRoot {
+	if s.mediaRootsProvider != nil {
+		return s.mediaRootsProvider()
+	}
+	return s.mediaRoots
+}
 
 // requirePlatformAdmin guards deployment wide data.
 func requirePlatformAdmin(actor Actor) error {

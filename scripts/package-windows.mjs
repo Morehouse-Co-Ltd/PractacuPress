@@ -272,7 +272,7 @@ function printHelp() {
   release/PractacuPress-Windows-<x64|arm64>.zip
   release/PractacuPress-Windows-<x64|arm64>.zip.sha256
 
-更省事的方式：在仓库根目录双击 打包.bat（内部调用 scripts/package.ps1）。`);
+更省事的方式：在仓库根目录运行 powershell -ExecutionPolicy Bypass -File scripts/package.ps1。`);
 }
 
 function step(text) {

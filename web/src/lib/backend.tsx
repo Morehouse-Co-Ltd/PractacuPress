@@ -87,6 +87,8 @@ import type {
   SiteDomainVerificationResult,
   SiteImportReport,
   SiteIPRule,
+  StorageApplyRequest,
+  StorageStatus,
   Subscriber,
   SystemLogEntry,
   SystemMetrics,
@@ -151,6 +153,8 @@ export type {
   ResolveKind,
   ResolveResult,
   SiteActivityItem,
+  StorageApplyRequest,
+  StorageStatus,
   Subscriber,
   SubscriberStatus,
   SystemLogEntry,
@@ -713,6 +717,20 @@ export interface Backend {
    * 储存策略与访问/域名页面用它显示「生效值」，避免用户以为改完设置就立刻生效。
    */
   effectiveConfig(): Promise<EffectiveConfig>;
+  /**
+   * 运行期储存状态（可选，Beta 1.2）。
+   *
+   * 旧后端没有 `/system/storage`，页面据此退回 `effectiveConfig()`；演示后端有
+   * 一份内存实现，但不落盘、也不会真的切换存储。响应里不含任何密钥。
+   */
+  storageStatus?(): Promise<StorageStatus>;
+  /**
+   * 立即应用储存设置（可选，仅平台管理员）。
+   *
+   * 返回应用后的状态；服务端拒绝时抛 `ApiError`（problem JSON）。不支持的后端
+   * 只保留本地保存，页面不显示「立即应用」。
+   */
+  applyStorage?(request: StorageApplyRequest): Promise<StorageStatus>;
   /**
    * 请求日志查看器（Beta 1.2，契约 K 节）：服务端环形缓冲的最近请求元数据。
    */

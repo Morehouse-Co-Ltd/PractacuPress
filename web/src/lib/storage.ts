@@ -1,9 +1,12 @@
 import type {
   StorageAllocationEntry,
+  StorageApplyRequest,
+  StorageApplyStrategy,
   StorageDriver,
   StorageScope,
   StorageScopeAllocation,
   StorageSettings,
+  StorageStatus,
   StorageStrategy,
   WebConfig,
 } from '../types';
@@ -15,11 +18,15 @@ import { settingInt, settingText } from './settings';
  *
  * 模型是一串用户自己维护的命名策略（storage strategy）：每套策略描述一个
  * 存储目标（本地目录或 S3 兼容的云对象存储），四个用途（文章媒体 / 站点图片 /
- * 用户头像 / 用户数据与附件）各自挑一套。浏览器只保存选择，并把选择翻译成
- * 可直接粘贴的 API `.env` 片段；真正的存储由 API 启动时读取的 `STORAGE_*`
- * 环境变量决定，所以切换后必须重启，已上传的文件不会自动搬运。
+ * 用户头像 / 用户数据与附件）各自挑一套或多套。平台管理员保存后，页面把设置交给
+ * `PUT /system/storage` 立即应用：API 写进服务器的 `data/storage-settings.json`
+ * 并马上换用（优先于 `.env` 里的 `STORAGE_*`），配额与多策略切换也由服务端在
+ * 写入时执行，无需重启，已上传的文件不会自动搬运。
  *
- * 服务器契约（`internal/platform/config/config.go`）只有**一套全局**
+ * 没有运行期应用权限、演示模式或旧后端时，页面只把选择翻译成可直接粘贴的
+ * `.env` 片段，由部署方自己写进服务器再重启。
+ *
+ * 部署片段对应的服务器契约（`internal/platform/config/config.go`）只有**一套全局**
  * `STORAGE_DRIVER` + 一套全局 S3 凭据，外加每个用途可选的
  * `STORAGE_<SCOPE>_DRIVER|LOCAL_DIR|S3_BUCKET|S3_PREFIX` 覆盖。于是生成片段时
  * 把「被最多用途使用的策略」当作全局策略（数量并列取数组里靠前的），其余用途
@@ -807,4 +814,170 @@ export function buildStorageEnvSnippet(
     }
   }
   return lines.join('\n');
+}
+
+/* ------------------------- 运行期应用（GET / PUT /system/storage） ------------------------- */
+
+/** 归一化后的四个用途分配；旧对象缺字段时回落到默认值。 */
+function normalizedAllocations(
+  settings: StorageSettings,
+): Record<StorageScope, StorageScopeAllocation> {
+  return settings.allocations ?? defaultStorage().allocations!;
+}
+
+/** 单个用途的分配：只保留服务端认识的字段，顺序就是写入顺序。 */
+function allocationPayload(allocation: StorageScopeAllocation): StorageScopeAllocation {
+  return {
+    mode: allocation.mode,
+    entries: allocation.entries.map((entry) => ({
+      strategy_id: entry.strategy_id,
+      quota_gb: entry.quota_gb,
+    })),
+    overflow: allocation.overflow,
+  };
+}
+
+/**
+ * 把本页设置翻译成 `PUT /api/v1/system/storage` 的请求体。
+ *
+ * - `strategies` 保持配置顺序，只提交服务端认识的字段；`secretDrafts` 里
+ *   **去空白后非空**的草稿才会变成 `s3_secret_key`——密钥只随这一次请求提交，
+ *   不写进浏览器配置，也不会回显；
+ * - `scopes` 取每个用途分配顺序的第一套（服务端主策略）；
+ * - `allocations` 四个用途全带上：`mode`、有序 `entries`（`strategy_id` +
+ *   `quota_gb`）与 `overflow` 由服务端在写入时执行，配额不再只是页面的计划；
+ * - `max_upload_mb` 与 `s3_public_base_url` 只是页面提示，不提交。
+ */
+export function storageApplyPayload(
+  settings: StorageSettings,
+  secretDrafts: Record<string, string> = {},
+): StorageApplyRequest {
+  const normalized = normalizeStorage(settings);
+  const allocations = normalizedAllocations(normalized);
+  const scopes: Record<string, string> = {};
+  for (const scope of STORAGE_SCOPES) {
+    scopes[scope] =
+      allocations[scope].entries[0]?.strategy_id ?? normalized.scopes[scope];
+  }
+  return {
+    global_strategy_id: globalStrategyOf(normalized).id,
+    strategies: normalized.strategies.map((strategy) => {
+      const out: StorageApplyStrategy = {
+        id: strategy.id,
+        name: strategy.name,
+        driver: strategy.driver,
+        local_dir: strategy.local_dir,
+        s3_bucket: strategy.s3_bucket,
+        s3_prefix: strategy.s3_prefix,
+        s3_endpoint: strategy.s3_endpoint,
+        s3_region: strategy.s3_region,
+        s3_access_key: strategy.s3_access_key,
+      };
+      const secret = (secretDrafts[strategy.id] ?? '').trim();
+      if (secret) out.s3_secret_key = secret;
+      return out;
+    }),
+    scopes,
+    allocations: {
+      content: allocationPayload(allocations.content),
+      site: allocationPayload(allocations.site),
+      avatar: allocationPayload(allocations.avatar),
+      attachment: allocationPayload(allocations.attachment),
+    },
+  };
+}
+
+/**
+ * 「部署签名」：只包含真正影响「上传写到哪里、写满怎么办」的字段。
+ *
+ * 用于判断一次保存之后是否需要重新应用：与上次应用成功时的签名相同就跳过。
+ * 顺序固定（策略按配置顺序、用途按 `STORAGE_SCOPES`、条目按写入顺序），内容
+ * 相同的设置永远得到相同的签名。**不含任何密钥**：Secret Key 只存在于组件状态；
+ * Access Key 的值会进签名（它不是密钥，本来就保存在本地配置里）。改名、改目录、
+ * 改桶、改 endpoint / 区域、改用途指向、改配额 / 模式 / 顺序 / overflow 都会让
+ * 签名变化；`max_upload_mb` 与 `s3_public_base_url` 只是页面提示，不进签名。
+ */
+export function storageApplySignature(settings: StorageSettings): string {
+  const normalized = normalizeStorage(settings);
+  const allocations = normalizedAllocations(normalized);
+  return JSON.stringify({
+    global_strategy_id: globalStrategyOf(normalized).id,
+    strategies: normalized.strategies.map((strategy) => [
+      strategy.id,
+      strategy.name,
+      strategy.driver,
+      strategy.local_dir,
+      strategy.s3_bucket,
+      strategy.s3_prefix,
+      strategy.s3_endpoint,
+      strategy.s3_region,
+      strategy.s3_access_key,
+    ]),
+    scopes: STORAGE_SCOPES.map((scope) => [scope, normalized.scopes[scope]]),
+    allocations: STORAGE_SCOPES.map((scope) => [
+      scope,
+      allocations[scope].mode,
+      allocations[scope].entries.map((entry) => [entry.strategy_id, entry.quota_gb]),
+      allocations[scope].overflow,
+    ]),
+  });
+}
+
+/**
+ * 把服务端运行期状态还原成页面可编辑的设置。
+ *
+ * 服务端只回传「有没有保存凭据」，不回传 Access Key / Secret；因此同名策略
+ * 的 Access Key 与公开访问地址从本机配置里沿用，其余字段（目录、桶、前缀、
+ * endpoint、区域、分配与配额）以服务端为准。这样在另一台电脑打开页面时，
+ * 看到的是真正在跑的设置，而不是本机缓存的默认值。
+ */
+export function storageSettingsFromStatus(
+  status: StorageStatus,
+  local: StorageSettings,
+): StorageSettings {
+  if (!status.strategies.length) return normalizeStorage(local);
+
+  const localById = new Map(local.strategies.map((strategy) => [strategy.id, strategy]));
+  const strategies: StorageStrategy[] = status.strategies.map((strategy) => {
+    const cached = localById.get(strategy.id);
+    return {
+      id: strategy.id,
+      name: strategy.name || cached?.name || strategy.id,
+      driver: strategy.driver,
+      local_dir: strategy.local_dir,
+      s3_bucket: strategy.s3_bucket,
+      s3_prefix: strategy.s3_prefix,
+      s3_endpoint: strategy.s3_endpoint,
+      s3_region: strategy.s3_region,
+      s3_access_key: cached?.s3_access_key ?? '',
+      s3_public_base_url: cached?.s3_public_base_url ?? '',
+    };
+  });
+
+  const allocations = {} as Record<StorageScope, StorageScopeAllocation>;
+  const scopes = {} as Record<StorageScope, string>;
+  for (const scope of STORAGE_SCOPES) {
+    const runtime = status.allocations?.[scope];
+    const primary = status.scopes[scope] || strategies[0].id;
+    const entries: StorageAllocationEntry[] =
+      runtime && runtime.entries.length
+        ? runtime.entries.map((entry) => ({
+            strategy_id: entry.strategy_id,
+            quota_gb: entry.quota_gb,
+          }))
+        : [{ strategy_id: primary, quota_gb: 0 }];
+    allocations[scope] = {
+      mode: runtime?.mode === 'quota' ? 'quota' : 'single',
+      entries,
+      overflow: runtime?.overflow === 'stop' ? 'stop' : 'switch',
+    };
+    scopes[scope] = entries[0].strategy_id;
+  }
+
+  return normalizeStorage({
+    strategies,
+    scopes,
+    allocations,
+    max_upload_mb: local.max_upload_mb,
+  });
 }

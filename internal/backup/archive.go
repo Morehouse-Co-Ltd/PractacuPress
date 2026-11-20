@@ -347,8 +347,9 @@ func (s *Service) addMedia(
 	builder *zipBuilder,
 	createdAt time.Time,
 ) (MediaInfo, error) {
-	info := MediaInfo{Included: false, Roots: make([]MediaRootInfo, 0, len(s.mediaRoots))}
-	for _, root := range s.mediaRoots {
+	roots := s.mediaRootList()
+	info := MediaInfo{Included: false, Roots: make([]MediaRootInfo, 0, len(roots))}
+	for _, root := range roots {
 		rootInfo := MediaRootInfo{Alias: root.Alias, Driver: root.Driver}
 		if root.Driver != "local" {
 			info.Roots = append(info.Roots, rootInfo)

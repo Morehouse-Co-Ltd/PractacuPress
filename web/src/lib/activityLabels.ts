@@ -49,6 +49,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'moderation.report.ban': '封禁被举报账户',
   'platform.site.created': '创建新站点',
   'platform.site.entered': '进入站点',
+  // Beta 1.2：平台管理员在储存页应用了新策略。
+  'system.storage.updated': '修改储存策略',
   // 演示模式的上传动作（真实后端暂未写入这条审计码）。
   'media.uploaded': '上传媒体',
 };

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"net/http"
@@ -137,6 +138,103 @@ func TestLocalChallengeKindsRotate(t *testing.T) {
 	for _, kind := range LocalKinds {
 		require.Positive(t, seen[kind], "the provider never issued a %s challenge", kind)
 	}
+}
+
+// TestLocalConsecutiveChallengesNeverRepeatKind keeps the rotation promise honest.
+// A script that recognises one interaction must not be able to guess that the next
+// request asks for the same one, so the kind is redrawn from the two others.
+func TestLocalConsecutiveChallengesNeverRepeatKind(t *testing.T) {
+	store := newLocalTestStore(t)
+	var previous LocalKind
+	for i := 0; i < 30; i++ {
+		challenge, err := store.Issue(SceneLogin)
+		require.NoError(t, err)
+		require.NotEqual(t, previous, challenge.Kind,
+			"issue %d repeated the previous kind %q", i, challenge.Kind)
+		previous = challenge.Kind
+	}
+}
+
+// TestLocalKindCandidatesSkipOnlyThePreviousKind pins the rotation maths: from a
+// valid previous kind the next one is drawn from exactly the other two, which is
+// what makes the choice both varied and uniform.
+func TestLocalKindCandidatesSkipOnlyThePreviousKind(t *testing.T) {
+	for _, kind := range LocalKinds {
+		candidates := localKindCandidates(kind)
+		require.Len(t, candidates, len(LocalKinds)-1)
+		require.NotContains(t, candidates, kind)
+	}
+	require.ElementsMatch(t, LocalKinds, localKindCandidates(LocalKind("")))
+}
+
+// TestRandomBelowStaysInRangeAndRejectsAnEmptyRange pins the contract the scene
+// generators rely on: [0, max), and a loud error when there is nothing to draw.
+func TestRandomBelowStaysInRangeAndRejectsAnEmptyRange(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		value, err := randomBelow(7)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, value, 0)
+		require.Less(t, value, 7)
+	}
+
+	only, err := randomBelow(1)
+	require.NoError(t, err)
+	require.Zero(t, only)
+
+	_, err = randomBelow(0)
+	require.Error(t, err)
+	_, err = randomBelow(-3)
+	require.Error(t, err)
+}
+
+// TestLocalChallengeContentVariesAcrossIssues keeps the visual randomness from
+// regressing into one cached scene: if the generators stopped consulting the RNG,
+// every slider would drop on the same offset and every select grid would offer the
+// same cells. Rotation guarantees each kind appears ~7 times in 20 issues.
+func TestLocalChallengeContentVariesAcrossIssues(t *testing.T) {
+	store := newLocalTestStore(t)
+	sliderTargets := map[int]bool{}
+	clickTargets := map[string]bool{}
+	selectTargets := map[string]bool{}
+
+	for i := 0; i < 20; i++ {
+		challenge, answer, err := store.IssueWithAnswer(SceneLogin)
+		require.NoError(t, err)
+		switch challenge.Kind {
+		case LocalKindSlider:
+			require.NotNil(t, answer.X, "a slider challenge must expect an X offset")
+			sliderTargets[*answer.X] = true
+		case LocalKindClick:
+			var key strings.Builder
+			for _, point := range answer.Points {
+				fmt.Fprintf(&key, "%d:%d;", point.X, point.Y)
+			}
+			clickTargets[key.String()] = true
+		case LocalKindSelect:
+			selectTargets[fmt.Sprint(answer.Tiles)] = true
+		}
+	}
+
+	require.Greater(t, len(sliderTargets), 1, "slider targets never varied in 20 issues")
+	require.Greater(t, len(clickTargets), 1, "click points never varied in 20 issues")
+	require.Greater(t, len(selectTargets), 1, "select cell sets never varied in 20 issues")
+}
+
+// TestLocalCorrectAnswersAreAcceptedPerKind covers the success branch per kind.
+// The near-miss test above burns its challenge with a wrong answer and then asks
+// for a fresh one of the same kind; rotation now makes the fresh kind differ, so
+// this test is the one that actually proves each kind accepts its own answer.
+func TestLocalCorrectAnswersAreAcceptedPerKind(t *testing.T) {
+	store := newLocalTestStore(t)
+	accepted := map[LocalKind]bool{}
+	for i := 0; i < 60 && len(accepted) < len(LocalKinds); i++ {
+		challenge, expected, err := store.IssueWithAnswer(SceneLogin)
+		require.NoError(t, err)
+		_, _, err = store.Solve(challenge.ID, expected, SceneLogin)
+		require.NoError(t, err, "the right %s answer must be accepted", challenge.Kind)
+		accepted[challenge.Kind] = true
+	}
+	require.Len(t, accepted, len(LocalKinds))
 }
 
 func assertLocalPointsInside(t *testing.T, points []LocalPoint, width, height int) {

@@ -2412,9 +2412,10 @@ export interface StorageScopeAllocation {
 /**
  * 一套命名的储存策略。
  *
- * 浏览器只能记录部署意图：真正用到哪种存储由 API 进程启动时的 `STORAGE_*`
- * 环境变量决定。后台把「策略 + 用途分配」翻译成可直接粘贴的 `.env` 片段，
- * 切换后需要重启 API，已有文件不会自动搬家。云对象存储兼容任何 S3 实现
+ * 平台管理员在后台保存后会立即应用：API 把设置写进 `data/storage-settings.json`
+ * 并马上换用，无需重启；这个文件优先于 `.env` 里的 `STORAGE_*` 变量。没有运行期
+ * 应用权限（或旧后端）时，后台仍能把「策略 + 用途分配」翻译成可粘贴的 `.env`
+ * 片段，但需要部署方自己重启。已有文件不会自动搬家。云对象存储兼容任何 S3 实现
  * （AWS S3、MinIO、阿里云 OSS、腾讯云 COS 等）；公开读权限与防盗链由桶策略
  * 或 CDN 决定。
  */
@@ -2436,8 +2437,9 @@ export interface StorageStrategy {
   /** 区域；SDK 对 MinIO 也要求一个值，留空时按 us-east-1 处理。 */
   s3_region: string;
   /**
-   * 访问密钥 ID。可以保存在本地安装配置里；密钥（secret）不保存，
-   * 只存在于页面的组件状态，用于生成 `.env` 片段。
+   * 访问密钥 ID。可以保存在本地安装配置里，也会随「立即应用」请求提交；
+   * 密钥（secret）不保存：只存在于页面的组件状态，用于一次应用请求或生成
+   * `.env` 片段，应用成功后立即清空，也不会回显。
    */
   s3_access_key: string;
   /**
@@ -2468,6 +2470,94 @@ export interface StorageSettings {
   allocations?: Record<StorageScope, StorageScopeAllocation>;
   /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 决定。 */
   max_upload_mb: number;
+}
+
+/**
+ * 服务端返回的一套策略的运行时状态（`GET /system/storage`）。
+ *
+ * 只说明「有没有保存 Access Key / 密钥」，永远不回传密钥值本身；页面上的密钥
+ * 输入框只存在于组件状态里。
+ */
+export interface StorageRuntimeStrategy {
+  id: string;
+  name: string;
+  driver: StorageDriver;
+  local_dir: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  s3_endpoint: string;
+  s3_region: string;
+  has_access_key: boolean;
+  has_secret: boolean;
+}
+
+/**
+ * 服务端某个用途里的一套策略分配。
+ *
+ * `used_bytes` 是服务端统计到的已用容量（页面只展示，不参与判断）；
+ * `current` 标记当前写入实际落在这套策略上（写满后会按 `overflow` 移动）。
+ */
+export interface StorageRuntimeAllocationEntry {
+  strategy_id: string;
+  quota_gb: number;
+  used_bytes: number;
+  current: boolean;
+}
+
+/** 服务端某个用途的完整分配：模式、写入顺序与服务端实测用量。 */
+export interface StorageRuntimeAllocation {
+  mode: StorageAllocationMode;
+  entries: StorageRuntimeAllocationEntry[];
+  overflow: StorageOverflowPolicy;
+}
+
+/**
+ * `GET /system/storage` 的响应。
+ *
+ * `live` 表示后台保存的策略是否已经在当前 API 进程里生效；`source` 说明生效值
+ * 来自运行期保存（`saved`，优先于 `.env`）还是部署环境变量（`env`）。旧后端
+ * 不返回这个端点，页面会退回 `/system/effective-config`。响应里没有任何密钥。
+ */
+export interface StorageStatus {
+  live: boolean;
+  source: 'env' | 'saved';
+  /** 最近一次把后台设置应用到进程的时间（RFC 3339）；`env` 来源时为 null。 */
+  updated_at?: string | null;
+  /** 被最多用途使用的那套策略 id（部署片段里的全局策略）。 */
+  global_strategy_id: string;
+  strategies: StorageRuntimeStrategy[];
+  scopes: Record<string, string>;
+  /** 每个用途的服务端分配与实测用量；旧后端缺省。 */
+  allocations?: Record<string, StorageRuntimeAllocation>;
+  /** 当前进程实际生效的位置：`global` 一行 + 四个用途各一行。 */
+  effective: EffectiveStorageScope[];
+}
+
+/** 应用储存设置时提交的一套策略；`s3_secret_key` 只在本次输入了新密钥时出现。 */
+export interface StorageApplyStrategy {
+  id: string;
+  name: string;
+  driver: StorageDriver;
+  local_dir: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  s3_endpoint: string;
+  s3_region: string;
+  s3_access_key: string;
+  s3_secret_key?: string;
+}
+
+/**
+ * `PUT /system/storage` 的请求体（平台管理员）。
+ *
+ * `allocations` 必须包含全部四个用途：服务端按它执行容量切换，配额、顺序与
+ * `overflow` 都在写入时真正生效，不再只是页面上的计划。
+ */
+export interface StorageApplyRequest {
+  global_strategy_id: string;
+  strategies: StorageApplyStrategy[];
+  scopes: Record<string, string>;
+  allocations: Record<StorageScope, StorageScopeAllocation>;
 }
 
 export type LoadingPreset =
@@ -3027,9 +3117,9 @@ export interface ExtensionSummary {
 /**
  * 服务端「真实生效」的部署配置快照（Beta 1.2）。
  *
- * 后台的储存策略与访问/域名页面记录的是部署意图，真正生效的是 API 进程启动时读到的
- * 环境变量。这个结构让页面能同时显示「计划值」与「生效值」，用户不会再以为改了设置
- * 就立刻生效。任何密钥都不在这里出现。
+ * 对访问/域名这类只能部署时决定的配置，生效值来自 API 进程启动时读到的环境变量；
+ * 储存策略则可能来自运行期保存并立即应用的值（`storage_source`）。这个结构让页面
+ * 能同时显示「计划值」与「生效值」。任何密钥都不在这里出现。
  */
 export interface EffectiveStorageScope {
   /** `global` 或四个用途之一。 */
@@ -3048,5 +3138,15 @@ export interface EffectiveConfig {
   mail: { configured: boolean; encryption?: string; from?: string };
   /** 进程内的生效值与站点配置里的计划值不一致时为 true。 */
   restart_required: boolean;
+  /**
+   * 储存设置是否已经在当前进程生效（Beta 1.2 运行期应用）。
+   *
+   * 旧后端不返回这三个字段，页面把 `undefined` 当作「无法判断」处理。
+   */
+  storage_live?: boolean;
+  /** 储存生效值的来源：后台保存的 `data/storage-settings.json`，或部署环境变量。 */
+  storage_source?: 'env' | 'saved';
+  /** 最近一次应用储存设置的时间（RFC 3339）；来自环境变量时为 null。 */
+  storage_updated_at?: string | null;
   captured_at: string;
 }

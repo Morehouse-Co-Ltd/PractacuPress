@@ -84,6 +84,10 @@ var (
 	// ErrStorageMissing means the deployment has no storage adapter, so bytes cannot
 	// be accepted or inspected.
 	ErrStorageMissing = errors.New("media: storage is not configured")
+	// ErrStorageQuotaExceeded means every storage strategy assigned to the purpose is
+	// full (or the allocation says stop at the first full entry). The bytes are not
+	// written anywhere.
+	ErrStorageQuotaExceeded = errors.New("media: storage quota exceeded")
 	// ErrAssetInUse means content still points at the asset, so removing it would break
 	// a page silently: nothing reports a missing image, the author only notices later.
 	ErrAssetInUse = errors.New("media: asset is still referenced by content")

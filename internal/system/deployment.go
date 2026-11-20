@@ -74,6 +74,17 @@ type EffectiveMail struct {
 	From string `json:"from"`
 }
 
+// StorageRuntime is the live storage view supplied by the runtime manager.
+//
+// Rows are the resolved targets the media adapters would use for a new write;
+// Live means the process can switch adapters without a restart.
+type StorageRuntime struct {
+	Rows      []EffectiveStorage
+	Live      bool
+	Source    string
+	UpdatedAt *time.Time
+}
+
 // DeploymentSnapshot is the deployment configuration this process loaded at startup.
 //
 // It is read only by construction: nothing in the API can write an environment
@@ -83,6 +94,14 @@ type DeploymentSnapshot struct {
 	CORS    EffectiveCORS      `json:"cors"`
 	Domains EffectiveDomains   `json:"domains"`
 	Mail    EffectiveMail      `json:"mail"`
+	// StorageLive reports that the storage rows below come from the runtime manager
+	// and can be changed from the dashboard without a restart.
+	StorageLive bool `json:"storage_live"`
+	// StorageSource is "saved" when data/storage-settings.json is in force and "env"
+	// when the deployment variables are still the source.
+	StorageSource string `json:"storage_source"`
+	// StorageUpdatedAt is when the running document was applied; nil for .env.
+	StorageUpdatedAt *time.Time `json:"storage_updated_at"`
 	// RestartRequired tells the settings pages that the values stored in the site
 	// configuration are not the ones this process runs with.
 	//
@@ -146,6 +165,13 @@ func (h *Handler) EffectiveConfig(c *gin.Context) {
 	}
 
 	snapshot := deploymentSnapshot(h.deployment(), time.Now().UTC())
+	if h.storage != nil {
+		runtime := h.storage()
+		snapshot.Storage = runtime.Rows
+		snapshot.StorageLive = runtime.Live
+		snapshot.StorageSource = runtime.Source
+		snapshot.StorageUpdatedAt = runtime.UpdatedAt
+	}
 	// The values change only when the process restarts, but caching them would hide
 	// the one transition the panel exists to report, and the payload is tiny.
 	c.Header("Cache-Control", "no-store")
@@ -176,6 +202,8 @@ func deploymentSnapshot(cfg config.Config, now time.Time) DeploymentSnapshot {
 			Encryption: cfg.SMTPEncryption,
 			From:       cfg.SMTPFrom,
 		},
+		StorageLive:     false,
+		StorageSource:   "env",
 		RestartRequired: true,
 		CapturedAt:      now,
 	}

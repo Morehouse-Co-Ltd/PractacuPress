@@ -26,7 +26,7 @@ interface EndpointGroup {
  * 标识，保持原样，不随语言变化。
  *
  * 这份表按「前端实际调用」整理，不是 openapi.yaml 的镜像：契约规模在页头单独
- * 标注（当前 83 条路径 / 100 个操作），站点根路径的 sitemap / robots 与内置
+ * 标注（当前 158 条路径 / 190 个操作），站点根路径的 sitemap / robots 与内置
  * `/api/v1/docs` 不在契约路径表里。
  */
 function endpointGroups(t: (text: string) => string): EndpointGroup[] {
@@ -547,7 +547,7 @@ function DocsWorkspace() {
               </div>
               <div className="mini-row">
                 <span className="mini-label">{t('契约规模')}</span>
-                <span className="mini-value">{t('83 条路径 / 100 个操作（OpenAPI 0.1.0）')}</span>
+                <span className="mini-value">{t('158 条路径 / 190 个操作（OpenAPI 0.1.0）')}</span>
               </div>
               <div className="mini-row">
                 <span className="mini-label">{t('站点文件')}</span>

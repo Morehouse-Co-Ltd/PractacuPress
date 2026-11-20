@@ -4,7 +4,7 @@
 
 | Site frontend (default theme: Original · paper light) | Admin dashboard |
 | :---: | :---: |
-| ![Site frontend](github/readme/frontend.png) | ![Admin dashboard](github/readme/admin.png) |
+| ![Site frontend](.github/readme/frontend.png) | ![Admin dashboard](.github/readme/admin.png) |
 
 > **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
 > A Go API with in-process security checks, and a React frontend plus admin — all aligned by one
@@ -15,10 +15,10 @@
 
 | | |
 | --- | --- |
-| **Small footprint** | The single API binary **embeds the entire frontend**; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The default container deployment is one image: the API with the frontend and security checks embedded. |
+| **Small footprint** | The single API binary **embeds the entire frontend**; the frontend build is about 1 MB gzipped. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The default container deployment is one image: the API with the frontend and security checks embedded. |
 | **Fast** | Requests pass through exactly one layer (Gin); Ent-generated code talks straight to `database/sql`; the pool and SQLite's WAL / busy_timeout are configured by the server itself. The frontend is a static single-page app with **no Node at runtime** and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets, while first-screen request coalescing and media lazy-loading are configurable in the admin. |
-| **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API with embedded frontend and in-process security) in one command. Backup means copying the `data/` directory. |
-| **Easy to make your own** | 3 built-in themes + 8 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 124 paths / 148 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
+| **Quick to run** | A seven-step setup wizard with live health checks: `docker compose up -d` starts the whole stack in one command (API with embedded frontend and in-process security); locally, run `scripts\dev.ps1` for the backend and `npm run dev` for the frontend. Backup means copying the `data/` directory. |
+| **Easy to make your own** | 3 built-in themes + 8 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 158 paths / 190 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
 
 **What it does**
 
@@ -50,7 +50,7 @@ A longer introduction (architecture, stack, engineering trade-offs, current stat
 - **Search**: the site header has a permanent search box that queries as you type (220 ms debounce, top 6 results), `/` focuses it, Enter opens the full result page; narrow screens keep only the magnifier.
 - **SEO**: title templates, description, keywords, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site-verification meta, a site-wide noindex switch, and a downloadable `sitemap.xml` / `robots.txt`. For the limits, see the notes in [Admin → SEO](web/src/pages/admin/Seo.tsx): tags are written into `<head>` by the frontend, so social crawlers that do not execute JS only ever see the defaults from `index.html`.
 - **Themes**: Admin → Theme settings switches colours, typography and single-column / cards / two-column layout together as a single "big theme". Built in: the original (paper-white, single column), Daylight (white daily front page, single-row pill tabs, full-bleed article cover, single-column article) and Night Flight (warm dark, two columns). The theme picker can import a JSON theme, export the current one, save it as a custom theme, and delete custom themes. Page composition, appearance (brand / footer) and loading animation share one navigation group; switching themes only replaces the default components while the home page still uses the default composition. Every part of the footer (brand title / subtitle / blurb, status chips, columns and their items, copyright and bottom note) can be customised item by item under Theme settings → Navigation and footer. The top navigation is fully configurable too: each tab can take a built-in icon and a left/right position, tabs reorder freely, and up to 8 second-level entries can hang off a tab — rendered either as a capsule bar under the header or folded into a dropdown. The top-left of the header (Night Flight) and the area above the footer bar can carry a row of configurable software / social shortcut links (GitHub, X, Mastodon, RSS, email, any website). Theme fine-tuning adds softening and transitions: background glow, component blending, transition duration and header blur, all of which degrade automatically when the system requests reduced motion. Night Flight's home article cards can further switch between "Cover on top" (the default) and "Blurred background" (the cover fills the whole card with a gaussian blur while the title and summary sit on a frosted panel inside); this only changes presentation, never the content or its order.
-- **Access and performance**: Admin → Access limits constrains page switches, page requests and concurrent pages per browser, and generates Nginx `limit_req` / `limit_conn` plus API `.env` snippets. Access and domains sets the primary domain, the alias allow-list, SSL certificates (Let's Encrypt / manual), CORS, cookie scope and trusted proxies; with no primary domain configured, production only allows direct access by public IP. Performance tuning reduces first-screen reads, coalesces duplicate requests and lazy-loads media, and generates gateway compression/caching plus API timeout and database pool parameters. Storage policies start from a global local directory or S3-compatible object storage (AWS, MinIO, Alibaba OSS, Tencent COS) and can then be overridden per purpose: article media, site images, user avatars and user data/attachments may each pick a local directory or a bucket/prefix, emitting `STORAGE_<SCOPE>_*` server snippets. Loading animation builds the frontend loading screen. All of these settings live in the local installation config; server parameters take effect once the snippet is deployed and the service restarted.
+- **Access and performance**: Admin → Access limits constrains page switches, page requests and concurrent pages per browser, and generates Nginx `limit_req` / `limit_conn` plus API `.env` snippets. Access and domains sets the primary domain, the alias allow-list, SSL certificates (Let's Encrypt / manual), CORS, cookie scope and trusted proxies; with no primary domain configured, production only allows direct access by public IP. Performance tuning reduces first-screen reads, coalesces duplicate requests and lazy-loads media, and generates gateway compression/caching plus API timeout and database pool parameters. Storage policies start from a global local directory or S3-compatible object storage (AWS, MinIO, Alibaba OSS, Tencent COS) and can then be overridden per purpose: article media, site images, user avatars and user data/attachments may each pick a local directory or a bucket/prefix. Each purpose can use a single strategy or switch between several by capacity: give each strategy a quota (0 = unlimited), then choose "switch to the next" or "stop uploading" when it fills; uploads over quota return 507 and stop writing. Saving applies the routing on the server immediately — no restart and no `STORAGE_*` snippet needed; the old `.env` snippet still works for offline deployments without the admin. Loading animation builds the frontend loading screen. The remaining access, performance and domain settings live in the local installation config; their server parameters take effect once the snippet is deployed and the service restarted.
 - **One-click reset**: page composition can restore the default components for the current home page or a custom page (title, path and publish state unchanged); Appearance can reset brand copy, home/page composition, loading animation, performance, access limits and access/domains by scope; Theme settings can restore the current theme definition or fall back to the original theme.
 
 ---
@@ -294,22 +294,25 @@ cannot bind, so 5173 is passed explicitly.)
 
 ### Windows local start
 
-Run **`启动.bat`** in the repository root (or double-click it):
+The repository no longer ships a launcher in its root (to keep machine-specific paths and window logic out of the release repository). Open two terminals:
 
-- on first run it executes `npm install` automatically when `web/node_modules` is missing;
-- it starts the Go API and SQLite in a dedicated window;
-- it starts the Vite frontend in a dedicated window (`http://127.0.0.1:5173`, proxying `/api` to 8080);
-- the browser opens `http://127.0.0.1:5173/?mode=live`: an existing real installation goes straight into the site, otherwise you enter the **real environment** setup wizard with 8080 auto-detected;
-- the API runs in desktop mode: the first account created in the wizard is the platform administrator;
-- if the API or the frontend is already running, they are reused rather than started twice on the same port.
+1. Backend (creates the database, builds and waits for `/api/healthz`):
 
-To check the environment without starting anything:
-
-```bat
-启动.bat --check
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
 ```
 
-To stop, press `Ctrl+C` in the "Practacu Press - API" window and close the "Practacu Press - Web" window.
+2. Frontend:
+
+```powershell
+cd web
+npm install
+npm run dev -- --port 5173
+```
+
+Open `http://127.0.0.1:5173/?mode=live`: an existing real installation goes straight into the site, otherwise you enter the **real environment** setup wizard. The API runs in desktop mode (`PP_DESKTOP=true`), and the first account created in the wizard is the platform administrator. If the API or the frontend is already running, it is reused rather than started twice on the same port.
+
+Press `Ctrl+C` in each terminal to stop.
 
 ### PowerShell start (backend only)
 
@@ -359,7 +362,7 @@ The first visit opens the setup wizard; with no backend you can choose demo data
 ### Windows portable package
 
 ```powershell
-# Double-click 打包.bat in the repository root, or:
+# From the repository root:
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 

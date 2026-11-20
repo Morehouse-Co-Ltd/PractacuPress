@@ -51,28 +51,64 @@ func (c *localCanvas) fill(col color.RGBA) {
 	}
 }
 
-// verticalGradient paints the whole canvas from top to bottom.
-func (c *localCanvas) verticalGradient(top, bottom color.RGBA) {
+// localGradientStop is one colour of a vertical gradient. Offsets are fractions
+// of the canvas height in [0, 1] and must be non-decreasing.
+type localGradientStop struct {
+	Offset float64
+	Color  color.RGBA
+}
+
+// gradient paints a multi-stop vertical gradient. The scenes use three or four
+// stops to suggest depth (sky, horizon, sunlight) without an image dependency.
+func (c *localCanvas) gradient(stops ...localGradientStop) {
+	if len(stops) == 0 {
+		return
+	}
 	rows := c.img.Rect.Dy()
+	columns := c.img.Rect.Dx()
 	for y := 0; y < rows; y++ {
 		t := 0.0
 		if rows > 1 {
 			t = float64(y) / float64(rows-1)
 		}
-		col := color.RGBA{
-			R: uint8(float64(top.R) + (float64(bottom.R)-float64(top.R))*t),
-			G: uint8(float64(top.G) + (float64(bottom.G)-float64(top.G))*t),
-			B: uint8(float64(top.B) + (float64(bottom.B)-float64(top.B))*t),
-			A: 255,
-		}
+		col := gradientColorAt(stops, t)
 		offset := y * c.img.Stride
-		for x := 0; x < c.img.Rect.Dx(); x++ {
+		for x := 0; x < columns; x++ {
 			c.img.Pix[offset+x*4] = col.R
 			c.img.Pix[offset+x*4+1] = col.G
 			c.img.Pix[offset+x*4+2] = col.B
 			c.img.Pix[offset+x*4+3] = col.A
 		}
 	}
+}
+
+// gradientColorAt samples the stop list at t, clamping outside the covered range.
+func gradientColorAt(stops []localGradientStop, t float64) color.RGBA {
+	if t <= stops[0].Offset {
+		return stops[0].Color
+	}
+	for index := 1; index < len(stops); index++ {
+		next := stops[index]
+		if t > next.Offset {
+			continue
+		}
+		previous := stops[index-1]
+		fraction := 1.0
+		if span := next.Offset - previous.Offset; span > 0 {
+			fraction = (t - previous.Offset) / span
+		}
+		return color.RGBA{
+			R: lerpLocalByte(previous.Color.R, next.Color.R, fraction),
+			G: lerpLocalByte(previous.Color.G, next.Color.G, fraction),
+			B: lerpLocalByte(previous.Color.B, next.Color.B, fraction),
+			A: 255,
+		}
+	}
+	return stops[len(stops)-1].Color
+}
+
+func lerpLocalByte(from, to uint8, fraction float64) uint8 {
+	return uint8(float64(from) + (float64(to)-float64(from))*fraction + 0.5)
 }
 
 // blendPixel composites col over one supersampled pixel.
@@ -129,6 +165,45 @@ func (c *localCanvas) rect(x0, y0, x1, y1 float64, col color.RGBA) {
 	for y := int(math.Floor(y0 * scale)); y <= int(math.Ceil(y1*scale)); y++ {
 		for x := int(math.Floor(x0 * scale)); x <= int(math.Ceil(x1*scale)); x++ {
 			c.blendPixel(x, y, col)
+		}
+	}
+}
+
+// roundedRect fills a rectangle with circular corners.
+//
+// A pixel is tested against the rounded shape as a whole instead of compositing
+// overlapping rectangles and corner discs: a translucent fill would otherwise
+// double-blend along the seams and show as darker bands.
+func (c *localCanvas) roundedRect(x0, y0, x1, y1, radius float64, col color.RGBA) {
+	if x1 <= x0 || y1 <= y0 {
+		return
+	}
+	if radius <= 0 {
+		c.rect(x0, y0, x1, y1, col)
+		return
+	}
+	scale := float64(localSupersample)
+	left, top := x0*scale, y0*scale
+	right, bottom := x1*scale, y1*scale
+	r := math.Min(radius, math.Min((x1-x0)/2, (y1-y0)/2)) * scale
+	r2 := r * r
+	for y := int(math.Floor(top)); y <= int(math.Ceil(bottom)); y++ {
+		centerY := float64(y) + 0.5
+		if centerY < top || centerY > bottom {
+			continue
+		}
+		dy := math.Max(top+r-centerY, 0)
+		dy = math.Max(dy, centerY-(bottom-r))
+		for x := int(math.Floor(left)); x <= int(math.Ceil(right)); x++ {
+			centerX := float64(x) + 0.5
+			if centerX < left || centerX > right {
+				continue
+			}
+			dx := math.Max(left+r-centerX, 0)
+			dx = math.Max(dx, centerX-(right-r))
+			if dx*dx+dy*dy <= r2 {
+				c.blendPixel(x, y, col)
+			}
 		}
 	}
 }
@@ -250,7 +325,13 @@ func darkenLocalDisc(src *image.RGBA, centerX, centerY, radius int, amount float
 }
 
 // strokeLocalDisc draws a light outline around a disc at final resolution.
-func strokeLocalDisc(src *image.RGBA, centerX, centerY, radius int, col color.RGBA) {
+//
+// col is an NRGBA (non-premultiplied) colour on purpose: image.RGBA stores
+// premultiplied alpha, and writing a translucent non-premultiplied colour straight
+// into it made the PNG encoder un-premultiply an invalid value, so the "light"
+// outline came out almost black. Set converts through NRGBA.RGBA(), which
+// premultiplies correctly.
+func strokeLocalDisc(src *image.RGBA, centerX, centerY, radius int, col color.NRGBA) {
 	outer := float64(radius) + 1.5
 	inner := float64(radius) - 1.5
 	for y := centerY - radius - 3; y <= centerY+radius+3; y++ {
@@ -262,7 +343,7 @@ func strokeLocalDisc(src *image.RGBA, centerX, centerY, radius int, col color.RG
 			dy := float64(y - centerY)
 			d := math.Sqrt(dx*dx + dy*dy)
 			if d <= outer && d >= inner {
-				src.SetRGBA(x, y, col)
+				src.Set(x, y, col)
 			}
 		}
 	}

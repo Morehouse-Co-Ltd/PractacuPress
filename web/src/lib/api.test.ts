@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { StorageApplyRequest } from '../types';
 import { ApiError, HttpBackend, fallbackProblem, isBackendOffline } from './api';
 import { configurePerformance, DEFAULT_PERFORMANCE } from './performance';
 
@@ -360,6 +361,138 @@ describe('HttpBackend two-factor login', () => {
       challenge_token: 'challenge-1',
       code: '123456',
     });
+  });
+});
+
+// 运行期储存契约：页面保存后立即应用，配额与多策略切换随 allocations 一起提交。
+describe('HttpBackend runtime storage', () => {
+  const status = {
+    live: true,
+    source: 'saved' as const,
+    updated_at: '2026-11-21T08:00:00Z',
+    global_strategy_id: 'local',
+    strategies: [
+      {
+        id: 'local',
+        name: '本地储存',
+        driver: 'local' as const,
+        local_dir: './data/media',
+        s3_bucket: '',
+        s3_prefix: '',
+        s3_endpoint: '',
+        s3_region: 'us-east-1',
+        has_access_key: false,
+        has_secret: false,
+      },
+    ],
+    scopes: { content: 'local', site: 'local', avatar: 'local', attachment: 'local' },
+    allocations: {
+      content: {
+        mode: 'quota' as const,
+        entries: [
+          { strategy_id: 'local', quota_gb: 10, used_bytes: 2048, current: true },
+        ],
+        overflow: 'switch' as const,
+      },
+    },
+    effective: [{ scope: 'global', driver: 'local', local_dir: './data/media' }],
+  };
+
+  it('clamps the request log limit to the server contract', async () => {
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ items: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    await backend.systemLogs({ limit: 200 });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('limit=100');
+    expect(calls[0]).not.toContain('limit=200');
+  });
+
+  it('reads the runtime storage status', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return jsonResponse(status);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    const result = await backend.storageStatus();
+
+    expect(calls[0].url).toBe('http://api.test/api/v1/system/storage');
+    expect((calls[0].init.method ?? 'GET').toUpperCase()).toBe('GET');
+    expect(result.allocations?.content.entries[0]).toEqual({
+      strategy_id: 'local',
+      quota_gb: 10,
+      used_bytes: 2048,
+      current: true,
+    });
+  });
+
+  it('applies storage with the documented payload', async () => {
+    const request: StorageApplyRequest = {
+      global_strategy_id: 'cos',
+      strategies: [
+        {
+          id: 'cos',
+          name: '图床 COS',
+          driver: 's3',
+          local_dir: '',
+          s3_bucket: 'practacu-press',
+          s3_prefix: 'sites/main',
+          s3_endpoint: 'https://cos.example.com',
+          s3_region: 'ap-shanghai',
+          s3_access_key: 'AKIDEXAMPLE',
+          s3_secret_key: 's3cr3t-value',
+        },
+      ],
+      scopes: { content: 'cos', site: 'cos', avatar: 'cos', attachment: 'cos' },
+      allocations: {
+        content: {
+          mode: 'quota',
+          entries: [
+            { strategy_id: 'cos', quota_gb: 10 },
+            { strategy_id: 'cos', quota_gb: 0 },
+          ],
+          overflow: 'stop',
+        },
+        site: {
+          mode: 'single',
+          entries: [{ strategy_id: 'cos', quota_gb: 0 }],
+          overflow: 'switch',
+        },
+        avatar: {
+          mode: 'single',
+          entries: [{ strategy_id: 'cos', quota_gb: 0 }],
+          overflow: 'switch',
+        },
+        attachment: {
+          mode: 'single',
+          entries: [{ strategy_id: 'cos', quota_gb: 0 }],
+          overflow: 'switch',
+        },
+      },
+    };
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return jsonResponse(status);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const backend = new HttpBackend({ base: 'http://api.test', onExpired: () => undefined });
+
+    const result = await backend.applyStorage(request);
+
+    expect(calls[0].url).toBe('http://api.test/api/v1/system/storage');
+    expect((calls[0].init.method ?? 'GET').toUpperCase()).toBe('PUT');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual(request);
+    expect(result.live).toBe(true);
   });
 });
 

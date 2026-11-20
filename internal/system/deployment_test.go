@@ -48,9 +48,14 @@ func deploymentConfigForTest() config.Config {
 }
 
 // newDeploymentEngine mounts the effective configuration route the way the router does.
-func newDeploymentEngine(t *testing.T, deployment func() config.Config) *gin.Engine {
+func newDeploymentEngine(t *testing.T, deployment func() config.Config, storage ...func() StorageRuntime) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+
+	var storageSource func() StorageRuntime
+	if len(storage) > 0 {
+		storageSource = storage[0]
+	}
 
 	handler := NewHandler(func() Snapshot { return Snapshot{} }, HandlerConfig{
 		Principal: func(c *gin.Context) (string, bool) {
@@ -61,6 +66,7 @@ func newDeploymentEngine(t *testing.T, deployment func() config.Config) *gin.Eng
 			return role, true
 		},
 		Deployment: deployment,
+		Storage:    storageSource,
 	})
 	return mountDeploymentRoutes(handler)
 }
@@ -316,6 +322,36 @@ func TestEffectiveConfigReturnsTheSnapshot(t *testing.T) {
 	require.True(t, body.RestartRequired)
 	require.False(t, body.CapturedAt.IsZero())
 	require.WithinDuration(t, time.Now().UTC(), body.CapturedAt, time.Minute)
+	require.NotContains(t, recorder.Body.String(), "s3-secret-do-not-leak")
+}
+
+func TestEffectiveConfigOverlaysRuntimeStorage(t *testing.T) {
+	updated := time.Now().UTC()
+	engine := newDeploymentEngine(t, deploymentConfigForTest, func() StorageRuntime {
+		return StorageRuntime{
+			Rows:      []EffectiveStorage{{Scope: "global", Driver: "local", LocalDir: "/runtime/media"}},
+			Live:      true,
+			Source:    "saved",
+			UpdatedAt: &updated,
+		}
+	})
+
+	recorder := requestEffectiveConfig(t, engine, string(site.RolePlatformAdmin))
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var body struct {
+		Storage          []EffectiveStorage `json:"storage"`
+		StorageLive      bool               `json:"storage_live"`
+		StorageSource    string             `json:"storage_source"`
+		StorageUpdatedAt *time.Time         `json:"storage_updated_at"`
+		RestartRequired  bool               `json:"restart_required"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	require.True(t, body.StorageLive)
+	require.Equal(t, "saved", body.StorageSource)
+	require.NotNil(t, body.StorageUpdatedAt)
+	require.Equal(t, "/runtime/media", body.Storage[0].LocalDir)
+	require.True(t, body.RestartRequired)
 	require.NotContains(t, recorder.Body.String(), "s3-secret-do-not-leak")
 }
 

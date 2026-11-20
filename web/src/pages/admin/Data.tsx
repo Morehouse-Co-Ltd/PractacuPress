@@ -34,6 +34,7 @@ import {
   type IoContent,
   type ParsedImport,
 } from '../../lib/wordpressIo';
+import { BackupScheduleSection } from './BackupSchedule';
 
 /** 把一次下载的 blob 交给浏览器保存；文件名由服务端 Content-Disposition 提供。 */
 function saveBlob(blob: Blob, filename: string) {
@@ -1346,6 +1347,9 @@ export function DataPage() {
           )}
         </div>
       </section>
+
+      {/* 自动备份计划只读、只对平台管理员可见，紧跟在实例备份之后。 */}
+      {me?.role === 'platform_admin' ? <BackupScheduleSection /> : null}
 
       <section className="panel">
         <div className="panel-head">

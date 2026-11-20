@@ -3,6 +3,7 @@ package captcha
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"sort"
 )
 
@@ -47,6 +48,8 @@ const (
 	localPromptSelect = "选择所有包含圆形的图片（共 %d 张）。"
 )
 
+// localShapePalette is the figure fill palette. The tones stay saturated and dark
+// enough to stand out on both the pastel select tiles and the click backdrop.
 var localShapePalette = []color.RGBA{
 	{R: 0xE0, G: 0x4A, B: 0x4A, A: 255},
 	{R: 0x2F, G: 0x6F, B: 0xE8, A: 255},
@@ -54,14 +57,29 @@ var localShapePalette = []color.RGBA{
 	{R: 0xE4, G: 0x8B, B: 0x1F, A: 255},
 	{R: 0x7A, G: 0x5C, B: 0xE0, A: 255},
 	{R: 0x0E, G: 0x7C, B: 0x93, A: 255},
+	{R: 0xC7, G: 0x3D, B: 0x6B, A: 255},
+	{R: 0x3B, G: 0x4F, B: 0xB5, A: 255},
 }
 
+// localCellBackgrounds are the painted tiles of the select grid: warm paper
+// tones rather than a single flat grey, so adjacent cells read as separate cards.
 var localCellBackgrounds = []color.RGBA{
 	{R: 0xF6, G: 0xE7, B: 0xD5, A: 255},
 	{R: 0xDD, G: 0xEC, B: 0xF5, A: 255},
 	{R: 0xE4, G: 0xF0, B: 0xE0, A: 255},
 	{R: 0xF3, G: 0xE3, B: 0xEE, A: 255},
 	{R: 0xEF, G: 0xEB, B: 0xDD, A: 255},
+	{R: 0xE8, G: 0xE6, B: 0xF7, A: 255},
+	{R: 0xF7, G: 0xE9, B: 0xE1, A: 255},
+}
+
+// localFlowerPalette dots the meadow of the slider scene. The colours are the
+// only decoration drawn on grass, so they stay warm and light.
+var localFlowerPalette = []color.RGBA{
+	{R: 0xF2, G: 0x7D, B: 0x9A, A: 255},
+	{R: 0xF6, G: 0xC0, B: 0x4B, A: 255},
+	{R: 0xC9, G: 0x8B, B: 0xE0, A: 255},
+	{R: 0xFF, G: 0xF6, B: 0xE0, A: 255},
 }
 
 // The decoy shapes for the select kind. A circle is deliberately absent: it is
@@ -108,8 +126,8 @@ func generateLocalSlider() (LocalChallenge, LocalAnswer, error) {
 	centerX, centerY := targetX+pieceRadius, targetY+pieceRadius
 	piece := extractLocalDisc(sceneImage, centerX, centerY, pieceRadius)
 	darkenLocalDisc(sceneImage, centerX, centerY, pieceRadius, 0.55)
-	strokeLocalDisc(sceneImage, centerX, centerY, pieceRadius, color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 235})
-	strokeLocalDisc(piece, pieceRadius, pieceRadius, pieceRadius, color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 235})
+	strokeLocalDisc(sceneImage, centerX, centerY, pieceRadius, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 235})
+	strokeLocalDisc(piece, pieceRadius, pieceRadius, pieceRadius, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 235})
 
 	background, err := encodeLocalImage(sceneImage)
 	if err != nil {
@@ -134,43 +152,194 @@ func generateLocalSlider() (LocalChallenge, LocalAnswer, error) {
 	}, LocalAnswer{X: &answerX}, nil
 }
 
+// paintLocalSliderScene layers the landscape behind the socket: sky, sun, clouds,
+// mountain ridges, hills, meadow and flowers, plus a few birds. Every accent is
+// drawn from the same crypto RNG as the answer, so no two challenges share a
+// picture, and none of it moves the socket: the caller cuts that out at the answer
+// coordinates after this returns.
 func paintLocalSliderScene(c *localCanvas) error {
-	c.verticalGradient(
-		color.RGBA{R: 0x9F, G: 0xCB, B: 0xE8, A: 255},
-		color.RGBA{R: 0xFB, G: 0xE7, B: 0xCB, A: 255},
+	c.gradient(
+		localGradientStop{Offset: 0, Color: color.RGBA{R: 0x6C, G: 0xA6, B: 0xE2, A: 255}},
+		localGradientStop{Offset: 0.5, Color: color.RGBA{R: 0xB9, G: 0xDD, B: 0xF4, A: 255}},
+		localGradientStop{Offset: 0.78, Color: color.RGBA{R: 0xE8, G: 0xEF, B: 0xE2, A: 255}},
+		localGradientStop{Offset: 1, Color: color.RGBA{R: 0xFB, G: 0xE8, B: 0xCB, A: 255}},
 	)
 
-	sunX, err := randBetween(48, localSliderWidth-48)
+	sunX, err := randBetween(44, localSliderWidth-44)
 	if err != nil {
 		return err
 	}
-	sunY, err := randBetween(28, 62)
+	sunY, err := randBetween(26, 62)
 	if err != nil {
 		return err
 	}
-	c.circle(float64(sunX), float64(sunY), 22, color.RGBA{R: 0xFF, G: 0xD5, B: 0x8A, A: 255})
+	// Nested translucent discs read as a radial glow after the supersampled
+	// downscale; a blur pass would need a dependency the offline build does not want.
+	c.circle(float64(sunX), float64(sunY), 33, color.RGBA{R: 0xFF, G: 0xE6, B: 0xAE, A: 24})
+	c.circle(float64(sunX), float64(sunY), 27, color.RGBA{R: 0xFF, G: 0xE8, B: 0xB4, A: 32})
+	c.circle(float64(sunX), float64(sunY), 22, color.RGBA{R: 0xFF, G: 0xE4, B: 0xA6, A: 42})
+	c.circle(float64(sunX), float64(sunY), 18, color.RGBA{R: 0xFF, G: 0xD3, B: 0x78, A: 255})
+	c.circle(float64(sunX-6), float64(sunY-6), 6.5, color.RGBA{R: 0xFF, G: 0xF2, B: 0xCC, A: 235})
 
-	for i := 0; i < 2; i++ {
-		cloudX, err := randBetween(36, localSliderWidth-96)
+	clouds, err := randBetween(2, 3)
+	if err != nil {
+		return err
+	}
+	for index := 0; index < clouds; index++ {
+		cloudX, err := randBetween(18, localSliderWidth-112)
 		if err != nil {
 			return err
 		}
-		cloudY, err := randBetween(20, 74)
+		cloudY, err := randBetween(20, 76)
 		if err != nil {
 			return err
 		}
-		white := color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 190}
-		c.circle(float64(cloudX), float64(cloudY), 13, white)
-		c.circle(float64(cloudX+16), float64(cloudY-6), 17, white)
-		c.circle(float64(cloudX+34), float64(cloudY), 12, white)
+		white := color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: uint8(168 + index*14)}
+		c.circle(float64(cloudX), float64(cloudY), 12, white)
+		c.circle(float64(cloudX+15), float64(cloudY-7), 16, white)
+		c.circle(float64(cloudX+34), float64(cloudY-2), 13, white)
+		c.circle(float64(cloudX+48), float64(cloudY+3), 9, white)
+		c.roundedRect(float64(cloudX-2), float64(cloudY+2), float64(cloudX+56), float64(cloudY+11), 6, white)
 	}
 
-	c.circle(float64(localSliderWidth*28/100), float64(localSliderHeight+28), 92,
-		color.RGBA{R: 0x7C, G: 0xAE, B: 0x69, A: 255})
-	c.circle(float64(localSliderWidth*84/100), float64(localSliderHeight+44), 118,
-		color.RGBA{R: 0x5C, G: 0x93, B: 0x55, A: 255})
-	c.circle(float64(localSliderWidth*57/100), float64(localSliderHeight+52), 74,
-		color.RGBA{R: 0x6D, G: 0xA0, B: 0x5B, A: 255})
+	// Two mountain layers: the far range is paler, the near range carries a snow
+	// cap. The ridges sit low so the socket area stays a calm field of colour.
+	ranges := []struct {
+		base  float64
+		color color.RGBA
+		snow  color.RGBA
+	}{
+		{
+			base:  148,
+			color: color.RGBA{R: 0xA6, G: 0xBB, B: 0xD6, A: 255},
+			snow:  color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 138},
+		},
+		{
+			base:  156,
+			color: color.RGBA{R: 0x8B, G: 0xA6, B: 0xC7, A: 255},
+			snow:  color.RGBA{R: 0xF6, G: 0xFA, B: 0xFF, A: 120},
+		},
+	}
+	for _, layer := range ranges {
+		peaks, err := randBetween(3, 4)
+		if err != nil {
+			return err
+		}
+		segment := (float64(localSliderWidth) + 24) / float64(peaks)
+		type localPeak struct{ x, y float64 }
+		peaksSeen := make([]localPeak, 0, peaks)
+		ridge := []localPointF{{X: -12, Y: layer.base}}
+		for index := 0; index < peaks; index++ {
+			startX := -12 + float64(index)*segment
+			peakHeight, err := randBetween(20, 44)
+			if err != nil {
+				return err
+			}
+			// Keep the summit somewhere in the middle third of its segment: at the
+			// edges the ridge would climb too steeply to read as a mountain range.
+			shaft, err := randBetween(35, 65)
+			if err != nil {
+				return err
+			}
+			peakX := startX + segment*float64(shaft)/100
+			peakY := layer.base - float64(peakHeight)
+			peaksSeen = append(peaksSeen, localPeak{x: peakX, y: peakY})
+			ridge = append(ridge, localPointF{X: peakX, Y: peakY})
+			valleyDepth, err := randBetween(4, 14)
+			if err != nil {
+				return err
+			}
+			ridge = append(ridge, localPointF{
+				X: startX + segment*0.92,
+				Y: layer.base - float64(valleyDepth),
+			})
+		}
+		ridge = append(ridge, localPointF{X: float64(localSliderWidth) + 12, Y: layer.base})
+		c.polygon(ridge, layer.color)
+
+		for _, peak := range peaksSeen {
+			capHeight := 15.0
+			c.polygon([]localPointF{
+				{X: peak.x, Y: peak.y},
+				{X: peak.x - capHeight*0.78, Y: peak.y + capHeight},
+				{X: peak.x + capHeight*0.78, Y: peak.y + capHeight},
+			}, layer.snow)
+		}
+	}
+
+	// Rolling hills in three greens, plus a lighter meadow strip at the bottom.
+	c.circle(float64(localSliderWidth*26/100), float64(localSliderHeight+24), 96,
+		color.RGBA{R: 0x86, G: 0xB5, B: 0x6E, A: 255})
+	c.circle(float64(localSliderWidth*83/100), float64(localSliderHeight+40), 120,
+		color.RGBA{R: 0x69, G: 0x9C, B: 0x59, A: 255})
+	c.circle(float64(localSliderWidth*55/100), float64(localSliderHeight+46), 76,
+		color.RGBA{R: 0x77, G: 0xA8, B: 0x60, A: 255})
+	c.circle(float64(localSliderWidth*5/100), float64(localSliderHeight+8), 62,
+		color.RGBA{R: 0x9A, G: 0xC1, B: 0x7A, A: 255})
+	c.roundedRect(-12, 166, float64(localSliderWidth)+12, float64(localSliderHeight)+12, 22,
+		color.RGBA{R: 0x7C, G: 0xAB, B: 0x5F, A: 255})
+
+	flowers, err := randBetween(5, 8)
+	if err != nil {
+		return err
+	}
+	for index := 0; index < flowers; index++ {
+		flowerX, err := randBetween(12, localSliderWidth-12)
+		if err != nil {
+			return err
+		}
+		flowerY, err := randBetween(164, localSliderHeight-7)
+		if err != nil {
+			return err
+		}
+		petal, err := pickLocalColor(localFlowerPalette)
+		if err != nil {
+			return err
+		}
+		petalRadius, err := randBetween(18, 26)
+		if err != nil {
+			return err
+		}
+		radius := float64(petalRadius) / 10
+		for step := 0; step < 4; step++ {
+			angle := float64(step)*math.Pi/2 + 0.4
+			c.circle(
+				float64(flowerX)+math.Cos(angle)*radius*1.35,
+				float64(flowerY)+math.Sin(angle)*radius*1.35,
+				radius, petal,
+			)
+		}
+		c.circle(float64(flowerX), float64(flowerY), radius*0.7,
+			color.RGBA{R: 0xFF, G: 0xF3, B: 0xC4, A: 255})
+	}
+
+	birds, err := randBetween(1, 3)
+	if err != nil {
+		return err
+	}
+	for index := 0; index < birds; index++ {
+		birdX, err := randBetween(30, localSliderWidth-40)
+		if err != nil {
+			return err
+		}
+		birdY, err := randBetween(24, 76)
+		if err != nil {
+			return err
+		}
+		wing, err := randBetween(5, 8)
+		if err != nil {
+			return err
+		}
+		span := float64(wing)
+		bird := color.RGBA{R: 0x3E, G: 0x55, B: 0x6B, A: 132}
+		for _, direction := range []float64{-1, 1} {
+			c.polygon([]localPointF{
+				{X: float64(birdX), Y: float64(birdY)},
+				{X: float64(birdX) + direction*span, Y: float64(birdY) - span*0.55},
+				{X: float64(birdX) + direction*span*0.78, Y: float64(birdY) + span*0.16},
+			}, bird)
+		}
+	}
 	return nil
 }
 
@@ -195,25 +364,8 @@ func generateLocalClick() (LocalChallenge, LocalAnswer, error) {
 	decoys := shapes[targetCount:]
 
 	canvas := newLocalCanvas(localClickWidth, localClickHeight)
-	canvas.verticalGradient(
-		color.RGBA{R: 0xE9, G: 0xEE, B: 0xF8, A: 255},
-		color.RGBA{R: 0xF9, G: 0xEF, B: 0xE2, A: 255},
-	)
-	for i := 0; i < 3; i++ {
-		bubbleX, err := randBetween(0, localClickWidth)
-		if err != nil {
-			return LocalChallenge{}, LocalAnswer{}, err
-		}
-		bubbleY, err := randBetween(0, localClickHeight)
-		if err != nil {
-			return LocalChallenge{}, LocalAnswer{}, err
-		}
-		radius, err := randBetween(40, 80)
-		if err != nil {
-			return LocalChallenge{}, LocalAnswer{}, err
-		}
-		canvas.circle(float64(bubbleX), float64(bubbleY), float64(radius),
-			color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 46})
+	if err := paintLocalClickBackdrop(canvas, localClickWidth, localClickHeight); err != nil {
+		return LocalChallenge{}, LocalAnswer{}, err
 	}
 
 	for _, decoy := range decoys {
@@ -232,7 +384,12 @@ func generateLocalClick() (LocalChallenge, LocalAnswer, error) {
 		return LocalChallenge{}, LocalAnswer{}, err
 	}
 	for _, target := range targets {
-		canvas.polygon(starPolygon(float64(target.X), float64(target.Y), 17, 8), starColor)
+		tx, ty := float64(target.X), float64(target.Y)
+		canvas.polygon(starPolygon(tx, ty+2.2, 18.4, 8.6),
+			color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 205})
+		canvas.polygon(starPolygon(tx+0.8, ty+3, 17, 8),
+			color.RGBA{R: 0x1F, G: 0x2A, B: 0x37, A: 52})
+		canvas.polygon(starPolygon(tx, ty, 17, 8), starColor)
 	}
 
 	picture, err := encodeLocalImage(canvas.finish())
@@ -248,6 +405,72 @@ func generateLocalClick() (LocalChallenge, LocalAnswer, error) {
 		Image:       picture,
 		TargetCount: targetCount,
 	}, LocalAnswer{Points: targets}, nil
+}
+
+// paintLocalClickBackdrop paints the paper behind the click figures: a three-stop
+// wash, four translucent colour blooms, a frosted panel, a faint dot lattice and two
+// wide rings. The texture is deliberately soft: the decoys include a circle, so a
+// crisp background circle would look like another figure.
+func paintLocalClickBackdrop(c *localCanvas, width, height int) error {
+	c.gradient(
+		localGradientStop{Offset: 0, Color: color.RGBA{R: 0xE9, G: 0xEE, B: 0xF8, A: 255}},
+		localGradientStop{Offset: 0.55, Color: color.RGBA{R: 0xF7, G: 0xEF, B: 0xE5, A: 255}},
+		localGradientStop{Offset: 1, Color: color.RGBA{R: 0xEC, G: 0xF2, B: 0xE6, A: 255}},
+	)
+
+	blooms := []color.RGBA{
+		{R: 0x9F, G: 0xC4, B: 0xF0, A: 54},
+		{R: 0xF2, G: 0xC9, B: 0xA8, A: 48},
+		{R: 0xAF, G: 0xD8, B: 0xC2, A: 46},
+		{R: 0xD8, G: 0xBF, B: 0xEC, A: 42},
+	}
+	for _, bloom := range blooms {
+		bloomX, err := randBetween(0, width)
+		if err != nil {
+			return err
+		}
+		bloomY, err := randBetween(0, height)
+		if err != nil {
+			return err
+		}
+		radius, err := randBetween(42, 92)
+		if err != nil {
+			return err
+		}
+		c.circle(float64(bloomX), float64(bloomY), float64(radius), bloom)
+	}
+
+	// The frosted panel keeps the dots and rings from reading as part of the wash.
+	c.roundedRect(10, 10, float64(width)-10, float64(height)-10, 22,
+		color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 34})
+
+	for y := 26; y < height; y += 29 {
+		for x := 24; x < width; x += 29 {
+			c.circle(float64(x), float64(y), 1.5, color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 62})
+		}
+	}
+
+	rings, err := randBetween(1, 2)
+	if err != nil {
+		return err
+	}
+	for index := 0; index < rings; index++ {
+		ringX, err := randBetween(20, width-20)
+		if err != nil {
+			return err
+		}
+		ringY, err := randBetween(20, height-20)
+		if err != nil {
+			return err
+		}
+		radius, err := randBetween(46, 86)
+		if err != nil {
+			return err
+		}
+		c.ring(float64(ringX), float64(ringY), float64(radius), 2,
+			color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 58})
+	}
+	return nil
 }
 
 func generateLocalSelect() (LocalChallenge, LocalAnswer, error) {
@@ -266,18 +489,32 @@ func generateLocalSelect() (LocalChallenge, LocalAnswer, error) {
 	width := localSelectCols * localSelectCell
 	height := localSelectRows * localSelectCell
 	canvas := newLocalCanvas(width, height)
-	canvas.fill(color.RGBA{R: 0xE3, G: 0xE8, B: 0xEF, A: 255})
+	canvas.gradient(
+		localGradientStop{Offset: 0, Color: color.RGBA{R: 0xE4, G: 0xE9, B: 0xF3, A: 255}},
+		localGradientStop{Offset: 0.55, Color: color.RGBA{R: 0xF3, G: 0xEF, B: 0xE6, A: 255}},
+		localGradientStop{Offset: 1, Color: color.RGBA{R: 0xE8, G: 0xF1, B: 0xE7, A: 255}},
+	)
 
 	for row := 0; row < localSelectRows; row++ {
 		for col := 0; col < localSelectCols; col++ {
 			index := row*localSelectCols + col
 			x0 := float64(col * localSelectCell)
 			y0 := float64(row * localSelectCell)
+			right := x0 + localSelectCell
+			bottom := y0 + localSelectCell
 			background, err := pickLocalColor(localCellBackgrounds)
 			if err != nil {
 				return LocalChallenge{}, LocalAnswer{}, err
 			}
-			canvas.rect(x0+3, y0+3, x0+localSelectCell-3, y0+localSelectCell-3, background)
+			// The same layered card treatment the form UI uses: a soft drop shadow,
+			// a white rim, then the tinted panel with a highlight along its top.
+			canvas.roundedRect(x0+5, y0+6, right-1, bottom-1, 17,
+				color.RGBA{R: 0x1F, G: 0x2A, B: 0x37, A: 30})
+			canvas.roundedRect(x0+3, y0+3, right-3, bottom-3, 16,
+				color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 148})
+			canvas.roundedRect(x0+5, y0+5, right-5, bottom-5, 14, background)
+			canvas.roundedRect(x0+10, y0+9, right-10, y0+19, 5,
+				color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 96})
 
 			centerX := x0 + localSelectCell/2
 			centerY := y0 + localSelectCell/2
@@ -314,7 +551,21 @@ func generateLocalSelect() (LocalChallenge, LocalAnswer, error) {
 }
 
 // drawLocalShape paints one of the geometric figures the challenges use.
+//
+// A pale halo and a soft shadow are laid down before the fill, which lifts the
+// figure off the painted paper and matches the card treatment of the rest of the
+// interface. Neither decoration changes the shape: a target and a decoy differ
+// only in colour and geometry, never in silhouette.
 func drawLocalShape(c *localCanvas, shape string, cx, cy, radius float64, col color.RGBA) {
+	fillLocalShape(c, shape, cx, cy, radius*1.14,
+		color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 205})
+	fillLocalShape(c, shape, cx+radius*0.05, cy+radius*0.14, radius,
+		color.RGBA{R: 0x1F, G: 0x2A, B: 0x37, A: 52})
+	fillLocalShape(c, shape, cx, cy, radius, col)
+}
+
+// fillLocalShape rasterises one figure without any decoration.
+func fillLocalShape(c *localCanvas, shape string, cx, cy, radius float64, col color.RGBA) {
 	switch shape {
 	case "circle":
 		c.circle(cx, cy, radius, col)

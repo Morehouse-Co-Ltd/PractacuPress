@@ -80,6 +80,9 @@ import type {
   SubscriberStatus,
   SystemLogEntry,
   SystemMetrics,
+  StorageApplyRequest,
+  StorageRuntimeAllocation,
+  StorageStatus,
   EffectiveConfig,
   TaxonomySettings,
   TaxonomyTerm,
@@ -456,6 +459,107 @@ const DEMO_EMAIL_TEMPLATES: {
   },
 ];
 
+/** 演示模式的四个储存用途；与 `lib/storage.ts` 的 `STORAGE_SCOPES` 顺序一致。 */
+const DEMO_STORAGE_SCOPES = ['content', 'site', 'avatar', 'attachment'] as const;
+
+/** 演示模式默认的那套本地策略 id；与 `DEFAULT_STRATEGY_ID` 保持一致。 */
+const DEMO_STORAGE_STRATEGY_ID = 'local';
+
+/**
+ * 构造演示模式的储存状态。
+ *
+ * 没有 `request` 时是默认的一套本地策略（来源 = 部署环境变量）；有 `request`
+ * 时按刚提交的设置回显。演示模式没有服务端计量，`used_bytes` 一律为 0；
+ * `current` 标在写入顺序的第一套上（单策略只有一套，多策略从第一套开始写）。
+ */
+function demoStorageStatus(
+  source: StorageStatus['source'],
+  request?: StorageApplyRequest,
+): StorageStatus {
+  const strategies = request
+    ? request.strategies.map((strategy) => ({
+        id: strategy.id,
+        name: strategy.name,
+        driver: strategy.driver,
+        local_dir: strategy.local_dir,
+        s3_bucket: strategy.s3_bucket,
+        s3_prefix: strategy.s3_prefix,
+        s3_endpoint: strategy.s3_endpoint,
+        s3_region: strategy.s3_region,
+        has_access_key: strategy.s3_access_key.trim() !== '',
+        has_secret: Boolean(strategy.s3_secret_key?.trim()),
+      }))
+    : [
+        {
+          id: DEMO_STORAGE_STRATEGY_ID,
+          name: '本地储存',
+          driver: 'local' as const,
+          local_dir: './data/media',
+          s3_bucket: '',
+          s3_prefix: '',
+          s3_endpoint: '',
+          s3_region: 'us-east-1',
+          has_access_key: false,
+          has_secret: false,
+        },
+      ];
+
+  const scopes: Record<string, string> = request
+    ? { ...request.scopes }
+    : Object.fromEntries(DEMO_STORAGE_SCOPES.map((scope) => [scope, DEMO_STORAGE_STRATEGY_ID]));
+
+  const allocations: Record<string, StorageRuntimeAllocation> = {};
+  for (const scope of DEMO_STORAGE_SCOPES) {
+    const allocation = request?.allocations?.[scope];
+    const entries =
+      allocation && allocation.entries.length
+        ? allocation.entries
+        : [
+            {
+              strategy_id: scopes[scope] ?? strategies[0].id,
+              quota_gb: 0,
+            },
+          ];
+    allocations[scope] = {
+      mode: allocation?.mode === 'quota' ? 'quota' : 'single',
+      overflow: allocation?.overflow === 'stop' ? 'stop' : 'switch',
+      entries: entries.map((entry, index) => ({
+        strategy_id: entry.strategy_id,
+        quota_gb: entry.quota_gb,
+        used_bytes: 0,
+        current: index === 0,
+      })),
+    };
+  }
+
+  const rowOf = (scope: string, strategy: (typeof strategies)[number]) => ({
+    scope,
+    driver: strategy.driver,
+    local_dir: strategy.local_dir,
+    s3_bucket: strategy.s3_bucket,
+    s3_region: strategy.s3_region,
+    s3_prefix: strategy.s3_prefix,
+  });
+  const strategyById = (id: string | undefined) =>
+    strategies.find((strategy) => strategy.id === id) ?? strategies[0];
+
+  return {
+    live: true,
+    source,
+    updated_at: source === 'saved' ? new Date().toISOString() : null,
+    global_strategy_id: request?.global_strategy_id ?? DEMO_STORAGE_STRATEGY_ID,
+    strategies,
+    scopes,
+    allocations,
+    effective: [
+      rowOf('global', strategyById(request?.global_strategy_id)),
+      ...DEMO_STORAGE_SCOPES.map((scope) =>
+        rowOf(scope, strategyById(scopes[scope])),
+      ),
+    ],
+  };
+}
+
 export class DemoBackend {
   readonly mode = 'demo' as const;
   readonly origin = 'demo://local';
@@ -491,6 +595,13 @@ export class DemoBackend {
   private emailTemplateOverrides = new Map<string, EmailTemplate>();
   /** 邮件发送日志（内存）；首次使用时生成一段演示历史。 */
   private emailLogs: EmailLog[] | null = null;
+  /**
+   * 运行期储存状态（内存）。
+   *
+   * 演示模式只在本页内存里模拟「保存后立即应用」；刷新页面就回到部署环境变量
+   * 的值，不伪装成真的切过存储，也不写任何文件。
+   */
+  private storageRuntime: StorageStatus | null = null;
 
   constructor() {
     const existing = loadState();
@@ -3245,7 +3356,36 @@ export class DemoBackend {
       mail: { configured: false },
       restart_required: false,
       captured_at: new Date().toISOString(),
+      storage_live: true,
+      storage_source: 'env',
+      storage_updated_at: null,
     };
+  }
+
+  /**
+   * 运行期储存状态（内存）。
+   *
+   * 默认是「部署环境变量」的一套本地策略；调用 `applyStorage` 之后变成
+   * 「后台设置」。刷新页面就回到默认值——演示模式不写文件，也不真的换存储。
+   */
+  async storageStatus(): Promise<StorageStatus> {
+    await wait(60);
+    this.requireRole('site_admin');
+    return this.storageRuntime ?? demoStorageStatus('env');
+  }
+
+  /**
+   * 立即应用储存设置（内存）。
+   *
+   * 只更新本页内存里的状态：演示模式没有服务端写入器，配额与多策略切换不会真的
+   * 执行；`used_bytes` 固定为 0，避免伪造服务端计量。
+   */
+  async applyStorage(request: StorageApplyRequest): Promise<StorageStatus> {
+    await wait(120);
+    this.requireRole('platform_admin');
+    const status = demoStorageStatus('saved', request);
+    this.storageRuntime = status;
+    return status;
   }
 
   /* ------------------------------------------------------------------ *

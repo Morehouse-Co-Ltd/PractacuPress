@@ -5572,6 +5572,59 @@ paths:
         '403':
           $ref: '#/components/responses/PermissionDenied'
 
+  /system/storage:
+    get:
+      tags: [system]
+      summary: Read the runtime media storage configuration
+      description: |
+        Returns the strategy document the process is actually serving, including the
+        server measured usage and the entry a new write would use. Secrets are never
+        returned: `has_access_key` and `has_secret` only say whether a value is saved.
+        A site administrator may read it; only the platform administrator may apply it.
+      responses:
+        '200':
+          description: The runtime storage view
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageStatus' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '500':
+          description: The handler was mounted without a storage manager.
+    put:
+      tags: [system]
+      summary: Apply media storage strategies at runtime
+      description: |
+        Requires a platform administrator seat. The server validates the document,
+        builds every referenced target, persists `data/storage-settings.json` and only
+        then swaps the adapters, so a failure leaves the previous storage serving. No
+        restart is required and existing objects are not migrated.
+
+        Capacity switching is enforced on upload: `single` ignores the quota of the
+        first entry; `quota` writes in entry order with `quota_gb` per entry (0 means
+        unlimited); `overflow: stop` refuses once the first entry is full and
+        `overflow: switch` continues to the next. When every entry is full the upload
+        fails with `507 storage_quota_exceeded`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StorageUpdateRequest' }
+      responses:
+        '200':
+          description: The newly applied runtime storage view
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageStatus' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
   /newsletter/subscribe:
     post:
       tags: [newsletter]
@@ -6118,6 +6171,7 @@ components:
             - invalid_database_driver
             - email_not_configured
             - quota_exceeded
+            - storage_quota_exceeded
         message: { type: string, description: Localised, may change. Clients branch on `code`. }
         details:
           type: object
@@ -7878,12 +7932,128 @@ components:
             configured: { type: boolean }
             encryption: { type: string }
             from: { type: string, description: Envelope sender only; the password is never returned. }
+        storage_live:
+          type: boolean
+          description: True when the storage rows below come from the runtime manager.
+        storage_source:
+          type: string
+          enum: [env, saved]
+          description: Saved means data/storage-settings.json is in force; env means the deployment variables.
+        storage_updated_at:
+          type: string
+          format: date-time
+          description: When the running storage document was applied; null for .env.
         restart_required:
           type: boolean
           description: |
-            True when the recorded intent differs from what the process loaded, which is
-            the cue for the dashboard to say "write the .env and restart the API".
+            True for the deployment values that still come from .env (CORS, domains, mail).
+            Storage is reported separately because it can be applied at runtime.
         captured_at: { type: string, format: date-time }
+
+    StorageStatus:
+      type: object
+      description: |
+        The runtime media storage document. Strategy secrets are absent by
+        construction; usage is server measured and refreshed on every request.
+      required: [live, source, global_strategy_id, strategies, scopes, allocations, effective]
+      properties:
+        live: { type: boolean, description: True when adapters can be swapped without a restart. }
+        source: { type: string, enum: [env, saved] }
+        updated_at: { type: string, format: date-time, description: Null when the running document came from .env. }
+        global_strategy_id: { type: string }
+        strategies:
+          type: array
+          items: { $ref: '#/components/schemas/StorageStrategyStatus' }
+        scopes:
+          type: object
+          additionalProperties: { type: string }
+        allocations:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/StorageAllocationStatus' }
+        effective:
+          type: array
+          items: { $ref: '#/components/schemas/EffectiveStorage' }
+
+    StorageStrategyStatus:
+      type: object
+      required: [id, name, driver, local_dir, s3_bucket, s3_prefix, s3_endpoint, s3_region, has_access_key, has_secret]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        driver: { type: string, enum: [local, s3] }
+        local_dir: { type: string }
+        s3_bucket: { type: string }
+        s3_prefix: { type: string }
+        s3_endpoint: { type: string }
+        s3_region: { type: string }
+        has_access_key: { type: boolean }
+        has_secret: { type: boolean }
+
+    StorageAllocationStatus:
+      type: object
+      required: [mode, entries, overflow]
+      properties:
+        mode: { type: string, enum: [single, quota] }
+        overflow: { type: string, enum: [switch, stop] }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/StorageAllocationEntryStatus' }
+
+    StorageAllocationEntryStatus:
+      type: object
+      required: [strategy_id, quota_gb, used_bytes, current]
+      properties:
+        strategy_id: { type: string }
+        quota_gb: { type: integer, minimum: 0, maximum: 1000000 }
+        used_bytes: { type: integer, minimum: 0 }
+        current: { type: boolean, description: True for the entry a new write would use now. }
+
+    StorageUpdateRequest:
+      type: object
+      required: [global_strategy_id, strategies, scopes, allocations]
+      properties:
+        global_strategy_id: { type: string }
+        strategies:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/StorageStrategyInput' }
+        scopes:
+          type: object
+          additionalProperties: { type: string }
+        allocations:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/StorageAllocationInput' }
+
+    StorageStrategyInput:
+      type: object
+      required: [id, name, driver]
+      properties:
+        id: { type: string, pattern: '^[a-z0-9_-]+$' }
+        name: { type: string, maxLength: 40 }
+        driver: { type: string, enum: [local, s3] }
+        local_dir: { type: string }
+        s3_bucket: { type: string }
+        s3_prefix: { type: string }
+        s3_endpoint: { type: string, format: uri }
+        s3_region: { type: string }
+        s3_access_key: { type: string }
+        s3_secret_key: { type: string, description: Write only; omitted from every response and never persisted in the browser. }
+
+    StorageAllocationInput:
+      type: object
+      required: [mode, entries, overflow]
+      properties:
+        mode: { type: string, enum: [single, quota] }
+        overflow: { type: string, enum: [switch, stop] }
+        entries:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [strategy_id, quota_gb]
+            properties:
+              strategy_id: { type: string }
+              quota_gb: { type: integer, minimum: 0, maximum: 1000000 }
 
     SystemMetrics:
       type: object

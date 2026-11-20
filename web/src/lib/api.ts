@@ -94,6 +94,8 @@ import type {
   Subscriber,
   SystemLogEntry,
   SystemMetrics,
+  StorageApplyRequest,
+  StorageStatus,
   EffectiveConfig,
   StepUpSettings,
   StepUpSettingsUpdate,
@@ -116,6 +118,7 @@ import { readCaptchaStatus, readLocalCaptchaChallenge } from './captcha';
 import type { ContactPayload } from './contactForm';
 import { t } from './i18n';
 import { currentPerformance } from './performance';
+import { clampRequestLogLimit } from './requestLogs';
 import { RequestCache } from './requestCache';
 import { withRefreshLock } from './sessionSync';
 import type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
@@ -1353,6 +1356,31 @@ export class HttpBackend {
     return this.performRequest<EffectiveConfig>('/system/effective-config');
   }
 
+  /**
+   * 运行期储存状态（`GET /system/storage`，site_admin+）。
+   *
+   * 与 `effectiveConfig` 的区别：它同时返回「保存的策略 + 每个用途的服务端分配与
+   * 实测用量」以及「当前进程真正生效的位置」，并说明保存值是否已经应用。响应里
+   * 没有任何密钥。走 `performRequest` 而不是 `request`：一次应用就会改变状态，
+   * 不能读短缓存。
+   */
+  async storageStatus(): Promise<StorageStatus> {
+    return this.performRequest<StorageStatus>('/system/storage');
+  }
+
+  /**
+   * 立即应用储存设置（`PUT /system/storage`，仅平台管理员）。
+   *
+   * 服务端把设置写进 `data/storage-settings.json` 并马上换用；配额、写入顺序与
+   * `overflow` 也一起生效，不再需要重启。返回应用后的状态，页面直接用它刷新。
+   */
+  async applyStorage(request: StorageApplyRequest): Promise<StorageStatus> {
+    return this.performRequest<StorageStatus>('/system/storage', {
+      method: 'PUT',
+      body: JSON.stringify(request),
+    });
+  }
+
   /* ------------------------- 日志查看器 / 队列监控 / 自动备份（Beta 1.2） ------------------------- */
 
   /**
@@ -1365,7 +1393,7 @@ export class HttpBackend {
     query: { limit?: number; status?: number; path?: string; method?: string } = {},
   ): Promise<SystemLogEntry[]> {
     const params = new URLSearchParams();
-    params.set('limit', String(query.limit ?? 100));
+    params.set('limit', String(clampRequestLogLimit(query.limit)));
     if (query.status !== undefined) params.set('status', String(query.status));
     if (query.path) params.set('path', query.path);
     if (query.method) params.set('method', query.method);

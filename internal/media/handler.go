@@ -533,6 +533,10 @@ func mapError(err error) *apperr.Problem {
 		return apperr.Validation("file rejected by security scan")
 	case errors.Is(err, ErrStorageMissing):
 		return apperr.Internal(err).WithDetail("reason", "storage_not_configured")
+	case errors.Is(err, ErrStorageQuotaExceeded):
+		return apperr.New(apperr.CodeStorageQuotaExceeded).
+			WithMessage("当前用途的储存空间已满，上传已停止").
+			WithDetail("reason", "storage_quota_exceeded")
 	}
 
 	var problem *apperr.Problem

@@ -105,3 +105,23 @@ func TestRespectsCancelledContext(t *testing.T) {
 	err := storage.Put(ctx, "ab/x.png", strings.NewReader("x"), 1)
 	require.ErrorIs(t, err, context.Canceled)
 }
+
+func TestLocalStorageUsageAndSizeTrackObjects(t *testing.T) {
+	storage := newStorage(t)
+	ctx := context.Background()
+	require.NoError(t, storage.Put(ctx, "aa/one.png", bytes.NewReader([]byte("1234")), 4))
+	require.NoError(t, storage.Put(ctx, "bb/two.png", bytes.NewReader([]byte("123456")), 6))
+
+	usage, err := storage.Usage(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(10), usage)
+
+	size, err := storage.Size(ctx, "aa/one.png")
+	require.NoError(t, err)
+	require.Equal(t, int64(4), size)
+
+	require.NoError(t, storage.Delete(ctx, "aa/one.png"))
+	usage, err = storage.Usage(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(6), usage)
+}

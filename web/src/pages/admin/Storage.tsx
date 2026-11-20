@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom';
 import type {
   EffectiveConfig,
   EffectiveStorageScope,
+  StorageRuntimeAllocationEntry,
   StorageScope,
   StorageScopeAllocation,
   StorageSettings,
+  StorageStatus,
   StorageStrategy,
 } from '../../types';
 import { useAuth } from '../../lib/session';
-import { useBackend } from '../../lib/backend';
+import { isDemo, useBackend } from '../../lib/backend';
 import {
   DEFAULT_LOCAL_DIR,
   MAX_ALLOCATION_ENTRIES,
@@ -29,13 +31,16 @@ import {
   scopeAllocation,
   scopeLabel,
   scopesUsingStrategy,
+  storageApplyPayload,
+  storageApplySignature,
   storageDriverLabel,
+  storageSettingsFromStatus,
   storageUrlError,
   strategyLocation,
   usedStrategies,
 } from '../../lib/storage';
-import { formatDateTime } from '../../lib/format';
-import { useAsync, useTitle } from '../../lib/hooks';
+import { formatBytes, formatDateTime } from '../../lib/format';
+import { errorText, useAsync, useTitle } from '../../lib/hooks';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
 import { useT } from '../../lib/i18n';
@@ -145,6 +150,29 @@ function effectiveLocation(row: EffectiveStorageScope, t: ReturnType<typeof useT
   return row.local_dir?.trim() || t('跟随服务器默认目录');
 }
 
+/** 旧后端只有生效快照：折算成运行期状态的形状，让下面只维护一套渲染逻辑。 */
+function statusFromEffective(config: EffectiveConfig): StorageStatus {
+  return {
+    live: !config.restart_required,
+    source: config.storage_source === 'saved' ? 'saved' : 'env',
+    updated_at: config.storage_updated_at ?? null,
+    global_strategy_id: '',
+    strategies: [],
+    scopes: {},
+    effective: config.storage,
+  };
+}
+
+/** 某个用途当前写入条目的用量；用于用途卡片的一行摘要。 */
+function currentUsage(
+  status: StorageStatus | null,
+  scope: StorageScope,
+): StorageRuntimeAllocationEntry | null {
+  const entries = status?.allocations?.[scope]?.entries;
+  if (!entries?.length) return null;
+  return entries.find((entry) => entry.current) ?? entries[0];
+}
+
 export function StoragePage() {
   const t = useT();
   useTitle(t('储存策略'));
@@ -162,6 +190,18 @@ export function StoragePage() {
   const [deleteTarget, setDeleteTarget] = useState<StorageStrategy | null>(null);
   const [saveState, setSaveState] = useState<AutoSaveState>('idle');
   const [saveError, setSaveError] = useState('');
+  /**
+   * S3 Secret Key 草稿：只存在于组件状态。
+   *
+   * 密钥从不写进本地安装配置（`updateConfig` 只收 `StorageSettings`），只在
+   * 「立即应用」那一次请求里作为 `s3_secret_key` 提交，成功后立即清空。
+   */
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
+  const secretDraftsRef = useRef(secretDrafts);
+  secretDraftsRef.current = secretDrafts;
+  /** 最近一次「立即应用」失败的原因；成功后清空，失败时保留旧状态等用户重试。 */
+  const [applyError, setApplyError] = useState('');
+  const [applying, setApplying] = useState(false);
   /** 草稿归一化后的真正写入值；签名相同就不再重复保存。 */
   const payload = useMemo(() => normalizeStorage(draft), [draft]);
   const payloadKey = JSON.stringify(payload);
@@ -176,20 +216,69 @@ export function StoragePage() {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   /** 上一次同步过的服务端签名；挂载时只记下，不同步也不保存。 */
   const syncedKey = useRef(savedKey);
+  /** 服务端运行期设置只接管草稿一次，避免后续刷新冲掉正在编辑的内容。 */
+  const hydratedServerRef = useRef(false);
+
+  /** 当前草稿的部署签名；与上次应用成功的签名不同就说明还需要应用。 */
+  const desiredSig = useMemo(() => storageApplySignature(payload), [payload]);
+  /** 上次应用成功的签名：state 驱动徽标刷新，ref 给串行队列读最新值。 */
+  const appliedSigRef = useRef(desiredSig);
+  const [appliedSig, setAppliedSig] = useState(desiredSig);
+  const markApplied = (sig: string) => {
+    appliedSigRef.current = sig;
+    setAppliedSig(sig);
+  };
+
+  /** 演示模式：可以保存，但不冒充真的换了服务端存储，所以不自动应用。 */
+  const demo = isDemo(backend);
+  /**
+   * 谁能立刻应用：平台管理员 + 真实后端 + 有 `applyStorage`。
+   *
+   * 旧后端没有这个端点、站点管理员没有权限、演示模式不真的切换，这三种情况都只
+   * 写本地安装配置，并在页面上解释原因。
+   */
+  const canApply =
+    me?.role === 'platform_admin' && !demo && typeof backend.applyStorage === 'function';
+  const canApplyRef = useRef(canApply);
+  canApplyRef.current = canApply;
+  /** 应用串行队列：一次应用完成后再开始下一次，避免相互覆盖。 */
+  const applyQueue = useRef<Promise<void>>(Promise.resolve());
 
   /**
-   * 服务端真正生效的部署配置。
+   * 服务端运行期储存状态。
    *
-   * 本页保存的策略只写这台电脑的安装配置，API 进程读的是它自己的环境变量；这块
-   * 只读面板才是「服务器现在真的在用哪套存储」。旧后端没有这个端点，拿不到就返回
+   * 优先用新端点：它同时给出「保存值是否已生效」与每个用途的服务端分配 / 用量。
+   * 旧后端没有这个端点，退回只读的 `/system/effective-config`；两者都没有就返回
    * null，页面其余部分照常可用。
    */
-  const effective = useAsync<EffectiveConfig | null>(async () => {
+  const runtime = useAsync<StorageStatus | null>(async () => {
+    if (typeof backend.storageStatus === 'function') return backend.storageStatus();
     if (typeof backend.effectiveConfig !== 'function') return null;
-    return backend.effectiveConfig();
+    return statusFromEffective(await backend.effectiveConfig());
   }, [backend]);
 
-  /** `.env` 片段反映本页草稿：与生效值并排，方便看出还差哪几步。 */
+  // 服务端已经是唯一事实来源：首次读到运行期设置时接管草稿，并同步进本地安装
+  // 配置。否则换一台电脑打开页面会看到本机缓存的默认策略，还误以为它已经生效。
+  // 用户已经开始改草稿时不覆盖输入，等自动保存 / 立即应用把改动送上去。
+  useEffect(() => {
+    const status = runtime.data;
+    if (!status || hydratedServerRef.current) return;
+    if (!status.strategies.length) return;
+    hydratedServerRef.current = true;
+    if (payloadKey !== savedSig.current) return;
+    const next = storageSettingsFromStatus(status, readStorage(config));
+    const nextKey = JSON.stringify(next);
+    setDraft(next);
+    savedSig.current = nextKey;
+    markApplied(storageApplySignature(next));
+    updateConfig({ storage: next });
+    setSaveState('saved');
+    setSaveError('');
+    // runtime.data 第一次到达时接管一次；payloadKey / config 只用于判断是否已有编辑。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runtime.data]);
+
+  /** `.env` 片段反映本页草稿：没有运行期应用权限时仍可手动部署。 */
   const envSnippet = buildStorageEnvSnippet(draft);
 
   const driverItems = [
@@ -246,6 +335,11 @@ export function StoragePage() {
         if (payloadKeyRef.current === sig) {
           setDraft(next);
         }
+        // 本地保存成功后按需应用：签名没变就说明服务端已经是这份设置，不再重复请求。
+        const applySig = storageApplySignature(next);
+        if (applySig !== appliedSigRef.current) {
+          enqueueApply(applySig, next);
+        }
         if (me) {
           const multiCount = STORAGE_SCOPES.filter(
             (scope) => scopeAllocation(next, scope).mode === 'quota',
@@ -263,6 +357,70 @@ export function StoragePage() {
         }
       })
       .catch(() => setSaveState('error'));
+  };
+
+  /**
+   * 把一次应用排进串行队列。
+   *
+   * 只有平台管理员 + 真实后端 + 有 `applyStorage` 时才真的发请求；失败不自动重试，
+   * 页面给「立即应用」按钮让用户自己重来，避免把服务端错误打成循环。
+   */
+  const enqueueApply = (sig: string, next: StorageSettings, force = false) => {
+    if (!canApplyRef.current || typeof backend.applyStorage !== 'function') return;
+    const request = storageApplyPayload(next, secretDraftsRef.current);
+    applyQueue.current = applyQueue.current
+      .then(async () => {
+        // 排队期间可能已经被前一次应用覆盖，签名相同就不必再发；
+        // 手动「立即应用」例外：只改了 Secret 时设置签名不变，但仍要把新密钥送上去。
+        if (!force && sig === appliedSigRef.current) return;
+        setApplying(true);
+        setApplyError('');
+        try {
+          const status = await backend.applyStorage!(request);
+          runtime.setData(status);
+          markApplied(sig);
+          secretDraftsRef.current = {};
+          setSecretDrafts({});
+          toast.push(
+            'ok',
+            t('已保存并立即生效'),
+            t('服务器已换用新设置并写进 data/storage-settings.json；已有文件不会自动迁移。'),
+          );
+        } catch (err) {
+          // 保留旧状态与旧签名：徽标回到「待应用」，用户可以点「立即应用」重试。
+          setApplyError(errorText(err));
+          toast.push('error', t('立即应用失败'), errorText(err));
+        } finally {
+          setApplying(false);
+        }
+      })
+      .catch(() => setApplying(false));
+  };
+
+  /** 「立即应用」按钮：用当前草稿重试一次（校验不通过时按钮是禁用的）。 */
+  const applyNow = () => {
+    if (validationError) return;
+    enqueueApply(desiredSig, payload, true);
+  };
+
+  /** 记下一套策略的密钥草稿；空串表示沿用服务器已保存的密钥。 */
+  const patchSecretDraft = (id: string, value: string) => {
+    setSecretDrafts((prev) => {
+      const next = { ...prev, [id]: value };
+      secretDraftsRef.current = next;
+      return next;
+    });
+  };
+
+  /** 丢弃一套策略的密钥草稿（删除策略时用）。 */
+  const clearSecretDraft = (id: string) => {
+    setSecretDrafts((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      secretDraftsRef.current = next;
+      return next;
+    });
   };
 
   // 草稿变化后尾随防抖自动保存：与已保存值一致就不动，校验不通过只报错不写入。
@@ -347,7 +505,8 @@ export function StoragePage() {
       );
       return;
     }
-    setForm(emptyStrategy());
+    // 预生成 id：密钥草稿按策略 id 记在组件状态里，新建时也要有稳定的 key。
+    setForm({ ...emptyStrategy(), id: createStrategyId(draft.strategies) });
     setFormErrors({});
     setEditing({ mode: 'create' });
   };
@@ -391,7 +550,10 @@ export function StoragePage() {
       toast.push('error', t('这套储存策略还不能保存'), t('请先修正弹窗里标红的字段。'));
       return;
     }
-    const id = editing?.mode === 'edit' ? editing.id : createStrategyId(draft.strategies);
+    const id =
+      editing?.mode === 'edit'
+        ? editing.id
+        : form.id || createStrategyId(draft.strategies);
     const strategy = normalizeStrategy(form, id);
     setDraft((prev) => ({
       ...prev,
@@ -431,6 +593,7 @@ export function StoragePage() {
     }
     setDraft({ ...normalized, strategies: remaining, scopes, allocations });
     setDeleteTarget(null);
+    clearSecretDraft(target.id);
     toast.push(
       'ok',
       t('已删除储存策略「{name}」', { name: target.name }),
@@ -446,6 +609,9 @@ export function StoragePage() {
     savedSig.current = JSON.stringify(next);
     setDraft(next);
     setSaveError('');
+    setApplyError('');
+    secretDraftsRef.current = {};
+    setSecretDrafts({});
     updateConfig({ storage: next });
     setSaveState('saved');
     toast.push(
@@ -595,6 +761,58 @@ export function StoragePage() {
     }));
   };
 
+  /**
+   * 「保存后是否已生效」徽标。
+   *
+   * - 失败：最近一次应用报错，旧状态保留，等用户点「立即应用」重试；
+   * - 应用中：请求在飞；
+   * - 已生效：服务端说 live，且本页保存的签名就是应用成功的签名；
+   * - 其余：待应用（旧后端、没有权限，或刚改完还没应用）。
+   */
+  const statusBadge: { tone: 'ok' | 'warn' | 'danger'; label: string } | null = !runtime.data
+    ? null
+    : applyError
+      ? { tone: 'danger', label: t('应用失败') }
+      : applying
+        ? { tone: 'warn', label: t('应用中…') }
+        : runtime.data.live && (!canApply || appliedSig === desiredSig)
+          ? { tone: 'ok', label: t('已生效') }
+          : { tone: 'warn', label: t('待应用') };
+
+  /**
+   * 不能立即应用时的解释。
+   *
+   * 演示模式、权限不足、旧后端三种情况都只写本地安装配置，不能让用户以为已经换了
+   * 服务端存储。
+   */
+  const applyUnavailableReason = demo
+    ? t('演示模式只在本地保存策略，不会真的切换服务器存储；真实后端里的平台管理员保存后会立即应用。')
+    : me?.role !== 'platform_admin'
+      ? t('只有平台管理员可以立即应用；保存只写入这台电脑的本地安装配置，服务器继续使用部署环境变量或之前应用过的设置。')
+      : t('这个后端没有立即应用接口；保存只写本地安装配置，需要把部署片段写进服务器再重启。');
+
+  /**
+   * 分配弹窗里的服务端用量摘要。
+   *
+   * 按写入顺序列出每套策略的 `used_bytes`，并标出当前写入目标；只有新版后端
+   * 返回了分配时才显示。配额与顺序 / 切换都由服务端执行，所以这里展示的是
+   * 服务端统计值，而不是页面估算。
+   */
+  /** 弹窗里这套策略在服务端的密钥状态；新建策略或旧后端没有状态时为 null。 */
+  const formServerStrategy = editing
+    ? (runtime.data?.strategies.find((item) => item.id === form.id) ?? null)
+    : null;
+
+  const allocationUsageSummary = allocationScope
+    ? (runtime.data?.allocations?.[allocationScope]?.entries ?? [])
+        .map((entry, index) => {
+          const name = strategyName(findStrategy(draft, entry.strategy_id));
+          const used = t('已用 {size}', { size: formatBytes(entry.used_bytes) });
+          return `${index + 1}. ${name} ${used}${entry.current ? `（${t('当前写入')}）` : ''}`;
+        })
+        .join(' · ')
+    : '';
+
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
@@ -613,53 +831,74 @@ export function StoragePage() {
         </div>
       </div>
 
-      <Callout tone="warn" icon="alert" title={t('这页记录的是部署意图')}>
+      <Callout tone="info" icon="database" title={t('保存后立即生效')}>
         {t(
-          '下面的「当前生效」才是 API 进程真正在用的值。切换储存策略要写进服务器的 .env 并重启 API；已有文件不会自动搬迁。',
-        )}
+          '平台管理员保存后会自动应用：服务器把设置写进 data/storage-settings.json 并马上换用，无需重启；这个文件优先于 .env 里的 STORAGE_* 变量。',
+        )}{' '}
+        {t('容量上限与多策略切换由服务端在写入时执行；已有文件不会自动迁移，旧目录或旧桶里的对象仍在原处。')}
       </Callout>
 
       <section className="panel mt-20">
         <div className="panel-head">
           <div>
-            <h3>{t('当前生效（只读）')}</h3>
-            <p>{t('这些值来自 API 进程启动时读到的环境变量，不是本页保存的设置。')}</p>
+            <h3>{t('当前生效与运行状态')}</h3>
+            <p>{t('这些值来自 API 进程真正在用的设置；保存后是否已经应用也在这里显示。')}</p>
           </div>
           <div className="storage-panel-actions">
-            {effective.data ? (
-              <Badge tone={effective.data.restart_required ? 'warn' : 'ok'}>
-                {effective.data.restart_required ? t('需重启') : t('已同步')}
-              </Badge>
+            {statusBadge ? <Badge tone={statusBadge.tone}>{statusBadge.label}</Badge> : null}
+            {canApply ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="check"
+                loading={applying}
+                disabled={applying || Boolean(validationError)}
+                onClick={applyNow}
+              >
+                {t('立即应用')}
+              </Button>
             ) : null}
             <Button
               variant="secondary"
               size="sm"
               icon="refresh"
-              loading={effective.loading}
-              onClick={effective.reload}
+              loading={runtime.loading}
+              onClick={runtime.reload}
             >
               {t('刷新')}
             </Button>
           </div>
         </div>
         <div className="panel-body">
-          {effective.loading && !effective.data ? (
+          {runtime.loading && !runtime.data ? (
             <Skeleton lines={6} />
-          ) : effective.error ? (
-            <Callout tone="danger" icon="alert" title={t('无法读取服务端的生效配置')}>
-              {effective.error instanceof Error ? effective.error.message : t('请求失败。')}
+          ) : runtime.error ? (
+            <Callout tone="danger" icon="alert" title={t('无法读取服务端的储存状态')}>
+              {errorText(runtime.error)}
             </Callout>
-          ) : effective.data ? (
+          ) : runtime.data ? (
             <>
-              {effective.data.restart_required ? (
-                <Callout tone="warn" icon="alert" title={t('有设置尚未生效，需要重启 API')}>
-                  {t(
-                    'API 只在启动时读取 .env；改完设置要写进服务器的 .env 再重启，已有文件不会自动搬到新位置。',
-                  )}
+              {applyError ? (
+                <Callout tone="danger" icon="alert" title={t('立即应用失败')}>
+                  {applyError}
+                  {canApply ? (
+                    <div className="mt-12">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="refresh"
+                        loading={applying}
+                        disabled={applying || Boolean(validationError)}
+                        onClick={applyNow}
+                      >
+                        {t('立即应用')}
+                      </Button>
+                    </div>
+                  ) : null}
                 </Callout>
               ) : null}
               <div className="mini-list mt-12">
-                {effective.data.storage.map((row) => (
+                {runtime.data.effective.map((row) => (
                   <div className="mini-row" key={row.scope}>
                     <span className="mini-label">{effectiveScopeLabel(row.scope, t)}</span>
                     <span
@@ -683,15 +922,21 @@ export function StoragePage() {
                 ))}
               </div>
               <p className="tiny faint mt-12">
-                {t('采集时间：{time}', {
-                  time: formatDateTime(effective.data.captured_at),
+                {t('来源：{source}', {
+                  source: runtime.data.source === 'saved' ? t('后台设置') : t('部署环境变量'),
                 })}
+                {' · '}
+                {runtime.data.updated_at
+                  ? t('最近应用：{time}', {
+                      time: formatDateTime(runtime.data.updated_at),
+                    })
+                  : t('尚未通过后台应用；当前值来自部署环境变量。')}
               </p>
               <details className="mt-12">
-                <summary className="link-btn">{t('生成 .env 片段（记录用）')}</summary>
+                <summary className="link-btn">{t('部署片段（备用）')}</summary>
                 <p className="tiny faint">
                   {t(
-                    '片段只描述位置与驱动，不含任何密钥；把它写进 API 的 .env 并重启，新的上传才会写到这些位置。',
+                    '片段只描述位置与驱动，不含任何密钥；旧后端或没有运行期应用权限时，把它写进 API 的 .env 再重启，新的上传才会写到这些位置。',
                   )}
                 </p>
                 <pre className="auth-env-code">{envSnippet}</pre>
@@ -700,16 +945,21 @@ export function StoragePage() {
             </>
           ) : (
             <p className="small muted">
-              {t('当前后端没有提供生效配置，无法确认服务端在用哪套存储。')}
+              {t('当前后端没有提供储存状态，无法确认服务端在用哪套存储。')}
             </p>
           )}
         </div>
       </section>
 
-      <Callout tone="info" icon="database" title={t('保存只是写配置，部署才算切换')}>
-        {t('本页只写入这台电脑的本地安装配置，不会改动服务器上的文件或凭据。')}{' '}
-        {t('服务器最终使用哪套存储，仍由部署时的存储配置决定；演示模式与真实后端行为一致。')}
-      </Callout>
+      {!canApply ? (
+        <Callout tone="warn" icon="alert" title={t('「立即应用」不可用')}>
+          {applyUnavailableReason}
+        </Callout>
+      ) : (
+        <Callout tone="info" icon="database" title={t('保存后自动应用，失败可以重试')}>
+          {t('保存成功会自动调用「立即应用」；失败时保留原来的生效状态，页面上会出现错误原因与重试按钮。')}
+        </Callout>
+      )}
 
       <div className="editor-main mt-20">
         <section className="panel">
@@ -739,6 +989,11 @@ export function StoragePage() {
             <div className="storage-strategy-list">
               {draft.strategies.map((strategy) => {
                 const usedBy = scopesUsingStrategy(draft, strategy.id);
+                // 服务端状态里这套策略的密钥情况；旧后端 / 演示没有时就不显示徽标。
+                const serverStrategy = runtime.data?.strategies.find(
+                  (item) => item.id === strategy.id,
+                );
+                const secretDraft = secretDrafts[strategy.id]?.trim() ?? '';
                 return (
                   <div
                     key={strategy.id}
@@ -763,6 +1018,16 @@ export function StoragePage() {
                         </Badge>
                         {draftGlobal.id === strategy.id ? (
                           <Badge tone="ok">{t('全局')}</Badge>
+                        ) : null}
+                        {strategy.driver === 's3' && serverStrategy ? (
+                          <Badge tone={serverStrategy.has_secret ? 'ok' : 'warn'}>
+                            {serverStrategy.has_secret
+                              ? t('服务器已保存密钥')
+                              : t('缺少密钥')}
+                          </Badge>
+                        ) : null}
+                        {strategy.driver === 's3' && secretDraft ? (
+                          <Badge tone="accent">{t('新密钥待应用')}</Badge>
                         ) : null}
                       </div>
                       <p className="storage-strategy-path mono">{strategyLocation(strategy)}</p>
@@ -835,6 +1100,8 @@ export function StoragePage() {
                 const strategyNames = shownEntries
                   .map((entry) => strategyName(findStrategy(draft, entry.strategy_id)))
                   .join(' → ');
+                // 当前写入条目的服务端用量；旧后端 / 演示没有状态时不显示。
+                const currentEntry = currentUsage(runtime.data, meta.scope);
                 return (
                   <div key={meta.scope} className="storage-scope">
                     <div className="storage-scope-head">
@@ -885,6 +1152,11 @@ export function StoragePage() {
                             {allocation.mode === 'quota'
                               ? `${strategyNames} · ${quotaSummary(allocation, t)}`
                               : strategyLocation(primary)}
+                            {currentEntry
+                              ? ` · ${t('已用 {size}', {
+                                  size: formatBytes(currentEntry.used_bytes),
+                                })}`
+                              : ''}
                           </span>
                         </span>
                         <span className="storage-current-side">
@@ -905,9 +1177,9 @@ export function StoragePage() {
                   {t('把云策略分配给更多用途，它就会自动成为全局策略。')}
                 </Callout>
               ) : null}
-              <Callout tone="info" icon="info" title={t('多策略按顺序切换')}>
-                {t('每个用途的第一套是主策略；达到容量上限后，按「写满后」的规则切换到下一套或停止。')}{' '}
-                {t('容量上限按用途单独记录，不改变策略本身的存储位置。')}
+              <Callout tone="info" icon="info" title={t('多策略由服务端按顺序写入')}>
+                {t('保存后服务端按写入顺序使用每套策略：单策略忽略配额；多策略时前一套写满（quota_gb，0 表示不限）后，按「写满后」的规则停止或切到下一套。')}{' '}
+                {t('所有策略都写满时，新的上传会失败并返回 storage_quota_exceeded（507）。')}
               </Callout>
             </div>
           </div>
@@ -917,7 +1189,7 @@ export function StoragePage() {
           <Modal
             open
             title={t('「{scope}」的储存策略', { scope: scopeLabel(allocationScope) })}
-            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存。')}
+            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存并应用。')}
             onClose={() => setAllocationScope(null)}
             width={680}
             footer={
@@ -931,8 +1203,8 @@ export function StoragePage() {
                 label={t('分配方式')}
                 hint={
                   activeAllocation.mode === 'single'
-                    ? t('只使用一套策略，最省心。')
-                    : t('按顺序使用多套策略；前一套达到容量上限后，按「写满后」的规则处理。')
+                    ? t('只使用一套策略，最省心；单策略模式下配额不生效。')
+                    : t('按写入顺序使用多套策略；服务端在前一套写满（quota_gb）后，按「写满后」的规则停止或切换。')
                 }
               >
                 <Tabs
@@ -1089,6 +1361,11 @@ export function StoragePage() {
                       </div>
                     ))}
                   </div>
+                  {allocationUsageSummary ? (
+                    <p className="tiny faint">
+                      {t('服务端用量：{usage}', { usage: allocationUsageSummary })}
+                    </p>
+                  ) : null}
                   <div className="storage-allocation-foot">
                     <Button
                       variant="secondary"
@@ -1107,7 +1384,7 @@ export function StoragePage() {
                   <Field
                     label={t('写满后')}
                     htmlFor={`storage-overflow-${allocationScope}`}
-                    hint={t('按顺序写入；前面的策略写满后才会使用下一套。容量上限只作用于这个用途。')}
+                    hint={t('由服务端在写入时执行：按顺序写入，前面的策略写满后才会使用下一套；容量上限只作用于这个用途。')}
                   >
                     <Select
                       id={`storage-overflow-${allocationScope}`}
@@ -1182,7 +1459,7 @@ export function StoragePage() {
       <Modal
         open={!!editing}
         title={editing?.mode === 'edit' ? t('编辑储存策略') : t('新建储存策略')}
-        description={t('策略名会出现在用途分配里；密钥不在这个弹窗保存。')}
+        description={t('策略名会出现在用途分配里；Secret Key 只保存在本页内存，仅随「立即应用」提交一次。')}
         onClose={() => setEditing(null)}
         width={660}
         footer={
@@ -1295,7 +1572,7 @@ export function StoragePage() {
               <Field
                 label="Access Key"
                 htmlFor="storage-strategy-access-key"
-                hint={t('可以保存在本地安装配置里；建议使用只允许该桶读写的子账号。')}
+                hint={t('会保存在本地安装配置里，并随应用请求提交；建议使用只允许该桶读写的子账号。')}
               >
                 <Input
                   id="storage-strategy-access-key"
@@ -1303,6 +1580,27 @@ export function StoragePage() {
                   placeholder="AKIA…"
                   autoComplete="off"
                   onChange={(event) => setForm({ ...form, s3_access_key: event.target.value })}
+                />
+              </Field>
+              <Field
+                label={t('Secret Key（可选）')}
+                htmlFor="storage-strategy-secret"
+                aside={
+                  formServerStrategy ? (
+                    <Badge tone={formServerStrategy.has_secret ? 'ok' : 'warn'}>
+                      {formServerStrategy.has_secret ? t('服务器已保存密钥') : t('缺少密钥')}
+                    </Badge>
+                  ) : undefined
+                }
+                hint={t('只用于「立即应用」这一次请求，不会写入这台电脑的配置；留空表示沿用服务器已保存的密钥。')}
+              >
+                <Input
+                  id="storage-strategy-secret"
+                  type="password"
+                  value={secretDrafts[form.id] ?? ''}
+                  placeholder={t('留空沿用服务器已保存密钥')}
+                  autoComplete="new-password"
+                  onChange={(event) => patchSecretDraft(form.id, event.target.value)}
                 />
               </Field>
               <Field
@@ -1363,7 +1661,7 @@ export function StoragePage() {
               <p className="small muted">{t('没有用途在使用这套策略，删除不会改变上传位置。')}</p>
             )}
             <p className="tiny faint">
-              {t('删除只改这台电脑的配置，不会删除任何文件，也不会修改服务器的存储配置；已经上传的文件仍留在原位置。')}
+              {t('删除只改这份储存设置，下一次保存 / 应用后服务端才会换用新顺序；不会删除任何文件，已经上传的文件仍留在原位置。')}
             </p>
           </div>
         ) : null}

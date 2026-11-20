@@ -97,6 +97,56 @@ func NewS3Storage(ctx context.Context, cfg S3Config) (*S3Storage, error) {
 // Bucket returns the bucket name.
 func (s *S3Storage) Bucket() string { return s.bucket }
 
+// Size returns one object's size.
+func (s *S3Storage) Size(ctx context.Context, key string) (int64, error) {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
+		return 0, err
+	}
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(objectKey),
+	})
+	if err != nil {
+		if isMissing(err) {
+			return 0, ErrStorageObjectMissing
+		}
+		return 0, err
+	}
+	if out.ContentLength == nil {
+		return 0, nil
+	}
+	return *out.ContentLength, nil
+}
+
+// Usage sums every object under this target's prefix.
+//
+// The listing is only performed at boot and when a target changes; quota
+// accounting after that is incremental, so an upload never lists the bucket.
+func (s *S3Storage) Usage(ctx context.Context) (int64, error) {
+	prefix := s.prefix
+	if prefix != "" {
+		prefix += "/"
+	}
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String(prefix),
+	})
+	var total int64
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, err
+		}
+		for _, object := range page.Contents {
+			if object.Size != nil {
+				total += *object.Size
+			}
+		}
+	}
+	return total, nil
+}
+
 func (s *S3Storage) ensureBucket(ctx context.Context) error {
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(s.bucket)})
 	if err == nil {

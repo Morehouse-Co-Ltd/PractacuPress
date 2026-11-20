@@ -33,6 +33,10 @@ const (
 	CodeInvalidDatabaseDriver  Code = "invalid_database_driver"
 	CodeEmailNotConfigured     Code = "email_not_configured"
 	CodeQuotaExceeded          Code = "quota_exceeded"
+	// CodeStorageQuotaExceeded answers a full media storage target, not a request
+	// rate limit: the upload cannot be written until the operator switches strategy
+	// or frees space.
+	CodeStorageQuotaExceeded Code = "storage_quota_exceeded"
 )
 
 // spec is the fixed HTTP projection of a code. Keeping it in one table is what
@@ -78,6 +82,11 @@ var specs = map[Code]spec{
 		status:  http.StatusTooManyRequests,
 		title:   "Quota exceeded",
 		message: "请求超出资源配额，请稍后重试",
+	},
+	CodeStorageQuotaExceeded: {
+		status:  http.StatusInsufficientStorage,
+		title:   "Storage quota exceeded",
+		message: "储存空间已满，上传已停止",
 	},
 	CodeInternal: {
 		status:  http.StatusInternalServerError,

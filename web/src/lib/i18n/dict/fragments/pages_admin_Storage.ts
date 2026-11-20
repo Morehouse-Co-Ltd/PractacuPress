@@ -4,7 +4,6 @@ import type { Dictionary } from '../../plural';
 const fragment: Dictionary = {
   // ---- 页头与通用 ----
   '储存策略': 'Storage strategies',
-  '保存只是写配置，部署才算切换': 'Saving only writes config; deploying is what switches',
   '站点管理员': 'Site admin',
   '媒体库': 'Media library',
   '保存修改': 'Save changes',
@@ -285,31 +284,85 @@ const fragment: Dictionary = {
   '回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。':
     'Back to a single “Local storage” strategy (./data/media) that all four scopes use in single-strategy mode; no files are deleted and the server storage config is untouched.',
 
-  // ---- 当前生效（服务端部署快照，Beta 1.2） ----
-  '这页记录的是部署意图': 'This page records deployment intent',
-  '下面的「当前生效」才是 API 进程真正在用的值。切换储存策略要写进服务器的 .env 并重启 API；已有文件不会自动搬迁。':
-    'The “In force now” panel below is what the API process really uses. Switching storage strategies means writing the server .env and restarting the API; existing files are not moved automatically.',
-  '当前生效（只读）': 'In force now (read only)',
-  '这些值来自 API 进程启动时读到的环境变量，不是本页保存的设置。':
-    'These values come from the environment variables the API process read at startup, not from the settings saved on this page.',
-  需重启: 'Needs restart',
-  已同步: 'Up to date',
-  无法读取服务端的生效配置: 'Cannot read the effective server configuration',
-  '有设置尚未生效，需要重启 API': 'Some settings are not in force yet; restart the API',
-  'API 只在启动时读取 .env；改完设置要写进服务器的 .env 再重启，已有文件不会自动搬到新位置。':
-    'The API reads .env only at startup: write the changed settings into the server .env and restart; existing files are not moved to the new location automatically.',
+  // ---- 当前生效与运行状态（运行期储存） ----
   '全局（部署默认）': 'Global (deployment default)',
   '桶：{bucket}': 'Bucket: {bucket}',
   桶未设置: 'Bucket not set',
   '区域：{region}': 'Region: {region}',
   '前缀：{prefix}': 'Prefix: {prefix}',
   跟随服务器默认目录: 'Server default directory',
-  '采集时间：{time}': 'Captured at: {time}',
-  '生成 .env 片段（记录用）': 'Generate .env snippet (for reference)',
-  '片段只描述位置与驱动，不含任何密钥；把它写进 API 的 .env 并重启，新的上传才会写到这些位置。':
-    'The snippet describes only locations and drivers and contains no credentials; write it into the API .env and restart for new uploads to land in these locations.',
-  '当前后端没有提供生效配置，无法确认服务端在用哪套存储。':
-    'This backend does not expose the effective configuration, so which storage the server uses cannot be confirmed.',
+  '保存后立即生效': 'Takes effect as soon as you save',
+  '平台管理员保存后会自动应用：服务器把设置写进 data/storage-settings.json 并马上换用，无需重启；这个文件优先于 .env 里的 STORAGE_* 变量。':
+    'When a platform admin saves, the settings are applied automatically: the server writes them to data/storage-settings.json and switches over at once, with no restart; that file takes precedence over STORAGE_* in .env.',
+  '容量上限与多策略切换由服务端在写入时执行；已有文件不会自动迁移，旧目录或旧桶里的对象仍在原处。':
+    'Capacity caps and multi-strategy switching are enforced by the server at write time; existing files are not migrated, and objects in the old directory or bucket stay where they are.',
+  '当前生效与运行状态': 'In force now and runtime status',
+  '这些值来自 API 进程真正在用的设置；保存后是否已经应用也在这里显示。':
+    'These values come from the settings the API process really uses; whether your last save has been applied is shown here too.',
+  '应用中…': 'Applying…',
+  '已生效': 'In force',
+  '待应用': 'Not applied yet',
+  '应用失败': 'Apply failed',
+  '立即应用': 'Apply now',
+  '立即应用失败': 'Applying immediately failed',
+  '已保存并立即生效': 'Saved and applied immediately',
+  '服务器已换用新设置并写进 data/storage-settings.json；已有文件不会自动迁移。':
+    'The server switched to the new settings and wrote them to data/storage-settings.json; existing files are not migrated.',
+  '无法读取服务端的储存状态': 'Cannot read the server storage status',
+  '来源：{source}': 'Source: {source}',
+  '后台设置': 'Dashboard settings',
+  '部署环境变量': 'Deployment environment variables',
+  '最近应用：{time}': 'Last applied: {time}',
+  '尚未通过后台应用；当前值来自部署环境变量。':
+    'Not applied from the dashboard yet; the current values come from the deployment environment variables.',
+  '部署片段（备用）': 'Deployment snippet (fallback)',
+  '片段只描述位置与驱动，不含任何密钥；旧后端或没有运行期应用权限时，把它写进 API 的 .env 再重启，新的上传才会写到这些位置。':
+    'The snippet describes only locations and drivers and contains no credentials; on an old backend or without runtime-apply permission, write it into the API .env and restart for new uploads to land in these locations.',
+  '当前后端没有提供储存状态，无法确认服务端在用哪套存储。':
+    'This backend does not expose storage status, so which storage the server uses cannot be confirmed.',
+  '「立即应用」不可用': '“Apply now” is unavailable',
+  '保存后自动应用，失败可以重试': 'Saved settings are applied automatically; failures can be retried',
+  '保存成功会自动调用「立即应用」；失败时保留原来的生效状态，页面上会出现错误原因与重试按钮。':
+    'A successful save calls “Apply now” automatically; on failure the previous effective state is kept, and the page shows the reason plus a retry button.',
+  '演示模式只在本地保存策略，不会真的切换服务器存储；真实后端里的平台管理员保存后会立即应用。':
+    'Demo mode only saves strategies locally and never switches the server’s storage; on a real backend a platform admin applies the settings right after saving.',
+  '只有平台管理员可以立即应用；保存只写入这台电脑的本地安装配置，服务器继续使用部署环境变量或之前应用过的设置。':
+    'Only platform admins can apply immediately; saving only writes the local install config on this computer, and the server keeps using the deployment environment variables or the settings applied before.',
+  '这个后端没有立即应用接口；保存只写本地安装配置，需要把部署片段写进服务器再重启。':
+    'This backend has no immediate-apply endpoint; saving only writes the local install config, so put the deployment snippet into the server and restart.',
+
+  // ---- 服务端配额与用量 ----
+  '已用 {size}': 'Used {size}',
+  '当前写入': 'Current write target',
+  '服务端用量：{usage}': 'Server usage: {usage}',
+  '多策略由服务端按顺序写入': 'Multiple strategies are written in order by the server',
+  '保存后服务端按写入顺序使用每套策略：单策略忽略配额；多策略时前一套写满（quota_gb，0 表示不限）后，按「写满后」的规则停止或切到下一套。':
+    'After saving, the server uses the strategies in write order: single mode ignores the cap; in multi mode, once a strategy is full (quota_gb, 0 = unlimited) the “When full” rule stops or switches to the next one.',
+  '所有策略都写满时，新的上传会失败并返回 storage_quota_exceeded（507）。':
+    'When every strategy is full, new uploads fail with storage_quota_exceeded (507).',
+  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存并应用。':
+    'This scope can use one strategy, or several in order with capacity caps; changes are saved and applied automatically when the dialog closes.',
+  '只使用一套策略，最省心；单策略模式下配额不生效。':
+    'Use one strategy; the simplest option. Capacity caps do not apply in single mode.',
+  '按写入顺序使用多套策略；服务端在前一套写满（quota_gb）后，按「写满后」的规则停止或切换。':
+    'Use several strategies in write order; the server follows the “When full” rule to stop or switch once a strategy is full (quota_gb).',
+  '由服务端在写入时执行：按顺序写入，前面的策略写满后才会使用下一套；容量上限只作用于这个用途。':
+    'Enforced by the server at write time: writes go in order and the next strategy is used only after the previous one is full; the cap applies to this scope only.',
+
+  // ---- Secret Key ----
+  'Secret Key（可选）': 'Secret Key (optional)',
+  '留空沿用服务器已保存密钥': 'Leave empty to keep the secret saved on the server',
+  '服务器已保存密钥': 'Secret saved on the server',
+  '缺少密钥': 'Secret missing',
+  '新密钥待应用': 'New secret pending',
+  '只用于「立即应用」这一次请求，不会写入这台电脑的配置；留空表示沿用服务器已保存的密钥。':
+    'Used only for this one apply request and never written to the config on this computer; leave it empty to keep the secret already saved on the server.',
+  '会保存在本地安装配置里，并随应用请求提交；建议使用只允许该桶读写的子账号。':
+    'Stored in the local install config and sent with the apply request; prefer a sub-account that may only read and write this bucket.',
+  '策略名会出现在用途分配里；Secret Key 只保存在本页内存，仅随「立即应用」提交一次。':
+    'The strategy name shows up in scope assignment; the Secret Key stays in this page’s memory and is submitted once with “Apply now”.',
+  '删除只改这份储存设置，下一次保存 / 应用后服务端才会换用新顺序；不会删除任何文件，已经上传的文件仍留在原位置。':
+    'Deleting only changes this storage setting; the server switches to the new order on the next save / apply. No files are deleted and uploaded files stay where they are.',
 };
 
 export default fragment;

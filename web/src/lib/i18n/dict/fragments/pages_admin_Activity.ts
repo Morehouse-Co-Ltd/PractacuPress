@@ -73,6 +73,46 @@ const fragment: Dictionary = {
   创建新站点: 'Created a site',
   进入站点: 'Entered a site',
   上传媒体: 'Uploaded media',
+  修改储存策略: 'Updated the storage policy',
+
+  // ---- 合并后的日志页（Activity.tsx）：表格列与来源切换 ----
+  '审计记录与请求元数据都在这里，按来源切换查看；导出只包含当前来源。':
+    'Audit entries and request metadata share this page; switch the source to view each. The CSV export contains only the active source.',
+  操作与请求日志: 'Operations and request logs',
+  '用右上角的标签页切换来源；两个来源的筛选与翻页各自独立。':
+    'Switch the source with the tabs at the top right; filters and paging are independent per source.',
+  时间: 'Time',
+  目标: 'Target',
+  详情: 'Details',
+
+  // ---- 请求日志来源（从 ActivityOperations.tsx 迁移过来） ----
+  请求日志: 'Request logs',
+  '只记录元数据，不含请求体、请求头与 cookie。':
+    'Metadata only: request bodies, headers, and cookies are never recorded.',
+  状态码: 'Status code',
+  '状态码，例如 404': 'Status code, e.g. 404',
+  路径片段: 'Path fragment',
+  '路径片段，例如 /api/v1': 'Path fragment, e.g. /api/v1',
+  方法: 'Method',
+  路径: 'Path',
+  全部方法: 'All methods',
+  耗时: 'Duration',
+  请求号: 'Request ID',
+  '{count} 条请求': { one: '1 request', other: '{count} requests' },
+  '状态码需要是 100–599 的整数。': 'The status code must be an integer between 100 and 599.',
+  筛选: 'Filter',
+  无法读取请求日志: 'Could not load request logs',
+  当前后端没有请求日志接口: 'This backend has no request-log endpoint',
+  '当前后端没有请求日志接口，升级 API 后可用':
+    'This backend has no request-log endpoint; upgrade the API to use it.',
+  没有匹配的请求日志: 'No request logs match the filters',
+  '调整筛选条件后再试；服务端只保留最近的请求元数据。':
+    'Adjust the filters and try again; the server keeps only recent request metadata.',
+  '请求日志只保留最近的 {count} 条元数据。': {
+    one: 'Only the most recent request metadata entry is kept.',
+    other: 'Only the most recent {count} request metadata entries are kept.',
+  },
+  '请求失败。': 'The request failed.',
 };
 
 export default fragment;

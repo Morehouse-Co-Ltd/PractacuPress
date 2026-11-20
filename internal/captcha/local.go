@@ -2,9 +2,9 @@ package captcha
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 	"sync"
@@ -144,6 +144,12 @@ type LocalStore struct {
 	// a solved token is reported as a replay instead of as an unknown token.
 	used      map[string]time.Time
 	lastSweep time.Time
+
+	// lastKind is the kind of the challenge issued most recently. Consecutive
+	// challenges never repeat it, so a bot that recognises one interaction still
+	// has to handle the next one. The zero value means "nothing issued yet".
+	// Guarded by mu.
+	lastKind LocalKind
 }
 
 type localChallenge struct {
@@ -211,11 +217,11 @@ func (s *LocalStore) IssueWithAnswer(scene Scene) (LocalChallenge, LocalAnswer, 
 		return LocalChallenge{}, LocalAnswer{}, ErrSceneUnknown
 	}
 
-	kindIndex, err := randomBelow(len(LocalKinds))
+	kind, err := s.nextKind()
 	if err != nil {
 		return LocalChallenge{}, LocalAnswer{}, fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
-	challenge, answer, err := generateLocalChallenge(LocalKinds[kindIndex], scene)
+	challenge, answer, err := generateLocalChallenge(kind, scene)
 	if err != nil {
 		return LocalChallenge{}, LocalAnswer{}, fmt.Errorf("%w: %v", ErrUpstream, err)
 	}
@@ -244,6 +250,41 @@ func (s *LocalStore) IssueWithAnswer(scene Scene) (LocalChallenge, LocalAnswer, 
 	}
 
 	return challenge, answer, nil
+}
+
+// nextKind picks the kind of the next challenge.
+//
+// Two consecutive challenges never ask for the same interaction: the kind is drawn
+// uniformly from the two kinds other than the last one. The pick and the bookkeeping
+// happen under the same lock, so concurrent callers cannot interleave into a repeat
+// (two visitors issuing at the same moment get two different kinds).
+func (s *LocalStore) nextKind() (LocalKind, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	candidates := localKindCandidates(s.lastKind)
+	index, err := randomBelow(len(candidates))
+	if err != nil {
+		return "", err
+	}
+	kind := candidates[index]
+	s.lastKind = kind
+	return kind, nil
+}
+
+// localKindCandidates lists the kinds a challenge may take after previous. An
+// unknown previous value (including the zero value of a fresh store) allows any
+// kind, in the advertised rotation order.
+func localKindCandidates(previous LocalKind) []LocalKind {
+	if !previous.Valid() {
+		return LocalKinds
+	}
+	candidates := make([]LocalKind, 0, len(LocalKinds)-1)
+	for _, kind := range LocalKinds {
+		if kind != previous {
+			candidates = append(candidates, kind)
+		}
+	}
+	return candidates
 }
 
 // Solve checks one answer and, when it is right, mints a token bound to the scene.
@@ -483,15 +524,20 @@ func (s *LocalStore) evictSoonestUsedLocked() {
 }
 
 // randomBelow returns a uniformly random integer in [0, max).
+//
+// crypto/rand.Int draws from the bytes modulo-free (it rejection-samples rather
+// than taking a remainder), so every value of the range is equally likely. The
+// previous implementation reduced a 64-bit word modulo max, which quietly
+// favoured the low values whenever max did not divide 2^64.
 func randomBelow(max int) (int, error) {
 	if max <= 0 {
 		return 0, fmt.Errorf("local challenge: invalid range %d", max)
 	}
-	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err != nil {
+	value, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
 		return 0, err
 	}
-	return int(binary.BigEndian.Uint64(buf[:]) % uint64(max)), nil
+	return int(value.Int64()), nil
 }
 
 // randBetween returns a uniformly random integer in [min, max].

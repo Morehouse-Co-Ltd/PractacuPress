@@ -41,6 +41,7 @@ import (
 	"github.com/practacu/practacu-press/internal/redirect"
 	"github.com/practacu/practacu-press/internal/safety"
 	"github.com/practacu/practacu-press/internal/site"
+	"github.com/practacu/practacu-press/internal/storageadmin"
 	"github.com/practacu/practacu-press/internal/system"
 	"github.com/practacu/practacu-press/internal/taxonomy"
 	ginrouter "github.com/practacu/practacu-press/internal/transport/http/gin"
@@ -175,7 +176,10 @@ func buildRouter() *gin.Engine {
 		Redirect:       redirect.NewHandler(nil, redirect.HandlerConfig{}),
 		Ops:            system.NewOpsHandler(nil, nil, system.OpsHandlerConfig{}),
 		BackupSchedule: backup.NewScheduleHandler(nil, backup.ScheduleHandlerConfig{}),
-		Newsletter:     newsletter.NewHandler(nil, newsletter.HandlerConfig{}),
+		// Runtime storage is documented, so the partial router mounts both routes with
+		// a nil manager (they answer 500, no request reaches them here).
+		StorageAdmin: storageadmin.NewHandler(nil, storageadmin.HandlerConfig{}),
+		Newsletter:   newsletter.NewHandler(nil, newsletter.HandlerConfig{}),
 	})
 }
 
