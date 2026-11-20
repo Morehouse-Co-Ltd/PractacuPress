@@ -153,9 +153,14 @@ function RetentionChart({
   );
 }
 
-export function InsightsPage() {
+/**
+ * 可嵌入的访问洞察面板。
+ *
+ * 独立页面 `/admin/insights` 已经并入仪表盘的“访问记录”卡片：面板不再带页面标题，
+ * 只保留时间范围切换与全部统计内容，因此既能给独立页面用，也能放进“更多”弹窗。
+ */
+export function InsightsPanel() {
   const t = useT();
-  useTitle(t('访问洞察'));
   const { me } = useAuth();
   const backend = useBackend();
   const siteId = me?.site_id ?? '';
@@ -262,32 +267,30 @@ export function InsightsPage() {
   );
 
   return (
-    <>
-      <div className="admin-page-head">
-        <div>
-          <h1>{t('访问洞察')}</h1>
-          <p>
-            {t('访客从哪里来、用什么设备、会不会再回来。')}
-            <span className="tiny faint">
-              {' · '}
-              {data.loading ? t('更新中') : t('服务端统计')}
-            </span>
-          </p>
-        </div>
-        <div className="admin-page-actions">
-          <div className="range-switch" role="group" aria-label={t('统计时间范围')}>
-            {ranges.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className={range === item.value ? 'is-on' : ''}
-                aria-pressed={range === item.value}
-                onClick={() => setRange(item.value)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+    <div className="insights-panel">
+      <div
+        className="row gap-12"
+        style={{ justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 12 }}
+      >
+        <p className="tiny faint" style={{ margin: 0 }}>
+          {t('访客从哪里来、用什么设备、会不会再回来。')}
+          <span className="tiny faint">
+            {' · '}
+            {data.loading ? t('更新中') : t('服务端统计')}
+          </span>
+        </p>
+        <div className="range-switch" role="group" aria-label={t('统计时间范围')}>
+          {ranges.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={range === item.value ? 'is-on' : ''}
+              aria-pressed={range === item.value}
+              onClick={() => setRange(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -454,6 +457,23 @@ export function InsightsPage() {
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 独立页面保留给旧链接与直接访问；内容与“更多”弹窗共用 InsightsPanel。 */
+export function InsightsPage() {
+  const t = useT();
+  useTitle(t('访问洞察'));
+  return (
+    <>
+      <div className="admin-page-head">
+        <div>
+          <h1>{t('访问洞察')}</h1>
+          <p>{t('访客从哪里来、用什么设备、会不会再回来。')}</p>
+        </div>
+      </div>
+      <InsightsPanel />
     </>
   );
 }

@@ -433,10 +433,6 @@ export function AdminShell() {
     ...(me?.role === 'platform_admin' && config.mode !== 'demo'
       ? ([{ to: '/admin/platform', label: t('站点平台'), icon: 'server', keyword: '站点平台' }] as NavItem[])
       : []),
-    // Beta 1.2：来源/留存/设备是运维面。
-    ...(can('view_log')
-      ? ([{ to: '/admin/insights', label: t('访问洞察'), icon: 'chart', keyword: '访问洞察' }] as NavItem[])
-      : []),
     // 邮件订阅：名单、模板、投递日志与群发。
     ...(can('manage_site')
       ? ([{ to: '/admin/newsletter', label: t('邮件订阅'), icon: 'mail', keyword: '邮件订阅' }] as NavItem[])
@@ -568,7 +564,6 @@ export function AdminShell() {
     { match: /^\/admin\/media/, title: t('媒体库') },
     { match: /^\/admin\/activity/, title: t('网站日志') },
     { match: /^\/admin\/redirects/, title: t('永久链接') },
-    { match: /^\/admin\/insights/, title: t('访问洞察') },
     { match: /^\/admin\/docs/, title: t('调用接口') },
     { match: /^\/admin$/, title: t('仪表盘') },
   ];

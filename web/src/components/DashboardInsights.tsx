@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { Content } from '../types';
 import { useBackend } from '../lib/backend';
 import { useAsync } from '../lib/hooks';
@@ -8,8 +8,9 @@ import { useRangeAnalytics } from '../lib/useAnalytics';
 import type { AnalyticsRange } from '../lib/analytics';
 import { formatDateTime, timeAgo } from '../lib/format';
 import { useT } from '../lib/i18n';
-import { Badge, EmptyState, Skeleton } from './ui';
+import { Badge, Button, EmptyState, Modal, Skeleton } from './ui';
 import { Icon } from './Icon';
+import { InsightsPanel } from '../pages/admin/Insights';
 
 function contentUrl(item: Content): string {
   return `/${item.kind === 'article' ? 'a' : 'p'}/${item.id}`;
@@ -23,6 +24,32 @@ export function DashboardAnalytics() {
   const t = useT();
   const [range, setRange] = useState<AnalyticsRange>('7d');
   const { stats, source, loading } = useRangeAnalytics(range);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // /admin?insights=1 是命令面板与旧 /admin/insights 链接的入口：进入仪表盘即展开弹窗。
+  const [insightsOpen, setInsightsOpen] = useState(searchParams.get('insights') === '1');
+
+  useEffect(() => {
+    if (searchParams.get('insights') === '1') setInsightsOpen(true);
+  }, [searchParams]);
+
+  const openInsights = () => {
+    setInsightsOpen(true);
+    if (searchParams.get('insights') !== '1') {
+      const next = new URLSearchParams(searchParams);
+      next.set('insights', '1');
+      setSearchParams(next, { replace: true });
+    }
+  };
+
+  const closeInsights = () => {
+    setInsightsOpen(false);
+    if (searchParams.has('insights')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('insights');
+      setSearchParams(next, { replace: true });
+    }
+  };
+
   const ranges: { value: AnalyticsRange; label: string }[] = [
     { value: '24h', label: '24h' },
     { value: '7d', label: t('7 天') },
@@ -48,18 +75,29 @@ export function DashboardAnalytics() {
             <span className="tiny faint"> · {loading ? t('更新中') : source === 'backend' ? t('服务端统计') : t('本机统计')}</span>
           </p>
         </div>
-        <div className="range-switch" role="group" aria-label={t('统计时间范围')}>
-          {ranges.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={range === item.value ? 'is-on' : ''}
-              aria-pressed={range === item.value}
-              onClick={() => setRange(item.value)}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="row gap-8" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="range-switch" role="group" aria-label={t('统计时间范围')}>
+            {ranges.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={range === item.value ? 'is-on' : ''}
+                aria-pressed={range === item.value}
+                onClick={() => setRange(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconRight="arrow-right"
+            onClick={openInsights}
+            title={t('打开完整的访问洞察')}
+          >
+            {t('更多')}
+          </Button>
         </div>
       </div>
 
@@ -184,6 +222,15 @@ export function DashboardAnalytics() {
           )}
         </div>
       </div>
+
+      <Modal
+        open={insightsOpen}
+        onClose={closeInsights}
+        title={t('访问洞察')}
+        width={960}
+      >
+        <InsightsPanel />
+      </Modal>
     </section>
   );
 }

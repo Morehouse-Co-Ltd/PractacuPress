@@ -80,7 +80,6 @@ import { MediaPage } from './pages/admin/Media';
 import { ActivityPage } from './pages/admin/Activity';
 import { DocsPage } from './pages/admin/Docs';
 import { RedirectsPage } from './pages/admin/Redirects';
-import { InsightsPage } from './pages/admin/Insights';
 import { NewsletterPage } from './pages/admin/Newsletter';
 import { PagesPage } from './pages/admin/Pages';
 import { PageEditorPage } from './pages/admin/PageEditor';
@@ -709,9 +708,9 @@ export default function App() {
                 <Route path="loading" element={<LoadingPage />} />
                 <Route path="activity" element={<ActivityPage />} />
                 <Route path="docs" element={<DocsPage />} />
-                {/* Beta 1.2 第二批：永久链接规则与访问洞察（来源/留存/设备）。 */}
+                {/* Beta 1.2 第二批：永久链接规则；访问洞察已并入仪表盘“访问记录”的弹窗。 */}
                 <Route path="redirects" element={<RedirectsPage />} />
-                <Route path="insights" element={<InsightsPage />} />
+                <Route path="insights" element={<Navigate to="/admin?insights=1" replace />} />
                 {/* 邮件订阅：名单、模板、投递日志与群发。 */}
                 <Route path="newsletter" element={<NewsletterPage />} />
                 <Route path="*" element={<NotFoundPage />} />
