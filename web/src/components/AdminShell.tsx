@@ -18,10 +18,17 @@ import { Avatar } from './ui';
 import { AutoUpdateWatcher } from './AutoUpdateWatcher';
 import { useMediaSrc } from '../lib/assetUrl';
 import { Icon, type IconName } from './Icon';
+import { isPaletteShortcut, type AdminSearchEntry } from '../lib/adminSearch';
+import { AdminCommandPalette } from './AdminCommandPalette';
 
 interface NavItem {
   to: string;
   label: string;
+  /**
+   * 中文原文：`label` 已按当前语言翻译，这里保留一份原始键给顶栏命令面板用，
+   * 于是英文界面下输入「内容」也能命中 Content library。
+   */
+  keyword?: string;
   icon: IconName;
   end?: boolean;
   badge?: number;
@@ -64,6 +71,12 @@ function isTypingTarget(): boolean {
   return (el as HTMLElement).isContentEditable === true;
 }
 
+/** 顶栏与命令面板里的快捷键提示：Mac 显示 ⌘K，其它平台显示 Ctrl K。 */
+const SHORTCUT_HINT =
+  typeof navigator === 'undefined' || !/Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    ? 'Ctrl K'
+    : '⌘K';
+
 export function AdminShell() {
   const t = useT();
   const { me, site, logout, config } = useAuth();
@@ -80,6 +93,9 @@ export function AdminShell() {
   const extensionPages = adminPages.filter((entry) => adminPageGroup(entry.page) === 'extensions');
   const navigate = useNavigate();
   const location = useLocation();
+  // 顶栏命令面板：按钮与 Ctrl/Cmd+K 都能打开；触发按钮的 ref 用来在关闭后还焦点。
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   // 后台的明暗偏好与站点主题解耦：默认亮色，切换后写 localStorage，刷新仍保持。
   const { mode: adminTheme, setMode: setAdminTheme, toggle: toggleAdminTheme } = useAdminTheme();
   // 后台只服务管理员：普通成员写稿走 `/write`，不会渲染这个外壳。
@@ -202,6 +218,18 @@ export function AdminShell() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [toggleAdminTheme]);
 
+  // Ctrl/Cmd+K 开关命令面板。只处理带 Ctrl/Cmd 的组合键，普通字符键完全不碰，
+  // 所以在任何输入框里正常打字都不受影响；再按一次同样的组合键还能关掉面板。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isPaletteShortcut(event)) return;
+      event.preventDefault();
+      setPaletteOpen((open) => !open);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   useEffect(() => {
     // 个人博客没有审核队列，徽标也不必再拉一遍列表。
     if (!can('moderate_content') || personal) return;
@@ -260,24 +288,26 @@ export function AdminShell() {
 
   const themeItems: NavItem[] = can('manage_site')
     ? ([
-        { to: '/admin/themes/choose', label: t('选择主题'), icon: 'grid' },
-        { to: '/admin/themes', label: t('主题设置'), icon: 'palette', end: true },
-        { to: '/admin/extensions', label: t('扩展'), icon: 'grid' },
+        { to: '/admin/themes/choose', label: t('选择主题'), icon: 'grid', keyword: '选择主题' },
+        { to: '/admin/themes', label: t('主题设置'), icon: 'palette', end: true, keyword: '主题设置' },
+        { to: '/admin/extensions', label: t('扩展'), icon: 'grid', keyword: '扩展' },
       ] as NavItem[])
     : [];
 
   const siteItems: NavItem[] = [
     ...(can('manage_site')
-      ? ([{ to: '/admin/settings', label: t('站点设置'), icon: 'settings' }] as NavItem[])
+      ? ([{ to: '/admin/settings', label: t('站点设置'), icon: 'settings', keyword: '站点设置' }] as NavItem[])
       : []),
     ...(can('manage_site')
-      ? ([{ to: '/admin/login-settings', label: t('登录设置'), icon: 'lock' }] as NavItem[])
+      ? ([{ to: '/admin/login-settings', label: t('登录设置'), icon: 'lock', keyword: '登录设置' }] as NavItem[])
       : []),
     // 「站点更新」排在「登录设置」之后：安装 / 登录相关入口在前，更新属于维护动作。
     ...(can('manage_site')
-      ? ([{ to: '/admin/update', label: t('站点更新'), icon: 'refresh' }] as NavItem[])
+      ? ([{ to: '/admin/update', label: t('站点更新'), icon: 'refresh', keyword: '站点更新' }] as NavItem[])
       : []),
-    ...(can('view_log') ? ([{ to: '/admin/activity', label: t('网站日志'), icon: 'clock' }] as NavItem[]) : []),
+    ...(can('view_log')
+      ? ([{ to: '/admin/activity', label: t('网站日志'), icon: 'clock', keyword: '网站日志' }] as NavItem[])
+      : []),
   ];
 
   // 站点设置内部的二级页：访问限制与域名绑定合并为一个界面。
@@ -295,13 +325,13 @@ export function AdminShell() {
   );
   const siteSubItems: NavItem[] = can('manage_site')
     ? ([
-        { to: '/admin/settings', label: t('基本信息'), icon: 'settings' },
-        { to: '/admin/access', label: t('访问与域名'), icon: 'shield' },
-        { to: '/admin/verification', label: t('人机验证'), icon: 'lock' },
-        { to: '/admin/seo', label: 'SEO', icon: 'search' },
-        { to: '/admin/performance', label: t('性能优化'), icon: 'server' },
-        { to: '/admin/storage', label: t('储存策略'), icon: 'database' },
-        { to: '/admin/data', label: t('数据与备份'), icon: 'download' },
+        { to: '/admin/settings', label: t('基本信息'), icon: 'settings', keyword: '基本信息' },
+        { to: '/admin/access', label: t('访问与域名'), icon: 'shield', keyword: '访问与域名' },
+        { to: '/admin/verification', label: t('人机验证'), icon: 'lock', keyword: '人机验证' },
+        { to: '/admin/seo', label: 'SEO', icon: 'search', keyword: 'SEO' },
+        { to: '/admin/performance', label: t('性能优化'), icon: 'server', keyword: '性能优化' },
+        { to: '/admin/storage', label: t('储存策略'), icon: 'database', keyword: '储存策略' },
+        { to: '/admin/data', label: t('数据与备份'), icon: 'download', keyword: '数据与备份' },
       ] as NavItem[])
     : [];
 
@@ -309,11 +339,13 @@ export function AdminShell() {
   const securityBadge = pending + pendingReports + pendingComments;
   const contentItems: NavItem[] = [
     ...(can('write_content') || can('moderate_content')
-      ? ([{ to: '/admin/content', label: t('内容库'), icon: 'file' }] as NavItem[])
+      ? ([{ to: '/admin/content', label: t('内容库'), icon: 'file', keyword: '内容库' }] as NavItem[])
       : []),
-    ...(can('manage_site') ? ([{ to: '/admin/pages', label: t('页面'), icon: 'layers' }] as NavItem[]) : []),
+    ...(can('manage_site')
+      ? ([{ to: '/admin/pages', label: t('页面'), icon: 'layers', keyword: '页面' }] as NavItem[])
+      : []),
     ...(can('write_content') || can('moderate_content')
-      ? ([{ to: '/admin/taxonomy', label: t('分类与标签'), icon: 'tag' }] as NavItem[])
+      ? ([{ to: '/admin/taxonomy', label: t('分类与标签'), icon: 'tag', keyword: '分类与标签' }] as NavItem[])
       : []),
     // 个人博客没有别人投稿的审核流程；只要还能管理评论，入口仍然保留。
     ...(can('moderate_content') || can('moderate_comment')
@@ -323,18 +355,25 @@ export function AdminShell() {
             label: t('信息安全'),
             icon: 'shield',
             badge: securityBadge,
+            keyword: '信息安全',
           },
         ] as NavItem[])
       : []),
-    ...(can('write_content') ? ([{ to: '/admin/media', label: t('媒体库'), icon: 'image' }] as NavItem[]) : []),
+    ...(can('write_content')
+      ? ([{ to: '/admin/media', label: t('媒体库'), icon: 'image', keyword: '媒体库' }] as NavItem[])
+      : []),
     // Beta 1.2：内容地址改为以 slug 为主，旧路径靠重定向表兜底，入口紧跟内容库。
-    ...(can('manage_site') ? ([{ to: '/admin/redirects', label: t('永久链接'), icon: 'link' }] as NavItem[]) : []),
+    ...(can('manage_site')
+      ? ([{ to: '/admin/redirects', label: t('永久链接'), icon: 'link', keyword: '永久链接' }] as NavItem[])
+      : []),
   ];
 
   const userItems: NavItem[] = [
-    ...(can('manage_member') ? ([{ to: '/admin/users', label: t('用户管理'), icon: 'users' }] as NavItem[]) : []),
+    ...(can('manage_member')
+      ? ([{ to: '/admin/users', label: t('用户管理'), icon: 'users', keyword: '用户管理' }] as NavItem[])
+      : []),
     ...(can('manage_permission')
-      ? ([{ to: '/admin/permissions', label: t('用户组'), icon: 'shield' }] as NavItem[])
+      ? ([{ to: '/admin/permissions', label: t('用户组'), icon: 'shield', keyword: '用户组' }] as NavItem[])
       : []),
   ];
 
@@ -342,14 +381,18 @@ export function AdminShell() {
   // 鉴权方式与错误码结构，普通成员没有任何理由看到这份后台地图。
   const systemItems: NavItem[] = [
     ...(me?.role === 'platform_admin' && config.mode !== 'demo'
-      ? ([{ to: '/admin/platform', label: t('站点平台'), icon: 'server' }] as NavItem[])
+      ? ([{ to: '/admin/platform', label: t('站点平台'), icon: 'server', keyword: '站点平台' }] as NavItem[])
       : []),
     // Beta 1.2：来源/留存/设备是运维面。
-    ...(can('view_log') ? ([{ to: '/admin/insights', label: t('访问洞察'), icon: 'chart' }] as NavItem[]) : []),
+    ...(can('view_log')
+      ? ([{ to: '/admin/insights', label: t('访问洞察'), icon: 'chart', keyword: '访问洞察' }] as NavItem[])
+      : []),
     // 邮件订阅：名单、模板、投递日志与群发。
-    ...(can('manage_site') ? ([{ to: '/admin/newsletter', label: t('邮件订阅'), icon: 'mail' }] as NavItem[]) : []),
     ...(can('manage_site')
-      ? ([{ to: '/admin/docs', label: t('调用接口'), icon: 'code' }] as NavItem[])
+      ? ([{ to: '/admin/newsletter', label: t('邮件订阅'), icon: 'mail', keyword: '邮件订阅' }] as NavItem[])
+      : []),
+    ...(can('manage_site')
+      ? ([{ to: '/admin/docs', label: t('调用接口'), icon: 'code', keyword: '调用接口' }] as NavItem[])
       : []),
   ];
 
@@ -366,7 +409,7 @@ export function AdminShell() {
           {
             label: t('概览'),
             items: [
-              { to: '/admin', label: t('仪表盘'), icon: 'home', end: true },
+              { to: '/admin', label: t('仪表盘'), icon: 'home', end: true, keyword: '仪表盘' },
               // 性能面板等 overview 组扩展页：紧贴仪表盘，位置与原写死的入口一致。
               // 入口只在平台管理员角色下出现（页面内部还会再校验一次数据权限）。
               ...overviewPages.map(pageNavItem),
@@ -382,6 +425,40 @@ export function AdminShell() {
     // 其它扩展页（group 缺省按 extensions 处理）单独成组，避免和核心导航混在一起。
     ...(adminOnly && extensionPages.length
       ? [{ label: t('扩展页面'), items: extensionPages.map(pageNavItem) }]
+      : []),
+  ];
+
+  // 顶栏命令面板的数据：侧栏全部分组（已按权限过滤）→ 站点设置子页 → 「写新稿」动作。
+  // 每项带中文原文关键词，英文界面下输入中文也能命中；扩展页仍走 `/admin/ext/:pageId`。
+  const searchEntries: AdminSearchEntry[] = [
+    ...groups.flatMap((group) =>
+      group.items.map((item) => ({
+        id: `nav|${group.label}|${item.to}`,
+        label: item.label,
+        group: group.label,
+        to: item.to,
+        icon: item.icon,
+        keywords: item.keyword ? [item.keyword] : undefined,
+      })),
+    ),
+    ...siteSubItems.map((item) => ({
+      id: `settings|${item.to}`,
+      label: item.label,
+      group: t('站点设置'),
+      to: item.to,
+      icon: item.icon,
+      keywords: item.keyword ? [item.keyword] : undefined,
+    })),
+    ...(can('write_content')
+      ? ([
+          {
+            id: 'action|write',
+            label: t('写新稿'),
+            group: t('快捷操作'),
+            to: '/admin/content/new/article',
+            icon: 'edit',
+          },
+        ] as AdminSearchEntry[])
       : []),
   ];
 
@@ -582,6 +659,23 @@ export function AdminShell() {
             <h1>{section}</h1>
           </div>
           <div className="admin-topbar-actions">
+            {/* 功能搜索入口：点击或 Ctrl/Cmd+K 打开命令面板；小屏由 CSS 收成图标按钮。 */}
+            <button
+              ref={searchTriggerRef}
+              type="button"
+              className="admin-search-trigger"
+              onClick={() => setPaletteOpen(true)}
+              title={t('搜索功能（{shortcut}）', { shortcut: SHORTCUT_HINT })}
+              aria-label={t('搜索功能')}
+              aria-haspopup="dialog"
+              aria-expanded={paletteOpen}
+            >
+              <Icon name="search" size={14} />
+              <span className="admin-search-trigger-copy">{t('搜索功能…')}</span>
+              <kbd className="admin-search-trigger-key" aria-hidden="true">
+                {SHORTCUT_HINT}
+              </kbd>
+            </button>
             <div
               className="admin-theme-switch"
               role="group"
@@ -650,6 +744,12 @@ export function AdminShell() {
           </div>
         </div>
       </div>
+
+      <AdminCommandPalette
+        onClose={() => setPaletteOpen(false)}
+        entries={searchEntries}
+        returnFocusTo={searchTriggerRef}
+      />
     </div>
   );
 }

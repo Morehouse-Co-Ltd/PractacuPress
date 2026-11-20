@@ -70,6 +70,15 @@ const fragment: Dictionary = {
   // Beta 1.2: the permanent link and traffic insight entries.
   永久链接: 'Permalinks',
   访问洞察: 'Traffic insights',
+
+  // 顶栏功能搜索与命令面板（AdminShell.tsx / AdminCommandPalette.tsx）
+  '搜索功能…': 'Search features…',
+  搜索功能: 'Search features',
+  '搜索功能（{shortcut}）': 'Search features ({shortcut})',
+  快捷操作: 'Quick actions',
+  功能与页面: 'Features and pages',
+  '没有找到与「{query}」匹配的功能。': 'No matching feature for “{query}”.',
+  '↑/↓ 选择 · Enter 打开 · Esc 关闭': '↑/↓ to select · Enter to open · Esc to close',
 };
 
 export default fragment;

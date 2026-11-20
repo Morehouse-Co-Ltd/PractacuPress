@@ -1,0 +1,243 @@
+/* =========================================================
+   后台功能搜索：顶栏入口 + 命令面板
+   ---------------------------------------------------------
+   与 adminTheme.css / styles.css 分开维护：这里的类名统一以
+   .admin-search-trigger / .admin-cmd- 开头，不覆盖任何既有选择器，
+   两个代理同时改后台样式时也不会互相踩到。
+   颜色全部走后台令牌（--admin-*、--ink、--line…），亮色和深色后台
+   都由 html[data-surface='admin'][data-admin-theme] 上的令牌自动适配。
+   ========================================================= */
+
+/* ---------- 顶栏入口 ---------- */
+
+.admin-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  height: 30px;
+  padding: 0 9px 0 10px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 9px;
+  background: var(--admin-panel, var(--bg));
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.admin-search-trigger:hover {
+  background: var(--admin-hover, var(--bg-subtle));
+  border-color: var(--admin-border-soft, var(--line-strong));
+  color: var(--ink);
+}
+.admin-search-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.admin-search-trigger svg {
+  flex: none;
+  color: var(--muted);
+}
+.admin-search-trigger:hover svg {
+  color: var(--ink);
+}
+.admin-search-trigger-copy {
+  white-space: nowrap;
+}
+/* 快捷键提示做成键帽：比正文更小、mono 字体，不抢「搜索功能…」的注意力。 */
+.admin-search-trigger-key {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--admin-panel-alt, var(--bg-subtle));
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 小屏只留放大镜图标，避免把顶栏动作挤成两行。 */
+@media (max-width: 760px) {
+  .admin-search-trigger {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+  .admin-search-trigger-copy,
+  .admin-search-trigger-key {
+    display: none;
+  }
+}
+
+/* ---------- 命令面板：遮罩与面板 ---------- */
+
+.admin-cmd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 20px 20px;
+  background: color-mix(in srgb, #0b0d12 40%, transparent);
+  backdrop-filter: blur(3px);
+  color: var(--ink);
+  animation: admin-cmd-fade 140ms ease both;
+}
+.admin-cmd {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: min(70vh, 560px);
+  overflow: hidden;
+  border: 1px solid var(--admin-border, var(--line-strong));
+  border-radius: 14px;
+  background: var(--admin-panel, var(--bg));
+  box-shadow: var(--shadow-pop);
+  animation: admin-cmd-in 160ms cubic-bezier(0.22, 0.68, 0.28, 1) both;
+}
+@keyframes admin-cmd-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes admin-cmd-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- 输入区 ---------- */
+
+.admin-cmd-field {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--admin-border, var(--line));
+}
+.admin-cmd-field svg {
+  flex: none;
+  color: var(--muted);
+}
+.admin-cmd-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.admin-cmd-input:focus {
+  outline: none;
+}
+.admin-cmd-input::placeholder {
+  color: var(--faint);
+}
+
+/* ---------- 结果列表 ---------- */
+
+.admin-cmd-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+}
+.admin-cmd-listbox {
+  display: flex;
+  flex-direction: column;
+}
+.admin-cmd-group {
+  padding: 10px 10px 5px;
+  color: var(--faint);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.admin-cmd-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.admin-cmd-option svg {
+  flex: none;
+  color: var(--muted);
+}
+.admin-cmd-option:hover,
+.admin-cmd-option.is-active {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.admin-cmd-option.is-active svg {
+  color: var(--accent);
+}
+.admin-cmd-option-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 搜索状态下每行末尾的分组小字：结果按命中等级混排时分组的唯一线索。 */
+.admin-cmd-option-group {
+  flex: none;
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--faint);
+  font-size: 11px;
+}
+.admin-cmd-option.is-active .admin-cmd-option-group {
+  color: var(--muted);
+}
+
+/* ---------- 空态与底部键盘提示 ---------- */
+
+.admin-cmd-empty {
+  padding: 30px 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.admin-cmd-foot {
+  flex: none;
+  padding: 9px 14px;
+  border-top: 1px solid var(--admin-border, var(--line));
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* ---------- 深色后台的小修正 ---------- */
+
+/* 深色下主色更深，遮罩再压一点，避免面板边缘和背景糊在一起。 */
+html[data-surface='admin'][data-admin-theme='dark'] .admin-cmd-overlay {
+  background: color-mix(in srgb, #04060a 62%, transparent);
+}
+html[data-surface='admin'][data-admin-theme='dark'] .admin-cmd-option.is-active {
+  box-shadow: inset 0 0 0 1px var(--admin-border-soft);
+}
+
+/* 尊重系统的减少动效偏好：遮罩直接出现，不做位移。 */
+@media (prefers-reduced-motion: reduce) {
+  .admin-cmd-overlay,
+  .admin-cmd {
+    animation: none;
+  }
+}
