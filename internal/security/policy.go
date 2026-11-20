@@ -22,7 +22,11 @@ package securitygo
 // (pp-*/language-* plus a small Markdown ecosystem allow-list) and upload
 // inspection uses the complete file signatures plus HTML/SVG polyglot
 // rejection.
-const PolicyVersion = "2026-11-02.1"
+//
+// 2026-11-21.1: collapsible text — <details>/<summary> and the details-only
+// `open` attribute are allowed so the editor's collapse block survives; no
+// other tag or attribute changed.
+const PolicyVersion = "2026-11-21.1"
 
 // MaxSourceChars is the maximum accepted source length in Unicode code points.
 const MaxSourceChars = 200_000

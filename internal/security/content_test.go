@@ -52,6 +52,20 @@ func TestKeepsSafeFormatting(t *testing.T) {
 	require.Equal(t, "<p><strong>bold</strong> and <em>italic</em></p>", out.HTML)
 }
 
+func TestKeepsCollapsibleDetails(t *testing.T) {
+	// Collapsible text is authored as <details class="pp-collapse"> in the editor;
+	// dropping either tag would silently turn it into a flat list of paragraphs.
+	source := `<details class="pp-collapse" open><summary>更多说明</summary><p>正文</p><script>alert(1)</script></details>`
+	out, err := Sanitize("html", source)
+	require.NoError(t, err)
+	require.Contains(t, out.HTML, `<details`)
+	require.Contains(t, out.HTML, `class="pp-collapse"`)
+	require.Contains(t, out.HTML, `open`)
+	require.Contains(t, out.HTML, `<summary>更多说明</summary>`)
+	require.Contains(t, out.HTML, `<p>正文</p>`)
+	require.NotContains(t, out.HTML, "script")
+}
+
 func TestKeepsDiagramFenceForClientSideRendering(t *testing.T) {
 	// Article diagrams are stored as a ```pp-diagram fenced block: goldmark turns
 	// it into pre > code with a language class, the client hydrates it into SVG.

@@ -34,9 +34,9 @@ type Sanitized struct {
 // Anything else is dropped, keeping its text content.
 var allowedTags = map[string]struct{}{
 	"a": {}, "b": {}, "blockquote": {}, "br": {}, "code": {}, "del": {},
-	"em": {}, "h1": {}, "h2": {}, "h3": {}, "h4": {}, "h5": {}, "h6": {},
+	"details": {}, "em": {}, "h1": {}, "h2": {}, "h3": {}, "h4": {}, "h5": {}, "h6": {},
 	"hr": {}, "i": {}, "img": {}, "li": {}, "ol": {}, "p": {}, "pre": {},
-	"s": {}, "strong": {}, "table": {}, "tbody": {}, "td": {}, "th": {},
+	"s": {}, "strong": {}, "summary": {}, "table": {}, "tbody": {}, "td": {}, "th": {},
 	"thead": {}, "tr": {}, "ul": {},
 }
 
@@ -237,7 +237,8 @@ func writeSanitizedElement(builder *strings.Builder, node *html.Node) {
 //
 // class, lang and title are generic attributes in ammonia's defaults (lang and
 // title are not overridden by the reference builder); href is allowed on links and
-// src/alt/width/height on images.
+// src/alt/width/height on images. `open` is allowed on <details> only: it is what
+// makes a collapsible block start expanded, and it cannot inject behaviour.
 func isAllowedAttribute(tag, attribute string) bool {
 	switch attribute {
 	case "class", "lang", "title":
@@ -246,6 +247,8 @@ func isAllowedAttribute(tag, attribute string) bool {
 		return tag == "a"
 	case "src", "alt", "width", "height":
 		return tag == "img"
+	case "open":
+		return tag == "details"
 	default:
 		return false
 	}

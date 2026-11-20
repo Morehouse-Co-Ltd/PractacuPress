@@ -54,6 +54,17 @@ func TestDiagramFenceSurvivesMarkdownRendering(t *testing.T) {
 	require.Contains(t, out, "</code></pre>")
 }
 
+func TestRawCollapsibleSurvivesMarkdownRendering(t *testing.T) {
+	// The editor writes collapsible blocks as raw HTML inside Markdown. goldmark
+	// must pass them through (WithUnsafe) so the sanitizer can decide what stays.
+	source := "<details class=\"pp-collapse\" open><summary>更多说明</summary><p>正文</p></details>\n"
+	out, err := renderMarkdown(source)
+	require.NoError(t, err)
+	require.Contains(t, out, "<details")
+	require.Contains(t, out, "<summary>更多说明</summary>")
+	require.Contains(t, out, "open")
+}
+
 func TestHTMLAndPlainArePassedThrough(t *testing.T) {
 	sanitizer := okSanitizer()
 	service := newService(t, newFakeRepo(), sanitizer, site.PublishModeOpen)
