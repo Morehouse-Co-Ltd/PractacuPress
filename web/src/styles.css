@@ -1204,7 +1204,30 @@ img {
   box-shadow: 0 16px 36px rgb(20 20 15 / .14);
 }
 .nav-dropdown:hover .nav-dropdown-menu,
-.nav-dropdown:focus-within .nav-dropdown-menu { display: flex; }
+.nav-dropdown:focus-within .nav-dropdown-menu {
+  display: flex;
+  /* 出现时从上往下展开：视觉上从触发项“落下”，而不是整块闪现。 */
+  transform-origin: top center;
+  animation: nav-dropdown-in 160ms cubic-bezier(.2, .7, .3, 1);
+}
+
+@keyframes nav-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-dropdown:hover .nav-dropdown-menu,
+  .nav-dropdown:focus-within .nav-dropdown-menu {
+    animation: none;
+  }
+}
 .nav-dropdown-menu a,
 .nav-dropdown-menu .subnav-plain {
   display: flex;
