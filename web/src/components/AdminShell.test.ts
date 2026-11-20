@@ -195,4 +195,93 @@ describe('AdminShell 的扩展导航', () => {
     expect(container.querySelector('.admin-topbar h1')?.textContent).toBe('无图标页面');
     expect(container.querySelector('#ext-outlet')).not.toBeNull();
   });
+
+  it('进入后台时命令面板保持关闭，Ctrl+K 才打开', async () => {
+    await renderAt('/admin');
+
+    // 回归：面板曾经被无条件挂载，进入后台就弹出遮罩。
+    expect(document.querySelector('.admin-cmd-overlay')).toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    });
+    expect(document.querySelector('.admin-cmd-overlay')).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    });
+    expect(document.querySelector('.admin-cmd-overlay')).toBeNull();
+  });
+
+  it('命令面板按权限过滤细节功能', async () => {
+    state.permission = false;
+    await renderAt('/admin');
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    });
+    const input = document.querySelector<HTMLInputElement>('.admin-cmd-input');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(input, 'sitemap');
+      input?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const labels = [...document.querySelectorAll<HTMLElement>('.admin-cmd-option')].map(
+      (node) => node.textContent ?? '',
+    );
+    expect(labels.some((label) => label.includes('sitemap.xml'))).toBe(false);
+  });
+
+  it('非平台管理员搜不到平台专属的细节功能', async () => {
+    state.role = 'admin';
+    state.permission = true;
+    await renderAt('/admin');
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    });
+    const input = document.querySelector<HTMLInputElement>('.admin-cmd-input');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(input, 'cpu');
+      input?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const labels = [...document.querySelectorAll<HTMLElement>('.admin-cmd-option')].map(
+      (node) => node.textContent ?? '',
+    );
+    expect(labels.some((label) => label.includes('CPU 占用'))).toBe(false);
+  });
+
+  it('命令面板能搜到页面里的细节功能并导航', async () => {
+    await renderAt('/admin');
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+    });
+
+    const input = document.querySelector<HTMLInputElement>('.admin-cmd-input');
+    expect(input).not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(input, 'cpu');
+      input?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const options = [...document.querySelectorAll<HTMLElement>('.admin-cmd-option')];
+    expect(options.length).toBeGreaterThan(0);
+    expect(options[0].textContent).toContain('CPU');
+
+    await act(async () => {
+      options[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.querySelector('.admin-cmd-overlay')).toBeNull();
+    // CPU 占用属于内置性能面板扩展页，测试路由里渲染 #ext-outlet。
+    expect(container.querySelector('#ext-outlet')).not.toBeNull();
+  });
 });

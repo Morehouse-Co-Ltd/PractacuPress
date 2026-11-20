@@ -20,6 +20,7 @@ import { useMediaSrc } from '../lib/assetUrl';
 import { Icon, type IconName } from './Icon';
 import { isPaletteShortcut, type AdminSearchEntry } from '../lib/adminSearch';
 import { AdminCommandPalette } from './AdminCommandPalette';
+import { ADMIN_FEATURE_INDEX, type AdminFeatureRequirement } from '../lib/adminFeatureIndex';
 
 interface NavItem {
   to: string;
@@ -230,6 +231,55 @@ export function AdminShell() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // 从命令面板选中一条“细节功能”后，页面渲染出来再按标签定位到对应区块：
+  // 滚到视口中间并短暂高亮，避免只落到页面顶部让用户自己找。定位状态放在
+  // location.state，落地后用 replace 清掉，刷新或前进后退不会重复触发。
+  // 页面里的列表/设置是异步加载的，只等两帧可能还找不到，因此最多再重试几次。
+  useEffect(() => {
+    const state = location.state as { adminSearchFocus?: { label?: string } } | null;
+    const label = state?.adminSearchFocus?.label?.trim();
+    if (!label) return;
+    let cancelled = false;
+    let timer = 0;
+    let attempts = 0;
+
+    const locate = (): HTMLElement | null => {
+      const scope = document.querySelector('.admin-content');
+      if (!scope) return null;
+      const candidates = Array.from(
+        scope.querySelectorAll<HTMLElement>('h1,h2,h3,h4,strong,th,button,label,span'),
+      );
+      return (
+        candidates.find((node) => node.textContent?.trim() === label) ??
+        candidates.find((node) => (node.textContent ?? '').includes(label)) ??
+        null
+      );
+    };
+
+    const attempt = () => {
+      if (cancelled) return;
+      const target = locate();
+      if (target) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        target.classList.add('admin-search-hit');
+        window.setTimeout(() => target.classList.remove('admin-search-hit'), 1800);
+        navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+        return;
+      }
+      attempts += 1;
+      if (attempts < 6) timer = window.setTimeout(attempt, 120);
+    };
+
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(attempt);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [location.pathname, location.search, location.state, navigate]);
+
   useEffect(() => {
     // 个人博客没有审核队列，徽标也不必再拉一遍列表。
     if (!can('moderate_content') || personal) return;
@@ -428,8 +478,26 @@ export function AdminShell() {
       : []),
   ];
 
-  // 顶栏命令面板的数据：侧栏全部分组（已按权限过滤）→ 站点设置子页 → 「写新稿」动作。
-  // 每项带中文原文关键词，英文界面下输入中文也能命中；扩展页仍走 `/admin/ext/:pageId`。
+  // 细节功能条目：侧栏导航只到“页面”，这一层把每页里的具体功能（sitemap、CORS、
+  // S3、回收站、能力矩阵……）也编进搜索结果，打开后由下面的定位 effect 跳到区块。
+  // 权限过滤与侧栏同一套：requires 是“与”，requiresAny 是“或”。
+  const requirementAllowed = (requirement: AdminFeatureRequirement): boolean =>
+    requirement === 'platform_admin' ? me?.role === 'platform_admin' : can(requirement);
+  const featureEntries: AdminSearchEntry[] = ADMIN_FEATURE_INDEX.filter((seed) => {
+    if (seed.requires && !requirementAllowed(seed.requires)) return false;
+    if (seed.requiresAny && !seed.requiresAny.some(requirementAllowed)) return false;
+    return true;
+  }).map((seed) => ({
+    id: `feature|${seed.id}`,
+    label: t(seed.label),
+    group: t(seed.group),
+    to: seed.to,
+    icon: seed.icon,
+    keywords: [seed.label, ...(seed.keywords ?? [])],
+  }));
+
+  // 顶栏命令面板的数据：侧栏全部分组（已按权限过滤）→ 站点设置子页 → 「写新稿」动作
+  // → 细节功能目录。每项带中文原文关键词，英文界面下输入中文也能命中。
   const searchEntries: AdminSearchEntry[] = [
     ...groups.flatMap((group) =>
       group.items.map((item) => ({
@@ -460,6 +528,7 @@ export function AdminShell() {
           },
         ] as AdminSearchEntry[])
       : []),
+    ...featureEntries,
   ];
 
   const titles: { match: RegExp; title: string }[] = [
@@ -745,11 +814,13 @@ export function AdminShell() {
         </div>
       </div>
 
-      <AdminCommandPalette
-        onClose={() => setPaletteOpen(false)}
-        entries={searchEntries}
-        returnFocusTo={searchTriggerRef}
-      />
+      {paletteOpen ? (
+        <AdminCommandPalette
+          onClose={() => setPaletteOpen(false)}
+          entries={searchEntries}
+          returnFocusTo={searchTriggerRef}
+        />
+      ) : null}
     </div>
   );
 }

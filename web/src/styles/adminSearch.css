@@ -241,3 +241,29 @@ html[data-surface='admin'][data-admin-theme='dark'] .admin-cmd-option.is-active 
     animation: none;
   }
 }
+
+/* 命令面板定位到的功能区块：短暂描边，告诉用户“就是这里”。 */
+.admin-search-hit {
+  border-radius: 6px;
+  animation: admin-search-hit 1.8s ease-out;
+}
+
+@keyframes admin-search-hit {
+  0% {
+    box-shadow: 0 0 0 3px var(--accent);
+    background: var(--accent-soft, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-search-hit {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+}

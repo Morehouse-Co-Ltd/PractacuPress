@@ -52,7 +52,8 @@ export function AdminCommandPalette({
   const choose = (entry: AdminSearchEntry | undefined) => {
     if (!entry) return;
     onClose();
-    navigate(entry.to);
+    // 把标签带过去：AdminShell 跳转后会按它在页面里定位到对应功能区并高亮。
+    navigate(entry.to, { state: { adminSearchFocus: { label: entry.label } } });
   };
 
   useEffect(() => {
