@@ -16,6 +16,16 @@ const remoteManifest = {
   style: 'stable',
 };
 
+// parseUpdateManifest normalises the legacy manifest above into the canonical
+// channel + integer version_code form.
+const parsedRemoteManifest = {
+  title: remoteManifest.title,
+  describe: remoteManifest.describe,
+  version: remoteManifest.version,
+  channel: 'stable',
+  version_code: 20099,
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -43,7 +53,7 @@ describe('update client', () => {
         ok: true,
         source: UPDATE_SERVERS[0].url,
         fetched_at: '2026-11-15T03:00:00Z',
-        local: { title: 'Practacu Press', describe: 'd', version: '0.1.0', style: 'beta' },
+        local: { title: 'Practacu Press', describe: 'd', version: '0.1.0' },
         remote: remoteManifest,
         update_available: true,
         reason: 'newer',
@@ -53,7 +63,7 @@ describe('update client', () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(check.server_side).toBe(true);
-    expect(check.remote).toEqual(remoteManifest);
+    expect(check.remote).toEqual(parsedRemoteManifest);
     expect(check.local.version).toBe('0.1.0');
     expect(check.checked_at).toBe('2026-11-15T03:00:00Z');
     expect(String(fetchImpl.mock.calls[0][0])).toBe(
@@ -69,7 +79,7 @@ describe('update client', () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(check.server_side).toBe(false);
-    expect(check.remote).toEqual(remoteManifest);
+    expect(check.remote).toEqual(parsedRemoteManifest);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 

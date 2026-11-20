@@ -28,7 +28,6 @@ const manifest = {
   title: 'Practacu Press',
   describe: '自托管内容站点。',
   version: '0.2.0',
-  style: 'stable',
 };
 
 describe('site update settings', () => {
@@ -134,19 +133,33 @@ describe('site update settings', () => {
 });
 
 describe('version manifest', () => {
-  it('accepts exactly the four core fields', () => {
-    expect(parseUpdateManifest(manifest)).toEqual(manifest);
-    expect(parseUpdateManifest({ ...manifest, version: 'v1.0.0-beta.2' })).toEqual({
+  it('accepts the canonical version manifest and computes the integer code', () => {
+    expect(parseUpdateManifest(manifest)).toEqual({
       ...manifest,
-      version: 'v1.0.0-beta.2',
+      channel: 'stable',
+      version_code: 20099,
     });
-    expect(parseUpdateManifest({ ...manifest, style: 'local' })?.style).toBe('local');
-    // 多余字段不影响解析，展示只用四个核心字段。
-    expect(parseUpdateManifest({ ...manifest, extra: { a: 1 } })).toEqual(manifest);
+    expect(parseUpdateManifest({ ...manifest, version: 'v1.0.0-beta.2' })).toEqual({
+      title: manifest.title,
+      describe: manifest.describe,
+      version: '1.0.0-beta.2',
+      channel: 'beta',
+      version_code: 1000002,
+    });
+    // 旧清单只有 style：按版本号推断通道，并补出整数版本号。
+    expect(parseUpdateManifest({ ...manifest, version: '0.2.0-beta', style: 'beta' })).toEqual({
+      title: manifest.title,
+      describe: manifest.describe,
+      version: '0.2.0-beta',
+      channel: 'beta',
+      version_code: 20001,
+    });
+    // 多余字段不影响解析。
+    expect(parseUpdateManifest({ ...manifest, extra: { a: 1 } })?.version).toBe('0.2.0');
   });
 
   it('rejects documents that are missing a core field', () => {
-    for (const key of ['title', 'describe', 'version', 'style'] as const) {
+    for (const key of ['title', 'describe', 'version'] as const) {
       const broken: Record<string, unknown> = { ...manifest };
       delete broken[key];
       expect(parseUpdateManifest(broken), key).toBeNull();
@@ -156,16 +169,21 @@ describe('version manifest', () => {
     expect(parseUpdateManifest('0.2.0')).toBeNull();
   });
 
-  it('rejects malformed versions and unknown styles', () => {
-    for (const version of ['', '2', '1.2', '1.2.3.4', 'latest', 'v1.2.x']) {
+  it('rejects malformed versions, unknown styles and inconsistent codes', () => {
+    for (const version of ['', '2', '1.2', '1.2.3.4', 'latest', 'v1.2.x', '1.2.3-alpha']) {
       expect(parseUpdateManifest({ ...manifest, version }), version).toBeNull();
     }
     expect(parseUpdateManifest({ ...manifest, style: 'nightly' })).toBeNull();
+    // 通道与版本号必须自洽：0.2.0 只能是 stable。
+    expect(parseUpdateManifest({ ...manifest, channel: 'beta' })).toBeNull();
+    // version_code 必须与版本号算出的值一致。
+    expect(parseUpdateManifest({ ...manifest, version_code: 20098 })).toBeNull();
+    expect(parseUpdateManifest({ ...manifest, version_code: '20099' })).toBeNull();
   });
 });
 
 describe('version comparison', () => {
-  it('orders numeric cores', () => {
+  it('orders versions by integer code', () => {
     expect(compareUpdateVersions('0.2.0', '0.1.9')).toBeGreaterThan(0);
     expect(compareUpdateVersions('0.1.10', '0.1.9')).toBeGreaterThan(0);
     expect(compareUpdateVersions('1.0.0', '1.0.0')).toBe(0);
@@ -173,12 +191,14 @@ describe('version comparison', () => {
     expect(compareUpdateVersions('v1.2.3', '1.2.3')).toBe(0);
   });
 
-  it('treats a prerelease as older than the release', () => {
+  it('treats a prerelease as older than its stable release', () => {
     expect(compareUpdateVersions('0.2.0', '0.2.0-beta')).toBeGreaterThan(0);
     expect(compareUpdateVersions('0.2.0-beta', '0.2.0')).toBeLessThan(0);
     expect(compareUpdateVersions('0.2.0-beta.2', '0.2.0-beta.10')).toBeLessThan(0);
-    expect(compareUpdateVersions('0.2.0-alpha', '0.2.0-beta')).toBeLessThan(0);
+    expect(compareUpdateVersions('0.2.0-beta.2', '0.2.0-beta')).toBeGreaterThan(0);
     expect(compareUpdateVersions('0.2.0-beta', '0.2.0-beta')).toBe(0);
+    // 0.1.99 比 0.2.0-beta 旧：patch 不会溢出到 minor。
+    expect(compareUpdateVersions('0.1.99', '0.2.0-beta')).toBeLessThan(0);
   });
 
   it('reports unparsable versions as equal, never as an update', () => {
@@ -197,11 +217,12 @@ describe('version comparison', () => {
 });
 
 describe('update verdict', () => {
-  const evaluate = (remoteVersion: string, style: 'stable' | 'beta' | 'local' = 'stable') =>
+  const remote = (version: string) => ({ title: manifest.title, describe: manifest.describe, version });
+  const evaluate = (remoteVersion: string, channel: 'stable' | 'beta' = 'stable') =>
     evaluateUpdate({
       localVersion: '0.1.0',
-      remote: parseUpdateManifest({ ...manifest, version: remoteVersion, style }),
-      channel: 'stable',
+      remote: parseUpdateManifest(remote(remoteVersion)),
+      channel,
     });
 
   it('reports an available update when the remote is newer', () => {
@@ -213,18 +234,15 @@ describe('update verdict', () => {
   });
 
   it('does not offer a beta release on the stable channel', () => {
-    const verdict = evaluate('0.2.0', 'beta');
+    const verdict = evaluate('0.2.0-beta', 'stable');
     expect(verdict.status).toBe('channel_mismatch');
     expect(verdict.available).toBe(false);
   });
 
   it('accepts a beta release on the beta channel', () => {
-    const verdict = evaluateUpdate({
-      localVersion: '0.1.0',
-      remote: parseUpdateManifest({ ...manifest, version: '0.2.0', style: 'beta' }),
-      channel: 'beta',
-    });
+    const verdict = evaluate('0.2.0-beta', 'beta');
     expect(verdict.status).toBe('available');
+    expect(verdict.remote?.channel).toBe('beta');
   });
 
   it('reports same / ahead / invalid', () => {
@@ -233,7 +251,7 @@ describe('update verdict', () => {
     expect(
       evaluateUpdate({
         localVersion: '0.1.0',
-        remote: parseUpdateManifest({ ...manifest, version: 'broken' }),
+        remote: parseUpdateManifest(remote('broken')),
         channel: 'stable',
       }).status,
     ).toBe('invalid');

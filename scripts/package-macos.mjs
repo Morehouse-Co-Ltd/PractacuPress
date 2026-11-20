@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
+import { parseVersion } from './lib/version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'release');
@@ -28,7 +29,9 @@ const option = (name, fallback = '') => {
 const ARCH = option('--arch', process.arch === 'arm64' ? 'arm64' : 'amd64');
 const SKIP_WEB = flag('--skip-web');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
-const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
+// 版本口径（含 -beta/-betaN 规范化）只由 scripts/lib/version.mjs 实现。
+const RELEASE_INPUT = option('--version', '');
+const RELEASE = RELEASE_INPUT ? parseVersion(RELEASE_INPUT) : null;
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x86_64';
 const PACKAGE_NAME = `PractacuPress-macOS-${ARCH_LABEL}`;
 const STAGE_ROOT = path.join(ROOT, '.tmp', 'macospkg');
@@ -37,8 +40,8 @@ const TARBALL = path.join(OUT_DIR, `${PACKAGE_NAME}.tar.gz`);
 const SHA_FILE = `${TARBALL}.sha256`;
 
 if (!['amd64', 'arm64'].includes(ARCH)) fail(`unsupported --arch ${ARCH}`);
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
-  fail(`unsupported --version ${RELEASE_VERSION}`);
+if (RELEASE_INPUT && !RELEASE) {
+  fail(`unsupported --version ${RELEASE_INPUT} (want X.Y.Z or X.Y.Z-beta[.N])`);
 }
 if (process.platform !== 'darwin') fail('macOS 包必须在 macOS 上构建');
 
@@ -82,19 +85,23 @@ function goCommand() {
 }
 
 function stampWebVersion(dir) {
-  if (!RELEASE_VERSION) return;
+  if (!RELEASE) return;
   const file = path.join(dir, 'version.json');
   const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   fs.writeFileSync(file, `${JSON.stringify({
     title: current.title || 'Practacu Press',
     describe: current.describe || '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
-    version: RELEASE_VERSION,
-    style: /-beta/i.test(RELEASE_VERSION) ? 'beta' : 'stable',
+    version: RELEASE.version,
+    channel: RELEASE.channel,
+    version_code: RELEASE.code,
   }, null, 2)}\n`, 'utf8');
 }
 
 function main() {
   if (!SKIP_WEB) {
+    // Stamp before the build so the version inlined by Vite matches the manifest
+    // served as /version.json.
+    stampWebVersion(path.join(ROOT, 'web', 'public'));
     run('npm', ['run', 'build'], { cwd: path.join(ROOT, 'web') });
   } else if (!fs.existsSync(path.join(ROOT, 'web', 'dist', 'index.html'))) {
     fail('--skip-web 但 web/dist 不存在');
@@ -127,7 +134,7 @@ function main() {
       env: { GOOS: 'darwin', GOARCH: ARCH, CGO_ENABLED: '0' },
     });
   }
-  fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
+  fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE ? RELEASE.version : 'development'}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
 
   // Normalise the text files the installer reads over SSH/scp.

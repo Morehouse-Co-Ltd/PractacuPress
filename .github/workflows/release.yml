@@ -103,13 +103,15 @@ jobs:
       - name: Build and stamp the release manifest
         run: |
           set -euo pipefail
+          # Stamp the source manifest before the build: appVersion.ts imports it,
+          # so stamping only dist/ afterwards would make the bundle disagree with
+          # the served /version.json.
+          node scripts/stamp-version.mjs \
+            --dist web/public \
+            --version "${{ needs.version.outputs.version }}"
           cd web
           npm ci --no-audit --no-fund
           npm run build
-          cd ../..
-          node scripts/stamp-version.mjs \
-            --dist web/dist \
-            --version "${{ needs.version.outputs.version }}"
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v7.0.2

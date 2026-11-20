@@ -26,6 +26,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
+import { parseVersion } from './lib/version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'release');
@@ -41,13 +42,15 @@ const option = (name, fallback = '') => {
 const SKIP_WEB = flag('--skip-web');
 const ARCH = option('--arch', 'amd64');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
-const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
+// 版本口径（含 -beta/-betaN 规范化）只由 scripts/lib/version.mjs 实现。
+const RELEASE_INPUT = option('--version', '');
+const RELEASE = RELEASE_INPUT ? parseVersion(RELEASE_INPUT) : null;
 
 if (!['amd64', 'arm64'].includes(ARCH)) {
   fail(`unsupported --arch ${ARCH} (use amd64 or arm64)`);
 }
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
-  fail(`unsupported --version ${RELEASE_VERSION} (want X.Y.Z or X.Y.Z-betaN)`);
+if (RELEASE_INPUT && !RELEASE) {
+  fail(`unsupported --version ${RELEASE_INPUT} (want X.Y.Z or X.Y.Z-beta[.N])`);
 }
 const ARCH_LABEL = ARCH === 'amd64' ? 'x64' : 'arm64';
 const ELF_MACHINE = ARCH === 'amd64' ? 0x3e : 0xb7;
@@ -180,6 +183,10 @@ function buildWeb() {
     return;
   }
   log('构建前端');
+  // Stamp the source manifest before the build: appVersion.ts imports it, so
+  // stamping only dist/ afterwards would leave the bundle reporting an older
+  // version than the served /version.json.
+  stampWebVersion(path.join(ROOT, 'web', 'public'));
   const temp = path.join(ROOT, '.tmp', 'eb');
   fs.mkdirSync(temp, { recursive: true });
   run(npmCommand(), ['run', 'build'], {
@@ -215,7 +222,7 @@ function buildGo(binDir) {
 // Version stamped into the package. Release builds must pass --version; local
 // builds fall back to the frontend manifest plus the commit.
 function packageVersion() {
-  if (RELEASE_VERSION) return RELEASE_VERSION;
+  if (RELEASE) return RELEASE.version;
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'web', 'package.json'), 'utf8'));
   const git = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
   const commit = git.status === 0 ? git.stdout.trim() : 'unknown';
@@ -225,17 +232,17 @@ function packageVersion() {
 // The frontend reads /version.json for the footer and the update screen. Leave the
 // repository's development value in place unless a release version was supplied.
 function stampWebVersion(webDir) {
-  if (!RELEASE_VERSION) return;
+  if (!RELEASE) return;
   const file = path.join(webDir, 'version.json');
   const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-  const beta = /-beta/i.test(RELEASE_VERSION);
   const next = {
     title: current.title || 'Practacu Press',
     describe:
       current.describe ||
       '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
-    version: RELEASE_VERSION,
-    style: beta ? 'beta' : 'stable',
+    version: RELEASE.version,
+    channel: RELEASE.channel,
+    version_code: RELEASE.code,
   };
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
 }

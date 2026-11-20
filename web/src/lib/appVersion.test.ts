@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import webPackage from '../../package.json';
-import { APP_VERSION, APP_VERSION_LABEL, APP_VERSION_MANIFEST } from './appVersion';
+import {
+  APP_VERSION,
+  APP_VERSION_CHANNEL,
+  APP_VERSION_CODE,
+  APP_VERSION_LABEL,
+  APP_VERSION_MANIFEST,
+} from './appVersion';
 import manifest from '../../public/version.json';
+import { parseVersion } from './version';
 
 /**
  * 版本清单与 package.json 必须一致。
@@ -11,18 +18,31 @@ import manifest from '../../public/version.json';
  */
 describe('app version', () => {
   it('uses the version manifest as the single source of truth', () => {
+    expect(manifest.version).toBe('0.1.2-beta');
     expect(APP_VERSION).toBe(manifest.version);
     expect(APP_VERSION_LABEL).toBe(`v${manifest.version}`);
     expect(webPackage.version).toBe(manifest.version);
   });
 
-  it('exposes the local manifest with all four core fields', () => {
+  it('exposes the canonical channel and integer version code', () => {
+    expect(manifest.channel).toBe('beta');
+    expect(manifest.version_code).toBe(10201);
+    expect(APP_VERSION_CHANNEL).toBe('beta');
+    expect(APP_VERSION_CODE).toBe(10201);
+    const parsed = parseVersion(manifest.version);
+    expect(parsed?.channel).toBe(manifest.channel);
+    expect(parsed?.code).toBe(manifest.version_code);
+  });
+
+  it('keeps the local manifest self-consistent with the version fields', () => {
     expect(APP_VERSION_MANIFEST).toEqual({
       title: manifest.title,
       describe: manifest.describe,
       version: manifest.version,
-      style: manifest.style,
+      channel: manifest.channel,
+      version_code: manifest.version_code,
     });
-    expect(['stable', 'beta', 'local']).toContain(APP_VERSION_MANIFEST.style);
+    expect(APP_VERSION_MANIFEST.channel).toBe('beta');
+    expect(APP_VERSION_MANIFEST.version_code).toBe(10201);
   });
 });

@@ -472,7 +472,7 @@ export function SiteUpdatePage() {
                       <span className="mini-value mono">
                         {versionLabel(result.remote.version)}{' '}
                         <Badge tone={STATUS_TONE[verdict.status] ?? 'muted'}>
-                          {t(styleLabel(result.remote.style))}
+                          {t(styleLabel(result.remote.channel ?? result.remote.style))}
                         </Badge>
                       </span>
                     </div>

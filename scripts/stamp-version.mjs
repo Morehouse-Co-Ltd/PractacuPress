@@ -4,12 +4,20 @@
  *
  *   node scripts/stamp-version.mjs --dist web/dist --version v1.2.3
  *   node scripts/stamp-version.mjs --dist web/dist --version v1.2.4-beta1
+ *   node scripts/stamp-version.mjs --dist web/dist --version 1.2.4-beta.2 --channel beta
  *
- * `web/public/version.json` is the source manifest used by the site footer.
- * A release build must not keep the repository's development version.
+ * `web/public/version.json` is the single source of truth for the site version
+ * (after a build it is served as `/version.json`). It carries exactly
+ * `version` + `channel` + `version_code`; readers compute the channel/code from
+ * the version when they are missing (see scripts/lib/version.mjs), but writes always use
+ * the new shape.
+ *
+ * Parsing/normalisation lives in scripts/lib/version.mjs, the single Node
+ * implementation of the scheme; this script never keeps a second regex.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseVersion } from './lib/version.mjs';
 
 function parseArgs(argv) {
   const options = { dist: '', version: '', channel: '' };
@@ -26,7 +34,9 @@ function parseArgs(argv) {
         break;
       case '--help':
       case '-h':
-        console.log('usage: stamp-version.mjs --dist <dir> --version <vX.Y.Z[-betaN]> [--channel stable|beta]');
+        console.log(
+          'usage: stamp-version.mjs --dist <dir> --version <vX.Y.Z[-beta[.N]]> [--channel stable|beta]',
+        );
         process.exit(0);
         break;
       default:
@@ -38,21 +48,17 @@ function parseArgs(argv) {
   return options;
 }
 
-function normalizeVersion(raw) {
-  const match = String(raw).trim().match(/^v?(\d+\.\d+\.\d+)(?:-beta[.-]?(\d+))?$/i);
-  if (!match) throw new Error(`unsupported version: ${raw} (want vX.Y.Z or vX.Y.Z-betaN)`);
-  return {
-    version: match[2] ? `${match[1]}-beta${Number(match[2])}` : match[1],
-    channel: match[2] ? 'beta' : 'stable',
-  };
-}
-
 try {
   const options = parseArgs(process.argv.slice(2));
-  const normalized = normalizeVersion(options.version);
-  const channel = options.channel || normalized.channel;
-  if (channel !== 'stable' && channel !== 'beta') {
-    throw new Error(`unsupported channel: ${channel}`);
+  const parsed = parseVersion(options.version);
+  if (!parsed) {
+    throw new Error(`unsupported version: ${options.version} (want vX.Y.Z or vX.Y.Z-beta[.N])`);
+  }
+  // --channel may be passed explicitly, but it cannot contradict the version.
+  if (options.channel && options.channel !== parsed.channel) {
+    throw new Error(
+      `--channel ${options.channel} conflicts with version ${parsed.version} (${parsed.channel})`,
+    );
   }
 
   const file = path.join(path.resolve(options.dist), 'version.json');
@@ -65,11 +71,12 @@ try {
     describe:
       manifest.describe ||
       '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
-    version: normalized.version,
-    style: channel,
+    version: parsed.version,
+    channel: parsed.channel,
+    version_code: parsed.code,
   };
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-  console.log(`version.json -> ${normalized.version} (${channel})`);
+  console.log(`version.json -> ${parsed.version} (${parsed.channel}, ${parsed.code})`);
 } catch (error) {
   console.error(`stamp-version: ${error.message}`);
   process.exit(1);

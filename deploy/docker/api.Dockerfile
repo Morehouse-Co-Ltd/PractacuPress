@@ -16,10 +16,24 @@ FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
 WORKDIR /web
 COPY web ./
 
+# Version stamping must use the release pipeline's own script, never a second
+# parser inside the Dockerfile. The build context is the repository root while
+# this stage works in /web, so the script (and its version scheme implementation)
+# is copied by absolute path and the manifest target stays /web/dist.
+COPY scripts/stamp-version.mjs /tmp/stamp-version.mjs
+COPY scripts/lib/version.mjs /tmp/lib/version.mjs
+
 ARG VERSION=development
 ENV VERSION=$VERSION
+# `development` is the local docker-compose default: the checked-in manifest is
+# already valid, so only real release tags are stamped. The manifest is stamped
+# *before* the build because appVersion.ts imports it: stamping dist/ afterwards
+# would leave the bundle reporting the repository version while /version.json
+# reported the release tag.
 RUN npm ci --no-audit --no-fund \
- && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION||'development';j.version=v.replace(/^v/i,'');j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
+ && if [ -n "$VERSION" ] && [ "$VERSION" != "development" ]; then \
+      node /tmp/stamp-version.mjs --dist public --version "$VERSION"; \
+    fi \
  && npm run build \
  && test -f dist/index.html
 

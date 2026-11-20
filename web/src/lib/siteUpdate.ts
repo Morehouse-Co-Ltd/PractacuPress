@@ -6,6 +6,7 @@ import type {
   SiteUpdateSettings,
   SiteUpdateStyle,
 } from '../types';
+import { compareVersions, parseVersion } from './version';
 
 /**
  * 「站点更新」设置与版本清单的纯逻辑。
@@ -111,9 +112,6 @@ const FREQUENCY_IDS = new Set<string>(UPDATE_FREQUENCIES.map((item) => item.id))
 const MODE_IDS = new Set<string>(UPDATE_MODES.map((item) => item.id));
 const STYLE_IDS = new Set<string>(UPDATE_STYLES.map((item) => item.id));
 
-/** 版本号形状：`1.2.3`、`v1.2.3`、`0.1.1-beta`，可选构建元数据。 */
-const VERSION_PATTERN = /^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
-
 /**
  * 把任意来源的配置收敛成合法设置；缺省或非法字段回退默认值。
  *
@@ -194,9 +192,10 @@ export function versionLabel(version: string): string {
   return value.startsWith('v') || value.startsWith('V') ? value : `v${value}`;
 }
 
-/** 发布渠道的展示名（中文键，页面套 `t()`）。 */
-export function styleLabel(style: SiteUpdateStyle): string {
-  return UPDATE_STYLES.find((item) => item.id === style)?.name ?? style;
+/** 发布渠道的展示名（中文键，页面套 `t()`）；缺省按稳定版显示。 */
+export function styleLabel(style?: SiteUpdateStyle): string {
+  const id: SiteUpdateStyle = style ?? 'stable';
+  return UPDATE_STYLES.find((item) => item.id === id)?.name ?? id;
 }
 
 /** 更新方式的展示名（中文键，页面套 `t()`）。 */
@@ -207,8 +206,10 @@ export function modeLabel(mode: SiteUpdateMode): string {
 /**
  * 解析并校验版本清单。
  *
- * 四个核心字段缺一不可：标题、说明、版本号、发布渠道。任何一项缺失、类型不对或
- * 版本号不合法都返回 null —— 损坏的清单绝不能被当成「有新版本」。
+ * 核心字段：标题、说明、版本号，以及新清单的 `channel` / `version_code`。
+ * `version_code` 必须与版本号算出的值一致；旧清单（只有 `style` 或什么都没有）
+ * 按版本号推断通道并补出整数版本号。任何一项不自洽都返回 null —— 损坏的清单
+ * 绝不能被当成「有新版本」。
  */
 export function parseUpdateManifest(value: unknown): SiteUpdateManifest | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -216,63 +217,46 @@ export function parseUpdateManifest(value: unknown): SiteUpdateManifest | null {
   const title = typeof record.title === 'string' ? record.title.trim() : '';
   const describe = typeof record.describe === 'string' ? record.describe.trim() : '';
   const version = typeof record.version === 'string' ? record.version.trim() : '';
-  const style = typeof record.style === 'string' ? record.style.trim() : '';
   if (!title || !describe || !version) return null;
-  if (!VERSION_PATTERN.test(version)) return null;
-  if (!STYLE_IDS.has(style)) return null;
-  return { title, describe, version, style: style as SiteUpdateStyle };
-}
 
-interface VersionParts {
-  core: [number, number, number];
-  pre: string[];
-}
+  const parsed = parseVersion(version);
+  if (!parsed) return null;
 
-/** 把版本号拆成「三段数字 + 预发布标签」；不合法时返回 null。 */
-function versionParts(version: string): VersionParts | null {
-  const match = VERSION_PATTERN.exec(version.trim());
-  if (!match) return null;
-  const core: [number, number, number] = [
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-  ];
-  const pre = match[4] ? match[4].split('.').filter((part) => part.length > 0) : [];
-  return { core, pre };
+  const rawChannel = typeof record.channel === 'string' ? record.channel.trim() : '';
+  const legacyStyle = typeof record.style === 'string' ? record.style.trim() : '';
+  if (legacyStyle && !STYLE_IDS.has(legacyStyle)) return null;
+  const channel: SiteUpdateChannel | null = CHANNEL_IDS.has(rawChannel)
+    ? (rawChannel as SiteUpdateChannel)
+    : STYLE_IDS.has(legacyStyle)
+      ? legacyStyle === 'beta'
+        ? 'beta'
+        : 'stable'
+      : parsed.channel;
+  if (!channel || channel !== parsed.channel) return null;
+
+  const rawCode = record.version_code;
+  if (rawCode !== undefined) {
+    if (typeof rawCode !== 'number' || !Number.isInteger(rawCode) || rawCode !== parsed.code) {
+      return null;
+    }
+  }
+  return {
+    title,
+    describe,
+    version: parsed.version,
+    channel,
+    version_code: parsed.code,
+  };
 }
 
 /**
  * 比较两个版本号：`a > b` 返回正数，相等返回 0，`a < b` 返回负数。
  *
- * 按语义版本规则：先比三段数字，再比预发布标签（`0.2.0` 比 `0.2.0-beta` 新，
- * `beta.2` 比 `beta.10` 旧）。无法解析的版本号一律按「相等」处理，这样损坏的
- * 远端清单不会让人以为有新版本。
+ * 只比较整数 `version_code`（规则见 `web/src/lib/version.ts`）；无法解析的版本号
+ * 一律按「相等」处理，这样损坏的远端清单不会让人以为有新版本。
  */
 export function compareUpdateVersions(a: string, b: string): number {
-  const left = versionParts(a);
-  const right = versionParts(b);
-  if (!left || !right) return 0;
-  for (let i = 0; i < 3; i += 1) {
-    if (left.core[i] !== right.core[i]) return left.core[i] > right.core[i] ? 1 : -1;
-  }
-  if (left.pre.length === 0 && right.pre.length === 0) return 0;
-  // 有预发布标签的一方更旧。
-  if (left.pre.length === 0) return 1;
-  if (right.pre.length === 0) return -1;
-  const length = Math.max(left.pre.length, right.pre.length);
-  for (let i = 0; i < length; i += 1) {
-    const l = left.pre[i];
-    const r = right.pre[i];
-    if (l === undefined) return -1;
-    if (r === undefined) return 1;
-    if (l === r) continue;
-    const ln = /^\d+$/.test(l);
-    const rn = /^\d+$/.test(r);
-    if (ln && rn) return Number(l) > Number(r) ? 1 : -1;
-    if (ln !== rn) return ln ? -1 : 1;
-    return l > r ? 1 : -1;
-  }
-  return 0;
+  return compareVersions(a, b);
 }
 
 /** 远端版本是否比本机新。 */
@@ -281,7 +265,7 @@ export function isNewerVersion(remote: string, local: string): boolean {
 }
 
 /** 当前通道是否接受这个发布渠道：稳定版通道忽略测试版，测试版通道全都接受。 */
-export function isChannelAllowed(channel: SiteUpdateChannel, style: SiteUpdateStyle): boolean {
+export function isChannelAllowed(channel: SiteUpdateChannel, style?: SiteUpdateStyle): boolean {
   if (channel === 'beta') return true;
   return style !== 'beta';
 }
@@ -328,7 +312,7 @@ export function evaluateUpdate(input: {
   if (order < 0) {
     return { status: 'ahead', available: false, localVersion, remote };
   }
-  if (!isChannelAllowed(channel, remote.style)) {
+  if (!isChannelAllowed(channel, remote.channel ?? remote.style)) {
     return { status: 'channel_mismatch', available: false, localVersion, remote };
   }
   return { status: 'available', available: true, localVersion, remote };

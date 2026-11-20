@@ -2589,14 +2589,19 @@ export type SiteUpdateStyle = 'stable' | 'beta' | 'local';
 /**
  * 版本清单（仓库里的 `web/public/version.json`）。
  *
- * 四个核心字段：标题、说明、版本号与发布渠道。前端与服务端用同一套规则解析它，
- * 任何一项缺失或非法都按「清单无效」处理，不会当成新版本。
+ * 新清单写 `version`、`channel` 与整数 `version_code`；`style` 只为读取旧清单保留。
+ * `version_code` 是比较的唯一依据；任何字段与版本号不自洽都按「清单无效」处理。
  */
 export interface SiteUpdateManifest {
   title: string;
   describe: string;
   version: string;
-  style: SiteUpdateStyle;
+  /** 新清单必填；旧清单缺失时由版本号推断。 */
+  channel?: SiteUpdateChannel;
+  /** 新清单必填；旧清单缺失时由版本号计算。 */
+  version_code?: number;
+  /** @deprecated 仅用于读取旧清单与现有页面展示。 */
+  style?: SiteUpdateStyle;
 }
 
 /**

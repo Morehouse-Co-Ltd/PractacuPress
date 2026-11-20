@@ -44,6 +44,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
+import { parseVersion } from './lib/version.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webDir = path.join(root, 'web');
@@ -60,9 +61,10 @@ const HOST_ARCH = process.arch === 'arm64' ? 'arm64' : 'amd64';
 const ARCH = options.arch || HOST_ARCH;
 const NATIVE_ARCH = ARCH === HOST_ARCH;
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x64';
-const RELEASE_VERSION = String(options.version || '').replace(/^v/i, '');
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta\.?\d+)?$/i.test(RELEASE_VERSION)) {
-  throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-betaN，收到 ${options.version}`);
+// 版本口径（含 -beta/-betaN 规范化）只由 scripts/lib/version.mjs 实现。
+const RELEASE = options.version ? parseVersion(options.version) : null;
+if (options.version && !RELEASE) {
+  throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-beta[.N]，收到 ${options.version}`);
 }
 
 const releaseDir = path.resolve(options.releaseDir || process.env.PP_RELEASE_DIR || path.join(root, 'release'));
@@ -106,6 +108,9 @@ async function main() {
     console.log('  复用 web/dist');
   } else {
     ensureWebDeps();
+    // Stamp before the build so the version inlined by Vite matches the manifest
+    // served as /version.json.
+    stampWebVersion(path.join(webDir, 'public'));
     runShell('npm run build', webDir, 'npm run build');
     requireFile(path.join(distDir, 'index.html'), '前端构建完成但没有 web/dist/index.html');
     console.log('  dist/index.html 已生成');
@@ -131,7 +136,7 @@ async function main() {
 
   step('写入发布说明');
   writeReleaseReadme();
-  fs.writeFileSync(path.join(stagingDir, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
+  fs.writeFileSync(path.join(stagingDir, 'VERSION'), `${RELEASE ? RELEASE.version : 'development'}\n`, 'utf8');
   writeLocalEnv();
   writeStartScript();
   fs.mkdirSync(path.join(stagingDir, 'data', 'media'), { recursive: true });
@@ -362,10 +367,9 @@ function ensureWebDeps() {
 }
 
 function stampWebVersion(dir) {
-  if (!RELEASE_VERSION) return;
+  if (!RELEASE) return;
   const file = path.join(dir, 'version.json');
   const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-  const beta = /-beta/i.test(RELEASE_VERSION);
   fs.writeFileSync(
     file,
     `${JSON.stringify(
@@ -374,8 +378,9 @@ function stampWebVersion(dir) {
         describe:
           current.describe ||
           '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
-        version: RELEASE_VERSION,
-        style: beta ? 'beta' : 'stable',
+        version: RELEASE.version,
+        channel: RELEASE.channel,
+        version_code: RELEASE.code,
       },
       null,
       2,
