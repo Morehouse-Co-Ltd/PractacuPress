@@ -20,6 +20,7 @@ const BLOCK_SELECTOR = [
   'p.pp-image',
   'p.pp-icon-line',
   'blockquote.pp-note',
+  'details.pp-collapse',
   'table.pp-columns',
   'table.pp-gallery',
   'table.pp-table',
@@ -110,9 +111,16 @@ function inlineNode(node: Node): string {
   }
 }
 
-/** 去掉编辑器专用属性，保证存下来的 HTML 干净、可重复序列化。 */
+/**
+ * 去掉编辑器专用属性，保证存下来的 HTML 干净、可重复序列化。
+ *
+ * `data-pp-editor-open` 是编辑器给折叠块打的临时展开标记：contenteditable 里必须把
+ * `<details>` 展开，作者才能改标题与正文；但这个「编辑器展开状态」不属于内容，
+ * 公开页应该默认收起，所以序列化时连同它带来的 `open` 一起去掉。
+ */
 function cleanBlockHtml(element: Element): string {
   const clone = element.cloneNode(true) as HTMLElement;
+  const editorOpened = clone.hasAttribute('data-pp-editor-open');
   clone.removeAttribute('contenteditable');
   clone.removeAttribute('data-pp-block');
   const all = [clone, ...Array.from(clone.querySelectorAll('*'))];
@@ -122,7 +130,9 @@ function cleanBlockHtml(element: Element): string {
     node.removeAttribute('data-pp-block');
     node.removeAttribute('data-empty');
     node.removeAttribute('data-pp-math');
+    node.removeAttribute('data-pp-editor-open');
   }
+  if (editorOpened && clone.matches('details.pp-collapse')) clone.removeAttribute('open');
   return clone.outerHTML.replace(/>\s+</g, '><').trim();
 }
 

@@ -21,7 +21,7 @@ import type { BlockKind, InlineClosureMatch } from '../lib/markdownInput';
 import { blockMarkerFor } from '../lib/editorBlockMarker';
 import { caretAnchor, firstLineAnchor } from '../lib/caretRect';
 import type { CaretAnchor } from '../lib/caretRect';
-import { imageBlock, noteBlock } from '../lib/richBlocks';
+import { imageBlock, collapseBlock, tipBlock, warningBlock } from '../lib/richBlocks';
 import { useT } from '../lib/i18n';
 import { EditorToolbar } from './EditorToolbar';
 import { SlashMenu } from './SlashMenu';
@@ -98,6 +98,22 @@ function sameAnchor(a: CaretAnchor | null, b: CaretAnchor | null): boolean {
     Math.abs(a.bottom - b.bottom) < 0.5 &&
     Math.abs(a.height - b.height) < 0.5
   );
+}
+
+/**
+ * 折叠块在编辑区里保持展开。
+ *
+ * `<details>` 收起时正文不可见，作者就没法继续改标题与正文——所以编辑器把没有
+ * `open` 的折叠块临时展开，并打上 `data-pp-editor-open` 标记。这个展开状态只服务
+ * 编辑，存盘时 `htmlToMarkdown` 会连标记带 `open` 一起去掉（公开页默认收起）。
+ * 作者在 HTML 源码里显式写了 `open` 的块不动它：那是内容，不是编辑状态。
+ */
+function openCollapseBlocks(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('details.pp-collapse').forEach((block) => {
+    if (block.hasAttribute('open')) return;
+    block.setAttribute('open', '');
+    block.dataset.ppEditorOpen = '1';
+  });
 }
 
 /** 与后端媒体白名单一致的图片类型；截图、拖拽文件都走这里判断。 */
@@ -358,8 +374,14 @@ export function RichTextEditor({
     root.querySelectorAll<HTMLElement>('[data-pp-math]').forEach((node) => {
       node.dataset.ppMath = (node.textContent ?? '').replace(/\r\n/g, '\n').trim();
     });
+    // 折叠块先临时展开：正文可见后字数、空状态与序列化才都能读到里面的文字。
+    openCollapseBlocks(root);
     const text = (root.innerText ?? '').replace(/\s+/g, '');
-    const isEmpty = text.length === 0 && !root.querySelector('img,table,a.pp-video,a.pp-embed,a.pp-linkcard,hr,[data-pp-math]');
+    const isEmpty =
+      text.length === 0 &&
+      !root.querySelector(
+        'img,table,a.pp-video,a.pp-embed,a.pp-linkcard,hr,details,[data-pp-math]',
+      );
     root.dataset.empty = isEmpty ? 'true' : 'false';
     const markdown = htmlToMarkdown(root.innerHTML);
     // 图表代码块在正文里显示成可见预览；隐藏的 code 仍参与上面的序列化。
@@ -376,9 +398,15 @@ export function RichTextEditor({
     emitted.current = '';
     // 重新灌入后恢复图表的可见预览（围栏代码块在正文里不能只显示 JSON）。
     decorateEditorDiagrams(root);
+    // 折叠块同样先临时展开，作者才能直接看到并修改标题与正文。
+    openCollapseBlocks(root);
     // 让浏览器按内容重新计算空状态。
     const text = (root.innerText ?? '').replace(/\s+/g, '');
-    const isEmpty = text.length === 0 && !root.querySelector('img,table,a.pp-video,a.pp-embed,a.pp-linkcard,hr,[data-pp-math]');
+    const isEmpty =
+      text.length === 0 &&
+      !root.querySelector(
+        'img,table,a.pp-video,a.pp-embed,a.pp-linkcard,hr,details,[data-pp-math]',
+      );
     root.dataset.empty = isEmpty ? 'true' : 'false';
     // 整块内容被换掉，旧的光标位置已经没有意义。
     setMarker(null);
@@ -1016,9 +1044,17 @@ export function RichTextEditor({
         commands.divider();
         flashHint(t('已插入分割线'));
         break;
-      case 'note':
-        commands.insert(noteBlock('info'));
-        flashHint(t('已插入提示框'));
+      case 'tip':
+        commands.insert(tipBlock());
+        flashHint(t('已插入提示卡片'));
+        break;
+      case 'warning':
+        commands.insert(warningBlock());
+        flashHint(t('已插入警告卡片'));
+        break;
+      case 'collapse':
+        commands.insert(collapseBlock());
+        flashHint(t('已插入折叠文本'));
         break;
     }
   };
@@ -1185,6 +1221,16 @@ export function RichTextEditor({
     syncMarker();
     // 编辑时点击链接不应该跳走。
     if (target.closest('a')) event.preventDefault();
+    // 折叠块标题的原生点击会切换 open：编辑区里正文一收起就没法继续改，
+    // 下一帧把展开状态收回来（光标已经落进标题，可以直接改字）。
+    if (target.closest('details.pp-collapse > summary')) {
+      const root = surfaceRef.current;
+      if (root) {
+        requestAnimationFrame(() => {
+          if (surfaceRef.current === root) openCollapseBlocks(root);
+        });
+      }
+    }
     const edit = target.closest<HTMLElement>('[data-pp-diagram-edit]');
     if (!edit) return;
     event.preventDefault();

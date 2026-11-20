@@ -6,15 +6,17 @@ import { useAsync } from '../lib/hooks';
 import { useT } from '../lib/i18n';
 import {
   RICH_ICONS,
+  collapseBlock,
   columnsBlock,
   embedBlock,
   galleryBlock,
   iconBlock,
   imageBlock,
   linkCardBlock,
-  noteBlock,
   tableBlock,
+  tipBlock,
   videoBlock,
+  warningBlock,
 } from '../lib/richBlocks';
 import { Badge, Button, Callout, Field, Input, Modal, Select, Textarea } from './ui';
 import { Icon } from './Icon';
@@ -362,11 +364,31 @@ export function EditorToolbar({
             type="button"
             className="tool-btn"
             disabled={disabled}
-            title={t('提示框')}
+            title={t('提示卡片')}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => commands.insert(noteBlock('info'))}
+            onClick={() => commands.insert(tipBlock())}
           >
             <Icon name="info" size={15} />
+          </button>
+          <button
+            type="button"
+            className="tool-btn"
+            disabled={disabled}
+            title={t('警告卡片')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => commands.insert(warningBlock())}
+          >
+            <Icon name="alert" size={15} />
+          </button>
+          <button
+            type="button"
+            className="tool-btn"
+            disabled={disabled}
+            title={t('折叠文本')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => commands.insert(collapseBlock())}
+          >
+            <Icon name="chevron-down" size={15} />
           </button>
           <button
             type="button"

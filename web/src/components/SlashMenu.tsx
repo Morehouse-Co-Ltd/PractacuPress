@@ -31,7 +31,9 @@ export type SlashCommand =
         | 'quote'
         | 'code'
         | 'divider'
-        | 'note';
+        | 'tip'
+        | 'warning'
+        | 'collapse';
     }
   | { type: 'dialog'; dialog: EditorDialogKind };
 
@@ -122,12 +124,28 @@ export function slashItems(t: Translate): SlashItem[] {
       action: { type: 'command', command: 'divider' },
     },
     {
-      id: 'note',
-      label: t('提示框'),
+      id: 'tip',
+      label: t('提示卡片'),
       hint: t('带强调边的说明块'),
+      glyph: 'i',
+      keywords: ['tip', 'note', 'callout', 'tishi', 'tishika'],
+      action: { type: 'command', command: 'tip' },
+    },
+    {
+      id: 'warning',
+      label: t('警告卡片'),
+      hint: t('醒目的提醒块'),
       glyph: '!',
-      keywords: ['note', 'callout', 'tishi', 'tishiikuang'],
-      action: { type: 'command', command: 'note' },
+      keywords: ['warning', 'warn', 'alert', 'jinggao', 'tixing'],
+      action: { type: 'command', command: 'warning' },
+    },
+    {
+      id: 'collapse',
+      label: t('折叠文本'),
+      hint: t('标题与正文可折叠'),
+      glyph: '▸',
+      keywords: ['collapse', 'details', 'fold', 'zhedie', 'zhediekuai'],
+      action: { type: 'command', command: 'collapse' },
     },
     {
       id: 'image',

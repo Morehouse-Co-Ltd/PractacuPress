@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { htmlToMarkdown } from './htmlToMarkdown';
-import { linkCardBlock } from './richBlocks';
+import { collapseBlock, linkCardBlock } from './richBlocks';
 import { renderMarkdown } from './markdown';
+import { toExportMarkdown } from './markdownExport';
 
 describe('htmlToMarkdown', () => {
   it('round-trips formulas without exposing the data attribute', () => {
@@ -54,6 +55,61 @@ describe('htmlToMarkdown', () => {
 
   it('ignores editor overlays that leaked into the content', () => {
     expect(htmlToMarkdown('<p><span data-pp-marker="1">##</span>标题</p>')).toBe('标题\n');
+  });
+});
+
+describe('折叠文本（details.pp-collapse）', () => {
+  it('整个 details 区块作为原始 HTML 保留，不被拆成普通段落', () => {
+    const markdown = htmlToMarkdown(collapseBlock('更多说明', '展开后的正文。'));
+
+    expect(markdown).toContain('<details class="pp-collapse">');
+    expect(markdown).toContain('<summary>更多说明</summary>');
+    expect(markdown).toContain('<p>展开后的正文。</p>');
+  });
+
+  it('经过 Markdown 渲染后仍然保留，且可以无损往返', () => {
+    const first = htmlToMarkdown(collapseBlock('更多说明', '展开后的正文。'));
+    const html = renderMarkdown(first);
+
+    expect(html).toContain('class="pp-collapse"');
+    expect(html).toContain('<summary>更多说明</summary>');
+    expect(html).toContain('<p>展开后的正文。</p>');
+    expect(htmlToMarkdown(html)).toBe(first);
+  });
+
+  it('正文里的 details 前面有文字时也不会被吞掉', () => {
+    const markdown = htmlToMarkdown(
+      `<p>引言</p>${collapseBlock('更多说明', '展开后的正文。')}<p>结尾</p>`,
+    );
+
+    expect(markdown).toContain('引言');
+    expect(markdown).toContain('class="pp-collapse"');
+    expect(markdown).toContain('结尾');
+  });
+
+  it('去掉编辑器为了继续编辑临时展开的 open 状态', () => {
+    const markdown = htmlToMarkdown(
+      '<details class="pp-collapse" open data-pp-editor-open="1"><summary>标题</summary><p>正文</p></details>',
+    );
+
+    expect(markdown).toContain('<details class="pp-collapse">');
+    expect(markdown).not.toContain('open');
+    expect(markdown).not.toContain('data-pp-editor-open');
+  });
+
+  it('作者在 HTML 源码里显式写的 open 会保留', () => {
+    const markdown = htmlToMarkdown(
+      '<details class="pp-collapse" open><summary>标题</summary><p>正文</p></details>',
+    );
+
+    // DOM 序列化空属性会补成 open=""，两种写法都算「保留展开」。
+    expect(markdown).toMatch(/<details class="pp-collapse" open(?:="")?>/);
+  });
+
+  it('导出 Markdown 时不会往 HTML 区块里补硬换行', () => {
+    const markdown = htmlToMarkdown(collapseBlock('更多说明', '展开后的正文。'));
+
+    expect(toExportMarkdown(markdown)).toBe(markdown);
   });
 });
 

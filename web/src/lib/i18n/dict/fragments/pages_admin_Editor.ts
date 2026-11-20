@@ -228,6 +228,12 @@ const fragment: Dictionary = {
   '源码缩进两格（HTML / Markdown）': 'Indent two spaces in source (HTML / Markdown)',
   '打开插入指令（富文本）': 'Open the insert menu (rich text)',
   左侧编辑源码: 'Edit the source on the left',
+  快捷插入: 'Quick insert',
+  源码快捷插入: 'Source quick insert',
+  '源码框上方的快捷插入栏可以插入提示卡片、警告卡片、折叠文本、引用与代码块。':
+    'The quick insert bar above the source box inserts tip cards, warning cards, collapsible text, quotes and code blocks.',
+  '行号只做索引，不会进入复制的源码。':
+    'Line numbers are an index only and never become part of copied source.',
   实时预览: 'Live preview',
   '与服务端同一套清洗规则': 'Same sanitizer as the server',
   '在这里写 HTML；右侧会实时预览。': 'Write HTML here; the right side previews it live.',

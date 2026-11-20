@@ -42,6 +42,9 @@ const fragment: Dictionary = {
   '已插入分割线': 'Divider inserted',
   '已插入代码块': 'Code block inserted',
   '已插入提示框': 'Callout inserted',
+  '已插入提示卡片': 'Tip card inserted',
+  '已插入警告卡片': 'Warning card inserted',
+  '已插入折叠文本': 'Collapsible text inserted',
 
   // ---- 粘贴 / 拖拽上传 ----
   '正在上传图片… {percent}%': 'Uploading images… {percent}%',

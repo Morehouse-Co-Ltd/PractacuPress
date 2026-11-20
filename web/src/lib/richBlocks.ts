@@ -202,6 +202,34 @@ export function noteBlock(tone: 'info' | 'warn' | 'ok' = 'info', title = '提示
   return `<blockquote class="pp-note pp-note-${tone}">\n  <strong>${title}</strong>\n  <br />\n  ${body}\n</blockquote>`;
 }
 
+/**
+ * 提示卡片：信息色调的说明块，标题与正文先放占位文字，插入后直接改。
+ *
+ * 与 {@link noteBlock} 是同一段 HTML，单独起名字是因为工具栏、斜杠面板与源码
+ * 快捷插入栏都按「提示卡片」这个语义引用它，色调写在这里而不是散在调用处。
+ */
+export function tipBlock(title = '提示', body = '要补充的说明。'): string {
+  return noteBlock('info', title, body);
+}
+
+/** 警告卡片：提醒读者注意的说明块，结构与提示卡片相同，只换 warn 色调。 */
+export function warningBlock(title = '注意', body = '请读者留意这里的说明。'): string {
+  return noteBlock('warn', title, body);
+}
+
+/**
+ * 折叠文本。
+ *
+ * 正文用原生 `<details>` / `<summary>`：不加载脚本，键盘可达，读者点击即可展开。
+ * 标题与正文先转义再拼进标签；展开状态由 `open` 属性决定，默认不带 `open`，
+ * 也就是公开页默认收起（编辑器为了继续编辑会临时展开，见 lib/htmlToMarkdown）。
+ */
+export function collapseBlock(title = '标题', body = '正文'): string {
+  return `<details class="pp-collapse"><summary>${escapeHtml(title)}</summary><p>${escapeHtml(
+    body,
+  )}</p></details>`;
+}
+
 export function quoteBlock(text = '引用的句子。'): string {
   return `<blockquote>\n  <p>${text}</p>\n</blockquote>`;
 }

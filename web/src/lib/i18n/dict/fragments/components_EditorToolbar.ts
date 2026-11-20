@@ -31,6 +31,9 @@ const fragment: Dictionary = {
   图标: 'Icon',
   图集: 'Gallery',
   提示框: 'Callout',
+  提示卡片: 'Tip card',
+  警告卡片: 'Warning card',
+  折叠文本: 'Collapsible text',
   数学公式: 'Math formula',
   '图表（思维导图 / 逻辑图 / 统计图 / 鱼骨图）':
     'Diagram (mind map / logic chart / statistical chart / fishbone)',
@@ -149,6 +152,10 @@ const fragment: Dictionary = {
     'Icons are rendered with characters plus CSS, so no icon font is loaded.',
   '图标后的文字（可选）': 'Text after the icon (optional)',
   '例如：每周更新': 'e.g. Updated weekly',
+
+  // ---- 斜杠面板新增指令的说明（斜杠面板与工具栏共用同一批区块）----
+  醒目的提醒块: 'Eye-catching warning block',
+  标题与正文可折叠: 'Title with a collapsible body',
 };
 
 export default fragment;

@@ -69,6 +69,14 @@ import { normalizeEditorSource } from '../../lib/editorSource';
 import { htmlToMarkdown } from '../../lib/htmlToMarkdown';
 import { htmlToText, renderMarkdown, sanitizeHtml } from '../../lib/markdown';
 import { toExportMarkdown } from '../../lib/markdownExport';
+import {
+  collapseBlock,
+  codeBlock,
+  quoteBlock,
+  tipBlock,
+  warningBlock,
+} from '../../lib/richBlocks';
+import { SourceCodeEditor } from '../../components/SourceCodeEditor';
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { useToast } from '../../lib/toast';
 
@@ -194,12 +202,99 @@ const EMPTY: FormState = {
   cover_hidden: false,
 };
 
+/** 源码编辑器只有这两种模式；快捷插入栏与行号编辑器都按它分支。 */
+type SourceMode = 'html' | 'markdown';
+
+/** 源码快捷插入栏的五个片段。 */
+type SourceSnippetKind = 'tip' | 'warning' | 'collapse' | 'quote' | 'code';
+
+/**
+ * 源码快捷插入栏写入的文本。
+ *
+ * HTML 模式写等价 HTML；Markdown 模式优先写 Markdown 语法（引用、代码块），
+ * 提示卡片、警告卡片与折叠文本没有 Markdown 等价写法，两种模式都写 HTML 区块——
+ * 服务端 goldmark 开了 WithUnsafe，清洗白名单也会保留这些标签。
+ *
+ * 前后补空行：插入点常在一段文字中间，HTML 区块只有自成一段才会被当成原始 HTML
+ * 处理，Markdown 的引用 / 代码块也需要独立成行。
+ */
+function sourceSnippet(mode: SourceMode, kind: SourceSnippetKind): string {
+  const body =
+    kind === 'tip'
+      ? tipBlock()
+      : kind === 'warning'
+        ? warningBlock()
+        : kind === 'collapse'
+          ? collapseBlock()
+          : kind === 'quote'
+            ? mode === 'html'
+              ? quoteBlock()
+              : '> 引用的句子。'
+            : mode === 'html'
+              ? '<pre><code>在这里写代码</code></pre>'
+              : codeBlock();
+  return `\n\n${body}\n\n`;
+}
+
 export function EditorPage() {
   const t = useT();
   return (
     <RoleGate capability="write_content" need={t('写稿')}>
       <EditorWorkspace />
     </RoleGate>
+  );
+}
+
+/**
+ * 源码框上方的快捷插入栏。
+ *
+ * 只负责把片段交给父组件（沿用 `insertSourceText` 的插入与选区恢复逻辑），
+ * 不直接碰 textarea；按钮 mousedown 时阻止默认行为，避免焦点从源码框移走、
+ * 丢掉当前选区。
+ */
+function SourceQuickBar({
+  mode,
+  disabled,
+  onInsert,
+}: {
+  mode: SourceMode;
+  disabled: boolean;
+  onInsert: (kind: SourceSnippetKind) => void;
+}) {
+  const t = useT();
+  const entries: { kind: SourceSnippetKind; label: string; glyph: string }[] = [
+    { kind: 'tip', label: t('提示卡片'), glyph: 'i' },
+    { kind: 'warning', label: t('警告卡片'), glyph: '!' },
+    { kind: 'collapse', label: t('折叠文本'), glyph: '▸' },
+    { kind: 'quote', label: t('引用'), glyph: '❝' },
+    { kind: 'code', label: t('代码块'), glyph: '</>' },
+  ];
+  return (
+    <div
+      className="source-quickbar"
+      role="toolbar"
+      aria-label={t('源码快捷插入')}
+      data-mode={mode}
+    >
+      <span className="source-quickbar-label">{t('快捷插入')}</span>
+      {entries.map((entry) => (
+        <button
+          key={entry.kind}
+          type="button"
+          className="tool-btn source-quickbar-btn"
+          title={entry.label}
+          disabled={disabled}
+          // 保住 textarea 的焦点与选区：插入位置取的是它当前的 selectionStart。
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onInsert(entry.kind)}
+        >
+          <span className="tool-glyph" aria-hidden="true">
+            {entry.glyph}
+          </span>
+          <span className="source-quickbar-text">{entry.label}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -242,6 +337,9 @@ function EditorWorkspace() {
   const [tagInput, setTagInput] = useState('');
   const revisionRef = useRef(0);
   const importRef = useRef<HTMLInputElement>(null);
+  // 两个源码框各自的 textarea：快捷插入栏要用当前光标位置替换选区。
+  const htmlSourceRef = useRef<HTMLTextAreaElement | null>(null);
+  const markdownSourceRef = useRef<HTMLTextAreaElement | null>(null);
 
   const draftScope = editorDraftKey({
     siteId: site?.id,
@@ -573,6 +671,17 @@ function EditorWorkspace() {
       textarea.focus();
       textarea.setSelectionRange(start + text.length, start + text.length);
     });
+  };
+
+  /**
+   * 源码快捷插入栏：和 Tab / 格式化快捷键一样走 `insertSourceText`，
+   * 因此替换选区、插入后恢复光标（Raf 里 setSelectionRange）的行为完全一致。
+   */
+  const insertSourceSnippet = (kind: SourceSnippetKind) => {
+    const mode: SourceMode = editorMode === 'html' ? 'html' : 'markdown';
+    const textarea = mode === 'html' ? htmlSourceRef.current : markdownSourceRef.current;
+    if (!textarea) return;
+    insertSourceText(textarea, sourceSnippet(mode, kind));
   };
 
   const handleSourceKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -1646,8 +1755,12 @@ function EditorWorkspace() {
                       <strong>{editorMode === 'html' ? 'HTML' : 'Markdown'}</strong>
                       <span className="tiny faint">{t('左侧编辑源码')}</span>
                     </div>
-                    <Textarea
-                      className="editor-source-input"
+                    <SourceQuickBar
+                      mode={editorMode === 'html' ? 'html' : 'markdown'}
+                      disabled={!editable}
+                      onInsert={insertSourceSnippet}
+                    />
+                    <SourceCodeEditor
                       value={editorMode === 'html' ? htmlDraft : form.source_body}
                       onChange={(event) =>
                         editorMode === 'html'
@@ -1655,9 +1768,9 @@ function EditorWorkspace() {
                           : changeMarkdownSource(event.target.value)
                       }
                       onKeyDown={handleSourceKeyDown}
+                      inputRef={editorMode === 'html' ? htmlSourceRef : markdownSourceRef}
                       disabled={!editable}
-                      spellCheck={false}
-                      aria-label={editorMode === 'html' ? 'HTML' : 'Markdown'}
+                      ariaLabel={editorMode === 'html' ? 'HTML' : 'Markdown'}
                       placeholder={
                         editorMode === 'html'
                           ? t('在这里写 HTML；右侧会实时预览。')
@@ -1679,6 +1792,11 @@ function EditorWorkspace() {
                 </div>
                 <p className="field-hint">
                   {t('HTML 与 Markdown 会互相转换：在这里改完切到另一种格式，内容会同步过去；保存时统一写成 Markdown。')}
+                </p>
+                <p className="field-hint">
+                  {t('源码框上方的快捷插入栏可以插入提示卡片、警告卡片、折叠文本、引用与代码块。')}
+                  {' '}
+                  {t('行号只做索引，不会进入复制的源码。')}
                 </p>
               </>
             )}

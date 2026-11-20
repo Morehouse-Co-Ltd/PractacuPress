@@ -175,3 +175,204 @@
     display: none;
   }
 }
+
+/* =========================================================
+   提示 / 警告卡片（.pp-note）
+   - 基础版式（左边框、内边距、圆角）在 styles.css；
+   - 这里补 info / warn / ok 三种色调的底色与标题颜色。
+   - 选择器写成 .pp-note.pp-note-*：styles.css 在本文件之后，
+     同特异性的 .pp-note 底色会覆盖单类名规则，复合选择器才稳。
+   - 全部走主题令牌，站点亮色 / 暗色与后台两套主题都跟着变。
+   ========================================================= */
+
+.pp-note.pp-note-info { background: var(--accent-soft, #eef4f0); }
+.pp-note.pp-note-warn { background: var(--danger-soft, #fbf1ee); }
+.pp-note.pp-note-ok { background: var(--ok-soft, #eef5f0); }
+
+/* 标题本身就是 strong + <br />，保持行内显示：改成 block 会和后面的 <br /> 叠出空行。 */
+.pp-note strong {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.pp-note.pp-note-info strong { color: var(--accent, #1f5c4a); }
+.pp-note.pp-note-warn strong { color: var(--danger, #a33a2b); }
+.pp-note.pp-note-ok strong { color: var(--ok, #2c6e49); }
+
+/* =========================================================
+   折叠文本（.pp-collapse）
+   - 正文用原生 details / summary：不依赖脚本，键盘可达，点击展开。
+   - 默认收起（不带 open）；编辑器为了继续编辑会临时展开，见 RichTextEditor。
+   ========================================================= */
+
+.pp-collapse {
+  margin: 26px 0;
+  padding: 10px 16px;
+  border: 1px solid var(--line, #e7e7e1);
+  border-radius: var(--r-sm, 4px);
+  background: var(--bg-subtle, #fafaf7);
+  font-family: var(--sans);
+  font-size: 0.94em;
+  line-height: 1.8;
+}
+
+.pp-collapse > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink, #14140f);
+  line-height: 1.6;
+}
+.pp-collapse > summary::marker {
+  color: var(--muted, #83837a);
+}
+.pp-collapse > summary:hover {
+  color: var(--accent, #1f5c4a);
+}
+.pp-collapse > summary:focus-visible {
+  outline: 2px solid var(--accent, #1f5c4a);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* [open] 时用一条细线把标题和正文分开；正文段落压掉首尾外边距。 */
+.pp-collapse[open] > summary {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line, #e7e7e1);
+}
+details.pp-collapse > p {
+  margin: 0;
+  color: var(--ink-soft, #4f4f47);
+}
+details.pp-collapse > p + p {
+  margin-top: 0.6em;
+}
+
+/* 编辑区里给收起 / 展开一个可点的提示：details 本身没有按钮，靠 summary 手型光标。 */
+.rich-surface details.pp-collapse > summary {
+  cursor: text;
+}
+
+/* =========================================================
+   源码快捷插入栏（.source-quickbar）
+   - 放在 HTML / Markdown 源码框正上方，按钮复用 .tool-btn 的基础外观，
+     这里只把它改成「图标 + 文案」的紧凑横排。
+   ========================================================= */
+
+.source-quickbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  min-width: 0;
+}
+
+.source-quickbar-label {
+  margin-right: 2px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint, #a8a89f);
+}
+
+.source-quickbar .source-quickbar-btn {
+  width: auto;
+  height: 24px;
+  gap: 4px;
+  padding: 0 8px;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.source-quickbar .source-quickbar-text {
+  line-height: 1;
+}
+
+/* =========================================================
+   源码编辑器（SourceCodeEditor：textarea + 行号 gutter）
+   - 外框、边框和焦点环交给容器，textarea 自己去边框：
+     gutter 与正文才能共用同一条左边线，行号也随外框一起对齐。
+   - 行号是独立元素并带 aria-hidden / user-select: none，复制不到。
+   - textarea 用 wrap="off"（组件里设置）：一行只占一个行高，行号才不会错位。
+   ========================================================= */
+
+.source-code-editor {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong, #d3d3ca);
+  border-radius: var(--r-md, 6px);
+  background: var(--bg, #fff);
+}
+
+.source-code-editor:focus-within {
+  border-color: var(--accent, #1f5c4a);
+  box-shadow: 0 0 0 3px rgb(31 92 74 / 0.1);
+}
+
+.source-code-gutter {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  border-right: 1px solid var(--line, #e7e7e1);
+  background: var(--bg-subtle, #fafaf7);
+  color: var(--faint, #a8a89f);
+  user-select: none;
+}
+
+.source-code-gutter-inner {
+  will-change: transform;
+}
+
+.source-code-line {
+  display: block;
+  padding: 0 8px 0 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--faint, #a8a89f);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 当前行：数字加深 + 一条浅色底，位置跟着光标走（见组件里的 selectionchange）。 */
+.source-code-line.is-active {
+  background: var(--accent-soft, #eef4f0);
+  color: var(--accent, #1f5c4a);
+  font-weight: 600;
+}
+
+.source-code-spacer {
+  display: block;
+}
+
+/* 覆盖 .editor-source-input 的 min-height / flex / resize：
+   高度由外层容器统一控制，行号才能和正文同高。 */
+.source-code-editor .source-code-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  resize: none;
+}
+
+.source-code-editor .source-code-input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+/* 窄屏下源码与预览改成上下两行：每个 pane 的高度由内容撑开，
+   给编辑器一个和 styles.css 同名断点一致的最小高度，避免缩成两行高。 */
+@media (max-width: 1100px) {
+  .source-code-editor {
+    min-height: 320px;
+  }
+}
