@@ -13,13 +13,25 @@ import type {
 import { useAuth } from '../../lib/session';
 import { isDemo, useBackend } from '../../lib/backend';
 import { errorText, getLocale, useT } from '../../lib/i18n';
-import { useTitle } from '../../lib/hooks';
+import { useAsync, useTitle } from '../../lib/hooks';
 import { useCustomization } from '../../lib/customize';
-import { formatBytes, formatDateTime } from '../../lib/format';
+import { formatBytes, formatDateTime, relativeTime } from '../../lib/format';
 import { siteOrigin } from '../../lib/seo';
 import { useToast } from '../../lib/toast';
-import { Badge, Button, Callout, Field, Input, Modal, Select, Tabs, Toggle } from '../../components/ui';
+import {
+  Badge,
+  Button,
+  Callout,
+  EmptyState,
+  Field,
+  Input,
+  Modal,
+  Select,
+  Tabs,
+  Toggle,
+} from '../../components/ui';
 import { Icon } from '../../components/Icon';
+import { backupAgeDays, backupHealthTone, backupTotals, latestBackup } from '../../lib/backupHealth';
 import { useStepUp } from '../../lib/stepUp';
 import { RoleGate } from '../../components/Guards';
 import {
@@ -139,7 +151,7 @@ export function DataPage() {
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [downloadingBackup, setDownloadingBackup] = useState('');
   const [backupError, setBackupError] = useState('');
-  const [restoreID, setRestoreID] = useState('');
+  const [restoreTarget, setRestoreTarget] = useState<BackupArtifact | null>(null);
   const [restoreConfirming, setRestoreConfirming] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [lastRestore, setLastRestore] = useState<RestoreBackupResult | null>(null);
@@ -160,6 +172,12 @@ export function DataPage() {
   useEffect(() => {
     void loadBackups();
   }, [loadBackups]);
+
+  // 自动备份计划也在这里取一次：健康条与计划卡共用同一份数据，页面只留一个刷新入口。
+  const schedule = useAsync(
+    () => (platformAdmin ? backend.backupSchedule() : Promise.resolve(null)),
+    [backend, platformAdmin],
+  );
 
   const exportSite = async () => {
     if (!site || !backend.exportSite) return;
@@ -740,16 +758,16 @@ export function DataPage() {
   };
 
   /** 页面内恢复只接受 SQLite 包；MySQL / PostgreSQL 必须用各自的 dump 工具。 */
-  const restorableBackups = backups.filter((artifact) => artifact.driver === 'sqlite');
-  const selectedRestore = restorableBackups.find((artifact) => artifact.id === restoreID) ?? null;
+  const canRestore = (artifact: BackupArtifact) => artifact.driver === 'sqlite';
 
-  const confirmRestore = () => {
-    if (!platformAdmin || !backend.restoreBackup || !selectedRestore || restoring) return;
+  const confirmRestore = (artifact: BackupArtifact) => {
+    if (!platformAdmin || !backend.restoreBackup || restoring) return;
+    setRestoreTarget(artifact);
     setRestoreConfirming(true);
   };
 
   const runRestore = async () => {
-    if (!backend.restoreBackup || !selectedRestore || restoring) return;
+    if (!backend.restoreBackup || !restoreTarget || restoring) return;
     setRestoreConfirming(false);
     // 服务端对恢复无条件要求 X-PP-Step-Up；这里强制重新输入一次高危密码，
     // 不复用本会话已有的令牌，也不能因为站点关闭了保护就跳过。
@@ -758,18 +776,24 @@ export function DataPage() {
     setRestoring(true);
     setBackupError('');
     setLastRestore(null);
+    const target = restoreTarget;
     try {
-      const result = await backend.restoreBackup(selectedRestore.id);
+      const result = await backend.restoreBackup(target.id);
       setLastRestore(result);
-      toast.push('ok', t('恢复完成'), t('数据库已恢复到 {name}', { name: selectedRestore.file_name }));
+      toast.push('ok', t('恢复完成'), t('数据库已恢复到 {name}', { name: target.file_name }));
       await loadBackups();
-      setRestoreID('');
     } catch (err) {
       setBackupError(errorText(err));
     } finally {
       setRestoring(false);
+      setRestoreTarget(null);
     }
   };
+
+  const latest = latestBackup(backups);
+  const totals = backupTotals(backups);
+  const latestAge = latest ? backupAgeDays(latest.created_at) : null;
+  const healthTone = backupHealthTone(latest);
 
   const wpArticleCount = wpParsed?.posts.filter((post) => post.kind === 'article').length ?? 0;
   const wpPostCount = wpParsed?.posts.filter((post) => post.kind === 'post').length ?? 0;
@@ -781,9 +805,10 @@ export function DataPage() {
           <h1>{t('数据与备份')}</h1>
           <p>{t('导出可迁移的 Markdown 与图片、WordPress / Typecho XML，或为整个实例生成可校验的备份包。')}</p>
         </div>
-        <Badge tone={canTransfer ? 'ok' : 'muted'} dot>
+        <span className={`sys-status${canTransfer ? '' : ' is-muted'}`}>
+          <i className="sys-status-dot" />
           {canTransfer ? t('真实后端') : t('演示模式')}
-        </Badge>
+        </span>
       </div>
 
       {error ? (
@@ -805,23 +830,35 @@ export function DataPage() {
         onChange={setTab}
         items={[
           { key: 'transfer', label: t('数据导入导出') },
-          { key: 'backup', label: t('备份') },
+          {
+            key: 'backup',
+            label: t('备份'),
+            count: platformAdmin && backups.length ? backups.length : undefined,
+          },
         ]}
       />
 
       {tab === 'transfer' ? (
         <>
+          <div className="dio-group">
+            <div className="dio-group-head">
+              <h2>{t('导出')}</h2>
+              <p>{t('带上内容、图片与站点设计，换台机器也能继续写。')}</p>
+            </div>
           <div className="data-io-grid">
-      <section className="panel">
+      <section className="panel dio-card">
         <div className="panel-head">
           <div>
-            <h3>{t('全站导出')}</h3>
-            <p>{t('Markdown 带 front matter，附图片、站点设计、页面与分类标签。')}</p>
+            <span className="dio-icon"><Icon name="download" size={17} /></span>
+            <div>
+              <h3>{t('全站导出')}</h3>
+              <p>{t('Markdown 带 front matter，附图片、站点设计、页面与分类标签。')}</p>
+            </div>
           </div>
-          <Icon name="download" size={20} />
+          <Badge tone="muted">.zip</Badge>
         </div>
         <div className="panel-body">
-          <div className="form-stack">
+          <div className="dio-fields">
             <Field
               label={t('导出范围')}
               hint={t('已发布内容适合迁移到别的写作工具；草稿默认也包含，便于换机继续写。')}
@@ -835,35 +872,36 @@ export function DataPage() {
                 <option value="published">{t('只导出已发布内容')}</option>
               </Select>
             </Field>
-            <div className="row gap-8">
-              <Button
-                icon="download"
-                loading={exporting}
-                disabled={!canTransfer || exporting || !site}
-                onClick={exportSite}
-              >
-                {t('导出 ZIP')}
-              </Button>
-              <span className="tiny faint">
-                {t('图片会改写为包内相对路径，导入时再映射回本站媒体。')}
-              </span>
-            </div>
           </div>
+        </div>
+        <div className="dio-foot">
+          <span className="dio-note">{t('图片会改写为包内相对路径，导入时再映射回本站媒体。')}</span>
+          <Button
+            icon="download"
+            loading={exporting}
+            disabled={!canTransfer || exporting || !site}
+            onClick={exportSite}
+          >
+            {t('导出 ZIP')}
+          </Button>
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel dio-card">
         <div className="panel-head">
           <div>
-            <h3>{t('导出到 WordPress / Typecho')}</h3>
-            <p>
-              {t('生成标准 XML，供 WordPress 的 WXR 导入器或 Typecho 迁移工具读取。')}
-            </p>
+            <span className="dio-icon"><Icon name="download" size={17} /></span>
+            <div>
+              <h3>{t('导出到 WordPress / Typecho')}</h3>
+              <p>
+                {t('生成标准 XML，供 WordPress 的 WXR 导入器或 Typecho 迁移工具读取。')}
+              </p>
+            </div>
           </div>
-          <Icon name="download" size={20} />
+          <Badge tone="muted">XML</Badge>
         </div>
         <div className="panel-body">
-          <div className="form-stack">
+          <div className="dio-fields">
             <Field
               label={t('导出格式')}
               hint={t('WordPress 使用 WXR 1.2；Typecho 使用备份风格的 posts / comments XML。')}
@@ -906,87 +944,87 @@ export function DataPage() {
                 <option value="published">{t('只导出已发布内容')}</option>
               </Select>
             </Field>
-            <Toggle
-              checked={wpWithComments}
-              onChange={setWpWithComments}
-              disabled={!canTransfer || wpExporting}
-              label={t('包含评论')}
-              description={t('仅评论列表可用时生效；无法关联到所选内容的评论会被跳过。')}
-            />
-            <Callout tone="info" icon="info" title={t('媒体文件不会进入 XML')}>
-              {t('正文里的站内图片会改写成站点绝对地址；导入 WordPress / Typecho 后仍需由对方抓取或重新上传这些媒体。')}
-            </Callout>
-            <div className="row gap-8">
-              <Button
-                icon="download"
-                loading={wpExporting}
-                disabled={!canTransfer || wpExporting || !site}
-                onClick={exportWp}
-              >
-                {t('导出 XML')}
-              </Button>
-              <span className="tiny faint">{t('评论作者与发布时间会一起写入。')}</span>
-            </div>
-            {wpExportNote ? <p className="tiny faint">{wpExportNote}</p> : null}
           </div>
+          <Toggle
+            checked={wpWithComments}
+            onChange={setWpWithComments}
+            disabled={!canTransfer || wpExporting}
+            label={t('包含评论')}
+            description={t('仅评论列表可用时生效；无法关联到所选内容的评论会被跳过。')}
+          />
+          <Callout tone="info" icon="info" title={t('媒体文件不会进入 XML')}>
+            {t('正文里的站内图片会改写成站点绝对地址；导入 WordPress / Typecho 后仍需由对方抓取或重新上传这些媒体。')}
+          </Callout>
+          {wpExportNote ? <p className="dio-note">{wpExportNote}</p> : null}
+        </div>
+        <div className="dio-foot">
+          <span className="dio-note">{t('评论作者与发布时间会一起写入。')}</span>
+          <Button
+            icon="download"
+            loading={wpExporting}
+            disabled={!canTransfer || wpExporting || !site}
+            onClick={exportWp}
+          >
+            {t('导出 XML')}
+          </Button>
         </div>
       </section>
           </div>
+          </div>
 
+          <div className="dio-group">
+            <div className="dio-group-head">
+              <h2>{t('导入')}</h2>
+              <p>{t('先创建草稿，逐条报告结果；发布状态与审核规则照常生效。')}</p>
+            </div>
           <div className="data-io-grid">
-      <section className="panel">
+      <section className="panel dio-card">
         <div className="panel-head">
           <div>
-            <h3>{t('全站导入')}</h3>
-            <p>{t('从导出包创建草稿；每条独立落库并逐条报告。')}</p>
+            <span className="dio-icon"><Icon name="upload" size={17} /></span>
+            <div>
+              <h3>{t('全站导入')}</h3>
+              <p>{t('从导出包创建草稿；每条独立落库并逐条报告。')}</p>
+            </div>
           </div>
-          <Icon name="upload" size={20} />
+          <Badge tone="muted">.zip</Badge>
         </div>
         <div className="panel-body">
           <div className="form-stack">
-            <Field
-              label={t('导出包')}
-              hint={t('选择本站或另一个站点导出的 practacu-press-site-export zip。')}
-            >
-              <Input
-                type="file"
-                accept=".zip,application/zip"
-                disabled={!canTransfer || importing}
-                onChange={(event) => {
-                  setImportFile(event.target.files?.[0] ?? null);
-                  setReport(null);
-                }}
-              />
-            </Field>
-            <Field
-              label={t('slug 冲突')}
-              hint={t('标题相同不会阻止导入；这里处理的是地址（slug）已经被占用的情况。')}
-            >
-              <Select
-                value={conflict}
-                onChange={(event) => setConflict(event.target.value as ImportConflictStrategy)}
-                disabled={!canTransfer || importing}
+            <div className="dio-fields">
+              <Field
+                label={t('导出包')}
+                hint={t('选择本站或另一个站点导出的 practacu-press-site-export zip。')}
               >
-                <option value="rename">{t('自动改名（追加 -2、-3）')}</option>
-                <option value="skip">{t('跳过已存在的条目')}</option>
-                <option value="fail">{t('保留冲突并记为失败')}</option>
-                <option value="overwrite">{t('覆盖已存在的条目')}</option>
-              </Select>
-            </Field>
+                <Input
+                  type="file"
+                  accept=".zip,application/zip"
+                  disabled={!canTransfer || importing}
+                  onChange={(event) => {
+                    setImportFile(event.target.files?.[0] ?? null);
+                    setReport(null);
+                  }}
+                />
+              </Field>
+              <Field
+                label={t('slug 冲突')}
+                hint={t('标题相同不会阻止导入；这里处理的是地址（slug）已经被占用的情况。')}
+              >
+                <Select
+                  value={conflict}
+                  onChange={(event) => setConflict(event.target.value as ImportConflictStrategy)}
+                  disabled={!canTransfer || importing}
+                >
+                  <option value="rename">{t('自动改名（追加 -2、-3）')}</option>
+                  <option value="skip">{t('跳过已存在的条目')}</option>
+                  <option value="fail">{t('保留冲突并记为失败')}</option>
+                  <option value="overwrite">{t('覆盖已存在的条目')}</option>
+                </Select>
+              </Field>
+            </div>
             <Callout tone="warn" icon="alert">
               {t('导入只创建草稿，不会自动发布；审核规则仍然生效。覆盖会通过正常的草稿保存流程更新原条目。')}
             </Callout>
-            <div className="row gap-8">
-              <Button
-                icon="upload"
-                loading={importing}
-                disabled={!canTransfer || importing || !importFile || !site}
-                onClick={importSite}
-              >
-                {t('开始导入')}
-              </Button>
-              {importFile ? <span className="tiny faint">{importFile.name}</span> : null}
-            </div>
 
             {report ? (
               <div className="form-stack">
@@ -1059,15 +1097,33 @@ export function DataPage() {
             ) : null}
           </div>
         </div>
+        <div className="dio-foot">
+          <span className="dio-note">
+            {importFile
+              ? importFile.name
+              : t('选择本站或另一个站点导出的 practacu-press-site-export zip。')}
+          </span>
+          <Button
+            icon="upload"
+            loading={importing}
+            disabled={!canTransfer || importing || !importFile || !site}
+            onClick={importSite}
+          >
+            {t('开始导入')}
+          </Button>
+        </div>
       </section>
 
-      <section className="panel">
+      <section className="panel dio-card">
         <div className="panel-head">
           <div>
-            <h3>{t('从 WordPress / Typecho 导入')}</h3>
-            <p>{t('读取 WXR 或 Typecho XML：先预览格式与数量，确认后创建草稿或按选择发布。')}</p>
+            <span className="dio-icon"><Icon name="upload" size={17} /></span>
+            <div>
+              <h3>{t('从 WordPress / Typecho 导入')}</h3>
+              <p>{t('读取 WXR 或 Typecho XML：先预览格式与数量，确认后创建草稿或按选择发布。')}</p>
+            </div>
           </div>
-          <Icon name="upload" size={20} />
+          <Badge tone="muted">XML</Badge>
         </div>
         <div className="panel-body">
           <div className="form-stack">
@@ -1195,7 +1251,7 @@ export function DataPage() {
             <Callout tone="warn" icon="alert" title={t('导入说明')}>
               {t('导入以当前管理员账户写入，无法保留原作者身份；分类与标签会尽量复用站点分类法，slug 冲突时会自动追加后缀。')}
             </Callout>
-            <div className="row gap-8">
+            <div className="dio-foot-inline">
               <Button
                 icon="upload"
                 loading={wpImporting}
@@ -1310,93 +1366,152 @@ export function DataPage() {
         </div>
       </section>
           </div>
+          </div>
         </>
       ) : null}
 
       {tab === 'backup' ? (
         <>
-      <section className="panel">
+      {/* 健康条：一眼看到「多新、多大、计划在不在跑」，数据全部来自已加载的备份列表。 */}
+      {platformAdmin ? (
+        <div className="stat-grid is-three bk-health">
+          <div className={`stat${healthTone === 'warn' ? ' is-warn' : ''}`}>
+            <span>{t('最近备份')}</span>
+            <b>{latest ? relativeTime(latest.created_at) : '—'}</b>
+            <small>
+              {latest
+                ? latestAge !== null && latestAge > 7
+                  ? t('最近备份已超过 {days} 天', { days: latestAge })
+                  : formatDateTime(latest.created_at)
+                : t('还没有备份')}
+            </small>
+          </div>
+          <div className="stat">
+            <span>{t('备份包')}</span>
+            <b>{totals.count}</b>
+            <small>{formatBytes(totals.bytes)}</small>
+          </div>
+          <div className="stat">
+            <span>{t('自动计划')}</span>
+            <b>
+              {schedule.data && schedule.data.enabled
+                ? `${String(schedule.data.hour).padStart(2, '0')}:00`
+                : '—'}
+            </b>
+            <small>
+              {schedule.data
+                ? schedule.data.enabled
+                  ? t('保留最近 {count} 份', { count: schedule.data.keep })
+                  : t('未启用')
+                : t('读取中…')}
+            </small>
+          </div>
+        </div>
+      ) : null}
+
+      <section className="panel dio-card">
         <div className="panel-head">
           <div>
-            <h3>{t('实例备份')}</h3>
-            <p>{t('数据库全量 + 媒体 + 站点设计，manifest 记录版本与逐文件 SHA-256。')}</p>
+            <span className="dio-icon"><Icon name="database" size={17} /></span>
+            <div>
+              <h3>{t('实例备份')}</h3>
+              <p>{t('数据库全量 + 媒体 + 站点设计，manifest 记录版本与逐文件 SHA-256。')}</p>
+            </div>
           </div>
-          <Icon name="database" size={20} />
+          <Badge tone="muted">.zip</Badge>
         </div>
-        <div className="panel-body">
-          {!platformAdmin ? (
+        {!platformAdmin ? (
+          <div className="panel-body">
             <Callout tone="info" icon="info" title={t('仅平台管理员可备份整个实例')}>
               {t('站点管理员可用「数据导入导出」里的全站导出迁移自己的内容；实例备份包含所有站点，因此不在这里开放。')}
             </Callout>
-          ) : (
-            <div className="form-stack">
-              <div className="row gap-8">
-                <Button
-                  icon="database"
-                  loading={creatingBackup}
-                  disabled={creatingBackup}
-                  onClick={createBackup}
-                >
-                  {t('立即创建备份')}
-                </Button>
-                <Button variant="secondary" icon="refresh" loading={loadingBackups} onClick={loadBackups}>
-                  {t('刷新列表')}
-                </Button>
-              </div>
-              {backupError ? (
+          </div>
+        ) : (
+          <>
+            <div className="bk-toolbar">
+              <Button
+                icon="database"
+                loading={creatingBackup}
+                disabled={creatingBackup}
+                onClick={createBackup}
+              >
+                {t('立即创建备份')}
+              </Button>
+              <Button variant="secondary" icon="refresh" loading={loadingBackups} onClick={loadBackups}>
+                {t('刷新列表')}
+              </Button>
+              <span className="dio-note">
+                {t('SQLite 生成一致快照；MySQL / PostgreSQL 请用各自的 dump 工具。')}
+              </span>
+            </div>
+            {backupError ? (
+              <div className="bk-empty">
                 <Callout tone="danger" icon="alert">
                   {backupError}
                 </Callout>
-              ) : null}
-              {backups.length === 0 && !loadingBackups ? (
-                <p className="tiny faint">
-                  {t('还没有备份包。SQLite 会生成一致快照；MySQL / PostgreSQL 请用各自的 dump 工具。')}
-                </p>
-              ) : (
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>{t('文件')}</th>
-                        <th>{t('时间')}</th>
-                        <th>{t('大小')}</th>
-                        <th>{t('媒体')}</th>
-                        <th>{t('校验')}</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {backups.map((artifact) => (
-                        <tr key={artifact.id}>
-                          <td className="mono">{artifact.file_name}</td>
-                          <td>{formatDateTime(artifact.created_at)}</td>
-                          <td className="cell-num">{formatBytes(artifact.size)}</td>
-                          <td>
-                            <Badge tone={artifact.includes_media ? 'ok' : 'muted'}>
-                              {artifact.includes_media ? t('已包含') : t('未包含')}
-                            </Badge>
-                          </td>
-                          <td className="mono tiny" title={artifact.sha256}>
-                            {artifact.sha256.slice(0, 12)}…
-                          </td>
-                          <td className="cell-actions">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              icon="download"
-                              loading={downloadingBackup === artifact.id}
-                              onClick={() => downloadBackup(artifact)}
-                            >
-                              {t('下载')}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {backups.some((artifact) => artifact.warnings?.length) ? (
+              </div>
+            ) : null}
+            {backups.length === 0 && !loadingBackups ? (
+              <div className="bk-empty">
+                <EmptyState
+                  icon="database"
+                  title={t('还没有备份包')}
+                  body={t('备份包含数据库、媒体与站点设计；恢复前服务端会再校验一次。')}
+                  action={
+                    <Button icon="database" loading={creatingBackup} onClick={createBackup}>
+                      {t('立即创建备份')}
+                    </Button>
+                  }
+                />
+              </div>
+            ) : (
+              <div className="bk-list">
+                {backups.map((artifact) => (
+                  <div className="bk-row" key={artifact.id}>
+                    <span className="bk-icon">
+                      <Icon name="database" size={16} />
+                    </span>
+                    <div className="bk-main">
+                      <span className="bk-name" title={artifact.file_name}>{artifact.file_name}</span>
+                      <div className="bk-meta">
+                        <span>{formatDateTime(artifact.created_at)}</span>
+                        <span>{formatBytes(artifact.size)}</span>
+                        <Badge tone={artifact.includes_media ? 'ok' : 'muted'}>
+                          {artifact.includes_media ? t('已包含') : t('未包含')}
+                        </Badge>
+                        <span className="mono" title={artifact.sha256}>
+                          {artifact.sha256.slice(0, 12)}…
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bk-actions">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="download"
+                        loading={downloadingBackup === artifact.id}
+                        onClick={() => void downloadBackup(artifact)}
+                      >
+                        {t('下载')}
+                      </Button>
+                      {backend.restoreBackup && canRestore(artifact) ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="server"
+                          disabled={restoring}
+                          onClick={() => confirmRestore(artifact)}
+                        >
+                          {t('恢复')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {backups.some((artifact) => artifact.warnings?.length) ? (
+              <div className="bk-empty">
                 <Callout tone="warn" icon="alert" title={t('备份范围提示')}>
                   <ul>
                     {backups
@@ -1407,121 +1522,77 @@ export function DataPage() {
                       ))}
                   </ul>
                 </Callout>
-              ) : null}
-            </div>
-          )}
-        </div>
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
 
       {/* 自动备份计划只读、只对平台管理员可见，紧跟在实例备份之后。 */}
-      {me?.role === 'platform_admin' ? <BackupScheduleSection /> : null}
+      {me?.role === 'platform_admin' ? <BackupScheduleSection data={schedule} /> : null}
 
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h3>{t('从备份恢复')}</h3>
-            <p>{t('直接在页面里选择一个 SQLite 备份覆盖当前数据库。')}</p>
-          </div>
-          <Icon name="server" size={20} />
-        </div>
-        <div className="panel-body">
-          {!platformAdmin ? (
-            <Callout tone="info" icon="info" title={t('仅平台管理员可恢复整个实例')}>
-              {t('恢复会替换所有站点的数据库，只有平台管理员可以执行；站点管理员请使用数据导入导出迁移自己的内容。')}
-            </Callout>
-          ) : !backend.restoreBackup ? (
-            <Callout tone="info" icon="info" title={t('当前后端不支持页面内恢复')}>
-              {t('请升级 API 后重试，或使用命令行恢复脚本。')}
-            </Callout>
-          ) : (
-            <div className="form-stack">
-              <Callout tone="danger" icon="alert" title={t('高危操作：恢复会覆盖当前数据')}>
-                {t('服务端会先校验备份包与每个文件的 SHA-256，自动创建一份安全备份，再用备份覆盖本机 SQLite 数据库并恢复本地媒体。恢复过程中请勿关闭服务；当前登录会话可能因账户数据被替换而失效。')}
-              </Callout>
-              {restorableBackups.length === 0 ? (
-                <p className="tiny faint">
-                  {t('还没有可恢复的 SQLite 备份。先创建一个备份，或刷新列表。')}
-                </p>
-              ) : (
-                <>
-                  <Field
-                    label={t('选择备份')}
-                    hint={t('只列出 SQLite 备份包；MySQL / PostgreSQL 请使用各自的 dump 工具恢复。')}
-                  >
-                    <Select
-                      value={restoreID}
-                      onChange={(event) => setRestoreID(event.target.value)}
-                      disabled={restoring}
-                    >
-                      <option value="">{t('请选择一个备份…')}</option>
-                      {restorableBackups.map((artifact) => (
-                        <option key={artifact.id} value={artifact.id}>
-                          {artifact.file_name} · {formatDateTime(artifact.created_at)}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <div className="row gap-8">
-                    <Button
-                      variant="danger"
-                      icon="server"
-                      loading={restoring}
-                      disabled={!selectedRestore || restoring}
-                      onClick={confirmRestore}
-                    >
-                      {t('恢复此备份')}
-                    </Button>
-                    <span className="tiny faint">
-                      {t('需要平台管理员身份，并再次输入高危操作密码。')}
-                    </span>
-                  </div>
-                </>
-              )}
-              {backupError ? (
-                <Callout tone="danger" icon="alert">
-                  {backupError}
-                </Callout>
-              ) : null}
-              {lastRestore ? (
-                <Callout tone="ok" icon="check" title={t('恢复完成')}>
-                  <p>
-                    {t('数据库已恢复到 {path}；恢复前安全备份为 {id}。', {
-                      path: lastRestore.database_path,
-                      id: lastRestore.safety_backup_id,
-                    })}
-                  </p>
-                  <p className="tiny faint">
-                    {t('站点 {sites} · 用户 {users} · 内容 {content} · 媒体 {media} 个文件 · schema {schema}', {
-                      sites: lastRestore.sites,
-                      users: lastRestore.users,
-                      content: lastRestore.content,
-                      media: lastRestore.media_files,
-                      schema: lastRestore.schema_version,
-                    })}
-                  </p>
-                  {lastRestore.warnings?.length ? (
-                    <ul>
-                      {lastRestore.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <Button
-                    variant="secondary"
-                    icon="refresh"
-                    onClick={() => window.location.reload()}
-                  >
-                    {t('重新加载页面')}
-                  </Button>
-                </Callout>
-              ) : null}
-              <p className="tiny faint">
-                {t('MySQL / PostgreSQL 不使用页面内恢复：请用 mysqldump / pg_dump 恢复数据库，媒体目录单独复制。S3 媒体不进入备份包，需要按桶单独备份。')}
-              </p>
+      {backend.restoreBackup ? (
+        <section className="panel dio-card dio-danger">
+          <div className="panel-head">
+            <div>
+              <span className="dio-icon"><Icon name="alert" size={17} /></span>
+              <div>
+                <h3>{t('从备份恢复')}</h3>
+                <p>{t('在备份列表里点「恢复」；这一步会覆盖当前数据库，且无法从页面撤销。')}</p>
+              </div>
             </div>
-          )}
-        </div>
-      </section>
+          </div>
+          <div className="panel-body">
+            {!platformAdmin ? (
+              <Callout tone="info" icon="info" title={t('仅平台管理员可恢复整个实例')}>
+                {t('恢复会替换所有站点的数据库，只有平台管理员可以执行；站点管理员请使用数据导入导出迁移自己的内容。')}
+              </Callout>
+            ) : (
+              <div className="form-stack">
+                <Callout tone="danger" icon="alert" title={t('高危操作：恢复会覆盖当前数据')}>
+                  {t('服务端会先校验备份包与每个文件的 SHA-256，自动创建一份安全备份，再用备份覆盖本机 SQLite 数据库并恢复本地媒体。恢复过程中请勿关闭服务；当前登录会话可能因账户数据被替换而失效。')}
+                </Callout>
+                {lastRestore ? (
+                  <Callout tone="ok" icon="check" title={t('恢复完成')}>
+                    <p>
+                      {t('数据库已恢复到 {path}；恢复前安全备份为 {id}。', {
+                        path: lastRestore.database_path,
+                        id: lastRestore.safety_backup_id,
+                      })}
+                    </p>
+                    <p className="tiny faint">
+                      {t('站点 {sites} · 用户 {users} · 内容 {content} · 媒体 {media} 个文件 · schema {schema}', {
+                        sites: lastRestore.sites,
+                        users: lastRestore.users,
+                        content: lastRestore.content,
+                        media: lastRestore.media_files,
+                        schema: lastRestore.schema_version,
+                      })}
+                    </p>
+                    {lastRestore.warnings?.length ? (
+                      <ul>
+                        {lastRestore.warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <Button
+                      variant="secondary"
+                      icon="refresh"
+                      onClick={() => window.location.reload()}
+                    >
+                      {t('重新加载页面')}
+                    </Button>
+                  </Callout>
+                ) : null}
+                <p className="dio-note">
+                  {t('MySQL / PostgreSQL 不使用页面内恢复：请用 mysqldump / pg_dump 恢复数据库，媒体目录单独复制。S3 媒体不进入备份包，需要按桶单独备份。')}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <Modal
         open={restoreConfirming}
@@ -1543,7 +1614,7 @@ export function DataPage() {
         <div className="form-stack">
           <p>
             {t('即将用 {name} 覆盖当前实例；服务端会先自动创建安全备份。', {
-              name: selectedRestore?.file_name ?? '—',
+              name: restoreTarget?.file_name ?? '—',
             })}
           </p>
           <p className="tiny faint">

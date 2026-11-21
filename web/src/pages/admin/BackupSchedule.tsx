@@ -1,23 +1,30 @@
-import { useBackend } from '../../lib/backend';
-import { errorText, useAsync } from '../../lib/hooks';
+import type { BackupSchedule } from '../../types';
+import { errorText } from '../../lib/hooks';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { useT } from '../../lib/i18n';
-import { Badge, Button, Callout, Skeleton } from '../../components/ui';
+import { Badge, Callout, Skeleton } from '../../components/ui';
+import { Icon } from '../../components/Icon';
 
 type Tone = 'neutral' | 'ok' | 'warn' | 'danger' | 'muted' | 'accent';
+
+/** 数据页上提的取数结果：计划卡与健康条共用同一份数据，避免两次请求、两个刷新按钮。 */
+export interface BackupScheduleSource {
+  data: BackupSchedule | null;
+  error: unknown;
+  loading: boolean;
+}
 
 /**
  * 自动备份计划（只读）。
  *
  * 计划来自部署环境的 `BACKUP_AUTO_*` 变量，页面没有可写入口；这里只把「什么时候跑、
- * 保留几份、上次结果、下次时间、已有产物」摊开给平台管理员看。数据与备份页在实例备份
- * 之后渲染它，所以和实例备份放在同一处，不必再回网站日志页找。
+ * 保留几份、上次结果、下次时间、已有产物」摊开给平台管理员看。数据由 `DataPage`
+ * 通过 `useAsync` 取好后传入，与备份健康条同源。产物列表与实例备份使用同一套行样式
+ * （.bk-row），但不带任何操作按钮。
  */
-export function BackupScheduleSection() {
+export function BackupScheduleSection({ data }: { data: BackupScheduleSource }) {
   const t = useT();
-  const backend = useBackend();
-  const data = useAsync(() => backend.backupSchedule(), [backend]);
-  const schedule = data.data;
+  const { data: schedule, loading, error } = data;
   const lastStatus = schedule?.last_status;
   const lastStatusTone: Tone =
     lastStatus === 'success' ? 'ok' : lastStatus === 'failed' ? 'danger' : 'neutral';
@@ -25,34 +32,26 @@ export function BackupScheduleSection() {
     lastStatus === 'success' ? t('成功') : lastStatus === 'failed' ? t('失败') : (lastStatus ?? '—');
 
   return (
-    <section className="panel">
+    <section className="panel dio-card">
       <div className="panel-head">
         <div>
-          <h3>{t('自动备份计划')}</h3>
-          <p>{t('计划来自部署环境变量，页面只读。')}</p>
+          <div>
+            <h3>{t('自动备份计划')}</h3>
+            <p>{t('计划来自部署环境变量，页面只读。')}</p>
+          </div>
         </div>
-        <div className="admin-page-actions">
-          {schedule ? (
-            <Badge tone={schedule.enabled ? 'ok' : 'muted'} dot>
-              {schedule.enabled ? t('已启用') : t('未启用')}
-            </Badge>
-          ) : null}
-          <Button variant="ghost" size="sm" icon="refresh" onClick={data.reload} loading={data.loading}>
-            {t('刷新')}
-          </Button>
-        </div>
+        {schedule ? (
+          <Badge tone={schedule.enabled ? 'ok' : 'muted'} dot>
+            {schedule.enabled ? t('已启用') : t('未启用')}
+          </Badge>
+        ) : null}
       </div>
       <div className="panel-body">
-        {data.loading ? (
+        {loading ? (
           <Skeleton lines={6} />
-        ) : data.error ? (
+        ) : error ? (
           <Callout tone="danger" icon="alert" title={t('无法读取备份计划')}>
-            <p>{errorText(data.error) || t('请求失败。')}</p>
-            <div className="mt-12">
-              <Button variant="secondary" size="sm" icon="refresh" onClick={data.reload}>
-                {t('重试')}
-              </Button>
-            </div>
+            <p>{errorText(error) || t('请求失败。')}</p>
           </Callout>
         ) : schedule ? (
           <>
@@ -98,25 +97,21 @@ export function BackupScheduleSection() {
               {schedule.artifacts.length === 0 ? (
                 <p className="small muted">{t('还没有自动备份产物。')}</p>
               ) : (
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>{t('文件名')}</th>
-                        <th style={{ textAlign: 'right' }}>{t('大小')}</th>
-                        <th>{t('创建时间')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {schedule.artifacts.map((artifact) => (
-                        <tr key={artifact.name}>
-                          <td className="cell-title mono" title={artifact.name}>{artifact.name}</td>
-                          <td className="cell-num">{formatBytes(artifact.size)}</td>
-                          <td>{formatDateTime(artifact.created_at)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="bk-list mt-12">
+                  {schedule.artifacts.map((artifact) => (
+                    <div className="bk-row" key={artifact.name}>
+                      <span className="bk-icon">
+                        <Icon name="database" size={16} />
+                      </span>
+                      <div className="bk-main">
+                        <span className="bk-name" title={artifact.name}>{artifact.name}</span>
+                        <div className="bk-meta">
+                          <span>{formatDateTime(artifact.created_at)}</span>
+                          <span>{formatBytes(artifact.size)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

@@ -343,3 +343,78 @@ powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 -Task all
   需要从安全备份或原媒体目录人工恢复。
 - 恢复会替换账户数据，当前 access token 可能仍能通过签名校验但找不到对应用户；重新加载后
   需要重新登录。
+
+---
+
+## 八、性能面板与数据页视觉改版（纸感仪表盘 v2）
+
+两页保持既有纸感 / 石墨底座（serif 数字、16px 圆角、细线、克制投影），把信息重排成
+「状态 → 指标 → 构成 → 明细 → 口径」五层；不改后端契约、不加依赖、不动其它页面。
+
+### 1. 性能面板（`/admin/ext/system`）
+
+- 页头从 5 枚并列徽标降到一个状态胶囊（实时 / 偏旧 / 过期 / 已暂停 + 采样时间 + 数据年龄）
+  和一个刷新按钮；「由内置扩展注册」移到页脚脚注。
+- 四张指标卡等高同构（`min-height: 268px`，标签 / 主数字 / 副行 / 脚注四段），第 4 张不再
+  下半屏空白：仍显示站点运行时长，副行补上服务端真实的**主机运行时长**（`platform.uptime_seconds`）。
+- 环形与占比条颜色改为由 `--accent` 经 `color-mix` 派生的单色族，删除全部硬编码色
+  （`#b07a2a` / `#2f6f9a` / `#8a6d3b` / `#c9a468`）与对应的深色覆盖；90% 起「偏高」、
+  95% 起危险色（`ringTone`，有单测）。
+- 曲线加上面积填充、末点圆点、峰值超过 80% 时的告警虚线，图注改为
+  「最近 N 秒 · 均 x% / 峰 y%」（新增 `sparklineStats` / `sparklineAreaPath`）。
+- 「本软件 vs 其他软件」压成三行三段条 + 一行口径，删掉重复图例；「本软件磁盘占用」从进程
+  面板里拆成独立的「数据目录占用」卡，与构成面板并排。
+- 表格数字列右对齐 + `tabular-nums`，数量列用 `×N` 弱化；加载态换成四张与最终卡片同高的骨架卡。
+
+### 2. 数据与备份（`/admin/data`）
+
+- 数据导入导出分成「导出 / 导入」两组，卡片统一骨架：图标胶囊 + 标题 + 一句说明 + 底部分动作条，
+  字段横排（`auto-fit` 网格），卡片高度约降三分之一；删除卡头裸图标与重复提示语。
+- 备份 tab 新增健康条（最近备份 / 备份包数量与合计体积 / 自动计划），计划数据由
+  `DataPage` 上提后与计划卡共用一次请求。
+- 备份表格改为列表行：文件名（mono，中间省略）+ 时间 / 大小 / 是否含媒体 / 校验短哈希 +
+  「下载」「恢复」；**恢复改为行内动作**，删掉下方独立的下拉选择器，复用原有二次确认弹窗与
+  强制 `ensureStepUp(..., { fresh: true })`。
+- 0 份备份时用 `EmptyState`（含「立即创建备份」），最近一份超过 7 天时健康条转 warn 并说明天数。
+- 「从备份恢复」卡改为危险区样式（强调色左边条 + 危险色描边），只保留说明与恢复结果。
+
+### 3. 工程侧
+
+- 新增 `web/src/styles/dataAdmin.css`（`.dio-*` / `.bk-*` / 危险区），`.data-io-grid` 从
+  `styles.css` 迁入；新增 `web/src/lib/backupHealth.ts`（最近备份 / 合计体积 / 过期天数 /
+  色调）与单测。
+- 新增文案全部走 `t()`，英文写进 `features_systemMonitor.ts`、`pages_admin_Data.ts`；
+  `coverage.test.ts` 闸门通过。
+
+### 4. 站点运行时长 = 软件累计运行时长
+
+- 第 4 张卡不再拿 `site.created_at` 冒充运行时长：API 新增 `app.uptime_seconds`（本次进程）
+  与 `app.total_uptime_seconds`（跨启停累计）。前端大数字取累计值，脚注显示「本次启动 X ·
+  主机已运行 Y」；旧后端缺字段时显示 `—`。
+- `internal/system/uptime.go`：启动时读 `<data>/runtime/uptime.json` 的累计秒数，运行期间按
+  单调时钟往上加，每 60 秒原子落盘（临时文件 + rename），`Sampler` 在 `ctx.Done()` 时补一次
+  flush。崩溃最多丢 60 秒；数据目录重建后从 0 开始；状态文件不进备份包，恢复旧备份不会回退。
+- `PP_SYSTEM_METRICS=off` 期间不统计；`data` 目录不可用时退化为内存计数。
+- 契约与类型同步：`openapi.yaml` 的 `SystemMetrics.app` 与 `web/src/types.ts` 增加两个字段。
+
+### 5. 本轮验证
+
+```powershell
+go build ./...
+go vet ./...
+go test -count=1 ./internal/system/... ./internal/transport/http/gin/... ./internal/packages/contracts/openapi/...
+cd web
+cmd /c "npx.cmd tsc --noEmit"
+cmd /c "npx.cmd vitest run"
+cmd /c "npx.cmd vite build"
+```
+
+### 6. 本轮已知边界
+
+- 只改前端：接口、SQLite 快照与恢复语义完全未变；备份健康条是既有数据的重新表达，
+  没有新增「备份过期」的告警推送。
+- 恢复入口从下拉框改为列表行内按钮，操作路径变化：没有 SQLite 备份时不再出现「可恢复」提示，
+  而是整块只显示说明。
+- 环形配色跟随站点强调色，因此不同站点会看到不同色相（同一站点的三环始终是同一色系）。
+- 累计运行时长是实例级、单写者假设：多个 API 进程共用同一个 data 目录时以最后写入者为准；
+  上线前的历史运行时间无法补算。

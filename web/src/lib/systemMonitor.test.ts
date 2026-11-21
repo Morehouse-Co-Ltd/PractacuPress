@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   SYSTEM_HISTORY_LIMIT,
   SYSTEM_HISTORY_WINDOW_MS,
+  SYSTEM_RING_ALERT_PERCENT,
   SYSTEM_RING_CIRCUMFERENCE,
+  SYSTEM_RING_DANGER_PERCENT,
   SYSTEM_RING_RADIUS,
   SYSTEM_SAMPLE_INTERVAL_MS,
   SYSTEM_STALE_AFTER_MS,
@@ -12,8 +14,11 @@ import {
   percentOf,
   resourceSplit,
   ringDashOffset,
+  ringTone,
   sampleAgeMs,
+  sparklineAreaPath,
   sparklinePath,
+  sparklineStats,
   uptimeParts,
 } from './systemMonitor';
 import type { SystemMetrics } from '../types';
@@ -150,6 +155,54 @@ describe('resourceSplit 三段占比', () => {
     expect(split.other).toBeCloseTo(20, 10);
     expect(split.idle).toBe(0);
     expect(split.app + split.other).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('曲线统计与面积路径', () => {
+  it('统计给出最低 / 平均 / 最高，非法值按 0', () => {
+    expect(sparklineStats([10, 20, 30])).toEqual({ min: 10, avg: 20, max: 30 });
+    const dirty = sparklineStats([Number.NaN, 50, -10, 120]);
+    expect(dirty?.min).toBe(0);
+    expect(dirty?.max).toBe(100);
+    expect(dirty?.avg).toBeCloseTo((0 + 50 + 0 + 100) / 4, 10);
+  });
+
+  it('没有有效点返回 null，单点也有统计', () => {
+    expect(sparklineStats([])).toBeNull();
+    expect(sparklineStats([])).toBeNull();
+    expect(sparklineStats([42])).toEqual({ min: 42, avg: 42, max: 42 });
+  });
+
+  it('面积路径以折线起手、闭合到底边', () => {
+    const path = sparklineAreaPath([0, 100], 100, 40, 0);
+    expect(path.startsWith('M0 40 L100 0')).toBe(true);
+    expect(path.endsWith('Z')).toBe(true);
+    expect(path).toContain('L100 40');
+    expect(sparklineAreaPath([], 100, 40)).toBe('');
+    expect(sparklineAreaPath([50], 100, 40)).toBe('');
+  });
+
+  it('面积路径不越出内边距，也不含 NaN', () => {
+    const path = sparklineAreaPath([Number.NaN, 50, 150], 100, 40, 2);
+    expect(path).not.toContain('NaN');
+    expect(path.endsWith('Z')).toBe(true);
+  });
+});
+
+describe('圆环色调阈值', () => {
+  it('90% 起告警、95% 起危险，其余保持主题色', () => {
+    expect(ringTone(0)).toBe('normal');
+    expect(ringTone(SYSTEM_RING_ALERT_PERCENT - 0.1)).toBe('normal');
+    expect(ringTone(SYSTEM_RING_ALERT_PERCENT)).toBe('warn');
+    expect(ringTone(SYSTEM_RING_DANGER_PERCENT - 0.1)).toBe('warn');
+    expect(ringTone(SYSTEM_RING_DANGER_PERCENT)).toBe('danger');
+    expect(ringTone(100)).toBe('danger');
+  });
+
+  it('非法百分比不会误报为警告色', () => {
+    expect(ringTone(Number.NaN)).toBe('normal');
+    expect(ringTone(-5)).toBe('normal');
+    expect(ringTone(Number.POSITIVE_INFINITY)).toBe('normal');
   });
 });
 

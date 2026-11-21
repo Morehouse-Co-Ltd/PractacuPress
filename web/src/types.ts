@@ -2876,6 +2876,10 @@ export interface SystemMetrics {
     cpu_percent: number;
     memory_bytes: number;
     storage: SystemStorageFootprint;
+    /** 本次 API 进程启动至今的秒数；旧后端没有这个字段。 */
+    uptime_seconds?: number;
+    /** 跨启停累计的软件运行秒数（含本次会话）；旧后端没有这个字段。 */
+    total_uptime_seconds?: number;
   };
   others: {
     cpu_percent: number;

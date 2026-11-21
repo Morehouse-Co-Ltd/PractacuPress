@@ -480,8 +480,10 @@ func TestMetricsServesSnapshot(t *testing.T) {
 		SampledAt: snapshotAt,
 		CPU:       CPUUsage{UsagePercent: 12.5, Cores: 8},
 		App: AppUsage{
-			Processes:  []ProcessSample{{PID: 10, Name: "practacu-api", Role: "api", CPUPercent: 1, MemoryBytes: 2048}},
-			CPUPercent: 1,
+			Processes:          []ProcessSample{{PID: 10, Name: "practacu-api", Role: "api", CPUPercent: 1, MemoryBytes: 2048}},
+			CPUPercent:         1,
+			UptimeSeconds:      120,
+			TotalUptimeSeconds: 7200,
 		},
 		Others: OtherUsage{
 			TopProcesses: []AggregateProcess{{Name: "chrome", Processes: 3, CPUPercent: 5, MemoryBytes: 4096}},
@@ -512,6 +514,17 @@ func TestMetricsServesSnapshot(t *testing.T) {
 	}
 	if len(payload.Others.TopProcesses) != 1 {
 		t.Fatalf("unexpected others: %+v", payload.Others.TopProcesses)
+	}
+	if payload.App.UptimeSeconds != 120 || payload.App.TotalUptimeSeconds != 7200 {
+		t.Fatalf(
+			"uptime payload = (%d, %d), want (120, 7200)",
+			payload.App.UptimeSeconds,
+			payload.App.TotalUptimeSeconds,
+		)
+	}
+	body := recorder.Body.String()
+	if !contains(body, `"uptime_seconds":120`) || !contains(body, `"total_uptime_seconds":7200`) {
+		t.Fatalf("uptime fields missing from JSON: %s", body)
 	}
 }
 

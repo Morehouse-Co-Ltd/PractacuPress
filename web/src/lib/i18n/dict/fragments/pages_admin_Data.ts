@@ -256,6 +256,25 @@ const fragment: Dictionary = {
   '跳过评论 {count}': 'Comments skipped {count}',
   '已导入 {imported} · 跳过 {skipped} · 失败 {failed}':
     'Imported {imported} · Skipped {skipped} · Failed {failed}',
+
+  // ---- 改版：分组标题 / 备份健康条 / 备份列表 ----
+  '带上内容、图片与站点设计，换台机器也能继续写。':
+    'Take your content, images and site design with you; keep writing on another machine.',
+  '先创建草稿，逐条报告结果；发布状态与审核规则照常生效。':
+    'Items become drafts and are reported one by one; publish state and review rules still apply.',
+  '最近备份': 'Latest backup',
+  '备份包': 'Packages',
+  '自动计划': 'Automatic schedule',
+  '还没有备份': 'No backups yet',
+  '最近备份已超过 {days} 天': 'The latest backup is {days} days old',
+  '保留最近 {count} 份': 'Keeps the latest {count}',
+  '还没有备份包': 'No backups yet',
+  '备份包含数据库、媒体与站点设计；恢复前服务端会再校验一次。':
+    'A backup contains the database, media and site design; the API verifies it again before restoring.',
+  'SQLite 生成一致快照；MySQL / PostgreSQL 请用各自的 dump 工具。':
+    'SQLite takes a consistent snapshot; use the native dump tools for MySQL / PostgreSQL.',
+  '在备份列表里点「恢复」；这一步会覆盖当前数据库，且无法从页面撤销。':
+    'Choose Restore on a backup below; it overwrites the current database and cannot be undone from this page.',
 };
 
 export default fragment;

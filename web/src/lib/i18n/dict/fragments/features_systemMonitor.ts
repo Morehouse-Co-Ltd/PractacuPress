@@ -91,6 +91,22 @@ const fragment: Dictionary = {
   '口径：进程 CPU 为占整机算力的比例（多核合计 100%）；内存为 RSS，聚合值按主机已用内存夹紧；磁盘为本软件数据目录所在卷的整体用量。':
     'Method: process CPU is a share of total machine capacity (all cores sum to 100%); memory is RSS with aggregates clamped to host used memory; disk is the usage of the volume that holds this software data directory.',
 
+  // ---- 改版：状态行 / 等高卡片 / 资源构成 / 数据目录 ----
+  '本软件与这台服务器的资源占用；每 2 秒采样，页面不可见时暂停。':
+    'Resource usage of this software and of this server; sampled every 2 seconds and paused while the page is hidden.',
+  '主机已运行 {duration}': 'Host up {duration}',
+  '本次启动 {duration}': 'This session {duration}',
+  '本软件数据 {size}': 'This software data {size}',
+  '整机 100% = 本软件 + 其他软件 + 空闲。':
+    'Machine 100% = this software + other software + idle.',
+  '数据目录占用': 'Data directory usage',
+  '数据库、媒体、备份与其他文件按体积拆分。':
+    'Database, media, backups and other files, split by size.',
+  '最近 {seconds} 秒 · 均 {avg}% / 峰 {peak}%':
+    'Last {seconds}s · avg {avg}% / peak {peak}%',
+  '正在采集曲线…（2 秒/点）': 'Collecting the trend… (one point every 2s)',
+  '偏高': 'High',
+
   // ---- 角色 ----
   '服务器 API': 'Server API',
   '前端（开发服务器）': 'Frontend (dev server)',

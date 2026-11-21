@@ -1389,17 +1389,31 @@ func buildSystemHandler(
 	}
 	dataDir := filepath.Dir(cfg.StorageDir)
 	if cfg.StorageDir == "" {
+		// S3 或没有本地媒体目录时退回备份目录的父目录，状态仍然写在 data 下。
+		dataDir = ""
+		if cfg.BackupDir != "" {
+			dataDir = filepath.Dir(cfg.BackupDir)
+		}
+	}
+	if dataDir == "." {
 		dataDir = ""
 	}
+	// 站点运行时长 = 这套软件每次启动后的运行时间之和，跨重启累加。
+	// 状态文件在 <data>/runtime/uptime.json；没有 data 目录时退化为内存计数。
+	uptime := system.NewUptimeTracker(system.UptimeConfig{
+		Path: system.UptimePath(dataDir),
+		Logf: func(format string, args ...any) { logger.Warn(fmt.Sprintf(format, args...)) },
+	})
 	sampler := system.NewSampler(system.SamplerConfig{
 		AppNames:  system.DefaultAppNames(),
 		AppDirs:   appDirs,
 		DataDir:   dataDir,
 		MediaDir:  cfg.StorageDir,
 		BackupDir: cfg.BackupDir,
+		Uptime:    uptime,
 	})
 	sampler.Start(ctx)
-	logger.Info("system metrics panel enabled", "data_dir", dataDir)
+	logger.Info("system metrics panel enabled", "data_dir", dataDir, "uptime_state", system.UptimePath(dataDir))
 
 	return system.NewHandler(sampler.Latest, system.HandlerConfig{
 		Principal: func(c *gin.Context) (string, bool) {

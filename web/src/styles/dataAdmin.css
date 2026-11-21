@@ -1,0 +1,334 @@
+/* =========================================================
+   数据与备份（pages/admin/Data.tsx）
+   ---------------------------------------------------------
+   与性能面板共用同一套卡片骨架（16px 圆角、细边、克制投影），
+   只新增两件东西：
+   1. 导出 / 导入两组的卡片结构（图标胶囊 + 横排字段 + 底部动作条）；
+   2. 备份列表（行内下载 / 恢复）与危险操作卡。
+   颜色全部走令牌；图标胶囊由强调色混出，明暗两套自动成立。
+   ========================================================= */
+
+/* ---------------- 导出 / 导入分组 ---------------- */
+
+.dio-group {
+  margin-bottom: 22px;
+}
+
+.dio-group:last-child {
+  margin-bottom: 0;
+}
+
+.dio-group-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.dio-group-head h2 {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.dio-group-head p {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.data-io-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .data-io-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.dio-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.dio-card .panel-head {
+  align-items: center;
+  gap: 12px;
+}
+
+.dio-card .panel-head > div:first-child {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dio-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--accent);
+}
+
+.dio-card .panel-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 22px 0;
+}
+
+/* 卡片以正文收尾时（没有 .dio-foot）补回底部留白。 */
+.dio-card .panel-body:last-child {
+  padding-bottom: 18px;
+}
+
+/* 字段横排：不同浏览器下 auto-fit 会把短字段拉到一行，卡片高度立刻降下来。 */
+.dio-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 16px;
+  align-items: start;
+}
+
+/* 底部动作条：与正文用细线分开，提示在左、主按钮在右。 */
+.dio-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: auto;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.dio-note {
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+/* 只有放进动作条时才撑满剩余宽度；正文里的说明不应该被 flex 拉成 220px 高。 */
+.dio-foot .dio-note,
+.dio-foot-inline .dio-note {
+  flex: 1 1 220px;
+}
+
+/* 卡内动作行（后面还跟着报告/预览时，不放在卡片最底部）。 */
+.dio-foot-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+/* ---------------- 导入报告折叠 ---------------- */
+
+.dio-details {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.dio-details > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.dio-details > summary::-webkit-details-marker { display: none; }
+
+.dio-details > summary:hover { color: var(--ink); }
+
+.dio-details[open] > summary { margin-bottom: 10px; }
+
+.dio-report-table {
+  min-width: 560px;
+}
+
+/* ---------------- 备份：健康条与列表 ---------------- */
+
+.bk-health {
+  margin-bottom: 18px;
+}
+
+.bk-health .stat small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bk-toolbar .dio-note {
+  margin-left: auto;
+  text-align: right;
+}
+
+.bk-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.bk-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.bk-list > .bk-row:first-child {
+  border-top: 0;
+}
+
+.bk-row:hover {
+  background: var(--bg-subtle);
+}
+
+.bk-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-subtle);
+  color: var(--muted);
+}
+
+.bk-main {
+  min-width: 0;
+}
+
+.bk-name {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bk-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-meta .mono {
+  color: var(--faint);
+}
+
+.bk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.bk-empty {
+  padding: 8px 22px 22px;
+}
+
+/* ---------------- 危险操作（恢复） ---------------- */
+
+.dio-danger {
+  border-color: color-mix(in srgb, var(--danger) 26%, var(--line));
+  background:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--danger) 5%, transparent),
+      transparent 42%
+    ),
+    var(--admin-panel, var(--bg));
+}
+
+.dio-danger .panel-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--danger);
+}
+
+.dio-danger .dio-note {
+  color: var(--muted);
+}
+
+/* ---------------- 窄屏 ---------------- */
+
+@media (max-width: 720px) {
+  .dio-card .panel-head,
+  .bk-toolbar,
+  .bk-row {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .dio-card .panel-body {
+    padding: 16px 16px 0;
+  }
+
+  .dio-foot {
+    padding: 12px 16px;
+  }
+
+  .dio-foot .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .bk-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .bk-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .bk-toolbar .dio-note {
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .dio-report-table {
+    min-width: 0;
+  }
+}

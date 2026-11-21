@@ -8222,7 +8222,7 @@ components:
         app:
           type: object
           description: Everything attributed to this installation.
-          required: [processes, cpu_percent, memory_bytes, storage]
+          required: [processes, cpu_percent, memory_bytes, storage, uptime_seconds, total_uptime_seconds]
           properties:
             processes:
               type: array
@@ -8230,6 +8230,20 @@ components:
             cpu_percent: { type: number, minimum: 0, maximum: 100 }
             memory_bytes: { type: integer, minimum: 0 }
             storage: { $ref: '#/components/schemas/SystemStorage' }
+            uptime_seconds:
+              type: integer
+              minimum: 0
+              description: |
+                How long this API process has been running. This is neither the site's age
+                nor the host's uptime (the latter is platform.uptime_seconds).
+            total_uptime_seconds:
+              type: integer
+              minimum: 0
+              description: |
+                Accumulated running time of this installation across restarts, including the
+                current session. Persisted at data/runtime/uptime.json and written at most
+                once every 60 seconds, so a crash can lose up to one minute. Deleting the
+                data directory resets it; backups do not carry it.
         others:
           type: object
           description: The rest of the machine, aggregated by executable name.

@@ -425,7 +425,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | 路径 | 说明 | 最低角色 |
 | --- | --- | --- |
 | `/admin` | 仪表盘、统计、上线清单、审核队列、最近操作 | 有后台能力；纯作者会自动落到内容库 |
-| `/admin/ext/system` | 性能面板（内置扩展 `pp.performance` 注册的页面）：本软件与其他软件的 CPU / 内存 / 磁盘占用**圆环**、进程与数据目录拆分；4 秒轮询，服务端 `PP_SYSTEM_METRICS=off` 可整体关闭。旧路径 `/admin/system` 会重定向 | 平台管理员 |
+| `/admin/ext/system` | 性能面板（内置扩展 `pp.performance` 注册的页面）：本软件与其他软件的 CPU / 内存 / 磁盘占用**圆环**、进程与数据目录拆分，页头单个实时状态胶囊，站点累计运行时长（跨启停累加，记录在 `data/runtime/uptime.json`）；2 秒轮询，服务端 `PP_SYSTEM_METRICS=off` 可整体关闭。旧路径 `/admin/system` 会重定向 | 平台管理员 |
 | `/admin/ext/<path>` | 扩展注册的后台页面（导入扩展或内置扩展通过 `ctx.admin.registerPage` 注册；导航按 `overview` / `extensions` 分组） | 由扩展决定 |
 | `/admin/content` | 内容库、状态筛选、搜索、流程动作 | 写稿 / 审核 |
 | `/admin/content/new/:kind` | 新建文章 / 帖子：富文本 / HTML / Markdown 三种录入方式（HTML / Markdown 带右侧实时预览与互转），支持写作快捷键 | 写稿 |

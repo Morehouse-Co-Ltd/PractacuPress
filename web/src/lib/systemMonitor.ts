@@ -126,6 +126,75 @@ export function resourceSplit(appValue: number, otherValue: number, total: numbe
   };
 }
 
+/**
+ * 圆环的告警阈值：占用到 90% 开始提示「偏高」，95% 起改用危险色。
+ *
+ * 阈值只影响颜色与一个小胶囊，不参与「数据是否可信」的判断；页面在 90% 以下保持
+ * 主题强调色，避免每台机器都变成一片警告色。
+ */
+export const SYSTEM_RING_ALERT_PERCENT = 90;
+
+/** 危险阈值：与告警区分开，让「已经不好」和「马上出事」看起来不同。 */
+export const SYSTEM_RING_DANGER_PERCENT = 95;
+
+export type RingTone = 'normal' | 'warn' | 'danger';
+
+/** 百分比 → 圆环色调。越界与非法值都按 normal 处理，不会画出警告色。 */
+export function ringTone(percent: number): RingTone {
+  const value = clampPercent(percent);
+  if (value >= SYSTEM_RING_DANGER_PERCENT) return 'danger';
+  if (value >= SYSTEM_RING_ALERT_PERCENT) return 'warn';
+  return 'normal';
+}
+
+/** 一段曲线的极值与均值；少于一个有效点时返回 null（调用方显示占位文案）。 */
+export interface SparklineStats {
+  min: number;
+  avg: number;
+  max: number;
+}
+
+/**
+ * 采样曲线的统计：最低 / 平均 / 最高。
+ *
+ * 只用于图注与 aria-label，参与计算的每个点都先夹紧到 0–100；不做平滑，
+ * 因此「峰 62%」就是这一窗口里真实出现过的最大值。
+ */
+export function sparklineStats(values: number[]): SparklineStats | null {
+  const usable = values.map(clampPercent).filter((value) => Number.isFinite(value));
+  if (!usable.length) return null;
+  let min = usable[0];
+  let max = usable[0];
+  let sum = 0;
+  for (const value of usable) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+    sum += value;
+  }
+  return { min, avg: sum / usable.length, max };
+}
+
+/**
+ * 与 `sparklinePath` 同一折线的闭合面积路径（用于渐变填充）。
+ *
+ * 折线本身为空（不足两个点）时也返回空串，调用方继续画占位平线；闭合点落在
+ * 内边距内的底边，填充不会溢出卡片。
+ */
+export function sparklineAreaPath(
+  values: number[],
+  width: number,
+  height: number,
+  padding = 2,
+): string {
+  const line = sparklinePath(values, width, height, padding);
+  if (!line) return '';
+  const innerWidth = Math.max(1, width - padding * 2);
+  const bottom = Math.max(padding, height - padding);
+  const left = round1(padding);
+  const right = round1(padding + innerWidth);
+  return `${line} L${right} ${round1(bottom)} L${left} ${round1(bottom)} Z`;
+}
+
 /** 部分占总量的百分比；总量为 0 时返回 0。 */
 export function percentOf(part: number, total: number): number {
   if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0 || part <= 0) return 0;

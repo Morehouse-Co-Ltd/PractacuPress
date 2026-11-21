@@ -17,6 +17,7 @@
 @import './styles/profileCards.css';
 @import './styles/stepUp.css';
 @import './styles/systemMonitor.css';
+@import './styles/dataAdmin.css';
 @import './styles/extensionRuntime.css';
 @import './styles/extensionsAdmin.css';
 @import './styles/themeLivePreview.css';
@@ -990,22 +991,7 @@ img {
   background: var(--bg);
 }
 
-/* 数据导入导出：两张导出卡、两张导入卡并列；窄屏自动堆叠。 */
-.data-io-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-items: start;
-  margin-bottom: 16px;
-}
-.data-io-grid > .panel {
-  height: 100%;
-}
-@media (max-width: 1100px) {
-  .data-io-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
+/* 数据导入/导出的布局在 styles/dataAdmin.css（.data-io-grid / .dio-*）。 */
 
 .panel-pad { padding: 24px; }
 .panel-head {
@@ -3132,7 +3118,36 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   letter-spacing: -0.015em;
 }
 .admin-page-head p { margin-top: 5px; font-size: 12.5px; color: var(--muted); }
-.admin-page-actions { display: flex; gap: 8px; align-items: center; }
+.admin-page-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* 页头右侧的实时状态胶囊：一页最多一个，替代并排多枚同权重徽标。 */
+.sys-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--admin-border, var(--line));
+  border-radius: 999px;
+  background: var(--admin-panel, var(--bg-subtle));
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.sys-status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+.sys-status.is-muted .sys-status-dot { background: var(--faint); box-shadow: 0 0 0 3px var(--line); }
+.sys-status.is-warn .sys-status-dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.sys-status.is-danger .sys-status-dot { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.sys-status .sys-status-sep { color: var(--faint); }
+
 
 /* 四张统计卡各自独立成卡：中间留出间隔，而不是拼成一整条线框。 */
 .stat-grid {

@@ -100,6 +100,12 @@ type AppUsage struct {
 	CPUPercent  float64          `json:"cpu_percent"`
 	MemoryBytes uint64           `json:"memory_bytes"`
 	Storage     StorageFootprint `json:"storage"`
+	// UptimeSeconds is how long this API process has been running.
+	UptimeSeconds uint64 `json:"uptime_seconds"`
+	// TotalUptimeSeconds is the accumulated running time across restarts, including
+	// the current session. It comes from UptimeTracker, which persists to
+	// <data>/runtime/uptime.json; zero means the tracker is not configured.
+	TotalUptimeSeconds uint64 `json:"total_uptime_seconds"`
 }
 
 // OtherUsage is everything attributed to the rest of the machine.
@@ -137,6 +143,10 @@ type SamplerConfig struct {
 	// MediaDir and BackupDir are measured separately inside DataDir.
 	MediaDir  string
 	BackupDir string
+	// Uptime, when set, adds the software's session and accumulated running time to
+	// every sample. It is optional so tests and embedders can sample without a state
+	// file.
+	Uptime *UptimeTracker
 }
 
 // DefaultAppNames returns the executable names this installation ships.
@@ -209,8 +219,19 @@ func (s *Sampler) Start(ctx context.Context) {
 	// Prime the global CPU counter so the first real sample is a short window, and
 	// warm the process baseline so per-process percentages are meaningful.
 	_, _ = cpu.Percent(0, false)
+	// 启动时先落一次盘：状态文件在第一次采样前就存在，便于排查「有没有在记」，
+	// 也保证后面 60 秒的写入节奏从启动时刻算起。
+	if s.cfg.Uptime != nil {
+		_ = s.cfg.Uptime.Flush()
+	}
 	s.sampleOnce()
 	go func() {
+		// 优雅退出前补一次落盘：崩溃最多丢一个 flush 间隔，正常停止不丢。
+		defer func() {
+			if s.cfg.Uptime != nil {
+				_ = s.cfg.Uptime.Flush()
+			}
+		}()
 		ticker := time.NewTicker(s.cfg.Interval)
 		defer ticker.Stop()
 		for {
@@ -266,6 +287,14 @@ func (s *Sampler) sampleOnce() {
 
 	app, others := aggregateProcesses(s.sampleProcesses(now, static.cores), hostCPU, memory.UsedBytes)
 
+	// 运行时长随每个样本一起刷新：Observe 负责按 60 秒的节奏落盘，
+	// Totals 给出「本次启动 / 跨启停累计」两个秒数。
+	var sessionUptime, totalUptime uint64
+	if s.cfg.Uptime != nil {
+		s.cfg.Uptime.Observe()
+		sessionUptime, totalUptime = s.cfg.Uptime.Totals()
+	}
+
 	snapshot := Snapshot{
 		SampledAt: now.UTC(),
 		Platform: PlatformInfo{
@@ -282,10 +311,12 @@ func (s *Sampler) sampleOnce() {
 		Memory: memory,
 		Disk:   diskUsage,
 		App: AppUsage{
-			Processes:   app.processes,
-			CPUPercent:  app.cpuPercent,
-			MemoryBytes: app.memoryBytes,
-			Storage:     s.storageFootprint(now),
+			Processes:          app.processes,
+			CPUPercent:         app.cpuPercent,
+			MemoryBytes:        app.memoryBytes,
+			Storage:            s.storageFootprint(now),
+			UptimeSeconds:      sessionUptime,
+			TotalUptimeSeconds: totalUptime,
 		},
 		Others: others,
 	}
