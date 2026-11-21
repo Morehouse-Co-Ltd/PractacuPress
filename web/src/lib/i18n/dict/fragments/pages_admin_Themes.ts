@@ -328,6 +328,8 @@ const fragment: Dictionary = {
     'Switches back to the built-in default theme and clears the adjustments on the current one; no content or imported theme is deleted.',
   '恢复原版': 'Restore default',
   '创建一套主题': 'Create a theme',
+  '从空白主题开始，选好版式；创建完可以直接进页面编排搭页面。':
+    'Start from a blank theme, choose a layout, then go straight into page building.',
   '选好版式与配色起点，之后再微调；创建完可以直接进页面编排搭页面。':
     'Choose a layout and a colour starting point and fine-tune later; you can go straight to Page layout once it is created.',
   '仅创建': 'Create only',

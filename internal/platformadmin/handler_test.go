@@ -29,6 +29,8 @@ import (
 	entgen "github.com/practacu/practacu-press/internal/ent"
 	entsite "github.com/practacu/practacu-press/internal/ent/site"
 	"github.com/practacu/practacu-press/internal/ent/sitecustomization"
+	entsitemember "github.com/practacu/practacu-press/internal/ent/sitemember"
+	entuser "github.com/practacu/practacu-press/internal/ent/user"
 )
 
 // dynamicTXT answers the challenge the way a correctly configured DNS zone would:
@@ -372,6 +374,49 @@ func TestPlatformRequiresPlatformAdmin(t *testing.T) {
 	count, err := h.db.Client.Site.Query().Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+}
+
+// TestPlatformCreateAllowsConfirmedWeakOwnerPassword covers the platform console's
+// first-administrator password: it uses the same confirmation flag as every other
+// password creation path, and the hard bounds still apply without it.
+func TestPlatformCreateAllowsConfirmedWeakOwnerPassword(t *testing.T) {
+	h := newHarness(t)
+
+	create := h.do(t, http.MethodPost, "/api/v1/platform/sites", "main.local", h.rootTok, map[string]any{
+		"name":   "Weak owner site",
+		"slug":   "weak-owner-site",
+		"domain": "weak-owner.example",
+		"owner": map[string]any{
+			"email":                 "weak-owner@example.com",
+			"display_name":          "Weak owner",
+			"password":              "short",
+			"confirm_weak_password": true,
+		},
+	})
+	require.Equal(t, http.StatusCreated, create.Code, create.Body.String())
+
+	var created struct {
+		Site struct {
+			ID string `json:"id"`
+		} `json:"site"`
+	}
+	decode(t, create, &created)
+	require.NotEmpty(t, created.Site.ID)
+
+	user, err := h.db.Client.User.Query().
+		Where(entuser.DisplayNameEQ("Weak owner")).
+		Only(context.Background())
+	require.NoError(t, err)
+	require.NotEmpty(t, user.ID)
+
+	member, err := h.db.Client.SiteMember.Query().
+		Where(
+			entsitemember.SiteIDEQ(created.Site.ID),
+			entsitemember.UserIDEQ(user.ID),
+		).
+		Only(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, string(site.RoleSiteAdmin), member.Role)
 }
 
 func TestPlatformCreateRejectsDuplicateSlugAndInvalidInput(t *testing.T) {

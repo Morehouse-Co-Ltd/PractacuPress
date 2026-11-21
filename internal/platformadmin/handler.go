@@ -130,9 +130,10 @@ type createSiteRequest struct {
 	VisibilityMode string `json:"visibility_mode"`
 	PublishMode    string `json:"publish_mode"`
 	Owner          struct {
-		Email       string `json:"email"`
-		DisplayName string `json:"display_name"`
-		Password    string `json:"password"`
+		Email               string `json:"email"`
+		DisplayName         string `json:"display_name"`
+		Password            string `json:"password"`
+		ConfirmWeakPassword bool   `json:"confirm_weak_password"`
 	} `json:"owner"`
 }
 
@@ -231,9 +232,10 @@ func (h *Handler) CreateSite(c *gin.Context) {
 		VisibilityMode: site.VisibilityMode(req.VisibilityMode),
 		PublishMode:    site.PublishMode(req.PublishMode),
 		Owner: OwnerInput{
-			Email:       req.Owner.Email,
-			DisplayName: req.Owner.DisplayName,
-			Password:    req.Owner.Password,
+			Email:               req.Owner.Email,
+			DisplayName:         req.Owner.DisplayName,
+			Password:            req.Owner.Password,
+			ConfirmWeakPassword: req.Owner.ConfirmWeakPassword,
 		},
 	})
 	if err != nil {

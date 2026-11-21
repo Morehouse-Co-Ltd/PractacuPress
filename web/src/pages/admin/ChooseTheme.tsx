@@ -75,9 +75,6 @@ export function ChooseThemePage() {
   const [createName, setCreateName] = useState('');
   const [createNote, setCreateNote] = useState('');
   const [createVariant, setCreateVariant] = useState<LayoutVariant>('classic');
-  // 新主题默认从「空白」起步（按版式取默认配色），不再隐式复制当前主题，
-  // 免得在微调过的主题上新建时把旧配色一起带进去。
-  const [createBase, setCreateBase] = useState<'current' | 'blank'>('blank');
   const [createSections, setCreateSections] = useState<AppearanceSectionId[]>(
     DEFAULT_APPEARANCE_SECTIONS,
   );
@@ -316,7 +313,6 @@ export function ChooseThemePage() {
     setCreateNote('');
     // 白昼版式已下架；旧站点打开新建弹窗时从单栏开始，不把 legacy 变体再写出去。
     setCreateVariant(layout.variant === 'daylight' ? 'classic' : layout.variant);
-    setCreateBase('blank');
     setCreateSections([...DEFAULT_APPEARANCE_SECTIONS]);
     setCreateError('');
     setCreateOpen(true);
@@ -337,12 +333,11 @@ export function ChooseThemePage() {
       setCreateError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       return;
     }
+    // 新主题始终从空白/版式默认配色开始，不复制当前主题；想保留当前配置时走
+    // 主题页的「保存为主题」。
     const base =
-      createBase === 'current'
-        ? cloneTheme(currentTheme)
-        : builtinThemeBundle(
-            createVariant === 'bento' ? 'night' : 'default',
-          )?.theme ?? applyPreset(DEFAULT_THEME, 'paper');
+      builtinThemeBundle(createVariant === 'bento' ? 'night' : 'default')?.theme ??
+      applyPreset(DEFAULT_THEME, 'paper');
     const item: SiteTheme = {
       id: newThemeId(),
       name,
@@ -774,7 +769,7 @@ export function ChooseThemePage() {
       <Modal
         open={createOpen}
         title={t('创建一套主题')}
-        description={t('选好版式与配色起点，之后再微调；创建完可以直接进页面编排搭页面。')}
+        description={t('从空白主题开始，选好版式；创建完可以直接进页面编排搭页面。')}
         onClose={() => setCreateOpen(false)}
         width={720}
         footer={
@@ -848,43 +843,6 @@ export function ChooseThemePage() {
                 >
                   <span className="option-icon">
                     <Icon name="columns" size={16} />
-                  </span>
-                  <span className="option-body">
-                    <strong>{item.name}</strong>
-                    <p>{item.note}</p>
-                  </span>
-                  <span className="option-radio" />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="field-label mb-8">{t('配色起点')}</p>
-            <div className="option-grid two">
-              {(
-                [
-                  {
-                    key: 'current' as const,
-                    name: t('沿用当前主题'),
-                    note: t('保留现在的配色、字体与圆角。'),
-                  },
-                  {
-                    key: 'blank' as const,
-                    name: t('按版式取默认'),
-                    note: t('单栏取纸白，双栏取夜航。'),
-                  },
-                ]
-              ).map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`option${createBase === item.key ? ' is-selected' : ''}`}
-                  onClick={() => setCreateBase(item.key)}
-                  aria-pressed={createBase === item.key}
-                >
-                  <span className="option-icon">
-                    <Icon name="palette" size={16} />
                   </span>
                   <span className="option-body">
                     <strong>{item.name}</strong>

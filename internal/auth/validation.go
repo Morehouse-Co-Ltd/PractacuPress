@@ -73,13 +73,17 @@ func NormalizeEmail(raw string) (string, error) {
 	return email, nil
 }
 
-// ValidatePassword enforces the password policy before hashing.
+// ValidatePassword enforces the strict password policy before hashing.
 //
 // The policy is: 12 to 128 characters, not entirely whitespace, at least two of the
 // four character classes, and not one of the classic weak passwords in the embedded
-// blocklist (case insensitive exact match). It only gates the creation of a password
-// (registration, reset and administrator created accounts); login accepts whatever
-// was stored, so an account created before this policy existed keeps working.
+// blocklist (case insensitive exact match). Login accepts whatever was stored, so an
+// account created before this policy existed keeps working.
+//
+// Password creation and password changes call ValidatePasswordForCreation instead:
+// they keep the same hard bounds but let an explicitly confirmed weak password
+// through. This function stays strict so callers that need a policy check without an
+// override (tests, future flows) have one.
 func ValidatePassword(raw string) error {
 	length := utf8.RuneCountInString(raw)
 	switch {
@@ -105,6 +109,35 @@ func ValidatePassword(raw string) error {
 			minPasswordClasses))
 	}
 	return nil
+}
+
+// ValidatePasswordForCreation is the password gate for creating or replacing a
+// password. It keeps the security-critical bounds and lets the person confirm a weak
+// password explicitly.
+//
+// Hard failures that no confirmation can bypass:
+//   - an empty password (reported as too_short, the same rule the form uses);
+//   - a password made only of whitespace;
+//   - more than MaxPasswordLength characters.
+//
+// Everything else is delegated to ValidatePassword unless confirmWeak is true. With
+// the confirmation, short, common and single-class passwords are accepted; without
+// it, the original policy applies unchanged.
+func ValidatePasswordForCreation(raw string, confirmWeak bool) error {
+	if raw == "" {
+		return invalidField("password", "too_short", "password is required")
+	}
+	if strings.TrimSpace(raw) == "" {
+		return invalidField("password", "blank", "password must not be only whitespace")
+	}
+	if utf8.RuneCountInString(raw) > MaxPasswordLength {
+		return invalidField("password", "too_long",
+			fmt.Sprintf("password must be at most %d characters", MaxPasswordLength))
+	}
+	if confirmWeak {
+		return nil
+	}
+	return ValidatePassword(raw)
 }
 
 // passwordClasses counts how many distinct character classes a password uses.

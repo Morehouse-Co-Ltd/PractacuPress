@@ -96,6 +96,7 @@ const fragment: Dictionary = {
   '这个邮箱不会再收到本站的邮件。':
     'This address will no longer receive email from this site.',
   '新的发布内容会通过邮件通知你。': 'New posts will be emailed to you.',
+  '请输入新密码': 'Enter a new password.',
 };
 
 export default fragment;

@@ -197,6 +197,10 @@ type registerRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	// ConfirmWeakPassword records that the person saw the weak password warning and
+	// chose to keep it. It relaxes the strength rules only; empty, whitespace-only and
+	// overlong passwords are still rejected.
+	ConfirmWeakPassword bool `json:"confirm_weak_password"`
 	// CaptchaToken is the solved human challenge. Optional because the site may
 	// not require it; required (and refused when missing) when the site enables it.
 	CaptchaToken string `json:"captcha_token"`
@@ -217,6 +221,9 @@ type createMemberRequest struct {
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
 	Role        string `json:"role"`
+	// ConfirmWeakPassword mirrors registerRequest: the administrator explicitly
+	// accepted the weak password shown in the client warning.
+	ConfirmWeakPassword bool `json:"confirm_weak_password"`
 }
 
 type passwordResetRequest struct {
@@ -228,8 +235,9 @@ type passwordResetRequest struct {
 }
 
 type passwordResetConfirmRequest struct {
-	Token    string `json:"token"`
-	Password string `json:"password"`
+	Token               string `json:"token"`
+	Password            string `json:"password"`
+	ConfirmWeakPassword bool   `json:"confirm_weak_password"`
 }
 
 type updateProfileRequest struct {
@@ -239,8 +247,9 @@ type updateProfileRequest struct {
 }
 
 type changePasswordRequest struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
+	CurrentPassword     string `json:"current_password"`
+	NewPassword         string `json:"new_password"`
+	ConfirmWeakPassword bool   `json:"confirm_weak_password"`
 }
 
 type emailVerifyRequest struct {
@@ -318,12 +327,13 @@ func (h *Handler) RegisterEmail(c *gin.Context) {
 	}
 
 	session, err := h.service.RegisterEmail(c.Request.Context(), h.siteID(c), RegisterEmailInput{
-		Email:           req.Email,
-		Password:        req.Password,
-		DisplayName:     req.DisplayName,
-		AllowFirstAdmin: h.firstAdmin != nil && h.firstAdmin(c),
-		BaseURL:         requestOrigin(c, h.secure),
-		ClientMeta:      clientMeta(c),
+		Email:               req.Email,
+		Password:            req.Password,
+		DisplayName:         req.DisplayName,
+		ConfirmWeakPassword: req.ConfirmWeakPassword,
+		AllowFirstAdmin:     h.firstAdmin != nil && h.firstAdmin(c),
+		BaseURL:             requestOrigin(c, h.secure),
+		ClientMeta:          clientMeta(c),
 	})
 	if err != nil {
 		_ = c.Error(mapError(err))
@@ -447,7 +457,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.Password); err != nil {
+	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.Password, req.ConfirmWeakPassword); err != nil {
 		_ = c.Error(mapError(err))
 		return
 	}
@@ -518,10 +528,11 @@ func (h *Handler) CreateMemberAccount(c *gin.Context) {
 	}
 
 	user, err := h.service.CreateMember(c.Request.Context(), principal, c.Param("siteID"), CreateMemberInput{
-		Email:       req.Email,
-		DisplayName: req.DisplayName,
-		Password:    req.Password,
-		Role:        role,
+		Email:               req.Email,
+		DisplayName:         req.DisplayName,
+		Password:            req.Password,
+		ConfirmWeakPassword: req.ConfirmWeakPassword,
+		Role:                role,
 	})
 	if err != nil {
 		_ = c.Error(mapError(err))
@@ -682,6 +693,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		refreshToken,
 		req.CurrentPassword,
 		req.NewPassword,
+		req.ConfirmWeakPassword,
 	); err != nil {
 		_ = c.Error(mapError(err))
 		return

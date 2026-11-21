@@ -74,10 +74,11 @@ STAGE = 99（稳定版） | N（测试版序号 1..98）
 - 全局 `.select` / `.select-wrap` 统一高度、圆角、边框、chevron 与 focus-visible 状态，
   亮色与暗色后台同步适配。
 
-### 6. 新建主题默认空白
+### 6. 新建主题固定从空白开始
 
-- 「新建主题」默认从空白主题开始，不再默认复制当前主题；其余字段（名称、说明、版式、
-  分区）保持不变。
+- 「新建主题」不再提供「沿用当前主题」选项，始终按版式从空白/默认配色开始，不会把
+  当前微调过的配色、字体与圆角带进新主题。
+- 想保留当前配置时使用「保存为主题」；它明确是保存当前状态，不属于“新建空白主题”。
 
 ### 7. 后台搜索：修复 + 以后新增功能也不会漏
 
@@ -229,3 +230,44 @@ powershell -ExecutionPolicy Bypass -File scripts\verify.ps1
   `/captcha/local/challenge` 加频率限制。
 - 请求日志是内存环形缓冲（最多 500 条，接口单次最多 100 条），进程重启后清空；需要长期留存
   请使用审计日志或外部日志采集。
+
+---
+
+## 六、弱密码确认与主题起点
+
+### 1. 弱密码确认后保存
+
+- 管理员密码、安装向导首个管理员、平台新建站点的初始管理员、管理员创建成员、用户注册、
+  找回密码与登录用户自助改密，都允许输入不满足推荐强度的密码。
+- 弱密码提交前先弹窗说明问题；用户点「仍然使用这个密码」后，前端重新提交并携带
+  `confirm_weak_password: true`，服务端才接受。用户取消则只关闭弹窗，不写任何数据。
+- 服务端硬边界不变：空密码、纯空白、超过 128 个码点即使确认也拒绝；未携带确认标志的弱密码
+  仍按原 12 位/两类字符/常见口令规则拒绝。
+- 新增 `auth.ValidatePasswordForCreation` 统一六个入口；OpenAPI 的注册、重置、改密、
+  `NewMember` 与 `CreateSiteOwner` 都记录了 `confirm_weak_password`。演示后端同步了同一套
+  行为，避免演示能建、线上建不了。
+
+### 2. 新建主题始终空白
+
+- 创建主题弹窗移除「沿用当前主题」，固定按版式取空白默认配色；「保存为主题」仍保留
+  “保存当前配置”的语义。
+- 新主题落库时不再读取当前主题的配色、字体或圆角。
+
+### 3. 本轮验证
+
+```powershell
+go test -count=1 ./internal/auth ./internal/platformadmin ./internal/transport/http/gin
+cd web
+cmd /c "npx.cmd tsc --noEmit"
+cmd /c "npx.cmd vitest run"
+cmd /c "npx.cmd vite build"
+cd ..
+node --test scripts/release-version.test.mjs
+powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 -Task all
+```
+
+### 4. 本轮已知边界
+
+- `confirm_weak_password` 记录的是用户意图，不是权限边界：它的作用是让服务端知道“用户看过
+  警告并仍然选择这个密码”，不能替代账户安全策略。
+- 弱密码的强度风险由确认者承担；已有历史弱密码继续可登录，不做强制迁移。

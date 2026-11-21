@@ -56,6 +56,39 @@ export function passwordProblem(raw: string): PasswordProblem | null {
   return null;
 }
 
+/**
+ * 与后端 `ValidatePasswordForCreation` 对齐：计算“创建/替换密码”时的问题。
+ *
+ * - 空串 → short（表单必填提示）
+ * - 纯空白 → blank（硬失败，即使确认也不保存）
+ * - 超过 128 码点 → long（硬失败）
+ * - 确认过弱密码 → null
+ * - 否则回到严格策略
+ */
+export function passwordCreationProblem(
+  raw: string,
+  confirmWeak = false,
+): PasswordProblem | null {
+  if (raw === '') return 'short';
+  if (raw.trim() === '') return 'blank';
+  if ([...raw].length > MAX_LENGTH) return 'long';
+  if (confirmWeak) return null;
+  return passwordProblem(raw);
+}
+
+/**
+ * 是否属于“可以弹窗确认”的弱密码。
+ *
+ * 空串、纯空白和超长密码不在这里返回：它们必须直接报错，不能被“仍然使用”绕过。
+ */
+export function weakPasswordProblem(raw: string): PasswordProblem | null {
+  if (raw.trim() === '') return null;
+  const problem = passwordProblem(raw);
+  return problem === 'short' || problem === 'common' || problem === 'classes'
+    ? problem
+    : null;
+}
+
 /** 错误码 → 可显示文案；`t` 由调用方传入，保证文案走字面量 key。 */
 export function passwordProblemText(
   problem: PasswordProblem,

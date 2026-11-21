@@ -78,6 +78,8 @@ export interface ProfileInput {
 export interface ChangePasswordInput {
   current_password: string;
   new_password: string;
+  /** 用户已在弱密码弹窗中确认继续使用当前弱密码。 */
+  confirm_weak_password?: boolean;
 }
 
 export interface Session {
@@ -251,6 +253,8 @@ export interface CreateSiteOwnerInput {
   email: string;
   display_name: string;
   password: string;
+  /** 用户已在弱密码弹窗中确认继续使用当前弱密码。 */
+  confirm_weak_password?: boolean;
 }
 
 /** 新建站点。主域名必填，创建后仍需完成 TXT 归属验证。 */
@@ -550,6 +554,8 @@ export interface NewMemberInput {
   email: string;
   display_name: string;
   password: string;
+  /** 管理员已在弱密码弹窗中确认继续使用当前弱密码。 */
+  confirm_weak_password?: boolean;
   /** 个人博客忽略该字段：所有账户都是最高管理员。 */
   role?: Role;
 }

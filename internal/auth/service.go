@@ -214,6 +214,9 @@ type RegisterEmailInput struct {
 	Email       string
 	Password    string
 	DisplayName string
+	// ConfirmWeakPassword is the explicit acknowledgement that the password did not
+	// meet the strength policy. It never bypasses the empty/whitespace/overlong bounds.
+	ConfirmWeakPassword bool
 	// AllowFirstAdmin reports whether this request is allowed to claim the install's
 	// first account when BootstrapFirstAdmin is on. The handler sets it from the
 	// request host: only a loopback caller may become the first platform administrator
@@ -249,7 +252,7 @@ func (s *Service) RegisterEmail(ctx context.Context, siteID string, in RegisterE
 	if err != nil {
 		return Session{}, err
 	}
-	if err := ValidatePassword(in.Password); err != nil {
+	if err := ValidatePasswordForCreation(in.Password, in.ConfirmWeakPassword); err != nil {
 		return Session{}, err
 	}
 	displayName, err := ValidateDisplayName(in.DisplayName)
@@ -342,7 +345,10 @@ type CreateMemberInput struct {
 	Email       string
 	DisplayName string
 	Password    string
-	Role        site.Role
+	// ConfirmWeakPassword is the explicit acknowledgement of a weak password; see
+	// RegisterEmailInput.
+	ConfirmWeakPassword bool
+	Role                site.Role
 }
 
 // CreateMember creates an account on a site without starting a session.
@@ -415,7 +421,7 @@ func (s *Service) createAccount(
 	if err != nil {
 		return UserView{}, err
 	}
-	if err := ValidatePassword(in.Password); err != nil {
+	if err := ValidatePasswordForCreation(in.Password, in.ConfirmWeakPassword); err != nil {
 		return UserView{}, err
 	}
 	displayName, err := ValidateDisplayName(in.DisplayName)

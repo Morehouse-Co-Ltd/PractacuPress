@@ -172,6 +172,8 @@ export interface Backend {
     password: string;
     display_name: string;
     captcha_token?: string;
+    /** 用户已确认使用弱密码。 */
+    confirm_weak_password?: boolean;
   }): Promise<Session>;
   /**
    * 密码登录。开启了两步验证的账户不会直接拿到会话，而是返回第二步挑战
@@ -231,7 +233,12 @@ export interface Backend {
   /** 请求重置链接。无论邮箱是否存在，返回都一样。 */
   requestPasswordReset(email: string, captchaToken?: string): Promise<PasswordResetTicket>;
   /** 用链接里的令牌设置新密码。 */
-  resetPassword(input: { token: string; password: string }): Promise<void>;
+  resetPassword(input: {
+    token: string;
+    password: string;
+    /** 用户已确认使用弱密码。 */
+    confirm_weak_password?: boolean;
+  }): Promise<void>;
   /**
    * 人机验证的真实状态：表单据此决定是否渲染组件，设置页据此显示服务端状态。
    *

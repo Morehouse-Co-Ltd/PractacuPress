@@ -84,6 +84,7 @@ const fragment: Dictionary = {
   返回登录: 'Back to sign in',
   '重新申请链接': 'Request a new link',
   '需要帮助？联系站点管理员。': 'Need help? Contact the site administrator.',
+  '请填写新密码。': 'Enter the new password.',
 };
 
 export default fragment;

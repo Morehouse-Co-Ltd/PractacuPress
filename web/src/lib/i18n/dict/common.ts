@@ -11,6 +11,8 @@ import type { Dictionary } from '../plural';
  */
 const common: Dictionary = {
   保存: 'Save',
+  '建议至少 12 位并包含两类字符；弱密码确认后也可以保存。':
+    'At least 12 characters with two character classes are recommended; weak passwords can be saved after confirmation.',
   保存修改: 'Save changes',
   保存中: 'Saving',
   取消: 'Cancel',

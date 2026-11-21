@@ -11,7 +11,12 @@ import type {
 import { HttpBackend, ApiError, normalizeOrigin } from '../lib/api';
 import { INSTALL_RESET_KEY, saveConfig } from '../lib/backend';
 import { SITE_KIND_LABEL } from '../lib/site';
-import { passwordProblem, passwordProblemText } from '../lib/passwordPolicy';
+import {
+  passwordCreationProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from '../lib/passwordPolicy';
+import { useWeakPasswordConfirm } from '../components/WeakPasswordDialog';
 import { installCustomization } from '../lib/customize';
 import { DEFAULT_THEME } from '../lib/theme';
 import {
@@ -188,6 +193,7 @@ const DB_LABEL: Record<Database, string> = {
 
 export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const t = useT();
+  const weakPassword = useWeakPasswordConfirm();
   useTitle(t('安装引导'));
   // 安装向导固定是一张浅色纸面：浏览器里可能还留着上一次安装的深色主题变量，
   // 而向导里的语言切换、选项卡和检查项有硬编码的白底。给 <html> 打上 setup
@@ -483,11 +489,22 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
 
   const envSnippet = `DATABASE_DRIVER=${draft.database}\nDATABASE_DSN=${dsn}`;
 
-  const registerAdmin = async () => {
+  const registerAdmin = async (confirmWeak = false) => {
     setError('');
     const message = validate(3);
     if (message) {
       setError(message);
+      return;
+    }
+    // 弱密码不是硬错误：先让用户看完提示并确认。空密码/纯空白/超长密码仍然直接报错。
+    const weak = weakPasswordProblem(draft.admin.password);
+    if (weak && !confirmWeak) {
+      weakPassword.ask(weak, () => void registerAdmin(true));
+      return;
+    }
+    const hard = passwordCreationProblem(draft.admin.password, true);
+    if (hard) {
+      setError(t(passwordProblemText(hard, t)));
       return;
     }
     // 慢请求必须给出可见反馈：遮罩 + 旋转图标一直显示到服务端返回。
@@ -500,6 +517,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
         email: draft.admin.email.trim(),
         password: draft.admin.password,
         display_name: draft.admin.display_name.trim(),
+        confirm_weak_password: confirmWeak || undefined,
       });
       const me = await backend.me();
       const site = await backend.site(me.site_id).catch(() => null);
@@ -658,10 +676,9 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
       if (!isEmail(draft.admin.email)) return t('请填写有效的邮箱地址。');
       if (!draft.admin.display_name.trim()) return t('请填写显示名称。');
       if (draft.admin.display_name.length > 120) return t('显示名称不能超过 120 个字符。');
-      // 与后端同一套策略（12–128 位、至少两类字符、拒绝常见弱口令）；只查长度会让用户拿到一句
-      // 笼统的「请求参数不符合要求」。
-      const passwordIssue = passwordProblem(draft.admin.password);
-      if (passwordIssue) return t(passwordProblemText(passwordIssue, t));
+      // 这里只做必填和两次一致；弱密码交给 registerAdmin 弹窗确认，避免“继续”
+      // 在用户看到提示前就被一句错误文案拦住。
+      if (!draft.admin.password) return t('请填写密码。');
       if (draft.admin.password !== draft.admin.confirm) return t('两次输入的密码不一致。');
       return '';
     }
@@ -1567,7 +1584,7 @@ go run ./cmd/server`}</pre>
                           <Field
                             label={t('密码')}
                             htmlFor="admin-pass"
-                            hint={t('12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。建议使用长口令。')}
+                            hint={t('建议至少 12 位并包含两类字符；弱密码确认后也可以保存。')}
                             aside={
                               <button
                                 type="button"
@@ -2076,6 +2093,8 @@ go run ./cmd/server`}</pre>
             </div>
           ) : null}
               </div>
+
+          {weakPassword.dialog}
 
           {creating
             ? createPortal(

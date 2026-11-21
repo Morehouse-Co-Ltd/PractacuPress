@@ -190,10 +190,11 @@ func (s *Service) CreateSite(
 	}
 
 	owner, err := s.accounts.ProvisionSiteOwner(ctx, created.ID, auth.CreateMemberInput{
-		Email:       normalized.Owner.Email,
-		DisplayName: normalized.Owner.DisplayName,
-		Password:    normalized.Owner.Password,
-		Role:        site.RoleSiteAdmin,
+		Email:               normalized.Owner.Email,
+		DisplayName:         normalized.Owner.DisplayName,
+		Password:            normalized.Owner.Password,
+		ConfirmWeakPassword: normalized.Owner.ConfirmWeakPassword,
+		Role:                site.RoleSiteAdmin,
 	})
 	if err != nil {
 		if cleanupErr := s.repo.DeleteSite(ctx, created.ID); cleanupErr != nil {

@@ -613,6 +613,8 @@ export class HttpBackend {
     password: string;
     display_name: string;
     captcha_token?: string;
+    /** 用户已确认使用弱密码。 */
+    confirm_weak_password?: boolean;
   }): Promise<Session> {
     const session = await this.request<Session>('/auth/register/email', {
       method: 'POST',
@@ -992,7 +994,12 @@ export class HttpBackend {
     });
   }
 
-  async resetPassword(input: { token: string; password: string }): Promise<void> {
+  async resetPassword(input: {
+    token: string;
+    password: string;
+    /** 用户已确认使用弱密码。 */
+    confirm_weak_password?: boolean;
+  }): Promise<void> {
     await this.request<void>('/auth/password-reset/confirm', {
       method: 'POST',
       body: JSON.stringify(input),

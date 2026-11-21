@@ -182,11 +182,15 @@ func (s *Service) RequestPasswordReset(
 //
 // A successful reset revokes every live session of the account: an attacker who
 // already owns a session must not keep it by riding a password change.
-func (s *Service) ResetPassword(ctx context.Context, plainToken, newPassword string) error {
+func (s *Service) ResetPassword(
+	ctx context.Context,
+	plainToken, newPassword string,
+	confirmWeakPassword bool,
+) error {
 	if strings.TrimSpace(plainToken) == "" {
 		return ErrResetTokenInvalid
 	}
-	if err := ValidatePassword(newPassword); err != nil {
+	if err := ValidatePasswordForCreation(newPassword, confirmWeakPassword); err != nil {
 		return err
 	}
 

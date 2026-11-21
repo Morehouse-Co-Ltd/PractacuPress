@@ -270,7 +270,7 @@ func TestAccountCreationPathsSharePasswordPolicy(t *testing.T) {
 
 	// A password reset validates the password before the token, so a weak password can
 	// never consume or probe a reset token.
-	err = h.service.ResetPassword(ctx, "some-token", "passwordpassword")
+	err = h.service.ResetPassword(ctx, "some-token", "passwordpassword", false)
 	require.ErrorIs(t, err, auth.ErrInvalidInput)
 
 	_, err = h.service.CreateMember(ctx, auth.Principal{

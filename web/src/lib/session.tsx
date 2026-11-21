@@ -53,6 +53,8 @@ interface AuthValue extends SessionState {
     password: string;
     display_name: string;
     captcha_token?: string;
+    /** 用户已确认使用弱密码。 */
+    confirm_weak_password?: boolean;
   }): Promise<void>;
   logout(): Promise<void>;
   reload(): Promise<void>;

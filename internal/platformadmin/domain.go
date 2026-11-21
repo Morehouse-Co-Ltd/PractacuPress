@@ -79,6 +79,8 @@ type OwnerInput struct {
 	Email       string
 	DisplayName string
 	Password    string
+	// ConfirmWeakPassword is the explicit acknowledgement of a weak initial password.
+	ConfirmWeakPassword bool
 }
 
 // CreateSiteInput describes one site creation.
@@ -191,7 +193,9 @@ func normalizeCreate(in CreateSiteInput) (CreateSiteInput, error) {
 	if err != nil {
 		return CreateSiteInput{}, wrapInvalid(err)
 	}
-	if err := auth.ValidatePassword(in.Owner.Password); err != nil {
+	if err := auth.ValidatePasswordForCreation(
+		in.Owner.Password, in.Owner.ConfirmWeakPassword,
+	); err != nil {
 		return CreateSiteInput{}, wrapInvalid(err)
 	}
 
@@ -203,9 +207,10 @@ func normalizeCreate(in CreateSiteInput) (CreateSiteInput, error) {
 		VisibilityMode: visibility,
 		PublishMode:    publish,
 		Owner: OwnerInput{
-			Email:       email,
-			DisplayName: displayName,
-			Password:    in.Owner.Password,
+			Email:               email,
+			DisplayName:         displayName,
+			Password:            in.Owner.Password,
+			ConfirmWeakPassword: in.Owner.ConfirmWeakPassword,
 		},
 	}, nil
 }

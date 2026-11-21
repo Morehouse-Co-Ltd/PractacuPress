@@ -5,7 +5,12 @@ import { useAuth } from '../../lib/session';
 import { useBackend } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
 import { noteActivity } from '../../lib/activity';
-import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
+import {
+  passwordCreationProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from '../../lib/passwordPolicy';
+import { useWeakPasswordConfirm } from '../../components/WeakPasswordDialog';
 import { ROLE_HINT, ROLE_LABEL } from '../../lib/format';
 import { groupConfigLabel, groupIdForRole } from '../../lib/permissions';
 import { siteKindOf } from '../../lib/site';
@@ -53,6 +58,7 @@ export function MembersPage() {
   const backend = useBackend();
   const toast = useToast();
   const { ensureStepUp } = useStepUp();
+  const weakPassword = useWeakPasswordConfirm();
   const { can, groups } = usePermissions();
   const personal = siteKindOf(config) === 'personal';
   const [pending, setPending] = useState<{ member: Member; groupKey: string } | null>(null);
@@ -157,7 +163,7 @@ export function MembersPage() {
     }
   };
 
-  const createMember = async () => {
+  const createMember = async (confirmWeak = false) => {
     if (!me) return;
     setFormError('');
     if (!draft.display_name.trim()) {
@@ -168,11 +174,19 @@ export function MembersPage() {
       setFormError(t('请填写有效的邮箱地址。'));
       return;
     }
-    // 与后端同一套密码策略（12–128 位、至少两类字符、拒绝常见弱口令），否则提交后只会拿到一句
-    // 笼统的「请求参数不符合要求」，管理员根本不知道密码缺什么。
-    const passwordIssue = passwordProblem(draft.password);
-    if (passwordIssue) {
-      setFormError(t(passwordProblemText(passwordIssue, t)));
+    if (!draft.password) {
+      setFormError(t('请填写初始密码。'));
+      return;
+    }
+    // 弱密码先让管理员确认；空密码、纯空白和超长密码仍然直接报错。
+    const weak = weakPasswordProblem(draft.password);
+    if (weak && !confirmWeak) {
+      weakPassword.ask(weak, () => void createMember(true));
+      return;
+    }
+    const hard = passwordCreationProblem(draft.password, true);
+    if (hard) {
+      setFormError(t(passwordProblemText(hard, t)));
       return;
     }
     // 创建账户会写权限，同样先过二次验证；取消则不创建。
@@ -186,6 +200,7 @@ export function MembersPage() {
         email: draft.email.trim(),
         password: draft.password,
         role,
+        confirm_weak_password: confirmWeak || undefined,
       });
       noteActivity(
         backend,
@@ -717,7 +732,7 @@ export function MembersPage() {
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>
               {t('取消')}
             </Button>
-            <Button loading={busy} onClick={createMember} icon="plus">
+            <Button loading={busy} onClick={() => void createMember()} icon="plus">
               {t('创建用户')}
             </Button>
           </>
@@ -765,7 +780,7 @@ export function MembersPage() {
             <Field
               label={t('初始密码')}
               htmlFor="member-password"
-              hint={t('12–128 位，且至少包含两类字符（小写、大写、数字、符号），不能是常见弱口令。创建后请通过安全渠道交给对方。')}
+              hint={t('建议至少 12 位并包含两类字符；弱密码确认后也可以保存。创建后请通过安全渠道交给对方。')}
             >
               <Input
                 id="member-password"
@@ -821,6 +836,7 @@ export function MembersPage() {
           </div>
         </div>
       </Modal>
+      {weakPassword.dialog}
       <Modal
         open={!!editTarget}
         title={editTarget ? t('编辑 {name}', { name: editTarget.display_name }) : ''}

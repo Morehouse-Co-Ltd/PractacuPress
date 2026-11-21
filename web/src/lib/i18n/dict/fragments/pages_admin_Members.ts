@@ -161,6 +161,9 @@ const fragment: Dictionary = {
     '12–128 characters combining at least two of lowercase, uppercase, digits and symbols; common passwords are refused. Hand the initial password over through a safe channel.',
   '最高管理员固定为注册该站的账号；新增用户不能设为该用户组。':
     'The super admin is always the account that registered the site; a new user cannot be given that group.',
+  '建议至少 12 位并包含两类字符；弱密码确认后也可以保存。创建后请通过安全渠道交给对方。':
+    'At least 12 characters with two character classes are recommended; weak passwords can be saved after confirmation. Hand the initial password over through a safe channel.',
+  '请填写初始密码。': 'Enter the initial password.',
 };
 
 export default fragment;

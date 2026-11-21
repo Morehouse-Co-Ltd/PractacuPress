@@ -115,6 +115,8 @@ const fragment: Dictionary = {
   '当前账户角色': 'Your role',
   '平台管理员': 'Platform administrator',
   '站点管理员': 'Site administrator',
+  '建议至少 12 位并包含两类字符；弱密码确认后也可以保存。请通过安全渠道交给该管理员。':
+    'At least 12 characters with two character classes are recommended; weak passwords can be saved after confirmation. Hand it to that administrator through a safe channel.',
 };
 
 export default fragment;

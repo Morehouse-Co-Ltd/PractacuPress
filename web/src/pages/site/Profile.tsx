@@ -15,7 +15,12 @@ import { useToast } from '../../lib/toast';
 import { useSeo, personJsonLd } from '../../lib/seo';
 import { useT } from '../../lib/i18n';
 import { useMediaSrc } from '../../lib/assetUrl';
-import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
+import {
+  passwordCreationProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from '../../lib/passwordPolicy';
+import { useWeakPasswordConfirm } from '../../components/WeakPasswordDialog';
 import { TwoFactorPanel } from '../../components/TwoFactorPanel';
 
 /** 资料头像：有素材时读取媒体库，没有时退回姓名首字。 */
@@ -69,6 +74,7 @@ function AvatarOption({
 
 export function ProfilePage() {
   const t = useT();
+  const weakPassword = useWeakPasswordConfirm();
   const { id = '' } = useParams();
   const { me, site, config, reload: reloadSession } = useAuth();
   const { customization } = useCustomization();
@@ -205,18 +211,27 @@ export function ProfilePage() {
     }
   };
 
-  const savePassword = async () => {
+  const savePassword = async (confirmWeak = false) => {
     if (!currentPassword) {
       toast.push('error', t('请输入当前密码'));
       return;
     }
-    const problem = passwordProblem(newPassword);
-    if (problem) {
-      toast.push('error', passwordProblemText(problem, t));
+    if (!newPassword) {
+      toast.push('error', t('请输入新密码'));
       return;
     }
     if (newPassword !== confirmPassword) {
       toast.push('error', t('两次输入的新密码不一致'));
+      return;
+    }
+    const weak = weakPasswordProblem(newPassword);
+    if (weak && !confirmWeak) {
+      weakPassword.ask(weak, () => void savePassword(true));
+      return;
+    }
+    const hard = passwordCreationProblem(newPassword, true);
+    if (hard) {
+      toast.push('error', passwordProblemText(hard, t));
       return;
     }
     setSaving(true);
@@ -224,6 +239,7 @@ export function ProfilePage() {
       await backend.changePassword({
         current_password: currentPassword,
         new_password: newPassword,
+        confirm_weak_password: confirmWeak || undefined,
       });
       setPasswordOpen(false);
       setCurrentPassword('');
@@ -573,7 +589,7 @@ export function ProfilePage() {
             <Button variant="ghost" onClick={() => setPasswordOpen(false)}>
               {t('取消')}
             </Button>
-            <Button loading={saving} onClick={savePassword}>
+            <Button loading={saving} onClick={() => void savePassword()}>
               {t('更新密码')}
             </Button>
           </>
@@ -587,7 +603,10 @@ export function ProfilePage() {
             onChange={(event) => setCurrentPassword(event.target.value)}
           />
         </Field>
-        <Field label={t('新密码')} hint={t('至少 12 位，需要包含两类字符，且不能是常见弱口令。')}>
+        <Field
+          label={t('新密码')}
+          hint={t('建议至少 12 位并包含两类字符；弱密码确认后也可以保存。')}
+        >
           <Input
             type="password"
             autoComplete="new-password"
@@ -604,6 +623,8 @@ export function ProfilePage() {
           />
         </Field>
       </Modal>
+
+      {weakPassword.dialog}
     </div>
   );
 }

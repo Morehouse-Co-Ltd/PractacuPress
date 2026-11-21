@@ -22,6 +22,12 @@ import {
 import { Forbidden } from '../../components/Guards';
 import { Icon } from '../../components/Icon';
 import { PlatformTabs } from '../../components/PlatformTabs';
+import { useWeakPasswordConfirm } from '../../components/WeakPasswordDialog';
+import {
+  passwordCreationProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from '../../lib/passwordPolicy';
 
 /**
  * 平台控制台。
@@ -308,6 +314,7 @@ export function PlatformSiteNewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const demo = isDemo(backend);
+  const weakPassword = useWeakPasswordConfirm();
 
   if (me?.role !== 'platform_admin') {
     return <Forbidden need={t('平台管理员')} />;
@@ -327,6 +334,10 @@ export function PlatformSiteNewPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    await runSubmit(false);
+  };
+
+  const runSubmit = async (confirmWeak: boolean) => {
     if (busy) return;
     setError('');
     if (!form.name.trim()) return setError(t('请填写站点名称。'));
@@ -337,6 +348,14 @@ export function PlatformSiteNewPage() {
     if (!form.email.trim()) return setError(t('请填写初始管理员邮箱。'));
     if (!form.display_name.trim()) return setError(t('请填写初始管理员显示名。'));
     if (!form.password) return setError(t('请填写初始管理员密码。'));
+
+    const weak = weakPasswordProblem(form.password);
+    if (weak && !confirmWeak) {
+      weakPassword.ask(weak, () => void runSubmit(true));
+      return;
+    }
+    const hard = passwordCreationProblem(form.password, true);
+    if (hard) return setError(t(passwordProblemText(hard, t)));
 
     setBusy(true);
     try {
@@ -360,6 +379,7 @@ export function PlatformSiteNewPage() {
           email: form.email.trim(),
           display_name: form.display_name.trim(),
           password: form.password,
+          confirm_weak_password: confirmWeak || undefined,
         },
       });
       toast.push('ok', t('站点已创建，默认设计已初始化。'), created.site.name);
@@ -502,7 +522,7 @@ export function PlatformSiteNewPage() {
         </div>
         <Field
           label={t('初始密码')}
-          hint={t('至少 12 位，并包含至少两类字符，且不能是常见弱口令。请通过安全渠道交给该管理员。')}
+          hint={t('建议至少 12 位并包含两类字符；弱密码确认后也可以保存。请通过安全渠道交给该管理员。')}
           htmlFor="platform-owner-password"
         >
           <Input
@@ -529,6 +549,8 @@ export function PlatformSiteNewPage() {
           </Link>
         </div>
       </form>
+
+      {weakPassword.dialog}
     </div>
   );
 }

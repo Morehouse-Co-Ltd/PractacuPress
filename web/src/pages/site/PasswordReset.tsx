@@ -7,6 +7,12 @@ import { captchaReasonText, captchaSceneRequired } from '../../lib/captcha';
 import { isPersonalSite } from '../../lib/site';
 import { useAuth } from '../../lib/session';
 import { useT } from '../../lib/i18n';
+import {
+  passwordCreationProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from '../../lib/passwordPolicy';
+import { useWeakPasswordConfirm } from '../../components/WeakPasswordDialog';
 import { Button, Callout, Field, Input } from '../../components/ui';
 import { CaptchaField, useCaptchaStatus } from '../../components/Captcha';
 import { Icon } from '../../components/Icon';
@@ -223,6 +229,7 @@ export function ForgotPasswordPage() {
 /** 用链接里的令牌设置新密码。 */
 export function ResetPasswordPage() {
   const t = useT();
+  const weakPassword = useWeakPasswordConfirm();
   const backend = useBackend();
   const { status, logout } = useAuth();
   const [params] = useSearchParams();
@@ -239,18 +246,36 @@ export function ResetPasswordPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    await runReset(false);
+  };
+
+  const runReset = async (confirmWeak: boolean) => {
     setError('');
-    if (password.length < 12) {
-      setError(t('密码至少 12 位。'));
+    if (!password) {
+      setError(t('请填写新密码。'));
       return;
     }
     if (password !== confirm) {
       setError(t('两次输入的密码不一致。'));
       return;
     }
+    const weak = weakPasswordProblem(password);
+    if (weak && !confirmWeak) {
+      weakPassword.ask(weak, () => void runReset(true));
+      return;
+    }
+    const hard = passwordCreationProblem(password, true);
+    if (hard) {
+      setError(t(passwordProblemText(hard, t)));
+      return;
+    }
     setBusy(true);
     try {
-      await backend.resetPassword({ token, password });
+      await backend.resetPassword({
+        token,
+        password,
+        confirm_weak_password: confirmWeak || undefined,
+      });
       // 服务端已经吊销了这个账户的全部会话，本机也别再装作还登录着。
       if (status === 'ready') await logout().catch(() => undefined);
       setDone(true);
@@ -317,7 +342,7 @@ export function ResetPasswordPage() {
             <Field
               label={t('新密码')}
               htmlFor="reset-password"
-              hint={t('12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令或密码管理器。')}
+              hint={t('建议至少 12 位并包含两类字符；弱密码确认后也可以保存。')}
               aside={
                 <button type="button" className="link-btn" onClick={() => setShowPassword((v) => !v)}>
                   {showPassword ? t('隐藏') : t('显示')}
@@ -375,6 +400,8 @@ export function ResetPasswordPage() {
           {t('需要帮助？联系站点管理员。')}
         </p>
       ) : null}
+
+      {weakPassword.dialog}
     </AuthShell>
   );
 }

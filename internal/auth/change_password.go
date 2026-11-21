@@ -16,11 +16,12 @@ import (
 func (s *Service) ChangePassword(
 	ctx context.Context,
 	userID, siteID, currentRefreshToken, currentPassword, newPassword string,
+	confirmWeakPassword bool,
 ) error {
 	if currentPassword == "" {
 		return invalidField("current_password", "required", "current password is required")
 	}
-	if err := ValidatePassword(newPassword); err != nil {
+	if err := ValidatePasswordForCreation(newPassword, confirmWeakPassword); err != nil {
 		return err
 	}
 	if currentPassword == newPassword {

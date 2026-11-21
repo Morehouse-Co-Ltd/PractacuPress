@@ -591,13 +591,21 @@ paths:
                 email: { type: string, format: email, maxLength: 320 }
                 password:
                   type: string
-                  minLength: 12
+                  minLength: 1
                   maxLength: 128
                   description: |
-                    12–128 characters combining at least two of lowercase, uppercase,
-                    digits and symbols; classic weak passwords are refused with
-                    `details.rule: too_common`. The rule only gates passwords being
-                    created or changed, so older stored passwords keep logging in.
+                    Passwords shorter than 12 characters or failing the strength policy
+                    are refused unless `confirm_weak_password` is true. Empty,
+                    whitespace-only and over-128-character passwords are always refused.
+                    The rule only gates passwords being created or changed, so older
+                    stored passwords keep logging in.
+                confirm_weak_password:
+                  type: boolean
+                  default: false
+                  description: |
+                    Explicit acknowledgement that the person accepted the weak password
+                    warning. It only relaxes the strength policy; the hard bounds above
+                    still apply.
                 display_name: { type: string, maxLength: 120 }
                 captcha_token:
                   type: string
@@ -921,12 +929,16 @@ paths:
                 token: { type: string, description: The `token` query parameter of the reset link. }
                 password:
                   type: string
-                  minLength: 12
+                  minLength: 1
                   maxLength: 128
                   description: |
-                    12–128 characters combining at least two of lowercase, uppercase,
-                    digits and symbols; classic weak passwords are refused with
-                    `details.rule: too_common`.
+                    Weak passwords are refused unless `confirm_weak_password` is true.
+                    Empty, whitespace-only and over-128-character passwords are always
+                    refused.
+                confirm_weak_password:
+                  type: boolean
+                  default: false
+                  description: Explicit acknowledgement that the person accepted the weak password warning.
       responses:
         '204':
           description: Password replaced and sessions revoked
@@ -1012,12 +1024,16 @@ paths:
                 current_password: { type: string, maxLength: 128 }
                 new_password:
                   type: string
-                  minLength: 12
+                  minLength: 1
                   maxLength: 128
                   description: |
-                    12–128 characters combining at least two of lowercase, uppercase,
-                    digits and symbols; classic weak passwords are refused with
-                    `details.rule: too_common`.
+                    Weak passwords are refused unless `confirm_weak_password` is true.
+                    Empty, whitespace-only and over-128-character passwords are always
+                    refused.
+                confirm_weak_password:
+                  type: boolean
+                  default: false
+                  description: Explicit acknowledgement that the caller accepted the weak password warning.
       responses:
         '204':
           description: Password replaced and other sessions revoked
@@ -6654,12 +6670,15 @@ components:
         display_name: { type: string, minLength: 1, maxLength: 120 }
         password:
           type: string
-          minLength: 12
+          minLength: 1
           maxLength: 128
           description: |
-            12–128 characters combining at least two character classes. Validated
-            against the deployment password policy before creation; classic weak
-            passwords are refused with `details.rule: too_common`.
+            Weak passwords are refused unless `confirm_weak_password` is true. Empty,
+            whitespace-only and over-128-character passwords are always refused.
+        confirm_weak_password:
+          type: boolean
+          default: false
+          description: Explicit acknowledgement that the platform administrator accepted the weak password warning.
 
     CreateSiteInput:
       type: object
@@ -7365,12 +7384,15 @@ components:
         display_name: { type: string, maxLength: 120 }
         password:
           type: string
-          minLength: 12
+          minLength: 1
           maxLength: 128
           description: |
-            12–128 characters combining at least two of lowercase, uppercase, digits
-            and symbols; classic weak passwords are refused with
-            `details.rule: too_common`.
+            Weak passwords are refused unless `confirm_weak_password` is true. Empty,
+            whitespace-only and over-128-character passwords are always refused.
+        confirm_weak_password:
+          type: boolean
+          default: false
+          description: Explicit acknowledgement that the administrator accepted the weak password warning.
         role:
           $ref: '#/components/schemas/Role'
 

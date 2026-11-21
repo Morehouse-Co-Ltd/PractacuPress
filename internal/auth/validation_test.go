@@ -69,6 +69,66 @@ func TestValidatePasswordPolicy(t *testing.T) {
 	}
 }
 
+// TestValidatePasswordForCreation pins the confirmed-weak-password contract shared by
+// registration, administrator account creation, password reset and password change.
+//
+// The confirmation only relaxes the strength rules. Empty, whitespace-only and
+// overlong passwords stay invalid because they are hard bounds, not strength advice.
+func TestValidatePasswordForCreation(t *testing.T) {
+	tooLong := strings.Repeat("Aa1!", 32) + "A" // 129 runes
+
+	tests := []struct {
+		name        string
+		password    string
+		confirmWeak bool
+		wantRule    string
+	}{
+		{name: "strong without confirmation", password: "correct horse battery"},
+		{name: "strong with confirmation", password: "correct horse battery", confirmWeak: true},
+
+		{name: "short without confirmation", password: elevenRunes, wantRule: "too_short"},
+		{name: "short with confirmation", password: elevenRunes, confirmWeak: true},
+		{name: "single character with confirmation", password: "a", confirmWeak: true},
+
+		{name: "common without confirmation", password: "Password1234", wantRule: "too_common"},
+		{name: "common with confirmation", password: "Password1234", confirmWeak: true},
+
+		{name: "single class without confirmation", password: "passwordpassword", wantRule: "too_weak"},
+		{name: "single class with confirmation", password: "passwordpassword", confirmWeak: true},
+
+		{name: "empty with confirmation", password: "", confirmWeak: true, wantRule: "too_short"},
+		{
+			name:        "whitespace only with confirmation",
+			password:    strings.Repeat(" ", 12),
+			confirmWeak: true,
+			wantRule:    "blank",
+		},
+		{
+			name:        "overlong with confirmation",
+			password:    tooLong,
+			confirmWeak: true,
+			wantRule:    "too_long",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePasswordForCreation(tt.password, tt.confirmWeak)
+			if tt.wantRule == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, ErrInvalidInput)
+
+			var fieldErr *apperr.FieldError
+			require.ErrorAs(t, err, &fieldErr)
+			require.Equal(t, "password", fieldErr.Field)
+			require.Equal(t, tt.wantRule, fieldErr.Rule)
+			require.NotEmpty(t, fieldErr.Reason)
+		})
+	}
+}
+
 // TestValidatePasswordRejectsCommonPasswords is the too_common rule: the password is
 // long and classy enough, but it is one of the classic weak passwords. Matching is
 // case insensitive, and the common numeric/leet suffixes are covered by the list.

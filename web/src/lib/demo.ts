@@ -104,7 +104,7 @@ import type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
 import type { ContactPayload } from './contactForm';
 import { readCaptchaStatus } from './captcha';
 import { canReview, ROLE_RANK, slugify } from './format';
-import { passwordProblem, passwordProblemText } from './passwordPolicy';
+import { passwordCreationProblem, passwordProblemText } from './passwordPolicy';
 import { htmlToText, renderSource } from './markdown';
 import {
   applyDemoTaxonomy,
@@ -936,7 +936,12 @@ export class DemoBackend {
     });
   }
 
-  async register(input: { email: string; password: string; display_name: string }): Promise<Session> {
+  async register(input: {
+    email: string;
+    password: string;
+    display_name: string;
+    confirm_weak_password?: boolean;
+  }): Promise<Session> {
     await wait();
     if (this.state.site.registration_open === false) {
       this.fail(403, 'permission_denied', '本站暂未开放注册。', { reason: 'registration_closed' });
@@ -945,7 +950,7 @@ export class DemoBackend {
     if (this.state.users.some((u) => u.email.toLowerCase() === email)) {
       this.fail(409, 'conflict', '该邮箱已经注册。');
     }
-    const problem = passwordProblem(input.password);
+    const problem = passwordCreationProblem(input.password, !!input.confirm_weak_password);
     if (problem) this.fail(400, 'validation_failed', passwordProblemText(problem, (key) => key));
     const user: DemoUser = {
       id: `usr_${uuid().slice(0, 8)}`,
@@ -1232,9 +1237,13 @@ export class DemoBackend {
     };
   }
 
-  async resetPassword(input: { token: string; password: string }): Promise<void> {
+  async resetPassword(input: {
+    token: string;
+    password: string;
+    confirm_weak_password?: boolean;
+  }): Promise<void> {
     await wait(220);
-    const problem = passwordProblem(input.password);
+    const problem = passwordCreationProblem(input.password, !!input.confirm_weak_password);
     if (problem) this.fail(400, 'validation_failed', passwordProblemText(problem, (key) => key));
     const ticket = this.tickets[input.token];
     if (!ticket || ticket.expires_at < Date.now()) {
@@ -1299,7 +1308,7 @@ export class DemoBackend {
     if (user.password !== input.current_password) {
       this.fail(400, 'validation_failed', '当前密码不正确。');
     }
-    const problem = passwordProblem(input.new_password);
+    const problem = passwordCreationProblem(input.new_password, !!input.confirm_weak_password);
     if (problem) this.fail(400, 'validation_failed', passwordProblemText(problem, (text) => text));
     if (input.current_password === input.new_password) {
       this.fail(400, 'validation_failed', '新密码不能与当前密码相同。');
@@ -1754,7 +1763,7 @@ export class DemoBackend {
     }
     if (!input.display_name.trim()) this.fail(400, 'validation_failed', '请填写显示名称。');
     // 与真实服务端同一套密码策略，否则演示模式能建的账户，线上建不了。
-    const passwordIssue = passwordProblem(input.password);
+    const passwordIssue = passwordCreationProblem(input.password, !!input.confirm_weak_password);
     if (passwordIssue) {
       this.fail(400, 'validation_failed', passwordProblemText(passwordIssue, (key) => key));
     }

@@ -4,7 +4,12 @@ import type { AuthProviderId, CaptchaScene, TwoFactorChallenge } from '../../typ
 import { inSitePath, useAuth } from '../../lib/session';
 import { useBackend, isDemo } from '../../lib/backend';
 import { useAsync, useTitle } from '../../lib/hooks';
-import { passwordProblem, passwordProblemText } from '../../lib/passwordPolicy';
+import {
+  passwordCreationProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from '../../lib/passwordPolicy';
+import { useWeakPasswordConfirm } from '../../components/WeakPasswordDialog';
 import { ApiError } from '../../lib/api';
 import { PUBLISH_LABEL, VISIBILITY_LABEL } from '../../lib/format';
 import { isPersonalSite } from '../../lib/site';
@@ -30,6 +35,7 @@ const DEMO_CODE = '246810';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const t = useT();
+  const weakPassword = useWeakPasswordConfirm();
   const { login, verifyTwoFactor, providerLogin, oauthStart, register, site, status, config } =
     useAuth();
   const personal = isPersonalSite(config);
@@ -220,6 +226,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    await runSubmit(false);
+  };
+
+  const runSubmit = async (confirmWeak: boolean) => {
     setError('');
     if (mode === 'login' && !email.trim()) {
       setError(t('请输入邮箱或用户名。'));
@@ -234,14 +244,22 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         setError(t('请填写显示名称。'));
         return;
       }
-      // 与后端同一套密码策略；只查长度会让用户提交后收到一句笼统的「参数不合法」。
-      const passwordIssue = passwordProblem(password);
-      if (passwordIssue) {
-        setError(t(passwordProblemText(passwordIssue, t)));
+      if (!password) {
+        setError(t('请填写密码。'));
         return;
       }
       if (password !== confirm) {
         setError(t('两次输入的密码不一致。'));
+        return;
+      }
+      const weak = weakPasswordProblem(password);
+      if (weak && !confirmWeak) {
+        weakPassword.ask(weak, () => void runSubmit(true));
+        return;
+      }
+      const hard = passwordCreationProblem(password, true);
+      if (hard) {
+        setError(t(passwordProblemText(hard, t)));
         return;
       }
     }
@@ -269,6 +287,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           password,
           display_name: displayName.trim(),
           captcha_token: captchaToken || undefined,
+          confirm_weak_password: confirmWeak || undefined,
         });
       }
       goNext();
@@ -676,7 +695,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <Field
               label={t('密码')}
               htmlFor="auth-password"
-              hint={mode === 'register' ? t('12–128 位，至少两类字符且不能是常见弱口令。建议使用长口令或密码管理器。') : undefined}
+              hint={
+                mode === 'register'
+                  ? t('建议至少 12 位并包含两类字符；弱密码确认后也可以保存。')
+                  : undefined
+              }
               aside={
                 <span className="row gap-10" style={{ alignItems: 'center' }}>
                   {mode === 'login' && canReset ? (
@@ -1072,6 +1095,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           </form>
         </Modal>
       ) : null}
+      {weakPassword.dialog}
     </div>
   );
 }

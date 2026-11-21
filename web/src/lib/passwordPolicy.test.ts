@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { COMMON_PASSWORDS } from './commonPasswords';
-import { passwordClasses, passwordProblem, passwordProblemText } from './passwordPolicy';
+import {
+  passwordClasses,
+  passwordCreationProblem,
+  passwordProblem,
+  passwordProblemText,
+  weakPasswordProblem,
+} from './passwordPolicy';
 
 /**
  * 这些用例与 `internal/auth/validation.go` 的 `ValidatePassword` 一一对应。
@@ -90,6 +96,43 @@ describe('passwordClasses', () => {
 
   it('中文与英文小写同属字母类', () => {
     expect(passwordClasses('中文abc')).toBe(1);
+  });
+});
+
+describe('passwordCreationProblem', () => {
+  it('空串、纯空白和超长密码即使确认也不能保存', () => {
+    expect(passwordCreationProblem('', true)).toBe('short');
+    expect(passwordCreationProblem('   ', true)).toBe('blank');
+    expect(passwordCreationProblem('a1'.repeat(65), true)).toBe('long');
+  });
+
+  it('未确认时沿用严格策略', () => {
+    expect(passwordCreationProblem('GoodPass12!')).toBe('short');
+    expect(passwordCreationProblem('Password1234')).toBe('common');
+    expect(passwordCreationProblem('passwordpassword')).toBe('classes');
+    expect(passwordCreationProblem('GoodPass123!')).toBeNull();
+  });
+
+  it('确认后接受弱密码和强密码', () => {
+    expect(passwordCreationProblem('short', true)).toBeNull();
+    expect(passwordCreationProblem('Password1234', true)).toBeNull();
+    expect(passwordCreationProblem('passwordpassword', true)).toBeNull();
+    expect(passwordCreationProblem('GoodPass123!', true)).toBeNull();
+  });
+});
+
+describe('weakPasswordProblem', () => {
+  it('只把可确认的弱密码交还给弹窗', () => {
+    expect(weakPasswordProblem('short')).toBe('short');
+    expect(weakPasswordProblem('Password1234')).toBe('common');
+    expect(weakPasswordProblem('passwordpassword')).toBe('classes');
+  });
+
+  it('强密码、空密码、纯空白和超长密码不弹确认框', () => {
+    expect(weakPasswordProblem('GoodPass123!')).toBeNull();
+    expect(weakPasswordProblem('')).toBeNull();
+    expect(weakPasswordProblem('   ')).toBeNull();
+    expect(weakPasswordProblem('a1'.repeat(65))).toBeNull();
   });
 });
 
