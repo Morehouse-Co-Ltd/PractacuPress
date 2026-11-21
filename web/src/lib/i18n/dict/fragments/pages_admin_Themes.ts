@@ -33,12 +33,12 @@ const fragment: Dictionary = {
   '新栏目': 'New column',
   '新条目': 'New item',
   '已切换到「{name}」': 'Switched to “{name}”',
-  '配色、排版与{layout}版式已一起切换，首页也同步为该主题的默认编排。':
-    'Colours, typography and the {layout} layout all switched together, and the home page now uses this theme’s default arrangement.',
+  '配色、排版与{layout}版式已切换，这套主题的默认首页编排也一起写入。':
+    'Colours, typography and the {layout} layout switched, and this theme’s default home arrangement was written too.',
   '双栏': 'two-column',
   '单栏': 'single-column',
-  '配色、排版与{layout}版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。':
-    'Colours, typography and the {layout} layout all switched together; your existing home page arrangement is kept and can be adjusted in Page layout.',
+  '配色、排版与{layout}版式已切换；首页与文章页编排跟随主题，已有编排不会丢失。':
+    'Colours, typography and the {layout} layout switched; the home and article layouts follow the theme and existing arrangements are kept.',
   '配色、排版与双栏版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。':
     'Colours, typography and the two-column layout all switched together; your existing home page arrangement is kept and can be adjusted in Page layout.',
   '配色、排版与单栏版式已一起切换；已有首页编排不会删除。':

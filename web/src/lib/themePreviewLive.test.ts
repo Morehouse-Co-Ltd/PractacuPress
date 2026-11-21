@@ -108,6 +108,15 @@ describe('预览主题叠加到站点设计', () => {
     expect(customization.active_theme).not.toBe('aurora');
   });
 
+  it('空白主题也能预览，渲染回落到默认主题与单栏', () => {
+    const token = publishThemePreview({ id: 'blank', name: '空白', note: '' });
+    enterPreview(token);
+    const customization = readCustomization(siteConfig);
+    expect(customization.active_theme).toBe('blank');
+    expect(customization.layout.variant).toBe('classic');
+    expect(customization.theme).toEqual(DEFAULT_THEME);
+  });
+
   it('站点还没有自定义设计时，预览也照样套用主题', () => {
     const token = publishThemePreview(bundle());
     enterPreview(token);

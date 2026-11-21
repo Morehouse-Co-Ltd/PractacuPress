@@ -1,5 +1,6 @@
 import type { SiteCustomization, SiteTheme } from '../types';
 import { defaultHomeLayout } from './blocks';
+import { resolveThemeSettings, resolveThemeVariant } from './themes';
 
 /**
  * 套用「大主题」的纯计算部分。
@@ -9,8 +10,9 @@ import { defaultHomeLayout } from './blocks';
  * 否则 `customize.ts → themeSwitch.ts → customize.ts` 会绕成循环依赖。
  */
 
-/** 复制主题配置，避免把 tokens 的引用写回配置。 */
+/** 复制主题配置，避免把 tokens 的引用写回配置。空白主题原样返回 undefined。 */
 export function cloneTheme(theme: SiteTheme['theme']): SiteTheme['theme'] {
+  if (!theme) return theme;
   return {
     ...theme,
     tokens: theme.tokens ? { ...theme.tokens } : undefined,
@@ -42,22 +44,34 @@ export interface ThemeApplyResult {
 /**
  * 套用一套主题时的配置补丁。
  *
- * 只有首页仍是最初的默认编排时才跟着版式换一套；站长自己排过的组件不动。
+ * 配色/版式取解析后的值（空白主题回落到内置「原版」）；首页/文章页编排不在补丁里
+ * 直接改写，而是由 `theme_layouts` 投影。只有目标主题还没有自己的首页编排、且当前
+ * 首页仍是旧版式的默认编排时，才把新版式的默认编排种到目标主题名下——保留「换版式
+ * 时默认首页跟着换」的既有体验，同时不覆盖站长自己排过的首页。
  */
 export function themeApplyPatch(
   customization: SiteCustomization,
   bundle: SiteTheme,
 ): ThemeApplyResult {
+  const variant = resolveThemeVariant(bundle);
+  const targetEntry = customization.theme_layouts?.[bundle.id];
   const homeWasDefault =
-    bundle.variant !== customization.layout.variant &&
+    !targetEntry?.home &&
+    variant !== customization.layout.variant &&
     sameLayout(customization.home, defaultHomeLayout(customization.layout.variant));
+  const nextLayouts = homeWasDefault
+    ? {
+        ...customization.theme_layouts,
+        [bundle.id]: { ...(targetEntry ?? {}), home: defaultHomeLayout(variant) },
+      }
+    : customization.theme_layouts;
   return {
     homeWasDefault,
     patch: {
-      theme: cloneTheme(bundle.theme),
-      layout: { ...customization.layout, variant: bundle.variant },
-      ...(homeWasDefault ? { home: defaultHomeLayout(bundle.variant) } : {}),
+      theme: cloneTheme(resolveThemeSettings(bundle)),
+      layout: { ...customization.layout, variant },
       active_theme: bundle.id,
+      ...(homeWasDefault ? { theme_layouts: nextLayouts } : {}),
     },
   };
 }

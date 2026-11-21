@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_CUSTOM_CSS_CHARS,
+  applyCustomizationPatch,
   highRiskCustomCssMarker,
   pageSearchText,
   readCustomization,
@@ -8,6 +9,7 @@ import {
   starterPages,
 } from './customize';
 import { takeMigrationReport } from './migrationNotice';
+import { DEFAULT_THEME } from './theme';
 
 describe('readCustomization nested blocks', () => {
   it('keeps recursive children and clamps columns', () => {
@@ -325,6 +327,108 @@ describe('版面迁移报告', () => {
     expect(report.join('\n')).toContain('首页');
     // 取走即清空：同一会话里第二个组件不会重复弹窗。
     expect(takeMigrationReport()).toEqual([]);
+  });
+});
+
+describe('按主题保存的首页/文章页编排', () => {
+  const legacyBlock = { id: 'legacy', type: 'text', title: '旧首页', props: {} };
+
+  function configWithLayouts() {
+    return {
+      customization: {
+        theme: { ...DEFAULT_THEME },
+        layout: { variant: 'classic' },
+        active_theme: 'theme_a',
+        themes: [
+          { id: 'theme_a', name: 'A', note: '' },
+          {
+            id: 'theme_b',
+            name: 'B',
+            note: '',
+            variant: 'bento',
+            theme: { ...DEFAULT_THEME },
+          },
+        ],
+        home: { blocks: [legacyBlock] },
+        article: { blocks: [] },
+        theme_layouts: {
+          theme_a: {
+            home: { blocks: [] },
+            article: { blocks: [{ id: 'a-art', type: 'text', title: 'A 文章页', props: {} }] },
+          },
+          theme_b: {
+            home: { blocks: [{ id: 'b-home', type: 'text', title: 'B 首页', props: {} }] },
+          },
+          missing: {
+            home: { blocks: [{ id: 'gone', type: 'text', title: '已删除主题', props: {} }] },
+          },
+        },
+      },
+    };
+  }
+
+  it('当前主题的条目覆盖站点级编排；显式空编排保持空白', () => {
+    const customization = readCustomization(configWithLayouts() as never);
+    expect(customization.home.blocks).toHaveLength(0);
+    expect(customization.article?.blocks[0]?.id).toBe('a-art');
+    // 不再存在的主题 id 会被清掉，避免设计文档无限膨胀。
+    expect(customization.theme_layouts?.missing).toBeUndefined();
+  });
+
+  it('切换主题时整套编排跟着切换，没有条目的那一类回退站点级', () => {
+    const raw = configWithLayouts();
+    const customization = readCustomization({
+      customization: { ...raw.customization, active_theme: 'theme_b' },
+    } as never);
+    expect(customization.home.blocks[0]?.id).toBe('b-home');
+    // theme_b 没有自己的文章页编排，沿用站点级 article（空）。
+    expect(customization.article?.blocks).toHaveLength(0);
+  });
+
+  it('旧配置没有 theme_layouts 时读取结果不变', () => {
+    const customization = readCustomization({
+      customization: {
+        theme: { ...DEFAULT_THEME },
+        layout: { variant: 'classic' },
+        home: { blocks: [legacyBlock] },
+      },
+    } as never);
+    expect(customization.home.blocks[0]?.id).toBe('legacy');
+    expect(customization.theme_layouts).toBeUndefined();
+  });
+
+  it('update 写 home/article 时路由到当前主题，顶层旧值不动', () => {
+    const current = readCustomization({
+      customization: {
+        theme: { ...DEFAULT_THEME },
+        layout: { variant: 'classic' },
+        home: { blocks: [legacyBlock] },
+      },
+    } as never);
+    const next = applyCustomizationPatch(current, {
+      home: { blocks: [] },
+      article: {
+        blocks: [{ id: 'art', type: 'text', title: '文章页', props: {}, animation: 'none', hidden: false }],
+      },
+    });
+    expect(next.home.blocks[0]?.id).toBe('legacy');
+    expect(next.theme_layouts?.default?.home?.blocks).toHaveLength(0);
+    expect(next.theme_layouts?.default?.article?.blocks[0]?.id).toBe('art');
+  });
+
+  it('显式带 theme_layouts 的补丁不路由，便于导入/创建整套主题', () => {
+    const current = readCustomization({
+      customization: {
+        theme: { ...DEFAULT_THEME },
+        layout: { variant: 'classic' },
+        home: { blocks: [legacyBlock] },
+      },
+    } as never);
+    const next = applyCustomizationPatch(current, {
+      theme_layouts: { theme_x: { home: { blocks: [] } } },
+    });
+    expect(next.home.blocks[0]?.id).toBe('legacy');
+    expect(next.theme_layouts?.theme_x?.home?.blocks).toHaveLength(0);
   });
 });
 

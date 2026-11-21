@@ -1270,8 +1270,16 @@ export interface SiteTheme {
   id: string;
   name: string;
   note: string;
-  variant: LayoutVariant;
-  theme: ThemeSettings;
+  /**
+   * 版式变体。空白主题不写这个字段，渲染时回落到内置「原版」的单栏版式。
+   * 内置主题与导入/另存的主题始终带完整值。
+   */
+  variant?: LayoutVariant;
+  /**
+   * 主题令牌。空白主题不写这个字段，渲染时回落到内置「原版」主题的组件样式；
+   * 读取时不要用默认值把它填满，否则「未设置」会被伪装成一套显式配置。
+   */
+  theme?: ThemeSettings;
   /** 主题制作者声明的外观功能；缺省时按内置全集处理。 */
   appearance?: ThemeAppearance;
   /** 主题作者自己写的预览；缺省时按版式画一张通用预览。 */
@@ -1283,6 +1291,18 @@ export interface SiteTheme {
    * 主题放弃内置的配色/排版微调，用自己的设置接口取代那部分界面。
    */
   settings?: ThemeSettingsSchema;
+}
+
+/**
+ * 一套主题自己的页面编排。
+ *
+ * 首页与文章页跟着主题走：切换主题时整套切换，切回来能恢复；自定义页面、导航与
+ * 页脚仍然是站点级的。字段缺失表示「这套主题没有自己的编排，沿用站点级旧值」，
+ * 显式的 `{ blocks: [] }` 才是「空白画布」。
+ */
+export interface ThemeLayoutEntry {
+  home?: ScreenLayout;
+  article?: ScreenLayout;
 }
 
 /** 主题自定义设置里的一个字段。 */
@@ -2122,6 +2142,13 @@ export interface SiteCustomization {
   active_theme?: string;
   /** 导入或另存的自定义大主题。 */
   themes?: SiteTheme[];
+  /**
+   * 按主题 id 保存的首页 / 文章页编排。
+   *
+   * 读取时会把当前主题的条目投影到 `home` / `article`；没有条目的主题沿用站点级
+   * 旧值（兼容 Beta 1.2 之前的设计文档，不需要迁移）。
+   */
+  theme_layouts?: Record<string, ThemeLayoutEntry>;
   /** 首页组件编排。空数组表示按布局变体使用默认编排。 */
   home: ScreenLayout;
   /** 文章详情页附加区块编排；在文章正文之后、评论区之前渲染。 */

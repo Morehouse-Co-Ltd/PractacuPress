@@ -67,7 +67,7 @@ describe('ThemePreview 渲染', () => {
   });
 
   it('palette 覆盖只影响这张预览，不改主题令牌', () => {
-    const theme = bundle().theme;
+    const theme = bundle().theme ?? DEFAULT_THEME;
     const html = render(
       bundle({ preview: { palette: { background: '#010203', accent: '#0a0b0c' } } }),
       true,

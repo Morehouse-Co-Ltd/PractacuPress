@@ -113,7 +113,7 @@ export function ThemePreview({
 
   return (
     <span
-      className={`theme-bundle-preview is-${bundle.variant}${large ? ' is-large' : ''}${
+      className={`theme-bundle-preview is-${bundle.variant ?? 'classic'}${large ? ' is-large' : ''}${
         authored ? ' is-authored' : ''
       }${className ? ` ${className}` : ''}`}
       style={style}

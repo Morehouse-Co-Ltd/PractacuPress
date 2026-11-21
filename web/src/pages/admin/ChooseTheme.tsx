@@ -1,24 +1,29 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { AppearanceSectionId, LayoutVariant, SiteTheme } from '../../types';
+import type { AppearanceSectionId, SiteTheme, ThemeLayoutEntry } from '../../types';
 import { useCustomization } from '../../lib/customize';
 import { blockDef, defaultHomeLayout } from '../../lib/blocks';
-import { applyPreset, DEFAULT_THEME } from '../../lib/theme';
 import {
   APPEARANCE_SECTIONS,
   BUILTIN_THEME_IDS,
-  DEFAULT_APPEARANCE_SECTIONS,
   THEME_MARKETPLACE_URL,
   activeTheme,
+  blankTheme,
   builtinThemeBundle,
   newThemeId,
   parseThemeFile,
+  resolveThemeSettings,
+  resolveThemeVariant,
   themeLibrary,
   themeMatches,
   themeSections,
   variantLabel,
 } from '../../lib/themes';
-import { cloneTheme, sameLayout, useThemeSwitch } from '../../lib/themeSwitch';
+import { themeApplyPatch, useThemeSwitch } from '../../lib/themeSwitch';
+import {
+  themeLayoutFor,
+  withoutThemeLayout,
+} from '../../lib/themeLayouts';
 import {
   buildThemePackage,
   layoutPatches,
@@ -70,14 +75,11 @@ export function ChooseThemePage() {
   const [pendingPackage, setPendingPackage] = useState<ParsedThemePackage | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SiteTheme | null>(null);
   const [getThemeOpen, setGetThemeOpen] = useState(false);
-  // 从零创建一套主题：名称、版式、起点与外观功能。
+  // 从零创建一套空白主题：只需要名称与备注；配色、字体、版式与外观分区都留空，
+  // 渲染时回落到默认主题。
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createNote, setCreateNote] = useState('');
-  const [createVariant, setCreateVariant] = useState<LayoutVariant>('classic');
-  const [createSections, setCreateSections] = useState<AppearanceSectionId[]>(
-    DEFAULT_APPEARANCE_SECTIONS,
-  );
   const [createError, setCreateError] = useState('');
 
   const customThemes = customization.themes ?? [];
@@ -90,7 +92,6 @@ export function ChooseThemePage() {
   const currentName = applied?.name ?? t('自定义主题');
   const currentId = applied?.id ?? customization.active_theme ?? 'custom';
   const fallback = builtinThemeBundle('default');
-  const layout = customization.layout;
   const selectedSections = themeSections(applied);
   // 右侧详情面板的选择：默认对准正在使用的主题；点击卡片只切换详情，不立即应用。
   const [detailId, setDetailId] = useState<string>(customization.active_theme ?? 'default');
@@ -160,24 +161,35 @@ export function ChooseThemePage() {
           });
         }
       }
+      const entry: ThemeLayoutEntry = {
+        ...(layouts.home ? { home: layouts.home } : {}),
+        ...(layouts.article ? { article: layouts.article } : {}),
+      };
+      const hasEntry = !!(entry.home || entry.article);
+      const themeLayouts = hasEntry
+        ? { ...customization.theme_layouts, [bundle.id]: entry }
+        : customization.theme_layouts;
+      // 主题包里的首页/文章页编排属于这套主题，不再写进站点级 home/article；
+      // 目标主题已有自己的首页编排时，切换逻辑不会再把默认编排种进去。
+      const { patch } = themeApplyPatch(
+        hasEntry ? { ...customization, theme_layouts: themeLayouts } : customization,
+        bundle,
+      );
       update({
+        ...patch,
         themes: [...customThemes, bundle],
-        theme: cloneTheme(bundle.theme),
-        layout: { ...customization.layout, variant: bundle.variant },
         ...(pendingPackage.manifest.appearance
           ? { appearance: pendingPackage.manifest.appearance }
           : {}),
-        ...(layouts.home ? { home: layouts.home } : {}),
-        ...(layouts.article ? { article: layouts.article } : {}),
         ...(layouts.pages.length ? { pages: nextPages } : {}),
-        active_theme: bundle.id,
+        ...(hasEntry ? { theme_layouts: themeLayouts } : {}),
       });
       toast.push(
         'ok',
         t('已导入并应用「{name}」', { name: bundle.name }),
         layouts.pages.length
-          ? t('配色、版式与 {count} 个页面编排已写入。', { count: layouts.pages.length })
-          : t('配色与版式已写入；组件与后端包需要在「扩展」页安装。'),
+          ? t('配色、版式与 {count} 个页面编排已写入这套主题。', { count: layouts.pages.length })
+          : t('配色与版式已写入这套主题；组件与后端包需要在「扩展」页安装。'),
       );
       setDetailId(bundle.id);
       setPendingImport(null);
@@ -185,12 +197,8 @@ export function ChooseThemePage() {
       return;
     }
     const next = [...customThemes, pendingImport];
-    update({
-      themes: next,
-      theme: cloneTheme(pendingImport.theme),
-      layout: { ...customization.layout, variant: pendingImport.variant },
-      active_theme: pendingImport.id,
-    });
+    const { patch } = themeApplyPatch(customization, pendingImport);
+    update({ ...patch, themes: next });
     toast.push(
       'ok',
       t('已导入并应用「{name}」', { name: pendingImport.name }),
@@ -203,6 +211,8 @@ export function ChooseThemePage() {
   const confirmDelete = () => {
     if (!deleteTarget) return;
     const remaining = customThemes.filter((item) => item.id !== deleteTarget.id);
+    // 删除主题时它自己的编排也一起删除；其它主题的条目不受影响。
+    const nextLayouts = withoutThemeLayout(customization.theme_layouts, deleteTarget.id);
     if (customization.active_theme === deleteTarget.id) {
       const next = fallback ?? {
         id: 'default',
@@ -211,14 +221,14 @@ export function ChooseThemePage() {
         variant: 'classic' as const,
         theme: currentTheme,
       };
-      const homeWasDefault =
-        next.variant !== customization.layout.variant &&
-        sameLayout(customization.home, defaultHomeLayout(customization.layout.variant));
+      const { patch } = themeApplyPatch(
+        { ...customization, theme_layouts: nextLayouts },
+        next,
+      );
       update({
+        ...patch,
         themes: remaining,
-        theme: cloneTheme(next.theme),
-        layout: { ...customization.layout, variant: next.variant },
-        ...(homeWasDefault ? { home: defaultHomeLayout(next.variant) } : {}),
+        theme_layouts: patch.theme_layouts ?? nextLayouts,
         active_theme: next.id,
       });
       toast.push(
@@ -227,7 +237,7 @@ export function ChooseThemePage() {
         t('被删除的主题不再可用；站点内容没有变化。'),
       );
     } else {
-      update({ themes: remaining });
+      update({ themes: remaining, theme_layouts: nextLayouts });
       toast.push(
         'ok',
         t('已删除「{name}」', { name: deleteTarget.name }),
@@ -311,9 +321,6 @@ export function ChooseThemePage() {
   const openCreate = () => {
     setCreateName('');
     setCreateNote('');
-    // 白昼版式已下架；旧站点打开新建弹窗时从单栏开始，不把 legacy 变体再写出去。
-    setCreateVariant(layout.variant === 'daylight' ? 'classic' : layout.variant);
-    setCreateSections([...DEFAULT_APPEARANCE_SECTIONS]);
     setCreateError('');
     setCreateOpen(true);
   };
@@ -333,37 +340,29 @@ export function ChooseThemePage() {
       setCreateError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       return;
     }
-    // 新主题始终从空白/版式默认配色开始，不复制当前主题；想保留当前配置时走
-    // 主题页的「保存为主题」。
-    const base =
-      builtinThemeBundle(createVariant === 'bento' ? 'night' : 'default')?.theme ??
-      applyPreset(DEFAULT_THEME, 'paper');
-    const item: SiteTheme = {
-      id: newThemeId(),
-      name,
-      note: createNote.trim().slice(0, 160),
-      variant: createVariant,
-      theme: base,
-      appearance: { sections: [...createSections] },
+    // 真正的空白主题：不写配色/字体/版式/外观分区；只给这套主题准备一份空白的
+    // 首页与文章页编排。渲染时由解析层回落到内置「原版」的组件样式。
+    const item = blankTheme(name, createNote.trim().slice(0, 160));
+    const blankLayout: ThemeLayoutEntry = {
+      home: { blocks: [] },
+      article: { blocks: [] },
     };
-    const homeWasDefault =
-      createVariant !== layout.variant &&
-      sameLayout(customization.home, defaultHomeLayout(layout.variant));
+    const themeLayouts = { ...customization.theme_layouts, [item.id]: blankLayout };
+    const { patch } = themeApplyPatch({ ...customization, theme_layouts: themeLayouts }, item);
     update({
+      ...patch,
       themes: [...customThemes, item],
-      theme: cloneTheme(base),
-      layout: { ...layout, variant: createVariant },
-      ...(homeWasDefault ? { home: defaultHomeLayout(createVariant) } : {}),
+      theme_layouts: themeLayouts,
       active_theme: item.id,
     });
     setCreateOpen(false);
     setDetailId(item.id);
     toast.push(
       'ok',
-      t('已创建「{name}」', { name }),
+      t('已创建空白主题「{name}」', { name }),
       thenBuild
-        ? t('配色与版式已经就位，接下来在页面编排里搭页面。')
-        : t('可以继续微调配色，或稍后去页面编排。'),
+        ? t('组件样式沿用默认主题（原版），首页与文章页编排是空白的，接下来在页面编排里搭页面。')
+        : t('组件样式沿用默认主题（原版）；可以继续微调，或稍后去页面编排。'),
     );
     if (thenBuild) navigate('/admin/theme');
   };
@@ -380,9 +379,13 @@ export function ChooseThemePage() {
         '夜航双栏：冷石墨底色与电光蓝强调，杂志式网格适合图片、专题与社区内容。切到浅色模式会得到同一套设计的冷白重配。',
       );
     }
+    if (!bundle.theme && !bundle.variant) {
+      return t('空白主题：未设置配色与版式，组件沿用默认主题（原版）的样式。');
+    }
+    const settings = resolveThemeSettings(bundle);
     return t('{layout}版式、{mode}配色。{note}', {
-      layout: variantLabel(bundle.variant),
-      mode: bundle.theme.mode === 'dark' ? t('深色') : t('浅色'),
+      layout: variantLabel(resolveThemeVariant(bundle)),
+      mode: settings.mode === 'dark' ? t('深色') : t('浅色'),
       note: bundle.note
         ? t('主题作者备注：{note}', { note: bundle.note })
         : t('没有备注。'),
@@ -395,11 +398,17 @@ export function ChooseThemePage() {
     return entry ? t(entry.name) : id;
   };
 
-  /** 这套主题的默认首页组件名，让详情页说清「用了会得到什么」。 */
-  const homeBlockLabels = (bundle: SiteTheme): string[] =>
-    defaultHomeLayout(bundle.variant).blocks.map((block) =>
+  /** 这套主题自己的首页组件（没有条目时退回其版式的默认编排）。 */
+  const homeBlockLabels = (bundle: SiteTheme): string[] => {
+    const own = themeLayoutFor(customization, bundle.id)?.home;
+    return (own ?? defaultHomeLayout(resolveThemeVariant(bundle))).blocks.map((block) =>
       t(blockDef(block.type)?.name ?? block.type),
     );
+  };
+
+  /** 详情里的首页组件为空时说明这是空白编排，而不是渲染坏了。 */
+  const homeBlocksAreBlank = (bundle: SiteTheme): boolean =>
+    themeLayoutFor(customization, bundle.id)?.home?.blocks.length === 0;
 
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
@@ -471,6 +480,7 @@ export function ChooseThemePage() {
                 const isApplied = customization.active_theme === bundle.id;
                 const isBuiltin = BUILTIN_THEME_IDS.has(bundle.id);
                 const isDetail = detailTheme?.id === bundle.id;
+                const isBlank = !bundle.theme && !bundle.variant;
                 return (
                   <div
                     key={bundle.id}
@@ -501,14 +511,19 @@ export function ChooseThemePage() {
                           ) : (
                             <Badge tone="accent">{t('自定义')}</Badge>
                           )}
+                          {isBlank ? <Badge tone="muted">{t('空白')}</Badge> : null}
                           {isApplied ? <Badge tone="ok">{t('使用中')}</Badge> : null}
                         </span>
                         <span className="theme-tile-note">
                           {bundle.note || t('一套自定义主题。')}
                         </span>
                         <span className="theme-tile-meta">
-                          {variantLabel(bundle.variant)} ·{' '}
-                          {bundle.theme.mode === 'dark' ? t('深色') : t('浅色')}
+                          {bundle.variant ? variantLabel(bundle.variant) : t('未设置')} ·{' '}
+                          {bundle.theme
+                            ? bundle.theme.mode === 'dark'
+                              ? t('深色')
+                              : t('浅色')
+                            : t('未设置')}
                         </span>
                       </span>
                     </button>
@@ -586,13 +601,13 @@ export function ChooseThemePage() {
                 </span>
                 <span className="theme-tile-copy">
                   <span className="theme-tile-title">
-                    <strong>{t('创建主题')}</strong>
+                    <strong>{t('创建空白主题')}</strong>
                     <Badge tone="accent">{t('从零开始')}</Badge>
                   </span>
                   <span className="theme-tile-note">
-                    {t('选版式、配色起点与外观功能，建好后直接进页面编排。')}
+                    {t('不设置配色、字体与版式；组件沿用默认主题的样式，编排从空白开始。')}
                   </span>
-                  <span className="theme-tile-meta">{t('单栏 / 卡片 / 双栏 · 自定义外观')}</span>
+                  <span className="theme-tile-meta">{t('空白主题 · 组件沿用默认主题样式')}</span>
                 </span>
               </button>
             </div>
@@ -619,6 +634,9 @@ export function ChooseThemePage() {
                     ) : (
                       <Badge tone="accent">{t('自定义')}</Badge>
                     )}
+                    {!detailTheme.theme && !detailTheme.variant ? (
+                      <Badge tone="muted">{t('空白')}</Badge>
+                    ) : null}
                     {customization.active_theme === detailTheme.id ? (
                       <Badge tone="ok">{t('使用中')}</Badge>
                     ) : null}
@@ -631,37 +649,55 @@ export function ChooseThemePage() {
                 <dl className="theme-detail-meta">
                   <div>
                     <dt>{t('版式')}</dt>
-                    <dd>{variantLabel(detailTheme.variant)}</dd>
+                    <dd>{detailTheme.variant ? variantLabel(detailTheme.variant) : t('未设置')}</dd>
                   </div>
                   <div>
                     <dt>{t('明暗')}</dt>
-                    <dd>{detailTheme.theme.mode === 'dark' ? t('深色') : t('浅色')}</dd>
+                    <dd>
+                      {detailTheme.theme
+                        ? detailTheme.theme.mode === 'dark'
+                          ? t('深色')
+                          : t('浅色')
+                        : t('未设置')}
+                    </dd>
                   </div>
                   <div>
                     <dt>{t('标题字体')}</dt>
-                    <dd>{detailTheme.theme.heading_font === 'sans' ? t('无衬线') : t('衬线')}</dd>
+                    <dd>
+                      {detailTheme.theme
+                        ? detailTheme.theme.heading_font === 'sans'
+                          ? t('无衬线')
+                          : t('衬线')
+                        : t('未设置')}
+                    </dd>
                   </div>
                   <div>
                     <dt>{t('正文字号')}</dt>
-                    <dd>{detailTheme.theme.body_size}px</dd>
+                    <dd>{detailTheme.theme ? `${detailTheme.theme.body_size}px` : t('未设置')}</dd>
                   </div>
                   <div>
                     <dt>{t('内容宽度')}</dt>
-                    <dd>{detailTheme.theme.content_width}px</dd>
+                    <dd>
+                      {detailTheme.theme ? `${detailTheme.theme.content_width}px` : t('未设置')}
+                    </dd>
                   </div>
                   <div>
                     <dt>{t('圆角')}</dt>
-                    <dd>{detailTheme.theme.radius}px</dd>
+                    <dd>{detailTheme.theme ? `${detailTheme.theme.radius}px` : t('未设置')}</dd>
                   </div>
                 </dl>
 
                 <div className="theme-detail-section">
                   <h4>{t('配色')}</h4>
-                  <div className="theme-palette">
-                    <PaletteSwatch label={t('背景')} value={detailTheme.theme.background} />
-                    <PaletteSwatch label={t('文字')} value={detailTheme.theme.ink} />
-                    <PaletteSwatch label={t('强调色')} value={detailTheme.theme.accent} />
-                  </div>
+                  {detailTheme.theme ? (
+                    <div className="theme-palette">
+                      <PaletteSwatch label={t('背景')} value={detailTheme.theme.background} />
+                      <PaletteSwatch label={t('文字')} value={detailTheme.theme.ink} />
+                      <PaletteSwatch label={t('强调色')} value={detailTheme.theme.accent} />
+                    </div>
+                  ) : (
+                    <p className="field-hint">{t('未设置配色，组件沿用默认主题（原版）的样式。')}</p>
+                  )}
                 </div>
 
                 <div className="theme-detail-section">
@@ -672,6 +708,9 @@ export function ChooseThemePage() {
                         {label}
                       </span>
                     ))}
+                    {homeBlocksAreBlank(detailTheme) ? (
+                      <span className="theme-chip faint">{t('空白（还没有组件）')}</span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -725,8 +764,12 @@ export function ChooseThemePage() {
         title={previewTheme ? previewTheme.name : t('预览主题')}
         description={
           previewTheme
-            ? `${variantLabel(previewTheme.variant)} · ${
-                previewTheme.theme.mode === 'dark' ? t('深色') : t('浅色')
+            ? `${previewTheme.variant ? variantLabel(previewTheme.variant) : t('未设置')} · ${
+                previewTheme.theme
+                  ? previewTheme.theme.mode === 'dark'
+                    ? t('深色')
+                    : t('浅色')
+                  : t('未设置')
               }`
             : undefined
         }
@@ -768,8 +811,10 @@ export function ChooseThemePage() {
 
       <Modal
         open={createOpen}
-        title={t('创建一套主题')}
-        description={t('从空白主题开始，选好版式；创建完可以直接进页面编排搭页面。')}
+        title={t('创建空白主题')}
+        description={t(
+          '只创建主题本身：不设置配色、字体或单双栏版式；组件沿用默认主题（原版）的样式。首页与文章页编排从空白开始。',
+        )}
         onClose={() => setCreateOpen(false)}
         width={720}
         footer={
@@ -798,7 +843,7 @@ export function ChooseThemePage() {
               value={createName}
               maxLength={40}
               onChange={(event) => setCreateName(event.target.value)}
-              placeholder={t('例如：夜航 · 摄影版')}
+              placeholder={t('例如：我的主题')}
             />
           </Field>
           <Field
@@ -813,81 +858,13 @@ export function ChooseThemePage() {
               maxLength={160}
               rows={2}
               onChange={(event) => setCreateNote(event.target.value)}
-              placeholder={t('暖色双栏，适合摄影与社区。')}
+              placeholder={t('例如：先搭一个空白版面。')}
             />
           </Field>
 
-          <div>
-            <p className="field-label mb-8">{t('版式')}</p>
-            <div className="option-grid two">
-              {(
-                [
-                  {
-                    key: 'classic' as const,
-                    name: t('单栏'),
-                    note: t('编辑排版风，适合长文阅读。'),
-                  },
-                  {
-                    key: 'bento' as const,
-                    name: t('双栏'),
-                    note: t('杂志网格，适合图片与社区。'),
-                  },
-                ]
-              ).map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`option${createVariant === item.key ? ' is-selected' : ''}`}
-                  onClick={() => setCreateVariant(item.key)}
-                  aria-pressed={createVariant === item.key}
-                >
-                  <span className="option-icon">
-                    <Icon name="columns" size={16} />
-                  </span>
-                  <span className="option-body">
-                    <strong>{item.name}</strong>
-                    <p>{item.note}</p>
-                  </span>
-                  <span className="option-radio" />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="field-label mb-8">{t('外观功能')}</p>
-            <div className="appearance-bind-grid">
-              {APPEARANCE_SECTIONS.map((section) => {
-                const on = createSections.includes(section.id);
-                return (
-                  <label key={section.id} className={`appearance-bind${on ? ' is-on' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() =>
-                        setCreateSections((prev) =>
-                          prev.includes(section.id)
-                            ? prev.filter((item) => item !== section.id)
-                            : [...prev, section.id],
-                        )
-                      }
-                    />
-                    <span>
-                      <strong>{section.name}</strong>
-                      <em>{section.note}</em>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <p className="field-hint mt-8">
-              {t('只影响「外观」页显示哪些设置；取消勾选后，已有文案仍然保留，随时可以再打开。')}
-            </p>
-          </div>
-
           <Callout tone="info" icon="layers">
             {t(
-              '主题创建后会自动切换为当前主题。点「创建并编排页面」会直接打开页面编排， 为首页与自定义页面加组件。',
+              '主题创建后会自动切换为当前主题。点「创建并编排页面」会直接打开页面编排，为首页与文章页加组件。',
             )}
           </Callout>
         </div>
@@ -992,8 +969,12 @@ export function ChooseThemePage() {
                 <strong>{pendingImport.name}</strong>
                 <p>{pendingImport.note || t('没有备注。')}</p>
                 <span className="tiny faint">
-                  {variantLabel(pendingImport.variant)} ·{' '}
-                  {pendingImport.theme.mode === 'dark' ? t('深色') : t('浅色')}
+                  {pendingImport.variant ? variantLabel(pendingImport.variant) : t('未设置')} ·{' '}
+                  {pendingImport.theme
+                    ? pendingImport.theme.mode === 'dark'
+                      ? t('深色')
+                      : t('浅色')
+                    : t('未设置')}
                 </span>
               </div>
             </div>

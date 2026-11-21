@@ -172,13 +172,55 @@ function themeSignature(theme: ThemeSettings, variant: LayoutVariant): string {
   return JSON.stringify({ theme, variant });
 }
 
+/**
+ * 空白主题回落的默认版式：内置「原版」的单栏。
+ *
+ * 主题不写版式时，组件库与站点版式都按这一档解析；这也是「组件走默认主题的组件
+ * 样式」里“默认主题”的定义。
+ */
+export const DEFAULT_THEME_VARIANT: LayoutVariant = 'classic';
+
+/** 内置「原版」的完整令牌；空白主题的组件样式都回落到这里。 */
+function defaultThemeSettings(): ThemeSettings {
+  const bundle = builtinThemeBundle('default');
+  return bundle?.theme ? { ...bundle.theme } : { ...DEFAULT_THEME };
+}
+
+/**
+ * 解析一套主题最终生效的令牌。
+ *
+ * 空白主题没有 `theme` 字段：返回内置「原版」的完整令牌，而不是把默认值写回主题
+ * 记录。显式保存过令牌的主题仍走归一化，坏数据不会漏进渲染层。
+ */
+export function resolveThemeSettings(bundle: SiteTheme): ThemeSettings {
+  return bundle.theme ? normalizeThemeSettings(bundle.theme) : defaultThemeSettings();
+}
+
+/** 解析一套主题最终生效的版式；空白主题回落到 `DEFAULT_THEME_VARIANT`。 */
+export function resolveThemeVariant(bundle: SiteTheme): LayoutVariant {
+  return bundle.variant ?? DEFAULT_THEME_VARIANT;
+}
+
+/** 这套主题是否显式保存过令牌（用于详情页显示「未设置」）。 */
+export function themeHasSettings(bundle: SiteTheme): boolean {
+  return !!bundle.theme;
+}
+
+/** 这套主题是否显式保存过版式（用于详情页显示「未设置」）。 */
+export function themeHasVariant(bundle: SiteTheme): boolean {
+  return !!bundle.variant;
+}
+
 /** 当前配色/字体/变体是否仍然等于某套主题的原始定义。 */
 export function themeMatches(
   theme: ThemeSettings,
   variant: LayoutVariant,
   bundle: SiteTheme,
 ): boolean {
-  return themeSignature(theme, variant) === themeSignature(bundle.theme, bundle.variant);
+  return (
+    themeSignature(theme, variant) ===
+    themeSignature(resolveThemeSettings(bundle), resolveThemeVariant(bundle))
+  );
 }
 
 /**
@@ -196,6 +238,17 @@ export function inferActiveTheme(
 
 export function newThemeId(): string {
   return `theme_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * 一套真正的空白主题：只有名字与备注。
+ *
+ * 不写 `theme` / `variant` / `appearance` / `preview`：渲染时令牌与版式分别回落到
+ * 内置「原版」主题与单栏版式；详情页据此显示「未设置」。创建时由调用方为它准备
+ * 空白的首页/文章页编排（见 `theme_layouts`）。
+ */
+export function blankTheme(name: string, note = ''): SiteTheme {
+  return { id: newThemeId(), name, note };
 }
 
 /**
@@ -254,12 +307,18 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
   const appearance = normalizeAppearance(raw.appearance);
   const settings = normalizeThemeSettingsSchema(raw.settings);
   const preview = normalizeThemePreview(raw.preview);
+  // 空白主题的关键：字段缺失就保持缺失，不能在读取路径上补成一套默认令牌，
+  // 否则「未设置」会被伪装成显式配置，导出时也会写成一份默认主题的副本。
+  const theme =
+    raw.theme && typeof raw.theme === 'object' ? normalizeThemeSettings(raw.theme) : undefined;
+  const variant =
+    raw.variant === undefined || raw.variant === null ? undefined : normalizeVariant(raw.variant);
   return {
     id,
     name,
     note: themeText(raw.note, '', 160),
-    variant: normalizeVariant(raw.variant),
-    theme: normalizeThemeSettings(raw.theme),
+    ...(variant ? { variant } : {}),
+    ...(theme ? { theme } : {}),
     ...(appearance ? { appearance } : {}),
     ...(settings ? { settings } : {}),
     ...(preview ? { preview } : {}),
@@ -323,8 +382,8 @@ export function downloadThemeFile(theme: SiteTheme): void {
     exported_at: new Date().toISOString(),
     name: theme.name,
     note: theme.note,
-    variant: theme.variant,
-    theme: theme.theme,
+    ...(theme.variant ? { variant: theme.variant } : {}),
+    ...(theme.theme ? { theme: theme.theme } : {}),
     ...(theme.appearance ? { appearance: theme.appearance } : {}),
     ...(theme.settings ? { settings: theme.settings } : {}),
     ...(theme.preview ? { preview: theme.preview } : {}),

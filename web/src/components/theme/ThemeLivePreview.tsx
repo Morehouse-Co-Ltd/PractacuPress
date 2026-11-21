@@ -45,7 +45,7 @@ export function ThemeLivePreview({ bundle }: { bundle: SiteTheme }) {
   const bundleRef = useRef(bundle);
   bundleRef.current = bundle;
   const signature = useMemo(
-    () => `${bundle.id}:${bundle.variant}:${JSON.stringify(bundle.theme)}`,
+    () => `${bundle.id}:${bundle.variant ?? 'classic'}:${JSON.stringify(bundle.theme ?? null)}`,
     [bundle.id, bundle.variant, bundle.theme],
   );
 

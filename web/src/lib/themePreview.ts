@@ -5,6 +5,7 @@ import type {
   ThemePreviewBlockType,
   ThemePreviewSpec,
 } from '../types';
+import { DEFAULT_THEME } from './theme';
 
 /**
  * 主题自带预览：归一化与兜底。
@@ -181,8 +182,12 @@ export interface ResolvedThemePreview {
 }
 
 export function resolveThemePreview(bundle: SiteTheme): ResolvedThemePreview {
+  // 空白主题没有令牌/版式：预览按默认主题与单栏兜底。这里不 import themes.ts，
+  // 否则会与 themes.ts 对本模块的依赖形成循环。
+  const settings = bundle.theme ?? DEFAULT_THEME;
+  const variant = bundle.variant ?? 'classic';
   const authored = !!bundle.preview;
-  const fallback = defaultThemePreview(bundle.variant);
+  const fallback = defaultThemePreview(variant);
   // 主题只写了标题 / 配色时，内容块仍然按版式补全，避免封面下半截空着。
   const spec: ThemePreviewSpec = bundle.preview
     ? {
@@ -194,9 +199,9 @@ export function resolveThemePreview(bundle: SiteTheme): ResolvedThemePreview {
     spec,
     authored,
     palette: {
-      background: spec.palette?.background ?? bundle.theme.background,
-      ink: spec.palette?.ink ?? bundle.theme.ink,
-      accent: spec.palette?.accent ?? bundle.theme.accent,
+      background: spec.palette?.background ?? settings.background,
+      ink: spec.palette?.ink ?? settings.ink,
+      accent: spec.palette?.accent ?? settings.accent,
     },
   };
 }

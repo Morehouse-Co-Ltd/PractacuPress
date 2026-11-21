@@ -3,9 +3,15 @@ import { DEFAULT_THEME, normalizeThemeSettings, themeCss } from './theme';
 import { readCustomization } from './customize';
 import {
   BUILTIN_THEMES,
+  blankTheme,
   builtinThemeBundle,
   inferActiveTheme,
+  normalizeCustomTheme,
   parseThemeFile,
+  resolveThemeSettings,
+  resolveThemeVariant,
+  themeHasSettings,
+  themeHasVariant,
   themeMatches,
   variantLabel,
 } from './themes';
@@ -74,7 +80,7 @@ describe('built-in big themes', () => {
     expect(builtinThemeBundle('daylight')).toBeNull();
     expect(night?.name).toBe('夜航');
     expect(night?.variant).toBe('bento');
-    expect(night?.theme.mode).toBe('dark');
+    expect(night?.theme?.mode).toBe('dark');
     expect(variantLabel('bento')).toBe('双栏');
     expect(variantLabel('daylight')).toBe('卡片');
     expect(BUILTIN_THEMES).toHaveLength(2);
@@ -83,17 +89,61 @@ describe('built-in big themes', () => {
   it('matches only the full bundle, not just a colour', () => {
     const original = builtinThemeBundle('default');
     expect(original).not.toBeNull();
-    expect(themeMatches(original!.theme, original!.variant, original!)).toBe(true);
+    expect(themeMatches(original!.theme!, original!.variant!, original!)).toBe(true);
     expect(
-      themeMatches({ ...original!.theme, accent: '#ff0000' }, original!.variant, original!),
+      themeMatches({ ...original!.theme!, accent: '#ff0000' }, original!.variant!, original!),
     ).toBe(false);
-    expect(themeMatches(original!.theme, 'bento', original!)).toBe(false);
+    expect(themeMatches(original!.theme!, 'bento', original!)).toBe(false);
   });
 
   it('infers an active id for old configs', () => {
     const night = builtinThemeBundle('night')!;
-    expect(inferActiveTheme(night.theme, night.variant)).toBe('night');
-    expect(inferActiveTheme({ ...night.theme, accent: '#ff0000' }, night.variant)).toBe('custom');
+    expect(inferActiveTheme(night.theme!, night.variant!)).toBe('night');
+    expect(inferActiveTheme({ ...night.theme!, accent: '#ff0000' }, night.variant!)).toBe('custom');
+  });
+});
+
+describe('blank themes', () => {
+  it('creates a theme with no palette, typography or layout', () => {
+    const blank = blankTheme('空白主题', '从零开始');
+    expect(blank.id).toMatch(/^theme_/);
+    expect(blank.name).toBe('空白主题');
+    expect(blank.note).toBe('从零开始');
+    expect(blank.theme).toBeUndefined();
+    expect(blank.variant).toBeUndefined();
+    expect(blank.appearance).toBeUndefined();
+    expect(blank.preview).toBeUndefined();
+    expect(themeHasSettings(blank)).toBe(false);
+    expect(themeHasVariant(blank)).toBe(false);
+  });
+
+  it('resolves a blank theme to the built-in default theme and single column', () => {
+    const blank = blankTheme('空白主题');
+    expect(resolveThemeVariant(blank)).toBe('classic');
+    expect(resolveThemeSettings(blank)).toEqual(builtinThemeBundle('default')!.theme);
+  });
+
+  it('keeps absent fields absent when reading a stored theme', () => {
+    const blank = normalizeCustomTheme({ id: 'theme_blank', name: '空白', note: '' });
+    expect(blank?.theme).toBeUndefined();
+    expect(blank?.variant).toBeUndefined();
+    // 显式写过令牌/版式的主题仍然按原规则归一化。
+    const explicit = normalizeCustomTheme({
+      id: 'theme_explicit',
+      name: '有配置',
+      note: '',
+      variant: 'bento',
+      theme: { ...DEFAULT_THEME, accent: '#123456' },
+    });
+    expect(explicit?.variant).toBe('bento');
+    expect(explicit?.theme?.accent).toBe('#123456');
+  });
+
+  it('matches the blank bundle only while the site still uses the defaults', () => {
+    const blank = blankTheme('空白主题');
+    expect(themeMatches(DEFAULT_THEME, 'classic', blank)).toBe(true);
+    expect(themeMatches({ ...DEFAULT_THEME, accent: '#ff0000' }, 'classic', blank)).toBe(false);
+    expect(themeMatches(DEFAULT_THEME, 'bento', blank)).toBe(false);
   });
 });
 
@@ -112,7 +162,7 @@ describe('theme file import', () => {
     expect(theme.name).toBe('我的夜航');
     expect(theme.note).toBe('暖色双栏');
     expect(theme.variant).toBe('bento');
-    expect(theme.theme.accent).toBe('#b45309');
+    expect(theme.theme!.accent).toBe('#b45309');
     expect(theme.id).toMatch(/^theme_/);
   });
 
@@ -129,8 +179,8 @@ describe('theme file import', () => {
     );
     expect(theme.name).toBe('导入的主题');
     expect(theme.variant).toBe('classic');
-    expect(theme.theme.background).toBe('#101010');
-    expect(theme.theme.ink).toBe('#ffffff');
+    expect(theme.theme!.background).toBe('#101010');
+    expect(theme.theme!.ink).toBe('#ffffff');
   });
 
   it('rejects malformed files', () => {

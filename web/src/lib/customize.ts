@@ -32,6 +32,7 @@ import type {
   SiteTheme,
   TaxonomySettings,
   TaxonomyTerm,
+  ThemeLayoutEntry,
   ThemeMode,
   WebConfig,
 } from '../types';
@@ -53,7 +54,15 @@ import {
   inferActiveTheme,
   normalizeCustomTheme,
   normalizeVariant,
+  resolveThemeSettings,
+  resolveThemeVariant,
 } from './themes';
+import {
+  FALLBACK_THEME_ID,
+  projectThemeLayouts,
+  themeScopeId,
+  withThemeLayout,
+} from './themeLayouts';
 import {
   blockDef,
   createBlock,
@@ -1305,6 +1314,40 @@ function normalizeAiModeration(value: unknown): AiModerationSettings {
   };
 }
 
+/**
+ * 按主题保存的首页/文章页编排。
+ *
+ * 只保留仍然存在的主题 id（内置 + 自定义 + 当前选中 + `custom` 兜底），避免删除
+ * 主题或手改 JSON 以后留下永远用不到的条目，把 1 MB 的设计文档撑大。
+ * 价值判断放在这里：字段缺失表示「没有自己的编排」，显式的 `{ blocks: [] }` 才是
+ * 空白画布，所以不能用 `if (entry.home)` 之外的默认值把它填满。
+ */
+function normalizeThemeLayouts(
+  value: unknown,
+  validThemeIds: Set<string>,
+): Record<string, ThemeLayoutEntry> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out: Record<string, ThemeLayoutEntry> = {};
+  let count = 0;
+  for (const [key, rawEntry] of Object.entries(value as Record<string, unknown>)) {
+    if (!validThemeIds.has(key)) continue;
+    if (count >= 40) break;
+    if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) continue;
+    const raw = rawEntry as Record<string, unknown>;
+    const entry: ThemeLayoutEntry = {};
+    if (raw.home && typeof raw.home === 'object' && !Array.isArray(raw.home)) {
+      entry.home = normalizeScreenLayout(raw.home);
+    }
+    if (raw.article && typeof raw.article === 'object' && !Array.isArray(raw.article)) {
+      entry.article = normalizeScreenLayout(raw.article);
+    }
+    if (!entry.home && !entry.article) continue;
+    out[key] = entry;
+    count += 1;
+  }
+  return count ? out : undefined;
+}
+
 /** 把任意（可能是旧版本或导入的）配置收敛成可用的结构。 */
 function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
   if (!config.customization) return DEFAULT_CUSTOMIZATION;
@@ -1368,6 +1411,14 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
     (BUILTIN_THEME_IDS.has(requestedTheme) || themes.some((item) => item.id === requestedTheme))
       ? requestedTheme
       : inferActiveTheme(theme, variant, themes);
+  // 主题编排的键必须仍然存在：内置主题、当前自定义主题库、当前选中项与兜底档位。
+  const validThemeIds = new Set<string>([
+    ...BUILTIN_THEME_IDS,
+    ...themes.map((item) => item.id),
+    activeTheme,
+    FALLBACK_THEME_ID,
+  ]);
+  const themeLayouts = normalizeThemeLayouts(raw.theme_layouts, validThemeIds);
   return {
     // 结构版本随读入结果一起返回：它就是让迁移器下次读取直接返回、不再重跑的印记。
     schema_version: CURRENT_SCHEMA_VERSION,
@@ -1376,6 +1427,7 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
     theme,
     active_theme: activeTheme,
     themes,
+    ...(themeLayouts ? { theme_layouts: themeLayouts } : {}),
     theme_settings: normalizeThemeSettingValues(raw.theme_settings),
     layout: {
       brand_sub: text(layout.brand_sub, DEFAULT_LAYOUT.brand_sub, 60),
@@ -1498,10 +1550,12 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
  * 这里出发——一处覆盖，整个前台就是这套主题真实运转的样子。
  */
 export function readCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
-  const base = normalizeCustomization(config);
+  // 先投影当前主题自己的编排，再叠加真实前台预览：预览比较「默认首页」时看到的
+  // 必须是当前主题实际生效的那一份，而不是站点级旧值。
+  const base = projectThemeLayouts(normalizeCustomization(config));
   const preview = documentPreviewTheme();
   if (!preview) return base;
-  return { ...base, ...themeApplyPatch(base, preview).patch };
+  return projectThemeLayouts({ ...base, ...themeApplyPatch(base, preview).patch });
 }
 
 function isPageLike(value: unknown): value is SitePage {
@@ -1544,6 +1598,42 @@ function normalizePage(page: SitePage): SitePage {
   };
 }
 
+/**
+ * 把一次 `update` 补丁合并进已存配置。
+ *
+ * 首页/文章页编排按主题保存：调用方仍按旧接口写 `{ home }` / `{ article }`，这里
+ * 把它路由到当前主题的条目；顶层 `home`/`article` 留作旧版兜底，不跟着写。显式带
+ * `theme_layouts` 的补丁（创建/导入/删除/切主题）原样合并，不再路由——否则导入的
+ * 编排会被写进「当前」主题而不是随包带来的那套主题。
+ */
+export function applyCustomizationPatch(
+  current: SiteCustomization,
+  patch: Partial<SiteCustomization>,
+): SiteCustomization {
+  const has = (key: keyof SiteCustomization) =>
+    Object.prototype.hasOwnProperty.call(patch, key);
+  const writesHome = has('home');
+  const writesArticle = has('article');
+  if ((!writesHome && !writesArticle) || has('theme_layouts')) {
+    return { ...current, ...patch };
+  }
+  const themeId = patch.active_theme || themeScopeId(current);
+  let layouts = current.theme_layouts;
+  if (writesHome && patch.home) {
+    layouts = withThemeLayout(layouts, themeId, 'home', normalizeScreenLayout(patch.home));
+  }
+  if (writesArticle && patch.article) {
+    layouts = withThemeLayout(layouts, themeId, 'article', normalizeScreenLayout(patch.article));
+  }
+  return {
+    ...current,
+    ...patch,
+    home: current.home,
+    article: current.article,
+    ...(layouts ? { theme_layouts: layouts } : {}),
+  };
+}
+
 /** 生成站点主题的 CSS 变量（见 lib/theme.ts）。 */
 export function useCustomization(): {
   customization: SiteCustomization;
@@ -1553,7 +1643,10 @@ export function useCustomization(): {
   const customization = useMemo(() => readCustomization(config), [config]);
   const update = useCallback(
     (patch: Partial<SiteCustomization>) => {
-      updateConfig({ customization: { ...readCustomization(config), ...patch } });
+      // 以「已存形状」为基准，不用 readCustomization 的投影结果：否则一次普通保存
+      // 会把当前主题的编排写回顶层 home/article，切到没有自己编排的主题时会串版。
+      const current = normalizeCustomization(config);
+      updateConfig({ customization: applyCustomizationPatch(current, patch) });
     },
     [config, updateConfig],
   );
@@ -1735,19 +1828,21 @@ export function installCustomization(language: Locale, bodySize?: number): SiteC
   // 取内置主题的完整排版默认值，而不是只套配色：否则安装完成后会被判成自定义主题。
   const bundle = builtinThemeBundle(INSTALL_DEFAULT_THEME_ID);
   if (!bundle) throw new Error(`Built-in theme "${INSTALL_DEFAULT_THEME_ID}" is missing.`);
+  const variant = resolveThemeVariant(bundle);
+  const settings = resolveThemeSettings(bundle);
   // 安装向导的「前台正文字号」只是给主题的 body_size 一个初始值；传了才归一化，
   // 不传时保持与内置主题完全一致（installCustomization 的既有契约）。
   const theme =
     bodySize === undefined
-      ? bundle.theme
-      : normalizeThemeSettings({ ...bundle.theme, body_size: bodySize });
+      ? settings
+      : normalizeThemeSettings({ ...settings, body_size: bodySize });
   return {
     ...base,
     language,
     theme,
-    layout: { ...base.layout, variant: bundle.variant },
+    layout: { ...base.layout, variant },
     active_theme: bundle.id,
-    home: defaultHomeLayout(bundle.variant),
+    home: defaultHomeLayout(variant),
   };
 }
 

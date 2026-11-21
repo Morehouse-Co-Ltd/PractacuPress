@@ -4,7 +4,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { BlockInstance, BuilderDevice, ScreenLayout } from '../../types';
 import { useCustomization } from '../../lib/customize';
 import { activeTheme } from '../../lib/themes';
-import { loadConfig, useBackend } from '../../lib/backend';
+import { useBackend } from '../../lib/backend';
+import { themeLayoutFor } from '../../lib/themeLayouts';
 import {
   createBlock,
   defaultHomeLayout,
@@ -268,12 +269,12 @@ export function ThemeBuilderPage() {
     if (selectedId && !findBlock(history.value, selectedId)) setSelectedId(null);
   }, [history.value, selectedId]);
 
-  // 首次打开时把当前首页编排落盘一次：预览 iframe 与结构树必须共用同一批区块 id，
-  // 选中高亮、双击定位才找得到目标（默认编排的 id 是运行时生成的）。
+  // 首次打开时把当前主题的首页编排落盘一次：预览 iframe 与结构树必须共用同一批
+  // 区块 id，选中高亮、双击定位才找得到目标（默认编排的 id 是运行时生成的）。
+  // 编排按主题保存：只有当前主题还没有自己的首页编排时才写入，空白主题的显式
+  // `{ blocks: [] }` 也算“已有自己的编排”，不会被默认组件填满。
   useEffect(() => {
-    const storedHome = loadConfig()?.customization?.home;
-    const hasStoredHome = !!storedHome && Array.isArray(storedHome.blocks) && storedHome.blocks.length > 0;
-    if (hasStoredHome) return;
+    if (themeLayoutFor(customization)?.home) return;
     update({ home: customization.home });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

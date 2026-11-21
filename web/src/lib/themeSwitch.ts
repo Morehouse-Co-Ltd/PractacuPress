@@ -3,7 +3,7 @@ import { useCustomization } from './customize';
 import { t } from './i18n';
 import { useToast } from './toast';
 import { themeApplyPatch, type ThemeApplyResult } from './themeApply';
-import { variantLabel } from './themes';
+import { resolveThemeVariant, variantLabel } from './themes';
 
 /**
  * 套用「大主题」的共享逻辑。
@@ -36,11 +36,11 @@ export function useThemeSwitch(): { applyBundle: (bundle: SiteTheme, announce?: 
       'ok',
       t('已切换到「{name}」', { name: bundle.name }),
       homeWasDefault
-        ? t('配色、排版与{layout}版式已一起切换，首页也同步为该主题的默认编排。', {
-            layout: variantLabel(bundle.variant),
+        ? t('配色、排版与{layout}版式已切换，这套主题的默认首页编排也一起写入。', {
+            layout: variantLabel(resolveThemeVariant(bundle)),
           })
-        : t('配色、排版与{layout}版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。', {
-            layout: variantLabel(bundle.variant),
+        : t('配色、排版与{layout}版式已切换；首页与文章页编排跟随主题，已有编排不会丢失。', {
+            layout: variantLabel(resolveThemeVariant(bundle)),
           }),
     );
   };

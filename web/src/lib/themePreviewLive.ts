@@ -70,8 +70,8 @@ function isThemeBundle(value: unknown): value is SiteTheme {
   return (
     typeof bundle.id === 'string' &&
     typeof bundle.name === 'string' &&
-    typeof bundle.theme === 'object' &&
-    !!bundle.theme
+    // 空白主题没有 theme 字段：允许预览，渲染时回落到默认主题。
+    (bundle.theme === undefined || (typeof bundle.theme === 'object' && !!bundle.theme))
   );
 }
 

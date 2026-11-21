@@ -33,7 +33,7 @@ describe('安装完成后的默认站点设计', () => {
     expect(installCustomization('zh-CN', 1).theme.body_size).toBe(14);
     // 不传时保持内置主题原值，和既有安装契约一致。
     expect(installCustomization('zh-CN').theme.body_size).toBe(
-      builtinThemeBundle(INSTALL_DEFAULT_THEME_ID)!.theme.body_size,
+      builtinThemeBundle(INSTALL_DEFAULT_THEME_ID)!.theme!.body_size,
     );
     expect(normalizeThemeSettings(installCustomization('zh-CN', 19.5).theme).body_size).toBe(19.5);
   });

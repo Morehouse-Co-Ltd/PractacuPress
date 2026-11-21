@@ -39,6 +39,7 @@ import {
   variantLabel,
 } from '../../lib/themes';
 import { cloneTheme, useThemeSwitch } from '../../lib/themeSwitch';
+import { withThemeLayout } from '../../lib/themeLayouts';
 import { cloneThemePreview } from '../../lib/themePreview';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
@@ -397,8 +398,17 @@ export function ThemesPage() {
       appearance: { sections: [...selectedSections] },
       ...(selected?.preview ? { preview: cloneThemePreview(selected.preview) } : {}),
     };
+    // 另存为主题会把当前这套编排一起存进新主题，之后切回来仍是同一份页面。
+    const withHome = withThemeLayout(customization.theme_layouts, item.id, 'home', customization.home);
+    const themeLayouts = withThemeLayout(
+      withHome,
+      item.id,
+      'article',
+      customization.article ?? { blocks: [] },
+    );
     update({
       themes: [...customThemes, item],
+      theme_layouts: themeLayouts,
       active_theme: item.id,
     });
     setSaveOpen(false);

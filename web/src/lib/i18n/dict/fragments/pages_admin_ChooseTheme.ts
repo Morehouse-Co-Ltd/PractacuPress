@@ -54,10 +54,10 @@ const fragment: Dictionary = {
   '编辑「{name}」的页面编排': 'Edit the page layout of “{name}”',
   '进入页面编排：用这套主题搭首页与文章页':
     'Open the page builder to compose the home and article pages with this theme',
-  '配色、版式与 {count} 个页面编排已写入。':
-    'The palette, layout variant and {count} page layouts were saved.',
-  '配色与版式已写入；组件与后端包需要在「扩展」页安装。':
-    'The palette and layout variant were saved; install the component and backend packages from Extensions.',
+  '配色、版式与 {count} 个页面编排已写入这套主题。':
+    'The palette, layout variant and {count} page layouts were saved to this theme.',
+  '配色与版式已写入这套主题；组件与后端包需要在「扩展」页安装。':
+    'The palette and layout variant were saved to this theme; install component and backend packages from Extensions.',
   '已导出主题包': 'Theme package exported',
   '包含配色、版式与 {count} 个页面编排。':
     'It includes the palette, layout variant and {count} page layouts.',
@@ -79,6 +79,28 @@ const fragment: Dictionary = {
   '删除「{name}」': 'Delete “{name}”',
   内置主题不能删除: 'Built-in themes cannot be deleted',
   自带预览: 'Custom preview',
+  '创建空白主题': 'Create blank theme',
+  '不设置配色、字体与版式；组件沿用默认主题的样式，编排从空白开始。':
+    'No palette, typography or layout is set; components use the default theme’s styles and the layout starts blank.',
+  '空白主题 · 组件沿用默认主题样式': 'Blank theme · default theme component styles',
+  空白: 'Blank',
+  未设置: 'Not set',
+  '未设置配色，组件沿用默认主题（原版）的样式。':
+    'No palette is set; components use the default theme (Original) styles.',
+  '空白主题：未设置配色与版式，组件沿用默认主题（原版）的样式。':
+    'Blank theme: no palette or layout is set; components use the default theme (Original) styles.',
+  '空白（还没有组件）': 'Blank (no blocks yet)',
+  '已创建空白主题「{name}」': 'Created blank theme “{name}”',
+  '组件样式沿用默认主题（原版），首页与文章页编排是空白的，接下来在页面编排里搭页面。':
+    'Components use the default theme (Original) styles; the home and article layouts are blank, so compose them in Page layout next.',
+  '组件样式沿用默认主题（原版）；可以继续微调，或稍后去页面编排。':
+    'Components use the default theme (Original) styles; fine-tune the theme now or compose pages later.',
+  '只创建主题本身：不设置配色、字体或单双栏版式；组件沿用默认主题（原版）的样式。首页与文章页编排从空白开始。':
+    'Creates only the theme itself: no palette, typography or single/two-column layout is chosen; components use the default theme (Original) styles. The home and article layouts start blank.',
+  '例如：我的主题': 'For example: My theme',
+  '例如：先搭一个空白版面。': 'For example: build a blank layout first.',
+  '主题创建后会自动切换为当前主题。点「创建并编排页面」会直接打开页面编排，为首页与文章页加组件。':
+    'The new theme is applied immediately. Choose “Create and compose pages” to open the page builder and add blocks to the home and article pages.',
 };
 
 export default fragment;
