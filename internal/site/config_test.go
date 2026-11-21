@@ -230,6 +230,12 @@ func TestPublicSiteConfigOnAnEmptyDocument(t *testing.T) {
 	require.JSONEq(t, `{}`, string(public))
 }
 
+func TestSiteCORSOriginsDropsLegacyWildcard(t *testing.T) {
+	document := []byte(`{"domains":{"cors_origins":["*"," https://admin.example.com "]}}`)
+
+	require.Equal(t, []string{"https://admin.example.com"}, SiteCORSOrigins(document))
+}
+
 // TestValidateAdminPathRules keeps the configured admin entry from shadowing a real site
 // route, which would make that page unreachable instead of protected.
 func TestValidateAdminPathRules(t *testing.T) {

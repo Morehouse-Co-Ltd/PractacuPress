@@ -132,7 +132,6 @@ type originParts struct {
 //	example.com                 the same host on any scheme (the page does not force a
 //	                            scheme, and silently ignoring such an entry would leave
 //	                            a rule the operator can see in the UI doing nothing)
-//	*                           any origin
 //
 // Matching is done on scheme and host, plus the port when the pattern names one. It is
 // never a substring match: "https://evil-example.com" must not satisfy "*.example.com".
@@ -154,9 +153,6 @@ func patternMatches(origin originParts, pattern string) bool {
 	trimmed := strings.TrimSpace(pattern)
 	if trimmed == "" {
 		return false
-	}
-	if trimmed == "*" {
-		return true
 	}
 	rule, ok := parsePattern(trimmed)
 	if !ok {

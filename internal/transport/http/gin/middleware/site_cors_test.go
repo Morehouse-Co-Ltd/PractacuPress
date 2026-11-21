@@ -120,15 +120,18 @@ func TestSiteCORSLeavesPreflightForUnlistedOriginToTheRouter(t *testing.T) {
 	assertNoCORSHeaders(t, w.Header())
 }
 
-func TestSiteCORSHandlesWildcardEntry(t *testing.T) {
-	r := siteCORSEngine([]string{"*"}, nil)
+func TestSiteCORSRejectsWildcardEntry(t *testing.T) {
 	const origin = "https://anywhere.example.org"
+	require.False(t, originAllowed(origin, []string{"*"}))
+
+	document := []byte(`{"domains":{"cors_origins":["*"]}}`)
+	r := newEngine(SiteCORS(func(*gin.Context) []string { return site.SiteCORSOrigins(document) }))
+	r.GET("/api/v1/content", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
 	w := serve(r, corsRequest(http.MethodGet, "press.example.com", origin))
 
-	require.Equal(t, origin, w.Header().Get("Access-Control-Allow-Origin"),
-		"even a wildcard rule echoes the origin, because credentials are allowed")
-	require.Equal(t, "true", w.Header().Get("Access-Control-Allow-Credentials"))
+	require.Equal(t, http.StatusOK, w.Code)
+	assertNoCORSHeaders(t, w.Header())
 }
 
 func TestSiteCORSHandlesSubdomainWildcard(t *testing.T) {

@@ -199,11 +199,11 @@ func (s *Service) SiteConfig(ctx context.Context, siteID string) (SiteConfig, er
 // Keeping the decoding here is what stops a second copy of the JSON tags (and with it a
 // second, quietly diverging notion of the setting) from appearing in the transport layer.
 //
-// The document was validated on write, so this only normalises: surrounding whitespace
-// is trimmed and empty or duplicate entries are dropped (compared case insensitively,
-// because hostnames are). A document that is not a JSON object yields no origins
-// instead of an error, so a hand edited row degrades to "no site level CORS" rather
-// than failing every cross origin request of that site.
+// The document was validated on write, but older rows may predate a validation rule.
+// This trims surrounding whitespace and drops empty, duplicate, and credentialed
+// wildcard entries. A document that is not a JSON object yields no origins instead of
+// an error, so a hand edited row degrades to "no site level CORS" rather than failing
+// every cross origin request of that site.
 func SiteCORSOrigins(document []byte) []string {
 	trimmed := bytes.TrimSpace(document)
 	if len(trimmed) == 0 {
@@ -221,7 +221,7 @@ func SiteCORSOrigins(document []byte) []string {
 	seen := make(map[string]struct{}, len(doc.Domains.CORSOrigins))
 	for _, entry := range doc.Domains.CORSOrigins {
 		origin := strings.TrimSpace(entry)
-		if origin == "" {
+		if origin == "" || origin == "*" {
 			continue
 		}
 		key := strings.ToLower(origin)
