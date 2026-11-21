@@ -18,6 +18,16 @@ func invalid(field, rule, message string) error {
 // carrying a previously saved secret forward when the caller left the field
 // blank and did not change the access key.
 func normalizeRequest(in UpdateRequest, previous Settings, now time.Time) (Settings, error) {
+	maxContentChars := config.DefaultMaxContentSourceChars
+	if previous.MaxContentChars > 0 {
+		maxContentChars = previous.MaxContentChars
+	}
+	if in.MaxContentChars != nil {
+		maxContentChars = *in.MaxContentChars
+	}
+	if maxContentChars < 1 || maxContentChars > config.DefaultMaxContentSourceChars {
+		return Settings{}, invalid("max_content_chars", "range", "正文长度上限必须在 1 到 1000000 个字符之间")
+	}
 	if len(in.Strategies) == 0 {
 		return Settings{}, invalid("strategies", "required", "至少需要一套储存策略")
 	}
@@ -181,6 +191,7 @@ func normalizeRequest(in UpdateRequest, previous Settings, now time.Time) (Setti
 	return Settings{
 		Version:          settingsVersion,
 		UpdatedAt:        now,
+		MaxContentChars:  maxContentChars,
 		GlobalStrategyID: globalID,
 		Strategies:       strategies,
 		Scopes:           scopes,
@@ -195,6 +206,7 @@ func validateSettings(settings Settings) error {
 		return fmt.Errorf("storage settings version %d is not supported", settings.Version)
 	}
 	in := UpdateRequest{
+		MaxContentChars:  &settings.MaxContentChars,
 		GlobalStrategyID: settings.GlobalStrategyID,
 		Strategies:       make([]StrategyInput, 0, len(settings.Strategies)),
 		Scopes:           settings.Scopes,

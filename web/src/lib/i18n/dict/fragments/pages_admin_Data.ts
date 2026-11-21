@@ -239,7 +239,7 @@ const fragment: Dictionary = {
   '缺少正文': 'Missing body',
   '未命名': 'Untitled',
   'slug 冲突，已改为 {slug}': 'Slug conflict, renamed to {slug}',
-  '正文超过 20 万字符，已截断。': 'The body exceeded 200,000 characters and was truncated.',
+  '正文超过 {max} 个字符，已截断。': 'The body exceeded {max} characters and was truncated.',
   '草稿已创建，但状态切换失败：{reason}':
     'The draft was created but the status change failed: {reason}',
   '原评论作者：{author}': 'Original comment author: {author}',

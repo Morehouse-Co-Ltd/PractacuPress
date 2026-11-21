@@ -543,7 +543,8 @@ func run() error {
 	}
 
 	contentService, err := content.NewService(content.ServiceConfig{
-		Repository: contentRepo,
+		Repository:     contentRepo,
+		MaxSourceChars: storageManager.MaxContentChars,
 		// The same repository enforces the per-author draft quota (V-06): a free
 		// account cannot grow the database without bound by creating drafts.
 		DraftQuota: contentRepo,

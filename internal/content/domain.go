@@ -311,8 +311,8 @@ const (
 	MaxTitleLength = 200
 	// MaxSummaryLength bounds a summary.
 	MaxSummaryLength = 500
-	// MaxSourceLength bounds the source body, in characters.
-	MaxSourceLength = 200_000
+	// MaxSourceLength is the absolute source-body ceiling in Unicode code points.
+	MaxSourceLength = 1_000_000
 	// MaxSlugLength bounds a slug.
 	MaxSlugLength = 120
 	// MaxTags bounds the number of labels attached to one item.
@@ -732,6 +732,15 @@ func (p Policy) AvailableActions(item Content, actor Actor) []Action {
 
 // ValidateDraft checks a create or update request.
 func ValidateDraft(in DraftInput) (DraftInput, error) {
+	return ValidateDraftWithMaxSourceLength(in, MaxSourceLength)
+}
+
+// ValidateDraftWithMaxSourceLength checks a create or update request against the
+// active source-body ceiling. The absolute cap remains MaxSourceLength.
+func ValidateDraftWithMaxSourceLength(in DraftInput, maxSourceLength int) (DraftInput, error) {
+	if maxSourceLength < 1 || maxSourceLength > MaxSourceLength {
+		maxSourceLength = MaxSourceLength
+	}
 	in.Title = strings.TrimSpace(in.Title)
 	in.Summary = strings.TrimSpace(in.Summary)
 	in.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
@@ -770,7 +779,7 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 	if in.SourceBody == "" {
 		return DraftInput{}, invalidField("body", "required", "body is required")
 	}
-	if len([]rune(in.SourceBody)) > MaxSourceLength {
+	if len([]rune(in.SourceBody)) > maxSourceLength {
 		return DraftInput{}, invalidField("body", "too_long", "body is too long")
 	}
 	if in.Slug != "" {

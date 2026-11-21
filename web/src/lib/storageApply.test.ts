@@ -71,6 +71,7 @@ function multiStrategySettings(): StorageSettings {
       },
     },
     max_upload_mb: 99,
+    max_content_chars: 1_000_000,
   };
 }
 
@@ -90,6 +91,7 @@ describe('storageApplyPayload', () => {
   it('sends the default local strategy for all four scopes', () => {
     const payload = storageApplyPayload(defaultStorage());
     expect(payload.global_strategy_id).toBe('local');
+    expect(payload.max_content_chars).toBe(1_000_000);
     expect(payload.strategies).toEqual([
       {
         id: 'local',
@@ -222,6 +224,12 @@ describe('storageApplySignature', () => {
       overflow: 'switch',
     });
     expect(storageApplySignature(overflowChanged)).not.toBe(base);
+  });
+
+  it('changes when the content length ceiling changes', () => {
+    const settings = multiStrategySettings();
+    const current = storageApplySignature(settings);
+    expect(storageApplySignature({ ...settings, max_content_chars: 300_000 })).not.toBe(current);
   });
 
   it('changes when the target or credentials change, but never contains the secret', () => {

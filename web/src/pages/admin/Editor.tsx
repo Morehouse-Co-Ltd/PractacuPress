@@ -20,6 +20,7 @@ import type {
 } from '../../types';
 import { ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/session';
+import { readStorage } from '../../lib/storage';
 import { useBackend, isDemo } from '../../lib/backend';
 import { adminEditorPath, writingPath } from '../../lib/adminAccess';
 import { usePermissions } from '../../lib/usePermissions';
@@ -126,6 +127,12 @@ type RobotsDirective = '' | 'index' | 'noindex';
 type CoverPosition = 'top' | 'center' | 'bottom';
 
 type SaveStatus = 'draft' | 'pending_review' | 'published';
+
+function countUnicodeCharacters(value: string): number {
+  let count = 0;
+  for (const _character of value) count += 1;
+  return count;
+}
 
 /**
  * 写作界面的三种录入方式。
@@ -304,7 +311,8 @@ function EditorWorkspace() {
   const { kind: kindParam, id } = useParams();
   const kind: ContentKind = kindParam === 'post' ? 'post' : 'article';
   const isNew = !id;
-  const { me, site } = useAuth();
+  const { config, me, site } = useAuth();
+  const maxContentChars = readStorage(config).max_content_chars;
   const { adminEntry } = usePermissions();
   const backend = useBackend();
   const demo = isDemo(backend);
@@ -721,7 +729,7 @@ function EditorWorkspace() {
   const canPublishDirectly = reviewer || site?.publish_mode === 'open';
   const category = taxonomy.categories.find((term) => term.id === form.category_id);
   // 源码模式显示源码本身的长度；字数按渲染后的正文统计，和富文本模式保持同一口径。
-  const sourceLength = editorMode === 'html' ? htmlDraft.length : form.source_body.length;
+  const sourceLength = countUnicodeCharacters(editorMode === 'html' ? htmlDraft : form.source_body);
   const effectiveWordCount = editorMode === 'rich' ? wordCount : htmlToText(livePreview).length;
 
   const toggleTag = (name: string) => {
@@ -767,12 +775,12 @@ function EditorWorkspace() {
   };
 
   const importMarkdown = async (file: File) => {
-    if (file.size > 2_000_000) {
-      toast.push('error', t('文件太大'), t('Markdown 文件不应超过 2 MB。'));
+    if (file.size > 8_000_000) {
+      toast.push('error', t('文件太大'), t('Markdown 文件不应超过 8 MB。'));
       return;
     }
     try {
-      const body = (await file.text()).slice(0, 200_000);
+      const body = await file.text();
       update({ source_format: 'markdown', source_body: body });
       mountSurface(normalizeEditorSource('markdown', body).html);
       setEditorMode('rich');
@@ -788,7 +796,9 @@ function EditorWorkspace() {
     if (form.title.length > 200) return t('标题不能超过 200 个字符。');
     if (form.summary.length > 500) return t('摘要不能超过 500 个字符。');
     if (!form.source_body.trim()) return t('正文不能为空。');
-    if (form.source_body.length > 200000) return t('正文不能超过 200000 个字符。');
+    if (countUnicodeCharacters(form.source_body) > maxContentChars) {
+      return t('正文不能超过 {max} 个字符。', { max: maxContentChars.toLocaleString() });
+    }
     if (form.slug.trim() && !isValidContentSlug(form.slug)) {
       return t('路径只能使用文字、数字和连字符，例如 hello-world 或 中文标题。');
     }
@@ -847,6 +857,7 @@ function EditorWorkspace() {
     const message = validate();
     if (message) {
       setError(message);
+      toast.push('error', t('保存失败'), message);
       return null;
     }
     setError('');
@@ -2509,7 +2520,7 @@ function EditorWorkspace() {
                 <span className="mini-label">{t('正文')}</span>
                 <span className="mini-value">
                   {t('{count} 字符', {
-                    count: pendingDraft.payload.source_body.length.toLocaleString(),
+                    count: countUnicodeCharacters(pendingDraft.payload.source_body).toLocaleString(),
                   })}
                 </span>
               </div>

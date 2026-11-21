@@ -75,9 +75,13 @@ func TestManagerAppliesQuotaAllocationImmediately(t *testing.T) {
 		StrategyInput{ID: "a", Name: "A", Driver: "local", LocalDir: aDir},
 		StrategyInput{ID: "b", Name: "B", Driver: "local", LocalDir: bDir},
 	)
+	maxContentChars := 420_000
+	request.MaxContentChars = &maxContentChars
 
 	status, err := manager.Apply(context.Background(), request)
 	require.NoError(t, err)
+	require.Equal(t, maxContentChars, status.MaxContentChars)
+	require.Equal(t, maxContentChars, manager.MaxContentChars())
 	require.True(t, status.Live)
 	require.Equal(t, SourceSaved, status.Source)
 	require.NotNil(t, status.UpdatedAt)
@@ -105,6 +109,7 @@ func TestManagerAppliesQuotaAllocationImmediately(t *testing.T) {
 	)
 	_, err = manager.Apply(context.Background(), single)
 	require.NoError(t, err)
+	require.Equal(t, maxContentChars, manager.MaxContentChars(), "older clients keep the current limit")
 	require.NoError(t, manager.StorageFor(media.PurposeContent).Put(context.Background(), "single", bytes.NewReader([]byte("12345")), 5))
 	require.True(t, first.has("single"))
 }
@@ -141,8 +146,11 @@ func TestManagerPersistsSecretButNeverServesIt(t *testing.T) {
 			S3AccessKey: "AKIDEXAMPLE", S3SecretKey: "TOP-SECRET",
 		},
 	)
+	maxContentChars := 765_432
+	request.MaxContentChars = &maxContentChars
 	status, err := manager.Apply(context.Background(), request)
 	require.NoError(t, err)
+	require.Equal(t, maxContentChars, status.MaxContentChars)
 
 	raw, err := json.Marshal(status)
 	require.NoError(t, err)
@@ -166,7 +174,47 @@ func TestManagerPersistsSecretButNeverServesIt(t *testing.T) {
 	require.Equal(t, SourceSaved, reloadedStatus.Source)
 	require.Len(t, reloadedStatus.Strategies, 2)
 	require.Equal(t, "cloud", reloadedStatus.Scopes[config.StorageScopeContent])
+	require.Equal(t, maxContentChars, reloadedStatus.MaxContentChars)
 	require.True(t, reloadedStatus.Strategies[1].HasSecret)
+}
+
+func TestManagerDefaultsLegacyContentLimit(t *testing.T) {
+	base := t.TempDir()
+	localDir := filepath.Join(base, "media")
+	build := func(context.Context, Target) (media.Storage, error) { return newFakeStore("local"), nil }
+	manager, err := NewManager(Config{
+		Env:     config.Config{StorageDriver: config.StorageDriverLocal, StorageDir: localDir},
+		DataDir: base,
+		Logger:  testLogger(),
+		Build:   build,
+	})
+	require.NoError(t, err)
+	_, err = manager.Apply(context.Background(), localRequest(map[string]AllocationInput{
+		config.StorageScopeContent:    singleInput("local"),
+		config.StorageScopeSite:       singleInput("local"),
+		config.StorageScopeAvatar:     singleInput("local"),
+		config.StorageScopeAttachment: singleInput("local"),
+	}, "local", StrategyInput{ID: "local", Name: "Local", Driver: "local", LocalDir: localDir}))
+	require.NoError(t, err)
+
+	settingsPath := filepath.Join(base, SettingsFilename)
+	raw, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	var legacy map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &legacy))
+	delete(legacy, "max_content_chars")
+	raw, err = json.Marshal(legacy)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(settingsPath, raw, 0o600))
+
+	reloaded, err := NewManager(Config{
+		Env:     config.Config{StorageDriver: config.StorageDriverLocal, StorageDir: localDir},
+		DataDir: base,
+		Logger:  testLogger(),
+		Build:   build,
+	})
+	require.NoError(t, err)
+	require.Equal(t, config.DefaultMaxContentSourceChars, reloaded.MaxContentChars())
 }
 
 func TestManagerRejectsInvalidDocuments(t *testing.T) {
@@ -198,6 +246,14 @@ func TestManagerRejectsInvalidDocuments(t *testing.T) {
 	var validation *ValidationError
 	require.ErrorAs(t, err, &validation)
 	require.Equal(t, "allocations.content.entries[1].strategy_id", validation.Field)
+
+	for _, value := range []int{0, config.DefaultMaxContentSourceChars + 1} {
+		invalidLimit := localRequest(nil, "a", strategies...)
+		invalidLimit.MaxContentChars = &value
+		_, err = manager.Apply(context.Background(), invalidLimit)
+		require.ErrorAs(t, err, &validation)
+		require.Equal(t, "max_content_chars", validation.Field)
+	}
 
 	missingSecret := localRequest(map[string]AllocationInput{
 		config.StorageScopeContent: singleInput("cloud"),

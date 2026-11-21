@@ -28,8 +28,13 @@ package securitygo
 // other tag or attribute changed.
 const PolicyVersion = "2026-11-21.1"
 
-// MaxSourceChars is the maximum accepted source length in Unicode code points.
-const MaxSourceChars = 200_000
+// MaxSourceChars is the content API's maximum source length in Unicode code points.
+const MaxSourceChars = 1_000_000
+
+// MaxSanitizedInputChars bounds the HTML fragment passed to the sanitizer. Markdown
+// rendering can expand a valid source through generated tags and attributes, so this
+// limit is larger than the API's source-body limit.
+const MaxSanitizedInputChars = 8_000_000
 
 // MaxUploadBytes is the maximum accepted upload size in bytes.
 const MaxUploadBytes int64 = 25 * 1024 * 1024

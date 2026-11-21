@@ -110,7 +110,7 @@ var allowedSchemes = map[string]struct{}{
 // "markdown" and "html" are sanitized identically, exactly like the reference
 // service.
 func Sanitize(format, source string) (Sanitized, error) {
-	if utf8.RuneCountInString(source) > MaxSourceChars {
+	if utf8.RuneCountInString(source) > MaxSanitizedInputChars {
 		return Sanitized{}, ErrContentTooLarge
 	}
 

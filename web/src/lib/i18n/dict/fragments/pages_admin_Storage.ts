@@ -11,6 +11,10 @@ const fragment: Dictionary = {
   '没有未保存的修改': 'No unsaved changes',
   '打开媒体库': 'Open media library',
   '性能优化': 'Performance',
+  '正文长度上限': 'Maximum content length',
+  '字符': 'characters',
+  '1 到 {max} 个 Unicode 字符；保存后文章与帖子立即按此上限校验。':
+    'From 1 to {max} Unicode characters. Articles and posts use this limit as soon as the settings are applied.',
   '编辑': 'Edit',
   '删除': 'Delete',
   '取消': 'Cancel',

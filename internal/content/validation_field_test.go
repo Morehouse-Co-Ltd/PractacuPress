@@ -2,16 +2,19 @@ package content
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	apperr "github.com/practacu/practacu-press/internal/platform/errors"
+	"github.com/practacu/practacu-press/internal/site"
 )
 
 // TestValidateDraftNamesTheFailingField pins the machine readable vocabulary the client
@@ -117,6 +120,100 @@ func TestValidateDraftNamesTheFailingField(t *testing.T) {
 			require.NotEmpty(t, fieldErr.Reason, "operators keep the english reason")
 		})
 	}
+}
+
+func TestValidateDraftAcceptsMaximumSourceLength(t *testing.T) {
+	input := DraftInput{
+		Title:        "Maximum length",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   strings.Repeat("长", MaxSourceLength),
+	}
+
+	validated, err := ValidateDraft(input)
+	require.NoError(t, err)
+	require.Equal(t, MaxSourceLength, len([]rune(validated.SourceBody)))
+}
+
+func TestServiceUsesTheCurrentContentLengthLimit(t *testing.T) {
+	limit := 2
+	service, err := NewService(ServiceConfig{
+		Repository: newFakeRepo(),
+		Sanitizer:  okSanitizer(),
+		MaxSourceChars: func() int {
+			return limit
+		},
+	})
+	require.NoError(t, err)
+	input := DraftInput{
+		Title:        "Unicode length",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   "中😀A",
+	}
+	_, err = service.CreateDraft(context.Background(), actor("author", site.RoleMember), KindArticle, input)
+	var fieldErr *apperr.FieldError
+	require.ErrorAs(t, err, &fieldErr)
+	require.Equal(t, "body", fieldErr.Field)
+
+	limit = 3
+	_, err = service.CreateDraft(context.Background(), actor("author", site.RoleMember), KindArticle, input)
+	require.NoError(t, err)
+}
+
+func TestPublishHonorsALoweredContentLengthLimit(t *testing.T) {
+	limit := 3
+	repo := newFakeRepo()
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Sanitizer:  okSanitizer(),
+		MaxSourceChars: func() int {
+			return limit
+		},
+		PublishMode: func(context.Context, string) (site.PublishMode, error) {
+			return site.PublishModeOpen, nil
+		},
+	})
+	require.NoError(t, err)
+	author := actor("author", site.RoleMember)
+	item, err := service.CreateDraft(context.Background(), author, KindArticle, DraftInput{
+		Title:        "Unicode length",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   "中😀A",
+	})
+	require.NoError(t, err)
+
+	limit = 2
+	_, err = service.Apply(context.Background(), author, item.ID, ActionPublish, "")
+	var fieldErr *apperr.FieldError
+	require.ErrorAs(t, err, &fieldErr)
+	require.Equal(t, "body", fieldErr.Field)
+	require.Equal(t, StatusDraft, repo.items[item.ID].Status)
+}
+
+func TestScheduledPublishHonorsCurrentContentLengthLimit(t *testing.T) {
+	limit := 2
+	publishAt := time.Date(2026, 10, 18, 11, 0, 0, 0, time.UTC)
+	repo := newFakeRepo()
+	repo.items["scheduled"] = Content{
+		ID: "scheduled", SiteID: "s1", AuthorID: "author", Kind: KindArticle,
+		Status: StatusDraft, SourceBody: "中😀A", RenderedHTML: "<p>safe</p>",
+		PolicyVersion: "policy-1", PublishAt: &publishAt,
+	}
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Sanitizer:  okSanitizer(),
+		MaxSourceChars: func() int {
+			return limit
+		},
+		Now: func() time.Time { return publishAt.Add(time.Minute) },
+	})
+	require.NoError(t, err)
+
+	result, err := service.ProcessScheduledPublishing(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Due)
+	require.Zero(t, result.Published)
+	require.Equal(t, StatusDraft, repo.items["scheduled"].Status)
+	require.Equal(t, 1, repo.items["scheduled"].PublishAttempts)
 }
 
 // TestCreateArticleHandlerNamesTheFailingField is the wire contract: the handler must

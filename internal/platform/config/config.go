@@ -128,6 +128,9 @@ type Config struct {
 	// these defaults independently.
 	MediaDefaultUserQuotaBytes int64
 	MediaDefaultSiteQuotaBytes int64
+	// MaxContentSourceChars caps article and post source text. The storage strategy
+	// runtime setting can override this value after startup.
+	MaxContentSourceChars int
 	// HTTPReadTimeout bounds how long a request may take to arrive. It protects the
 	// server from slow clients holding connections open.
 	HTTPReadTimeout time.Duration
@@ -321,11 +324,12 @@ const (
 	// DefaultHTTPRequestTimeout bounds one request's work. Thirty seconds is far more
 	// than any endpoint here needs and far less than forever.
 	DefaultHTTPRequestTimeout = 30 * time.Second
-	// DefaultMaxRequestBodyBytes caps ordinary JSON bodies. The largest legitimate one
-	// is a 200k character article source (the security package's own ceiling), which is
-	// under a megabyte as UTF-8, so four is generous. Upload routes carry their own,
+	// DefaultMaxRequestBodyBytes caps ordinary JSON bodies. It accommodates one million
+	// four-byte Unicode code points plus JSON metadata. Upload routes carry their own,
 	// larger limit derived from the media module's attachment ceiling.
-	DefaultMaxRequestBodyBytes = 4 << 20
+	DefaultMaxRequestBodyBytes = 8 << 20
+	// DefaultMaxContentSourceChars is both the fresh-install value and absolute maximum.
+	DefaultMaxContentSourceChars = 1_000_000
 	// DefaultMediaUserQuotaBytes caps accumulated media per member on fresh deployments.
 	DefaultMediaUserQuotaBytes int64 = 512 << 20
 	// DefaultMediaSiteQuotaBytes caps accumulated media per site on fresh deployments.
@@ -508,6 +512,17 @@ func Load() (Config, error) {
 		}
 	}
 	cfg.MaxRequestBodyBytes = int64(bodyLimit)
+	contentLimit, err := envInt("MAX_CONTENT_SOURCE_CHARS", DefaultMaxContentSourceChars)
+	if err != nil {
+		return Config{}, err
+	}
+	if contentLimit < 1 || contentLimit > DefaultMaxContentSourceChars {
+		return Config{}, &Error{
+			Code:   "invalid_max_content_source_chars",
+			Detail: "MAX_CONTENT_SOURCE_CHARS must be between 1 and 1000000",
+		}
+	}
+	cfg.MaxContentSourceChars = contentLimit
 
 	for key, target := range map[string]*int{
 		"DB_MAX_OPEN_CONNS": &cfg.DBMaxOpenConns,

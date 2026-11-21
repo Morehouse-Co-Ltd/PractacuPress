@@ -303,6 +303,10 @@ func (s *Service) ProcessScheduledPublishing(ctx context.Context) (ScheduledPubl
 		if item.Status != StatusDraft || item.PublishAt == nil {
 			continue
 		}
+		if len([]rune(item.SourceBody)) > s.maxSourceLength() {
+			s.recordScheduleFailure(ctx, item, now, errors.New("content body exceeds current length limit"), &result)
+			continue
+		}
 		if !item.IsSanitized() {
 			s.recordScheduleFailure(ctx, item, now, errors.New("not sanitized"), &result)
 			continue

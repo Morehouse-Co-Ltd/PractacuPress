@@ -233,7 +233,7 @@ func (s *Service) importOne(
 	if !ok {
 		return item, fmt.Errorf("%w: content file %q is missing", ErrInvalidArchive, ref.Path)
 	}
-	raw, err := readZipEntry(file, int64(content.MaxSourceLength*4)+(1<<16))
+	raw, err := readZipEntry(file, int64(content.MaxSourceLength*6)+(1<<16))
 	if err != nil {
 		return item, err
 	}

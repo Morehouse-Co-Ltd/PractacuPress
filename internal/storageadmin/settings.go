@@ -79,6 +79,7 @@ type Allocation struct {
 type Settings struct {
 	Version          int                   `json:"version"`
 	UpdatedAt        time.Time             `json:"updated_at"`
+	MaxContentChars  int                   `json:"max_content_chars"`
 	GlobalStrategyID string                `json:"global_strategy_id"`
 	Strategies       []Strategy            `json:"strategies"`
 	Scopes           map[string]string     `json:"scopes"`
@@ -114,6 +115,7 @@ type AllocationInput struct {
 
 // UpdateRequest is the body of PUT /system/storage.
 type UpdateRequest struct {
+	MaxContentChars  *int                       `json:"max_content_chars,omitempty"`
 	GlobalStrategyID string                     `json:"global_strategy_id"`
 	Strategies       []StrategyInput            `json:"strategies"`
 	Scopes           map[string]string          `json:"scopes"`
@@ -163,6 +165,7 @@ func envSettings(cfg config.Config) Settings {
 
 	settings := Settings{
 		Version:          settingsVersion,
+		MaxContentChars:  configuredMaxContentChars(cfg),
 		GlobalStrategyID: global.ID,
 		Strategies:       []Strategy{global},
 		Scopes:           map[string]string{},
@@ -202,6 +205,13 @@ func envSettings(cfg config.Config) Settings {
 		}
 	}
 	return settings
+}
+
+func configuredMaxContentChars(cfg config.Config) int {
+	if cfg.MaxContentSourceChars >= 1 && cfg.MaxContentSourceChars <= config.DefaultMaxContentSourceChars {
+		return cfg.MaxContentSourceChars
+	}
+	return config.DefaultMaxContentSourceChars
 }
 
 func quotaBytes(quotaGB int64) int64 {

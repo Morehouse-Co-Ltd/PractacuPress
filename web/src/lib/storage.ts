@@ -56,6 +56,9 @@ export const MAX_ALLOCATION_ENTRIES = 8;
 /** 单套策略在单个用途下的容量上限（GB）；0 表示不限。 */
 export const MAX_ALLOCATION_QUOTA_GB = 1_000_000;
 
+/** 正文长度上限；储存策略可以调低，不能超过服务端的绝对上限。 */
+export const MAX_CONTENT_SOURCE_CHARS = 1_000_000;
+
 /** 旧配置缺省时应显示的默认容量上限。 */
 const DEFAULT_ALLOCATION_QUOTA_GB = 0;
 
@@ -156,6 +159,7 @@ export function defaultStorage(): StorageSettings {
       attachment: emptyAllocation(strategy.id),
     },
     max_upload_mb: 25,
+    max_content_chars: MAX_CONTENT_SOURCE_CHARS,
   };
 }
 
@@ -525,6 +529,7 @@ function migrateLegacy(source: Record<string, unknown>): StorageSettings {
     scopes: scopeIdsFromAllocations(allocations),
     allocations,
     max_upload_mb: 25,
+    max_content_chars: MAX_CONTENT_SOURCE_CHARS,
   };
 }
 
@@ -579,6 +584,12 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
   if (!source) return fallback;
 
   const max_upload_mb = settingInt(source.max_upload_mb, fallback.max_upload_mb, 1, 2048);
+  const max_content_chars = settingInt(
+    source.max_content_chars,
+    fallback.max_content_chars,
+    1,
+    MAX_CONTENT_SOURCE_CHARS,
+  );
 
   if (Array.isArray(source.strategies)) {
     const strategies: StorageStrategy[] = [];
@@ -589,7 +600,7 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
       strategies.push(normalizeStrategy(entry, sanitizeId(entry.id, strategies.length)));
     }
     const settled = settleStrategies(strategies);
-    if (!settled.length) return { ...fallback, max_upload_mb };
+    if (!settled.length) return { ...fallback, max_upload_mb, max_content_chars };
     const scopes = fallbackScopeIds(
       (source.scopes && typeof source.scopes === 'object'
         ? source.scopes
@@ -602,12 +613,13 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
       scopes: scopeIdsFromAllocations(allocations),
       allocations,
       max_upload_mb,
+      max_content_chars,
     };
   }
 
   // 没有 strategies 数组：一律按旧结构迁移（空对象迁移结果就等于默认值）。
   const migrated = migrateLegacy(source);
-  return { ...migrated, max_upload_mb };
+  return { ...migrated, max_upload_mb, max_content_chars };
 }
 
 export function readStorage(config: Pick<WebConfig, 'storage'>): StorageSettings {
@@ -746,6 +758,7 @@ export function buildStorageEnvSnippet(
   const lines: string[] = [
     t('# 由 Practacu Press「站点设置 → 储存策略」生成'),
     t('# 复制到 API 的 .env 后重启服务才生效；本页不会修改服务器'),
+    `MAX_CONTENT_SOURCE_CHARS=${normalized.max_content_chars}`,
     '',
     t('# 全局段：被最多用途使用的策略「{name}」（{driver}）', {
       name: globalStrategy.name,
@@ -884,6 +897,7 @@ export function storageApplyPayload(
       avatar: allocationPayload(allocations.avatar),
       attachment: allocationPayload(allocations.attachment),
     },
+    max_content_chars: normalized.max_content_chars,
   };
 }
 
@@ -895,7 +909,8 @@ export function storageApplyPayload(
  * 相同的设置永远得到相同的签名。**不含任何密钥**：Secret Key 只存在于组件状态；
  * Access Key 的值会进签名（它不是密钥，本来就保存在本地配置里）。改名、改目录、
  * 改桶、改 endpoint / 区域、改用途指向、改配额 / 模式 / 顺序 / overflow 都会让
- * 签名变化；`max_upload_mb` 与 `s3_public_base_url` 只是页面提示，不进签名。
+ * 签名变化；`max_content_chars` 会进签名，因为它影响服务端校验。`max_upload_mb`
+ * 与 `s3_public_base_url` 只是页面提示，不进签名。
  */
 export function storageApplySignature(settings: StorageSettings): string {
   const normalized = normalizeStorage(settings);
@@ -920,6 +935,7 @@ export function storageApplySignature(settings: StorageSettings): string {
       allocations[scope].entries.map((entry) => [entry.strategy_id, entry.quota_gb]),
       allocations[scope].overflow,
     ]),
+    max_content_chars: normalized.max_content_chars,
   });
 }
 
@@ -979,5 +995,6 @@ export function storageSettingsFromStatus(
     scopes,
     allocations,
     max_upload_mb: local.max_upload_mb,
+    max_content_chars: status.max_content_chars ?? local.max_content_chars,
   });
 }

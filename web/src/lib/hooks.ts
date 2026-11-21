@@ -120,7 +120,6 @@ export function useUnsavedWarning(dirty: boolean) {
 
 const EDITOR_DRAFT_PREFIX = 'pp.editor.draft.v1';
 const EDITOR_DRAFT_VERSION = 1;
-const EDITOR_DRAFT_BODY_LIMIT = 200_000;
 
 export interface EditorDraftPayload {
   title: string;
@@ -207,7 +206,7 @@ export function parseEditorDraft(raw: string | null | undefined): EditorDraftRec
       slug: payload.slug,
       summary: payload.summary,
       source_format: 'markdown',
-      source_body: payload.source_body.slice(0, EDITOR_DRAFT_BODY_LIMIT),
+      source_body: payload.source_body,
       category_id: payload.category_id,
       tags: payload.tags.slice(0, 12),
     },

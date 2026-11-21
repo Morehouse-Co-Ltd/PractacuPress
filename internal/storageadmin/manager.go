@@ -333,6 +333,7 @@ func (m *Manager) Status() Status {
 	status := Status{
 		Live:             true,
 		Source:           source,
+		MaxContentChars:  settings.MaxContentChars,
 		GlobalStrategyID: settings.GlobalStrategyID,
 		Strategies:       make([]StrategyStatus, 0, len(settings.Strategies)),
 		Scopes:           make(map[string]string, len(settings.Scopes)),
@@ -370,6 +371,17 @@ func (m *Manager) Status() Status {
 		status.Effective = append(status.Effective, effectiveRow(scope, scopes[media.Purpose(scope)]))
 	}
 	return status
+}
+
+// MaxContentChars returns the current content body ceiling. It changes with the
+// storage settings document and is read by content validation on each write.
+func (m *Manager) MaxContentChars() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.settings.MaxContentChars >= 1 && m.settings.MaxContentChars <= config.DefaultMaxContentSourceChars {
+		return m.settings.MaxContentChars
+	}
+	return config.DefaultMaxContentSourceChars
 }
 
 func (m *Manager) allocationStatus(allocation Allocation, routing *routingStorage) AllocationStatus {

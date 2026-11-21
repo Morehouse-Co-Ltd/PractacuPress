@@ -50,6 +50,7 @@ type Status struct {
 	Live             bool                        `json:"live"`
 	Source           string                      `json:"source"`
 	UpdatedAt        *time.Time                  `json:"updated_at"`
+	MaxContentChars  int                         `json:"max_content_chars"`
 	GlobalStrategyID string                      `json:"global_strategy_id"`
 	Strategies       []StrategyStatus            `json:"strategies"`
 	Scopes           map[string]string           `json:"scopes"`

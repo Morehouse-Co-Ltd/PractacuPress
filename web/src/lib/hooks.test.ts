@@ -93,6 +93,13 @@ describe('parseEditorDraft', () => {
     expect(parsed?.content_id).toBeNull();
     expect(parsed?.kind).toBe('');
   });
+
+  it('恢复超过 20 万字符的本地正文时不截断内容', () => {
+    const sourceBody = '长'.repeat(200_001);
+    const stored = record({ payload: { ...payload, source_body: sourceBody } });
+
+    expect(parseEditorDraft(JSON.stringify(stored))?.payload.source_body).toBe(sourceBody);
+  });
 });
 
 describe('本地草稿读写', () => {

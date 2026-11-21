@@ -433,6 +433,7 @@ describe('strategy helpers', () => {
         strategies: [localStrategy('local', '本地储存'), cloudStrategy('cos', 'COS', 'b')],
         scopes: { content: 'cos', site: 'cos', avatar: 'cos', attachment: 'cos' },
         max_upload_mb: 25,
+        max_content_chars: 1_000_000,
       },
       'cos',
     );
@@ -466,6 +467,7 @@ describe('strategy helpers', () => {
       strategies,
       scopes: { content: 'cos', site: 'cos', avatar: 'local', attachment: 'local' },
       max_upload_mb: 25,
+      max_content_chars: 1_000_000,
     };
     expect(globalStrategyOf(tie).id).toBe('local');
 
@@ -473,8 +475,19 @@ describe('strategy helpers', () => {
       strategies,
       scopes: { content: 'cos', site: 'cos', avatar: 'cos', attachment: 'local' },
       max_upload_mb: 25,
+      max_content_chars: 1_000_000,
     };
     expect(globalStrategyOf(majority).id).toBe('cos');
+  });
+
+  it('defaults and normalizes the content length ceiling', () => {
+    expect(defaultStorage().max_content_chars).toBe(1_000_000);
+    expect(normalizeStorage({ ...defaultStorage(), max_content_chars: 250_000 }).max_content_chars).toBe(
+      250_000,
+    );
+    expect(normalizeStorage({ ...defaultStorage(), max_content_chars: 2_000_000 }).max_content_chars).toBe(
+      1_000_000,
+    );
   });
 });
 
@@ -497,6 +510,7 @@ describe('buildStorageEnvSnippet', () => {
     const snippet = buildStorageEnvSnippet(defaultStorage());
     expect(snippet).toContain('STORAGE_DRIVER=local');
     expect(snippet).toContain('STORAGE_DIR=./data/media');
+    expect(snippet).toContain('MAX_CONTENT_SOURCE_CHARS=1000000');
     expect(snippet).not.toMatch(/^STORAGE_S3_BUCKET=/m);
     expect(snippet).toContain('四个用途都使用同一套「本地储存」');
     for (const scope of STORAGE_SCOPES) {

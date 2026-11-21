@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/practacu/practacu-press/internal/platform/config"
 )
 
 func readSettingsFile(path string) (Settings, bool, error) {
@@ -24,6 +26,13 @@ func readSettingsFile(path string) (Settings, bool, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&settings); err != nil {
 		return Settings{}, false, fmt.Errorf("decode %s: %w", path, err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return Settings{}, false, fmt.Errorf("decode %s: %w", path, err)
+	}
+	if _, exists := fields["max_content_chars"]; !exists {
+		settings.MaxContentChars = config.DefaultMaxContentSourceChars
 	}
 	if err := validateSettings(settings); err != nil {
 		return Settings{}, false, fmt.Errorf("validate %s: %w", path, err)

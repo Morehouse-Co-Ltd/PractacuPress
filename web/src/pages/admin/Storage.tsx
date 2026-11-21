@@ -16,6 +16,7 @@ import {
   DEFAULT_LOCAL_DIR,
   MAX_ALLOCATION_ENTRIES,
   MAX_ALLOCATION_QUOTA_GB,
+  MAX_CONTENT_SOURCE_CHARS,
   MAX_STRATEGIES,
   MAX_STRATEGY_NAME,
   STORAGE_SCOPES,
@@ -986,6 +987,22 @@ export function StoragePage() {
             </div>
           </div>
           <div className="panel-body">
+            <div style={{ maxWidth: 440, marginBottom: 20 }}>
+              <NumberField
+                id="storage-max-content-chars"
+                label={t('正文长度上限')}
+                hint={t('1 到 {max} 个 Unicode 字符；保存后文章与帖子立即按此上限校验。', {
+                  max: MAX_CONTENT_SOURCE_CHARS.toLocaleString(),
+                })}
+                value={draft.max_content_chars}
+                min={1}
+                max={MAX_CONTENT_SOURCE_CHARS}
+                unit={t('字符')}
+                onChange={(value) =>
+                  setDraft((previous) => ({ ...previous, max_content_chars: value }))
+                }
+              />
+            </div>
             <div className="storage-strategy-list">
               {draft.strategies.map((strategy) => {
                 const usedBy = scopesUsingStrategy(draft, strategy.id);

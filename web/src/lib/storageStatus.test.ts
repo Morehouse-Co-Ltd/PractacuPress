@@ -39,6 +39,7 @@ function runtimeStatus(): StorageStatus {
     live: true,
     source: 'saved',
     updated_at: '2026-01-02T03:04:05Z',
+    max_content_chars: 450_000,
     global_strategy_id: 'cos',
     strategies: [
       {
@@ -102,6 +103,7 @@ describe('storageSettingsFromStatus', () => {
 
     expect(settings.strategies.map((strategy) => strategy.id)).toEqual(['local', 'cos']);
     expect(settings.strategies[1].s3_access_key).toBe('AKIDEXAMPLE');
+    expect(settings.max_content_chars).toBe(450_000);
     expect(settings.strategies[1].s3_public_base_url).toBe('https://cdn.example.com/media');
     expect(settings.scopes).toEqual({
       content: 'cos',

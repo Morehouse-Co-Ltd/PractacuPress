@@ -272,9 +272,10 @@ type Service struct {
 	redirects RedirectRecorder
 	// views is the in-process de-duplication table of the read counter. It is bound
 	// to the service clock so a test can move time across the window.
-	views      *viewGate
-	now        func() time.Time
-	permalinks func(context.Context, string) (permalink.Settings, error)
+	views          *viewGate
+	now            func() time.Time
+	permalinks     func(context.Context, string) (permalink.Settings, error)
+	maxSourceChars func() int
 }
 
 // ServiceConfig configures a Service.
@@ -306,7 +307,9 @@ type ServiceConfig struct {
 	// (contract J4). Nil skips the recording without failing the save.
 	RedirectRecorder RedirectRecorder
 	Permalinks       func(context.Context, string) (permalink.Settings, error)
-	Now              func() time.Time
+	// MaxSourceChars supplies the live body ceiling. Nil uses the absolute default.
+	MaxSourceChars func() int
+	Now            func() time.Time
 }
 
 // NewService builds a Service.
@@ -319,18 +322,19 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	}
 
 	service := &Service{
-		repo:        cfg.Repository,
-		sanitizer:   cfg.Sanitizer,
-		guard:       cfg.ContentGuard,
-		publishMode: cfg.PublishMode,
-		draftQuota:  cfg.DraftQuota,
-		notifier:    cfg.ReviewNotifier,
-		hasher:      cfg.AccessPasswordHasher,
-		unlocks:     cfg.UnlockTokens,
-		preview:     cfg.PreviewSigner,
-		redirects:   cfg.RedirectRecorder,
-		now:         cfg.Now,
-		permalinks:  cfg.Permalinks,
+		repo:           cfg.Repository,
+		sanitizer:      cfg.Sanitizer,
+		guard:          cfg.ContentGuard,
+		publishMode:    cfg.PublishMode,
+		draftQuota:     cfg.DraftQuota,
+		notifier:       cfg.ReviewNotifier,
+		hasher:         cfg.AccessPasswordHasher,
+		unlocks:        cfg.UnlockTokens,
+		preview:        cfg.PreviewSigner,
+		redirects:      cfg.RedirectRecorder,
+		now:            cfg.Now,
+		permalinks:     cfg.Permalinks,
+		maxSourceChars: cfg.MaxSourceChars,
 	}
 	// The Beta 1.2 features are storage capabilities of the same repository, so they
 	// are detected here instead of being threaded through a second config field: the
@@ -357,6 +361,17 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	return service, nil
 }
 
+func (s *Service) validateDraft(in DraftInput) (DraftInput, error) {
+	return ValidateDraftWithMaxSourceLength(in, s.maxSourceLength())
+}
+
+func (s *Service) maxSourceLength() int {
+	if s.maxSourceChars == nil {
+		return MaxSourceLength
+	}
+	return s.maxSourceChars()
+}
+
 // CreateDraft stores a new draft after sanitizing it.
 //
 // If sanitization is unavailable the item is stored in
@@ -370,7 +385,7 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 	if !kind.Valid() {
 		return Content{}, ErrInvalidInput
 	}
-	validated, err := ValidateDraft(in)
+	validated, err := s.validateDraft(in)
 	if err != nil {
 		return Content{}, err
 	}
@@ -509,7 +524,7 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 		return Content{}, &VersionConflictError{Current: item.Revision}
 	}
 
-	validated, err := ValidateDraft(in)
+	validated, err := s.validateDraft(in)
 	if err != nil {
 		return Content{}, err
 	}
@@ -634,6 +649,9 @@ func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, acti
 	next, err := Policy{PublishMode: mode}.Next(item, action, actor)
 	if err != nil {
 		return Content{}, err
+	}
+	if next == StatusPublished && len([]rune(item.SourceBody)) > s.maxSourceLength() {
+		return Content{}, invalidField("body", "too_long", "body is too long")
 	}
 
 	// A word added after the draft was written must not slip out through a publish

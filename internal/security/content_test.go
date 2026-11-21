@@ -130,7 +130,7 @@ func TestUnknownFormatIsRefused(t *testing.T) {
 }
 
 func TestOversizedInputIsRefused(t *testing.T) {
-	_, err := Sanitize("plain", strings.Repeat("a", MaxSourceChars+1))
+	_, err := Sanitize("plain", strings.Repeat("a", MaxSanitizedInputChars+1))
 	require.ErrorIs(t, err, ErrContentTooLarge)
 }
 

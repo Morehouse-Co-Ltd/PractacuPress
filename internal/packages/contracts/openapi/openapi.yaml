@@ -7122,7 +7122,7 @@ components:
             A title without letters or digits keeps the id based fallback address.
         summary: { type: string, maxLength: 500 }
         source_format: { type: string, enum: [markdown, html, plain], default: markdown }
-        source_body: { type: string, maxLength: 200000 }
+        source_body: { type: string, maxLength: 1000000 }
         category_id: { type: string }
         tags:
           type: array
@@ -8079,11 +8079,12 @@ components:
       description: |
         The runtime media storage document. Strategy secrets are absent by
         construction; usage is server measured and refreshed on every request.
-      required: [live, source, global_strategy_id, strategies, scopes, allocations, effective]
+      required: [live, source, max_content_chars, global_strategy_id, strategies, scopes, allocations, effective]
       properties:
         live: { type: boolean, description: True when adapters can be swapped without a restart. }
         source: { type: string, enum: [env, saved] }
         updated_at: { type: string, format: date-time, description: Null when the running document came from .env. }
+        max_content_chars: { type: integer, minimum: 1, maximum: 1000000 }
         global_strategy_id: { type: string }
         strategies:
           type: array
@@ -8134,8 +8135,9 @@ components:
 
     StorageUpdateRequest:
       type: object
-      required: [global_strategy_id, strategies, scopes, allocations]
+      required: [global_strategy_id, strategies, scopes, allocations, max_content_chars]
       properties:
+        max_content_chars: { type: integer, minimum: 1, maximum: 1000000 }
         global_strategy_id: { type: string }
         strategies:
           type: array

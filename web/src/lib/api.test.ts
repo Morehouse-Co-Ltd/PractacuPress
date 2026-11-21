@@ -437,6 +437,7 @@ describe('HttpBackend runtime storage', () => {
 
   it('applies storage with the documented payload', async () => {
     const request: StorageApplyRequest = {
+      max_content_chars: 1_000_000,
       global_strategy_id: 'cos',
       strategies: [
         {

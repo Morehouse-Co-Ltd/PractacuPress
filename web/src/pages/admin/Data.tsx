@@ -11,6 +11,7 @@ import type {
   TaxonomySettings,
 } from '../../types';
 import { useAuth } from '../../lib/session';
+import { readStorage } from '../../lib/storage';
 import { isDemo, useBackend } from '../../lib/backend';
 import { errorText, getLocale, useT } from '../../lib/i18n';
 import { useAsync, useTitle } from '../../lib/hooks';
@@ -66,9 +67,6 @@ const MAX_PAGES = 200;
 /** 导入 XML 的大小上限：浏览器里解析，过大的文件会卡住页面。 */
 const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
 
-/** 后端正文上限（与编辑器一致）；超出的导入内容截断并逐条说明。 */
-const MAX_BODY_LENGTH = 200_000;
-
 type WpAction = 'imported' | 'published' | 'submitted' | 'skipped' | 'failed';
 
 interface WpImportItem {
@@ -99,7 +97,8 @@ type DataTab = 'transfer' | 'backup';
 /** 数据与备份：数据导入导出的两张导出卡、两张导入卡，以及平台管理员可见的实例备份。 */
 export function DataPage() {
   const t = useT();
-  const { site, me } = useAuth();
+  const { config, site, me } = useAuth();
+  const maxBodyLength = readStorage(config).max_content_chars;
   const backend = useBackend();
   const toast = useToast();
   const { ensureStepUp } = useStepUp();
@@ -582,8 +581,13 @@ export function DataPage() {
 
       const notes: string[] = [];
       if (renamed) notes.push(t('slug 冲突，已改为 {slug}', { slug }));
-      const truncated = body.length > MAX_BODY_LENGTH;
-      if (truncated) notes.push(t('正文超过 20 万字符，已截断。'));
+      const bodyCharacters = Array.from(body);
+      const truncated = bodyCharacters.length > maxBodyLength;
+      if (truncated) {
+        notes.push(
+          t('正文超过 {max} 个字符，已截断。', { max: maxBodyLength.toLocaleString() }),
+        );
+      }
 
       try {
         const created = await backend.createDraft(post.kind, {
@@ -591,7 +595,7 @@ export function DataPage() {
           slug: slug || undefined,
           summary: post.summary?.trim().slice(0, 500) || undefined,
           source_format: post.source_format,
-          source_body: truncated ? body.slice(0, MAX_BODY_LENGTH) : body,
+          source_body: truncated ? bodyCharacters.slice(0, maxBodyLength).join('') : body,
           category_id: categoryId,
           tags: tags.length ? tags : undefined,
         });

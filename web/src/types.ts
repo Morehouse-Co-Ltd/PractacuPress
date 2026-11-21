@@ -2503,6 +2503,8 @@ export interface StorageSettings {
   allocations?: Record<StorageScope, StorageScopeAllocation>;
   /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 决定。 */
   max_upload_mb: number;
+  /** 正文输入与发布的 Unicode 字符上限，由 API 实时执行。 */
+  max_content_chars: number;
 }
 
 /**
@@ -2556,6 +2558,8 @@ export interface StorageStatus {
   source: 'env' | 'saved';
   /** 最近一次把后台设置应用到进程的时间（RFC 3339）；`env` 来源时为 null。 */
   updated_at?: string | null;
+  /** 正文 Unicode 字符上限；旧后端可能不返回。 */
+  max_content_chars?: number;
   /** 被最多用途使用的那套策略 id（部署片段里的全局策略）。 */
   global_strategy_id: string;
   strategies: StorageRuntimeStrategy[];
@@ -2587,6 +2591,7 @@ export interface StorageApplyStrategy {
  * `overflow` 都在写入时真正生效，不再只是页面上的计划。
  */
 export interface StorageApplyRequest {
+  max_content_chars: number;
   global_strategy_id: string;
   strategies: StorageApplyStrategy[];
   scopes: Record<string, string>;

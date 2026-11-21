@@ -95,6 +95,30 @@ func TestLoadServerResourceDefaults(t *testing.T) {
 	require.Zero(t, cfg.DBMaxOpenConns)
 	require.Zero(t, cfg.DBMaxIdleConns)
 	require.Equal(t, 30*time.Minute, cfg.DBConnMaxLifetime)
+	require.Equal(t, DefaultMaxContentSourceChars, cfg.MaxContentSourceChars)
+}
+
+func TestLoadContentSourceLimitOverride(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("MAX_CONTENT_SOURCE_CHARS", "345678")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 345678, cfg.MaxContentSourceChars)
+}
+
+func TestLoadRejectsOutOfRangeContentSourceLimit(t *testing.T) {
+	for _, value := range []string{"0", "1000001"} {
+		t.Run(value, func(t *testing.T) {
+			setValidEnv(t)
+			t.Setenv("MAX_CONTENT_SOURCE_CHARS", value)
+			_, err := Load()
+			require.Error(t, err)
+			var cfgErr *Error
+			require.ErrorAs(t, err, &cfgErr)
+			require.Equal(t, "invalid_max_content_source_chars", cfgErr.Code)
+		})
+	}
 }
 
 func TestLoadServerResourceOverrides(t *testing.T) {

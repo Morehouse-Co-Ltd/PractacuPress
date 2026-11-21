@@ -548,6 +548,7 @@ function demoStorageStatus(
     live: true,
     source,
     updated_at: source === 'saved' ? new Date().toISOString() : null,
+    max_content_chars: request?.max_content_chars ?? 1_000_000,
     global_strategy_id: request?.global_strategy_id ?? DEMO_STORAGE_STRATEGY_ID,
     strategies,
     scopes,
@@ -2031,7 +2032,9 @@ export class DemoBackend {
     if (!input.title.trim()) this.fail(400, 'validation_failed', '标题不能为空。');
     if (input.title.length > 200) this.fail(400, 'validation_failed', '标题不能超过 200 个字符。');
     if (!input.source_body.trim()) this.fail(400, 'validation_failed', '正文不能为空。');
-    if (input.source_body.length > 200_000) this.fail(400, 'validation_failed', '正文不能超过 200000 个字符。');
+    if (Array.from(input.source_body).length > 1_000_000) {
+      this.fail(400, 'validation_failed', '正文不能超过 1000000 个字符。');
+    }
     if (input.slug?.trim() && !isValidContentSlug(input.slug)) {
       this.fail(400, 'validation_failed', '路径只能使用文字、数字和连字符。');
     }

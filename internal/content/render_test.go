@@ -2,10 +2,12 @@ package content
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	securitygo "github.com/practacu/practacu-press/internal/security"
 	"github.com/practacu/practacu-press/internal/site"
 )
 
@@ -39,6 +41,49 @@ func TestMarkdownIsConvertedBeforeSanitization(t *testing.T) {
 	require.Equal(t, FormatHTML, sanitizer.lastFormat,
 		"markdown must reach the sanitizer already rendered as HTML")
 	require.Contains(t, sanitizer.lastSource, "<h1")
+}
+
+func TestMaximumLengthMarkdownCanBeSanitizedAfterRendering(t *testing.T) {
+	source := strings.Repeat("长", MaxSourceLength)
+	rendered, err := renderMarkdown(source)
+	require.NoError(t, err)
+
+	_, err = securitygo.Sanitize("html", rendered)
+	require.NoError(t, err)
+}
+
+type localPolicySanitizer struct{}
+
+func (localPolicySanitizer) Sanitize(
+	_ context.Context,
+	format SourceFormat,
+	source string,
+) (Sanitized, error) {
+	result, err := securitygo.Sanitize(string(format), source)
+	if err != nil {
+		return Sanitized{}, err
+	}
+	return Sanitized{
+		HTML:          result.HTML,
+		PolicyVersion: result.PolicyVersion,
+		Violations:    result.Violations,
+	}, nil
+}
+
+func TestMaximumLengthMarkdownCanBePublished(t *testing.T) {
+	service := newService(t, newFakeRepo(), localPolicySanitizer{}, site.PublishModeOpen)
+	author := actor("author", site.RoleMember)
+	item, err := service.CreateDraft(context.Background(), author, KindArticle, DraftInput{
+		Title:        "Maximum length",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   strings.Repeat("长", MaxSourceLength),
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusDraft, item.Status)
+
+	published, err := service.Apply(context.Background(), author, item.ID, ActionPublish, "")
+	require.NoError(t, err)
+	require.Equal(t, StatusPublished, published.Status)
 }
 
 // TestDiagramFenceSurvivesMarkdownRendering pins the article-diagram storage contract:
