@@ -139,12 +139,16 @@ func (b *zipBuilder) close() error { return b.writer.Close() }
 
 // CreateBackup builds a whole instance backup package on explicit operator request.
 func (s *Service) CreateBackup(ctx context.Context) (Artifact, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.createBackup(ctx, OriginManual)
 }
 
 // CreateAutomaticBackup builds a package for the scheduled retention loop. Its
 // origin is what keeps prune from deleting manual packages.
 func (s *Service) CreateAutomaticBackup(ctx context.Context) (Artifact, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.createBackup(ctx, OriginAuto)
 }
 

@@ -2741,6 +2741,19 @@ export interface BackupArtifact {
   warnings?: string[];
 }
 
+/** 数据与备份：页面内在线恢复的结果。 */
+export interface RestoreBackupResult {
+  safety_backup_id: string;
+  database_path: string;
+  media_files: number;
+  sites: number;
+  users: number;
+  content: number;
+  schema_version: string;
+  migrated: boolean;
+  warnings?: string[];
+}
+
 /** 导入时 slug 冲突的处理策略。 */
 export type ImportConflictStrategy = 'rename' | 'skip' | 'fail' | 'overwrite';
 

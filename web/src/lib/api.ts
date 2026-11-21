@@ -48,6 +48,7 @@ import type {
   PhonePolicy,
   PreviewGrant,
   ReadingHistoryEntry,
+  RestoreBackupResult,
   Member,
   MediaQuotaBytes,
   Message,
@@ -2431,6 +2432,19 @@ export class HttpBackend {
 
   async downloadBackup(id: string): Promise<{ blob: Blob; filename: string }> {
     return this.download(`/platform/backups/${encodeURIComponent(id)}/download`);
+  }
+
+  /**
+   * 页面内快速恢复：用已保存的备份覆盖本机 SQLite 数据库。
+   *
+   * 服务端要求平台管理员并强制 `X-PP-Step-Up`，调用方必须先走一次二次验证；
+   * 恢复耗时可能较长，调用方应有独立的进行中状态，不能复用列表加载状态。
+   */
+  async restoreBackup(id: string): Promise<RestoreBackupResult> {
+    return this.request<RestoreBackupResult>(
+      `/platform/backups/${encodeURIComponent(id)}/restore`,
+      { method: 'POST' },
+    );
   }
 
   /** 全站导出：默认包含草稿，publishedOnly 为真时只导出已发布内容。 */

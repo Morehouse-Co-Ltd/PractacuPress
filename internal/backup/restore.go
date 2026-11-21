@@ -19,12 +19,12 @@ import (
 	"github.com/practacu/practacu-press/internal/infrastructure/db"
 )
 
-// RestoreOptions describes one restore run.
+// RestoreOptions describes one file-replacement restore run.
 //
-// Restore is a CLI operation: replacing the file a running process has open is
-// not safe, and this package cannot make it safe from inside that process. The
-// safety backup id is required for a non-empty database so the caller cannot
-// forget the automatic pre-restore snapshot.
+// Restore is the CLI path: it swaps the SQLite file and therefore requires the
+// server to be stopped. The HTTP endpoint uses RestoreStored and SQLite's online
+// backup API instead. The safety backup id is required for a non-empty database
+// so the caller cannot forget the automatic pre-restore snapshot.
 type RestoreOptions struct {
 	ArchivePath  string
 	TargetDBPath string
@@ -56,9 +56,9 @@ type RestoreResult struct {
 
 // SQLitePathFromDSN extracts the file path a SQLite DSN points at.
 //
-// Restore cannot reuse the live handle: it has to replace the file. Parsing the
-// DSN here keeps the CLI from asking the operator to type the path twice, and
-// rejects in-memory databases explicitly because there is nothing to replace.
+// Parsing the DSN here keeps both the CLI and the online restore from asking the
+// operator to type the path twice, and rejects in-memory databases explicitly
+// because there is no file to replace or snapshot.
 func SQLitePathFromDSN(dsn string) (string, error) {
 	raw := strings.TrimSpace(dsn)
 	if raw == "" {
@@ -162,37 +162,11 @@ func (s *Service) Restore(ctx context.Context, opts RestoreOptions) (RestoreResu
 		SchemaVersion:  currentSchema,
 	}
 
-	reader, err := zip.OpenReader(archivePath)
-	if err != nil {
-		return RestoreResult{}, fmt.Errorf("%w: reopen package: %v", ErrInvalidArchive, err)
-	}
-	defer reader.Close()
-
-	dumpFile, ok := findZipFile(&reader.Reader, manifest.Database.Dump)
-	if !ok {
-		return RestoreResult{}, fmt.Errorf("%w: database dump is missing", ErrInvalidArchive)
-	}
-	targetDir := filepath.Dir(opts.TargetDBPath)
-	if err := os.MkdirAll(targetDir, 0o750); err != nil {
-		return RestoreResult{}, err
-	}
-	tempDump, err := os.CreateTemp(targetDir, ".restore-*.db")
+	tempPath, cleanupDump, err := stageDatabaseDump(archivePath, manifest, filepath.Dir(opts.TargetDBPath))
 	if err != nil {
 		return RestoreResult{}, err
 	}
-	tempPath := tempDump.Name()
-	defer os.Remove(tempPath)
-	if err := copyVerifiedEntry(dumpFile, tempDump, manifest.Database.Size, manifest.Database.SHA256); err != nil {
-		_ = tempDump.Close()
-		return RestoreResult{}, err
-	}
-	if err := tempDump.Sync(); err != nil {
-		_ = tempDump.Close()
-		return RestoreResult{}, err
-	}
-	if err := tempDump.Close(); err != nil {
-		return RestoreResult{}, err
-	}
+	defer cleanupDump()
 
 	previousPath, err := replaceDatabaseFile(opts.TargetDBPath, tempPath)
 	if err != nil {
@@ -309,6 +283,44 @@ func rollbackDatabase(target, previous string) {
 	if previous != "" {
 		_ = os.Rename(previous, target)
 	}
+}
+
+// stageDatabaseDump copies and verifies the packaged database into a temporary
+// file next to the target. The caller installs or copies it, then runs cleanup.
+func stageDatabaseDump(archivePath string, manifest BackupManifest, targetDir string) (string, func(), error) {
+	if err := os.MkdirAll(targetDir, 0o750); err != nil {
+		return "", nil, err
+	}
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return "", nil, fmt.Errorf("%w: reopen package: %v", ErrInvalidArchive, err)
+	}
+	defer reader.Close()
+	dumpFile, ok := findZipFile(&reader.Reader, manifest.Database.Dump)
+	if !ok {
+		return "", nil, fmt.Errorf("%w: database dump is missing", ErrInvalidArchive)
+	}
+	tempDump, err := os.CreateTemp(targetDir, ".restore-*.db")
+	if err != nil {
+		return "", nil, err
+	}
+	tempPath := tempDump.Name()
+	cleanup := func() { _ = os.Remove(tempPath) }
+	if err := copyVerifiedEntry(dumpFile, tempDump, manifest.Database.Size, manifest.Database.SHA256); err != nil {
+		_ = tempDump.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if err := tempDump.Sync(); err != nil {
+		_ = tempDump.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if err := tempDump.Close(); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return tempPath, cleanup, nil
 }
 
 // findZipFile looks up one entry by exact path.

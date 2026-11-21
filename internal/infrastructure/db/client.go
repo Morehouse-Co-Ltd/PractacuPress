@@ -32,6 +32,11 @@ const SchemaVersion = "20261121000000"
 // require their own dump tools, which this binary does not shell out to.
 var ErrSnapshotUnsupported = errors.New("db: snapshot unsupported for this driver")
 
+// ErrRestoreUnsupported means the active driver or connection pool cannot be
+// restored in place. Online restore uses SQLite's backup API against the live
+// connection, so it only works on a single-connection SQLite pool.
+var ErrRestoreUnsupported = errors.New("db: online restore unsupported")
+
 // Stats is the small, non sensitive inventory a restore uses to decide whether a
 // database is empty and to report what came back.
 type Stats struct {

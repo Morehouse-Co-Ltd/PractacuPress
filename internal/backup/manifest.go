@@ -70,6 +70,11 @@ var (
 	ErrEncryptionKeyInvalid = errors.New("backup: encryption key is invalid")
 	// ErrDecryptionFailed means authentication failed: wrong key or tampered package.
 	ErrDecryptionFailed = errors.New("backup: package decryption failed")
+	// ErrRestoreUnsupported means this build or deployment cannot restore the
+	// package in place. Online restore is SQLite only and needs the live handle.
+	ErrRestoreUnsupported = errors.New("backup: online restore is not supported")
+	// ErrRestoreFailed means the restore started but did not complete cleanly.
+	ErrRestoreFailed = errors.New("backup: restore failed")
 )
 
 // Actor is the caller performing a backup or transfer operation.
@@ -396,6 +401,8 @@ func cleanError(err error) string {
 		ErrEncryptionKeyRequired.Error() + ": ",
 		ErrEncryptionKeyInvalid.Error() + ": ",
 		ErrDecryptionFailed.Error() + ": ",
+		ErrRestoreUnsupported.Error() + ": ",
+		ErrRestoreFailed.Error() + ": ",
 	} {
 		text = strings.TrimPrefix(text, prefix)
 	}

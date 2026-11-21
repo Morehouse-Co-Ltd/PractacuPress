@@ -199,7 +199,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1 --skip-smoke --no-z
 - 根目录 `启动.bat` / `打包.bat` 不再入库（本地副本保留，已加入 `.gitignore`）。启动改用
   `scripts\dev.ps1` + `npm run dev`，打包统一用 `scripts\package.ps1`；README、web/README
   与脚本提示同步改写。
-- 契约规模更新为 **158 条路径 / 190 个操作**（`openapi.yaml` 实测），后台 Docs 页与三份
+- 契约规模更新为 **159 条路径 / 191 个操作**（`openapi.yaml` 实测），后台 Docs 页与三份
   README 不再显示旧的 83/100 或 124/148。
 
 ### 5. 本轮验证
@@ -271,3 +271,61 @@ powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 -Task all
 - `confirm_weak_password` 记录的是用户意图，不是权限边界：它的作用是让服务端知道“用户看过
   警告并仍然选择这个密码”，不能替代账户安全策略。
 - 弱密码的强度风险由确认者承担；已有历史弱密码继续可登录，不做强制迁移。
+
+---
+
+## 七、数据页两个小 tab、页面内恢复与用户组自锁
+
+### 1. 数据与备份拆成两个 tab
+
+- 「站点设置 → 数据与备份」顶部改为两个小 tab：「数据导入导出」与「备份」；`?tab=backup`
+  可直接打开备份 tab，命令面板的备份 / 恢复 / 自动备份计划都跳到该地址。
+- 「数据导入导出」里，全站导出与导出到 WordPress / Typecho 两张卡片并列，全站导入与从
+  WordPress / Typecho 导入两张卡片并列；窄于 1100px 时自动堆叠。所有字段、冲突策略与逐条
+  导入报告保持不变。
+- 实例备份、自动备份计划与恢复都收进「备份」tab，不再和内容迁移混在同一列。
+
+### 2. 页面内快速恢复 SQLite 备份
+
+- 新增 `POST /api/v1/platform/backups/{backupID}/restore`。备份 tab 里可直接从下拉框选择
+  一个 SQLite 备份，确认后恢复；不再需要停服执行命令行。
+- 恢复前先校验 manifest、包内每个文件的 SHA-256 与表结构，再自动创建一份安全备份；随后用
+  SQLite 在线备份 API 覆盖当前连接、重新应用增量 schema、恢复本地媒体并校验核心表。数据库
+  写入失败时自动从安全备份回滚，响应里仍返回安全备份 id，便于人工重试。
+- 只有平台管理员可以恢复，且**无条件**要求 `X-PP-Step-Up`：即使站点关闭了高威胁操作保护，
+  也必须重新输入一次高危密码。前端用 `ensureStepUp(..., { fresh: true })` 强制重新验证，
+  不复用本次浏览器会话里已有的令牌；站点管理员看到说明但按钮不可用。
+- 仅支持 SQLite；MySQL / PostgreSQL 请继续使用 `mysqldump` / `pg_dump`。SQLite 连接池必须
+  保持默认单连接，否则接口返回 422 `restore_unsupported`。恢复期间请勿关闭服务，恢复后当前
+  登录会话可能因账户表被替换而失效，页面提供「重新加载页面」。
+
+### 3. 管理员不能修改自己的用户组
+
+- 站点管理员即使持有 `manage_permission`，也不能修改自己所在组的能力矩阵、后台入口或基础
+  角色；改名仍然允许。服务端在保存前比对策略字段，命中时返回
+  `403 permission_group_readonly`，避免「给自己提权」或「把自己锁在门外」。
+- 前端同步锁定自己的组：能力单元格与后台入口开关禁用并说明原因，「恢复默认」跳过自己的组；
+  平台管理员豁免，始终可以修复管理员组。
+- 新增服务端测试覆盖自锁、改名放行与平台管理员豁免；前端新增
+  `permissionGroupSelfLocked` 单测。
+
+### 4. 本轮验证
+
+```powershell
+go test -count=1 ./internal/site ./internal/backup ./internal/infrastructure/db ./internal/transport/http/gin
+cd web
+cmd /c "npx.cmd tsc --noEmit"
+cmd /c "npx.cmd vitest run"
+cmd /c "npx.cmd vite build"
+cd ..
+powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 -Task all
+```
+
+### 5. 本轮已知边界
+
+- 页面内恢复只做 SQLite 在线覆盖；MySQL / PostgreSQL 没有同样的在线协议，仍由运维用原生
+  dump 工具恢复。
+- 回滚只覆盖数据库；若恢复已经替换了本地媒体，随后数据库回滚成功，媒体文件不会自动回退，
+  需要从安全备份或原媒体目录人工恢复。
+- 恢复会替换账户数据，当前 access token 可能仍能通过签名校验但找不到对应用户；重新加载后
+  需要重新登录。

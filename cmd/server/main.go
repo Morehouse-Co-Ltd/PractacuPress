@@ -679,6 +679,8 @@ func run() error {
 		DSN:           cfg.DatabaseDSN,
 		EncryptionKey: backupKey,
 		Snapshotter:   handle,
+		Online:        handle,
+		Audit:         auditStore,
 		// Read at archive time: the automatic backup follows the storage strategies
 		// that are live when it runs, not the ones present at boot.
 		MediaRootsProvider: func() []backup.MediaRoot { return backupRootsFromManager(storageManager) },
@@ -1028,6 +1030,11 @@ func run() error {
 					SiteID: principal.SiteID,
 					Role:   principal.Role,
 				}, true
+			},
+			// Restore always requires a step-up grant, even when the site's
+			// high-threat switch is off. A nil signer fails closed.
+			StepUp: func(raw, userID, siteID string) bool {
+				return stepUpSigner != nil && stepUpSigner.Verify(raw, userID, siteID)
 			},
 		}),
 		// The host-resolved site supplies both the crawler view: the content service

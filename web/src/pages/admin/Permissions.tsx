@@ -11,6 +11,7 @@ import {
   allowedCapabilitiesForRole,
   groupConfigLabel,
   normalizeGroupConfig,
+  permissionGroupSelfLocked,
 } from '../../lib/permissions';
 import { ROLE_LABEL } from '../../lib/format';
 import { hasAdminCapability } from '../../lib/adminAccess';
@@ -81,6 +82,9 @@ export function PermissionsPage() {
   const kind = siteKindOf(config);
   const byKey = useMemo(() => new Map(draft.map((item) => [item.key, item])), [draft]);
   const current = byKey.get(group);
+  /** 自己的组只能改名：服务端会拒绝策略字段的修改，界面提前禁用。 */
+  const selfLocked = (item: PermissionGroupConfig) =>
+    permissionGroupSelfLocked(item.key, group, me?.role);
 
   // The server is the source of truth: when the context refreshes (first load or a
   // save from another tab), mirror it without remounting the page.
@@ -191,6 +195,9 @@ export function PermissionsPage() {
         : t('游客没有账户，只能阅读公开内容。');
     }
     if (item.key === 'owner') return t('最高管理员固定拥有全部权限，避免把自己锁在门外。');
+    if (selfLocked(item)) {
+      return t('不能修改自己所在组的能力，避免给自己提权或把自己锁在门外；可以改名。');
+    }
     if (capability === 'manage_permission' && (!item.builtin || item.key === 'member' || item.key === 'moderator')) {
       return t('只有内置组可以配置权限组；自定义组不能持有这项能力。');
     }
@@ -203,6 +210,9 @@ export function PermissionsPage() {
   const adminLocked = (item: PermissionGroupConfig): string => {
     if (item.key === 'guest') return t('游客没有账户，无法登录。');
     if (item.key === 'owner') return t('最高管理员始终可以进入后台。');
+    if (selfLocked(item)) {
+      return t('不能切换自己所在组的后台入口，避免把自己锁在门外；可以改名。');
+    }
     // A custom group with no dashboard capability would open an empty dashboard, so
     // the server drops the switch. Disable it here too instead of letting the click
     // silently revert.
@@ -254,6 +264,8 @@ export function PermissionsPage() {
     for (const builtin of DEFAULT_PERMISSION_GROUPS) {
       const currentGroup = draftRef.current.find((item) => item.key === builtin.key);
       if (!currentGroup) continue;
+      // 自己的组由服务端拒绝策略修改；跳过它，其余组照常恢复，不因一项失败中断。
+      if (selfLocked(currentGroup)) continue;
       const next = normalizeGroupConfig({
         ...builtin,
         capabilities: { ...builtin.capabilities },
@@ -310,6 +322,12 @@ export function PermissionsPage() {
           {t('自定义组在同一角色之上收窄能力；保存后服务端立即按新矩阵放行或拒绝请求，不需要刷新页面。')}
         </Callout>
       )}
+
+      {!personal && me?.role !== 'platform_admin' && current ? (
+        <Callout tone="warn" icon="lock" title={t('不能修改自己的组')}>
+          {t('你可以给自己的组改名，但能力、后台入口与基础角色是锁定的：持有「配置权限组」不能变成给自己提权或把自己锁在门外的通道。需要调整时请让平台管理员操作。')}
+        </Callout>
+      ) : null}
 
       <div className="panel mt-20">
         <div className="panel-head">

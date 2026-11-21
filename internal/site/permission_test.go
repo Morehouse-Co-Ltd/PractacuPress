@@ -285,3 +285,54 @@ func TestSavePermissionGroupAuditsTheRename(t *testing.T) {
 	require.Equal(t, string(RoleSiteAdmin), audit.Detail["base_role"])
 	require.Equal(t, true, audit.Detail["builtin"])
 }
+
+// TestSiteAdminCannotChangeOwnGroupPolicy is the server side of the self-lock:
+// holding manage_permission must not let an admin widen or narrow the group that
+// decides their own access. Renaming stays allowed.
+func TestSiteAdminCannotChangeOwnGroupPolicy(t *testing.T) {
+	repo := newFakeRepo()
+	service, err := NewService(repo)
+	require.NoError(t, err)
+	admin := activeMember("s1", "admin", RoleSiteAdmin)
+
+	_, err = service.SavePermissionGroup(context.Background(), admin, "s1", GroupAdmin, PermissionGroupInput{
+		Name:         "管理员",
+		Capabilities: []Capability{CapabilityReadContent},
+		AdminAccess:  true,
+	}, "")
+	require.ErrorIs(t, err, ErrPermissionGroupReadOnly)
+
+	_, err = service.SavePermissionGroup(context.Background(), admin, "s1", GroupAdmin, PermissionGroupInput{
+		Name:         "管理员",
+		Capabilities: AllCapabilities,
+		AdminAccess:  false,
+	}, "")
+	require.ErrorIs(t, err, ErrPermissionGroupReadOnly)
+
+	// A pure rename sends the same policy and must still succeed.
+	saved, err := service.SavePermissionGroup(context.Background(), admin, "s1", GroupAdmin, PermissionGroupInput{
+		Name:         "运营组",
+		Capabilities: AllCapabilities,
+		AdminAccess:  true,
+	}, "req_rename")
+	require.NoError(t, err)
+	require.Equal(t, "运营组", saved.Name)
+}
+
+// TestPlatformAdminCanChangeAdminGroup keeps the owner escape hatch: the
+// registered platform administrator may repair a locked administrator matrix.
+func TestPlatformAdminCanChangeAdminGroup(t *testing.T) {
+	repo := newFakeRepo()
+	service, err := NewService(repo)
+	require.NoError(t, err)
+	owner := activeMember("s1", "owner", RolePlatformAdmin)
+
+	saved, err := service.SavePermissionGroup(context.Background(), owner, "s1", GroupAdmin, PermissionGroupInput{
+		Name:         "受限管理员",
+		Capabilities: []Capability{CapabilityReadContent},
+		AdminAccess:  false,
+	}, "")
+	require.NoError(t, err)
+	require.False(t, saved.AdminAccess)
+	require.Equal(t, []string{string(CapabilityReadContent)}, saved.Capabilities.CapabilityList())
+}

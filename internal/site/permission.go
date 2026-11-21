@@ -338,6 +338,52 @@ func NormalizePermissionGroup(group PermissionGroup) PermissionGroup {
 	return normalized
 }
 
+// rejectSelfPermissionGroupEdit keeps an administrator from widening or
+// narrowing the matrix that decides their own access.
+//
+// A rename is still allowed: only the policy fields are compared. The platform
+// administrator is exempt so the owner can always repair a locked admin group.
+func (s *Service) rejectSelfPermissionGroupEdit(
+	ctx context.Context,
+	actor Member,
+	siteID string,
+	group PermissionGroup,
+) error {
+	if actor.Role == RolePlatformAdmin {
+		return nil
+	}
+	actorGroup := actor.GroupKey
+	if actorGroup == "" {
+		actorGroup = GroupKeyForRole(actor.Role)
+	}
+	if group.Key != actorGroup {
+		return nil
+	}
+	existing, err := s.findPermissionGroup(ctx, siteID, actorGroup)
+	if err != nil {
+		return err
+	}
+	if samePermissionGroupPolicy(existing, group) {
+		return nil
+	}
+	return ErrPermissionGroupReadOnly
+}
+
+// samePermissionGroupPolicy compares only the fields that grant access. The
+// operator visible name and timestamps are deliberately ignored so a pure rename
+// remains a valid self edit.
+func samePermissionGroupPolicy(a, b PermissionGroup) bool {
+	if a.BaseRole != b.BaseRole || a.AdminAccess != b.AdminAccess {
+		return false
+	}
+	for _, capability := range AllCapabilities {
+		if a.Capabilities[capability] != b.Capabilities[capability] {
+			return false
+		}
+	}
+	return true
+}
+
 // PermissionGroupInput is one create or update of a group.
 //
 // Key is the path parameter; the remaining fields are replace semantics, which is
@@ -428,6 +474,9 @@ func (s *Service) SavePermissionGroup(
 		return PermissionGroup{}, formatInvalid("base_role must be member, editor or site_admin")
 	}
 	normalized := NormalizePermissionGroup(group)
+	if err := s.rejectSelfPermissionGroupEdit(ctx, actor, siteID, normalized); err != nil {
+		return PermissionGroup{}, err
+	}
 	persist, ok := s.repo.(PermissionGroupRepository)
 	if !ok {
 		return PermissionGroup{}, errors.New("site: permission groups are not configured")

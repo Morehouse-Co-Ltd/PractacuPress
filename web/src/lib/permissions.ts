@@ -171,6 +171,24 @@ export function builtinGroupKeyForRole(role?: Role | null): PermissionGroupId {
   return groupIdForRole(role);
 }
 
+/**
+ * 这一组是否是当前账户自己的组，且服务端会拒绝其策略修改。
+ *
+ * 非平台管理员可以给自己的组改名，但不能改能力矩阵、基础角色或后台入口：
+ * 持有「配置权限组」不能变成给自己提权的通道。平台管理员豁免，以便修复被锁的
+ * 管理员组。currentGroupKey 为空时按角色回退到内置组。
+ */
+export function permissionGroupSelfLocked(
+  groupKey: string,
+  currentGroupKey: string | null | undefined,
+  role?: Role | null,
+): boolean {
+  if (role === 'platform_admin') return false;
+  if (!role) return false;
+  const own = currentGroupKey || builtinGroupKeyForRole(role);
+  return !!own && groupKey === own;
+}
+
 /** 把服务端或本地保存的任意值收敛成完整的能力组列表。 */
 export function normalizePermissionGroupConfigs(value: unknown): PermissionGroupConfig[] {
   // Older design documents stored the matrix as one object keyed by group id

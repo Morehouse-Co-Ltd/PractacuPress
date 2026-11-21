@@ -75,6 +75,7 @@ import type {
   ReadingHistoryEntry,
   RedirectRule,
   ResolveResult,
+  RestoreBackupResult,
   Role,
   SafetyPolicy,
   SafetyRateLimit,
@@ -699,6 +700,8 @@ export interface Backend {
   /** 实例备份：只有真实后端实现，且服务端要求平台管理员。 */
   createBackup?(): Promise<BackupArtifact>;
   backups?(): Promise<BackupArtifact[]>;
+  /** 用已保存的备份在线覆盖本机 SQLite 数据库；需要平台管理员 + 二次验证。 */
+  restoreBackup?(backupID: string): Promise<RestoreBackupResult>;
   downloadBackup?(id: string): Promise<{ blob: Blob; filename: string }>;
   /** 全站内容导出；演示后端没有真实文件可导。 */
   exportSite?(

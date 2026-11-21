@@ -36,6 +36,13 @@ const fragment: Dictionary = {
   '游客没有账户，只能阅读公开内容。': 'Guests have no account and can only read public content.',
   '最高管理员固定拥有全部权限，避免把自己锁在门外。':
     'Super admins always keep every capability, so you cannot lock yourself out.',
+  '不能修改自己所在组的能力，避免给自己提权或把自己锁在门外；可以改名。':
+    'You cannot change the capabilities of your own group, which prevents self-promotion or locking yourself out; renaming is still allowed.',
+  '不能切换自己所在组的后台入口，避免把自己锁在门外；可以改名。':
+    'You cannot switch the dashboard access of your own group, which prevents locking yourself out; renaming is still allowed.',
+  '不能修改自己的组': 'You cannot change your own group',
+  '你可以给自己的组改名，但能力、后台入口与基础角色是锁定的：持有「配置权限组」不能变成给自己提权或把自己锁在门外的通道。需要调整时请让平台管理员操作。':
+    'You can rename your own group, but its capabilities, dashboard access and base role are locked: holding “Configure permission groups” must not become a way to promote yourself or lock yourself out. Ask a platform administrator to make those changes.',
   '只有内置组可以配置权限组；自定义组不能持有这项能力。':
     'Only built-in groups can configure permission groups; a custom group cannot hold this capability.',
   '这项能力超出该组基础角色的上限。':

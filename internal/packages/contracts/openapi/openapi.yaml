@@ -1915,6 +1915,53 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /platform/backups/{backupID}/restore:
+    post:
+      tags: [platform]
+      summary: Restore a stored SQLite backup in place
+      description: |
+        Requires a platform administrator seat and **always** a valid
+        `X-PP-Step-Up` grant minted by `POST /auth/step-up`, even when the site's
+        high-threat operation protection is switched off. Restoring an instance is
+        destructive, so the check is not delegated to the site switch.
+
+        The package manifest and every SHA-256 are verified before the database is
+        touched. The server then creates a safety backup, copies the dump into the
+        live SQLite connection with SQLite's online backup API, applies the additive
+        schema pass, restores local media roots, and verifies the core tables. A
+        failure after the database copy rolls the database back from the safety
+        backup; media files are not rolled back. The response names the safety
+        backup so an operator can retry even if the rollback fails.
+
+        SQLite only. MySQL and PostgreSQL deployments must restore with their native
+        dump tools. The live SQLite pool must use the default single connection;
+        otherwise the endpoint answers 422 `restore_unsupported`.
+      parameters:
+        - name: backupID
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/StepUpTokenRequired'
+      responses:
+        '200':
+          description: Restored and verified
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupRestoreResult' }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          description: |
+            Not a platform administrator (`details.reason: platform_admin_required`)
+            or no valid step-up grant (`details.reason: step_up_required`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
   /sites/{siteID}/export:
     get:
       tags: [backups]
@@ -2189,6 +2236,12 @@ paths:
         custom group whose base role must be `member`, `editor` or `site_admin`;
         its capabilities must be a subset of that role's capabilities, so a custom
         group can narrow a role but never exceed it.
+
+        A non-platform administrator may rename the group they belong to, but may
+        not change its capabilities, base role or dashboard switch. That is a
+        deliberate self-lock: holding `manage_permission` must not let an admin
+        widen or narrow the matrix that decides their own access. The platform
+        administrator is exempt and can always repair the admin group.
       parameters:
         - $ref: '#/components/parameters/SiteID'
         - name: groupKey
@@ -5964,6 +6017,16 @@ components:
         operation protection enabled; a missing, expired or foreign grant then answers
         `403` with `details.reason: step_up_required`.
       schema: { type: string }
+    StepUpTokenRequired:
+      name: X-PP-Step-Up
+      in: header
+      required: true
+      description: |
+        A grant returned by `POST /auth/step-up`, bound to the caller's account and to
+        the site of the access token. This operation requires it unconditionally,
+        even when the site's high threat operation protection is disabled. A missing,
+        expired or foreign grant answers `403` with `details.reason: step_up_required`.
+      schema: { type: string }
     FeedSlug:
       name: slug
       in: path
@@ -7867,6 +7930,37 @@ components:
         driver: { type: string }
         dialect: { type: string }
         includes_media: { type: boolean }
+        warnings:
+          type: array
+          items: { type: string }
+
+    BackupRestoreResult:
+      type: object
+      description: Outcome of an in-place instance restore.
+      required:
+        - safety_backup_id
+        - database_path
+        - media_files
+        - sites
+        - users
+        - content
+        - schema_version
+        - migrated
+      properties:
+        safety_backup_id:
+          type: string
+          description: Package created immediately before the restore; keep it for retries.
+        database_path:
+          type: string
+          description: Local SQLite path that was restored in place.
+        media_files: { type: integer, minimum: 0 }
+        sites: { type: integer, minimum: 0 }
+        users: { type: integer, minimum: 0 }
+        content: { type: integer, minimum: 0 }
+        schema_version: { type: string }
+        migrated:
+          type: boolean
+          description: True when the package schema was older and the additive pass ran.
         warnings:
           type: array
           items: { type: string }

@@ -51,7 +51,8 @@ export type StepUpAction =
   | 'member.delete'
   | 'site.import'
   | 'site.safety_word_delete'
-  | 'site.ip_rule_delete';
+  | 'site.ip_rule_delete'
+  | 'backup.restore';
 
 const STEP_UP_ACTIONS: readonly StepUpAction[] = [
   'member.create',
@@ -65,6 +66,7 @@ const STEP_UP_ACTIONS: readonly StepUpAction[] = [
   'site.import',
   'site.safety_word_delete',
   'site.ip_rule_delete',
+  'backup.restore',
 ];
 
 /** 这个动作是否属于「高威胁操作」；未知动作一律返回 false。 */
@@ -291,6 +293,17 @@ export function saveDemoStepUpSettings(
 
 /* ---------- React 上下文 ---------- */
 
+/** 二次验证的调用选项。 */
+export interface StepUpOptions {
+  /**
+   * 即使本会话已经验证过、或站点保护已关闭，也强制重新输入一次密码。
+   *
+   * 用于服务端无条件要求二次验证的动作（例如在线恢复备份）：前端不能因为本地缓存
+   * 或站点开关而跳过确认。
+   */
+  fresh?: boolean;
+}
+
 export interface StepUpContextValue {
   /**
    * 执行高危操作之前调用。
@@ -300,9 +313,10 @@ export interface StepUpContextValue {
    * - 其它情况：弹密码框，验证成功返回 true，取消或失败返回 false。
    *
    * `action` 是可选的动作文案（如「删除账户」），弹窗会原样展示，帮助用户确认自己
-   * 正在做什么；不传时只显示通用说明。
+   * 正在做什么；不传时只显示通用说明。`options.fresh` 强制重新验证，忽略缓存令牌
+   * 与站点保护开关。
    */
-  ensureStepUp(action?: string): Promise<boolean>;
+  ensureStepUp(action?: string, options?: StepUpOptions): Promise<boolean>;
   /** 最近一次读到 / 写入的保护设置；null 表示尚未读取（按开启处理）。 */
   settings: StepUpSettings | null;
   /** 设置页保存成功后同步给 Provider，省掉下一次操作前的一次读取请求。 */

@@ -208,8 +208,8 @@ const fragment: Dictionary = {
   '契约规模由仓库中的 openapi.yaml 统计；站点文件与文档页不进入契约路径表。':
     'The contract size is counted from the repository’s openapi.yaml; site files and the docs page are not part of the contract path table.',
   '契约规模': 'Contract size',
-  '158 条路径 / 190 个操作（OpenAPI 0.1.0）':
-    '158 paths / 190 operations (OpenAPI 0.1.0)',
+  '159 条路径 / 191 个操作（OpenAPI 0.1.0）':
+    '159 paths / 191 operations (OpenAPI 0.1.0)',
   '站点文件': 'Site files',
   '文档页': 'Docs page',
   '实时事件优先走 WebSocket：登录后申请一次性票据连接 /ws，断线用 GET /events 按游标补偿；连接不可用时自动降级为每 45 秒轮询。':

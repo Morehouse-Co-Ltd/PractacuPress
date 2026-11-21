@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type {
   BackupArtifact,
   Comment,
   Content,
   ContentKind,
   ImportConflictStrategy,
+  RestoreBackupResult,
   SiteImportReport,
   TaxonomySettings,
 } from '../../types';
@@ -16,7 +18,7 @@ import { useCustomization } from '../../lib/customize';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { siteOrigin } from '../../lib/seo';
 import { useToast } from '../../lib/toast';
-import { Badge, Button, Callout, Field, Input, Select, Toggle } from '../../components/ui';
+import { Badge, Button, Callout, Field, Input, Modal, Select, Tabs, Toggle } from '../../components/ui';
 import { Icon } from '../../components/Icon';
 import { useStepUp } from '../../lib/stepUp';
 import { RoleGate } from '../../components/Guards';
@@ -80,7 +82,9 @@ interface WpImportReport {
   warnings: string[];
 }
 
-/** 数据与备份：全站导出/导入，WordPress / Typecho XML 迁移，以及平台管理员可见的实例备份。 */
+type DataTab = 'transfer' | 'backup';
+
+/** 数据与备份：数据导入导出的两张导出卡、两张导入卡，以及平台管理员可见的实例备份。 */
 export function DataPage() {
   const t = useT();
   const { site, me } = useAuth();
@@ -93,6 +97,14 @@ export function DataPage() {
   const platformAdmin = me?.role === 'platform_admin' && typeof backend.createBackup === 'function';
   useTitle(t('数据与备份'));
   const origin = siteOrigin(customization.seo, window.location.origin);
+  const [params, setParams] = useSearchParams();
+  const tab: DataTab = params.get('tab') === 'backup' ? 'backup' : 'transfer';
+  const setTab = (next: DataTab) => {
+    const query = new URLSearchParams(params);
+    if (next === 'backup') query.set('tab', 'backup');
+    else query.delete('tab');
+    setParams(query, { replace: true });
+  };
 
   const [publishedOnly, setPublishedOnly] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -127,6 +139,10 @@ export function DataPage() {
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [downloadingBackup, setDownloadingBackup] = useState('');
   const [backupError, setBackupError] = useState('');
+  const [restoreID, setRestoreID] = useState('');
+  const [restoreConfirming, setRestoreConfirming] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [lastRestore, setLastRestore] = useState<RestoreBackupResult | null>(null);
 
   const loadBackups = useCallback(async () => {
     if (!platformAdmin || !backend.backups) return;
@@ -723,7 +739,37 @@ export function DataPage() {
     }
   };
 
-  const restoreCommand = `powershell -ExecutionPolicy Bypass -File scripts\\backup.ps1 restore -Archive .\\data\\backups\\<备份文件>.zip -Confirm`;
+  /** 页面内恢复只接受 SQLite 包；MySQL / PostgreSQL 必须用各自的 dump 工具。 */
+  const restorableBackups = backups.filter((artifact) => artifact.driver === 'sqlite');
+  const selectedRestore = restorableBackups.find((artifact) => artifact.id === restoreID) ?? null;
+
+  const confirmRestore = () => {
+    if (!platformAdmin || !backend.restoreBackup || !selectedRestore || restoring) return;
+    setRestoreConfirming(true);
+  };
+
+  const runRestore = async () => {
+    if (!backend.restoreBackup || !selectedRestore || restoring) return;
+    setRestoreConfirming(false);
+    // 服务端对恢复无条件要求 X-PP-Step-Up；这里强制重新输入一次高危密码，
+    // 不复用本会话已有的令牌，也不能因为站点关闭了保护就跳过。
+    const ok = await ensureStepUp(t('在线恢复备份'), { fresh: true });
+    if (!ok) return;
+    setRestoring(true);
+    setBackupError('');
+    setLastRestore(null);
+    try {
+      const result = await backend.restoreBackup(selectedRestore.id);
+      setLastRestore(result);
+      toast.push('ok', t('恢复完成'), t('数据库已恢复到 {name}', { name: selectedRestore.file_name }));
+      await loadBackups();
+      setRestoreID('');
+    } catch (err) {
+      setBackupError(errorText(err));
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const wpArticleCount = wpParsed?.posts.filter((post) => post.kind === 'article').length ?? 0;
   const wpPostCount = wpParsed?.posts.filter((post) => post.kind === 'post').length ?? 0;
@@ -754,6 +800,18 @@ export function DataPage() {
         </Callout>
       ) : null}
 
+      <Tabs<DataTab>
+        value={tab}
+        onChange={setTab}
+        items={[
+          { key: 'transfer', label: t('数据导入导出') },
+          { key: 'backup', label: t('备份') },
+        ]}
+      />
+
+      {tab === 'transfer' ? (
+        <>
+          <div className="data-io-grid">
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -873,7 +931,9 @@ export function DataPage() {
           </div>
         </div>
       </section>
+          </div>
 
+          <div className="data-io-grid">
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -1249,7 +1309,12 @@ export function DataPage() {
           </div>
         </div>
       </section>
+          </div>
+        </>
+      ) : null}
 
+      {tab === 'backup' ? (
+        <>
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -1261,7 +1326,7 @@ export function DataPage() {
         <div className="panel-body">
           {!platformAdmin ? (
             <Callout tone="info" icon="info" title={t('仅平台管理员可备份整个实例')}>
-              {t('站点管理员可用上方的全站导出迁移自己的内容；实例备份包含所有站点，因此不在这里开放。')}
+              {t('站点管理员可用「数据导入导出」里的全站导出迁移自己的内容；实例备份包含所有站点，因此不在这里开放。')}
             </Callout>
           ) : (
             <div className="form-stack">
@@ -1354,26 +1419,140 @@ export function DataPage() {
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h3>{t('恢复')}</h3>
-            <p>{t('恢复会替换数据库文件，只能在服务停止后由命令行执行。')}</p>
+            <h3>{t('从备份恢复')}</h3>
+            <p>{t('直接在页面里选择一个 SQLite 备份覆盖当前数据库。')}</p>
           </div>
           <Icon name="server" size={20} />
         </div>
         <div className="panel-body">
-          <div className="form-stack">
-            <Callout tone="warn" icon="alert" title={t('恢复前自动做一次安全备份')}>
-              {t('命令会先校验 manifest 与每个文件的 SHA-256，拒绝覆盖非空库，除非显式加 -Confirm；随后自动备份当前数据，再替换数据库与本地媒体，最后重新应用增量迁移并校验表结构。')}
+          {!platformAdmin ? (
+            <Callout tone="info" icon="info" title={t('仅平台管理员可恢复整个实例')}>
+              {t('恢复会替换所有站点的数据库，只有平台管理员可以执行；站点管理员请使用数据导入导出迁移自己的内容。')}
             </Callout>
-            <div>
-              <p className="tiny faint">{t('在仓库根目录执行：')}</p>
-              <pre className="code-block">{restoreCommand}</pre>
+          ) : !backend.restoreBackup ? (
+            <Callout tone="info" icon="info" title={t('当前后端不支持页面内恢复')}>
+              {t('请升级 API 后重试，或使用命令行恢复脚本。')}
+            </Callout>
+          ) : (
+            <div className="form-stack">
+              <Callout tone="danger" icon="alert" title={t('高危操作：恢复会覆盖当前数据')}>
+                {t('服务端会先校验备份包与每个文件的 SHA-256，自动创建一份安全备份，再用备份覆盖本机 SQLite 数据库并恢复本地媒体。恢复过程中请勿关闭服务；当前登录会话可能因账户数据被替换而失效。')}
+              </Callout>
+              {restorableBackups.length === 0 ? (
+                <p className="tiny faint">
+                  {t('还没有可恢复的 SQLite 备份。先创建一个备份，或刷新列表。')}
+                </p>
+              ) : (
+                <>
+                  <Field
+                    label={t('选择备份')}
+                    hint={t('只列出 SQLite 备份包；MySQL / PostgreSQL 请使用各自的 dump 工具恢复。')}
+                  >
+                    <Select
+                      value={restoreID}
+                      onChange={(event) => setRestoreID(event.target.value)}
+                      disabled={restoring}
+                    >
+                      <option value="">{t('请选择一个备份…')}</option>
+                      {restorableBackups.map((artifact) => (
+                        <option key={artifact.id} value={artifact.id}>
+                          {artifact.file_name} · {formatDateTime(artifact.created_at)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <div className="row gap-8">
+                    <Button
+                      variant="danger"
+                      icon="server"
+                      loading={restoring}
+                      disabled={!selectedRestore || restoring}
+                      onClick={confirmRestore}
+                    >
+                      {t('恢复此备份')}
+                    </Button>
+                    <span className="tiny faint">
+                      {t('需要平台管理员身份，并再次输入高危操作密码。')}
+                    </span>
+                  </div>
+                </>
+              )}
+              {backupError ? (
+                <Callout tone="danger" icon="alert">
+                  {backupError}
+                </Callout>
+              ) : null}
+              {lastRestore ? (
+                <Callout tone="ok" icon="check" title={t('恢复完成')}>
+                  <p>
+                    {t('数据库已恢复到 {path}；恢复前安全备份为 {id}。', {
+                      path: lastRestore.database_path,
+                      id: lastRestore.safety_backup_id,
+                    })}
+                  </p>
+                  <p className="tiny faint">
+                    {t('站点 {sites} · 用户 {users} · 内容 {content} · 媒体 {media} 个文件 · schema {schema}', {
+                      sites: lastRestore.sites,
+                      users: lastRestore.users,
+                      content: lastRestore.content,
+                      media: lastRestore.media_files,
+                      schema: lastRestore.schema_version,
+                    })}
+                  </p>
+                  {lastRestore.warnings?.length ? (
+                    <ul>
+                      {lastRestore.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <Button
+                    variant="secondary"
+                    icon="refresh"
+                    onClick={() => window.location.reload()}
+                  >
+                    {t('重新加载页面')}
+                  </Button>
+                </Callout>
+              ) : null}
+              <p className="tiny faint">
+                {t('MySQL / PostgreSQL 不使用页面内恢复：请用 mysqldump / pg_dump 恢复数据库，媒体目录单独复制。S3 媒体不进入备份包，需要按桶单独备份。')}
+              </p>
             </div>
-            <p className="tiny faint">
-              {t('MySQL / PostgreSQL 不使用此命令：请用 mysqldump / pg_dump 备份数据库，媒体目录单独复制。S3 媒体不进入备份包，需要按桶单独备份。')}
-            </p>
-          </div>
+          )}
         </div>
       </section>
+
+      <Modal
+        open={restoreConfirming}
+        title={t('确认恢复备份')}
+        description={t('这会覆盖当前数据库，且无法从页面撤销。')}
+        onClose={() => setRestoreConfirming(false)}
+        width={560}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRestoreConfirming(false)}>
+              {t('取消')}
+            </Button>
+            <Button variant="danger" icon="server" onClick={() => void runRestore()}>
+              {t('继续并验证密码')}
+            </Button>
+          </>
+        }
+      >
+        <div className="form-stack">
+          <p>
+            {t('即将用 {name} 覆盖当前实例；服务端会先自动创建安全备份。', {
+              name: selectedRestore?.file_name ?? '—',
+            })}
+          </p>
+          <p className="tiny faint">
+            {t('确认后会要求再次输入高危操作密码。恢复完成前请不要关闭服务或刷新页面。')}
+          </p>
+        </div>
+      </Modal>
+        </>
+      ) : null}
     </RoleGate>
   );
 }

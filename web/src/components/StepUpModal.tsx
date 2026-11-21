@@ -25,6 +25,7 @@ import {
   StepUpContext,
   storeStepUpToken,
   type StepUpContextValue,
+  type StepUpOptions,
 } from '../lib/stepUp';
 import { useToast } from '../lib/toast';
 import { Button, Callout, Field, Input, Modal } from './ui';
@@ -96,7 +97,7 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
   }, [applySettings, backend, site?.id]);
 
   const ensureStepUp = useCallback(
-    async (action?: string): Promise<boolean> => {
+    async (action?: string, options?: StepUpOptions): Promise<boolean> => {
       if (demo) {
         if (!demoNotifiedRef.current) {
           demoNotifiedRef.current = true;
@@ -113,11 +114,14 @@ export function StepUpProvider({ children }: { children: ReactNode }) {
         attemptedRef.current = true;
         known = await loadSettings();
       }
-      // 设置读不到时按「保护开启」处理（fail-closed）：宁可多问一次密码，也不能在
-      // 保护其实开着的时候把高危操作直接放过去。
-      if (known && !known.enabled && !known.password_set) return true;
-      // 本次浏览器会话内验证过、且仍属于当前账户与站点：直接放行，不重复弹窗。
-      if (getStepUpToken(Date.now(), { userId: me?.user.id, siteId: site?.id })) return true;
+      const fresh = options?.fresh === true;
+      if (!fresh) {
+        // 设置读不到时按「保护开启」处理（fail-closed）：宁可多问一次密码，也不能在
+        // 保护其实开着的时候把高危操作直接放过去。
+        if (known && !known.enabled && !known.password_set) return true;
+        // 本次浏览器会话内验证过、且仍属于当前账户与站点：直接放行，不重复弹窗。
+        if (getStepUpToken(Date.now(), { userId: me?.user.id, siteId: site?.id })) return true;
+      }
       return new Promise<boolean>((resolve) => {
         const previous = pendingRef.current;
         if (previous) {

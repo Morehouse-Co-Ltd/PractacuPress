@@ -9,10 +9,21 @@ import {
   normalizeGroupConfig,
   normalizePermissionGroupConfigs,
   permissionGroupCan,
+  permissionGroupSelfLocked,
 } from './permissions';
 import { t } from './i18n';
 
 describe('能力组配置', () => {
+  it('非平台管理员只能改名自己的组，平台管理员豁免', () => {
+    expect(permissionGroupSelfLocked('admin', 'admin', 'site_admin')).toBe(true);
+    // 组标识缺失时按角色回退到内置组。
+    expect(permissionGroupSelfLocked('admin', undefined, 'site_admin')).toBe(true);
+    expect(permissionGroupSelfLocked('moderator', 'admin', 'site_admin')).toBe(false);
+    expect(permissionGroupSelfLocked('admin', 'admin', 'platform_admin')).toBe(false);
+    expect(permissionGroupSelfLocked('owner', 'owner', 'platform_admin')).toBe(false);
+    expect(permissionGroupSelfLocked('member', 'member', 'member')).toBe(true);
+  });
+
   it('补齐五个内置组并强制 owner / guest 的不变量', () => {
     const groups = normalizePermissionGroupConfigs([
       {

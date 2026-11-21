@@ -441,7 +441,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 | `/admin/storage` | 存储策略：全局本地目录 / S3 兼容对象存储；文章媒体、站点图片、用户头像、用户数据/附件各自选择策略，可单策略或多策略容量切换（每策略配额、写满切换/停止，上传超配额返回 507）；保存后服务端立即热切换，不再需要部署片段或重启；`GET/PUT /system/storage`，密钥只写不回传；文章正文只读说明存数据库 | 管理员 |
 | `/admin/activity` | 服务端审计日志（`GET /sites/{id}/audit-logs`）：时间、动作、目标、操作人筛选与 CSV 导出 | 管理员 |
 | `/admin/platform`、`/admin/platform/new`、`/admin/platform/:siteId` | 平台站点：列出部署内站点、新建站点、验证域名并取得交接令牌进入目标站点 | 平台管理员 |
-| `/admin/docs` | 接口清单、契约规模（158 路径 / 190 操作）、已实现 / 仅演示 / 已知限制 | 可进入后台 |
+| `/admin/docs` | 接口清单、契约规模（159 路径 / 191 操作）、已实现 / 仅演示 / 已知限制 | 可进入后台 |
 
 角色不足时不会白屏：进入没有权限的后台页面会看到带页头的“需要…权限”页面。
 只有「创建内容」能力的成员也可以进入后台：页头用户菜单会增加「新建文章」，后台只显示
@@ -472,7 +472,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 ## 契约对齐与仍有边界
 
-前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 158 条路径 / 190 个操作）实现。
+前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 159 条路径 / 191 个操作）实现。
 下面按“已实现（不再是缺口）”“仅演示模式 / 前端本地策略”“已知限制”三档记录；判断以代码与契约为准，
 不把演示效果写成服务端能力。
 

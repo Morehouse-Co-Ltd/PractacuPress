@@ -74,6 +74,8 @@ const fragment: Dictionary = {
   '仅平台管理员可备份整个实例': 'Only a platform administrator can back up the whole instance',
   '站点管理员可用上方的全站导出迁移自己的内容；实例备份包含所有站点，因此不在这里开放。':
     'A site administrator can use the whole-site export above; an instance backup contains every site, so it is not offered here.',
+  '站点管理员可用「数据导入导出」里的全站导出迁移自己的内容；实例备份包含所有站点，因此不在这里开放。':
+    'A site administrator can use the whole-site export on “Data import and export” to move their content; an instance backup contains every site, so it is not offered here.',
   '立即创建备份': 'Create backup now',
   '刷新列表': 'Refresh list',
   '备份已生成': 'Backup created',
@@ -88,7 +90,51 @@ const fragment: Dictionary = {
   '下载': 'Download',
   '备份范围提示': 'Backup scope notes',
 
-  // ---- 恢复 ----
+  // ---- 数据导入导出 / 备份两个 tab ----
+  '数据导入导出': 'Data import and export',
+
+  // ---- 页面内恢复 ----
+  '在线恢复备份': 'Restore backup online',
+  '恢复完成': 'Restore complete',
+  '数据库已恢复到 {name}': 'Database restored to {name}',
+  '从备份恢复': 'Restore from backup',
+  '直接在页面里选择一个 SQLite 备份覆盖当前数据库。':
+    'Choose a SQLite backup on this page to replace the current database.',
+  '仅平台管理员可恢复整个实例': 'Only a platform administrator can restore the whole instance',
+  '恢复会替换所有站点的数据库，只有平台管理员可以执行；站点管理员请使用数据导入导出迁移自己的内容。':
+    'Restoring replaces the database for every site, so only a platform administrator can do it. Site administrators can move their own content with data import and export.',
+  '当前后端不支持页面内恢复': 'This backend does not support in-page restore',
+  '请升级 API 后重试，或使用命令行恢复脚本。':
+    'Upgrade the API and try again, or use the command-line restore script.',
+  '高危操作：恢复会覆盖当前数据': 'High-risk action: restoring overwrites current data',
+  '服务端会先校验备份包与每个文件的 SHA-256，自动创建一份安全备份，再用备份覆盖本机 SQLite 数据库并恢复本地媒体。恢复过程中请勿关闭服务；当前登录会话可能因账户数据被替换而失效。':
+    'The server verifies the package and every file SHA-256, creates a safety backup, then replaces the local SQLite database and restores local media. Do not stop the service during the restore; the current session may expire if account data is replaced.',
+  '还没有可恢复的 SQLite 备份。先创建一个备份，或刷新列表。':
+    'There is no restorable SQLite backup yet. Create one first, or refresh the list.',
+  '选择备份': 'Choose a backup',
+  '只列出 SQLite 备份包；MySQL / PostgreSQL 请使用各自的 dump 工具恢复。':
+    'Only SQLite packages are listed; restore MySQL / PostgreSQL with their native dump tools.',
+  '请选择一个备份…': 'Choose a backup…',
+  '恢复此备份': 'Restore this backup',
+  '需要平台管理员身份，并再次输入高危操作密码。':
+    'Requires a platform administrator and a fresh high-risk password check.',
+  '数据库已恢复到 {path}；恢复前安全备份为 {id}。':
+    'Database restored to {path}; the pre-restore safety backup is {id}.',
+  '站点 {sites} · 用户 {users} · 内容 {content} · 媒体 {media} 个文件 · schema {schema}':
+    'Sites {sites} · Users {users} · Content {content} · Media {media} files · schema {schema}',
+  '重新加载页面': 'Reload page',
+  'MySQL / PostgreSQL 不使用页面内恢复：请用 mysqldump / pg_dump 恢复数据库，媒体目录单独复制。S3 媒体不进入备份包，需要按桶单独备份。':
+    'MySQL / PostgreSQL do not use in-page restore: restore the database with mysqldump / pg_dump and copy the media directory separately. S3 media is not packaged and must be backed up per bucket.',
+  '确认恢复备份': 'Confirm backup restore',
+  '这会覆盖当前数据库，且无法从页面撤销。':
+    'This replaces the current database and cannot be undone from this page.',
+  '继续并验证密码': 'Continue and verify password',
+  '即将用 {name} 覆盖当前实例；服务端会先自动创建安全备份。':
+    '{name} will replace the current instance; the server creates a safety backup first.',
+  '确认后会要求再次输入高危操作密码。恢复完成前请不要关闭服务或刷新页面。':
+    'After confirming, you must enter the high-risk password again. Do not stop the service or refresh the page during the restore.',
+
+  // ---- 命令行恢复 ----
   '恢复': 'Restore',
   '恢复会替换数据库文件，只能在服务停止后由命令行执行。':
     'Restore replaces the database file and can only run from the command line while the service is stopped.',

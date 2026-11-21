@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -11,15 +12,23 @@ import (
 	"github.com/gin-gonic/gin"
 
 	apperr "github.com/practacu/practacu-press/internal/platform/errors"
+	"github.com/practacu/practacu-press/internal/site"
 	"github.com/practacu/practacu-press/internal/transport/http/gin/middleware"
 )
 
 // PrincipalFunc returns the authenticated caller.
 type PrincipalFunc func(*gin.Context) (Actor, bool)
 
+// StepUpVerifier verifies a grant minted by POST /auth/step-up for exactly one
+// account and site.
+type StepUpVerifier func(raw, userID, siteID string) bool
+
 // HandlerConfig configures a Handler.
 type HandlerConfig struct {
 	Principal PrincipalFunc
+	// StepUp is mandatory for the restore route. It is intentionally not tied to
+	// the site's high-threat switch: a full instance restore always needs it.
+	StepUp StepUpVerifier
 }
 
 // Handler exposes backups and site transfer over HTTP.
@@ -30,6 +39,7 @@ type HandlerConfig struct {
 type Handler struct {
 	service   *Service
 	principal PrincipalFunc
+	stepUp    StepUpVerifier
 }
 
 // NewHandler builds a Handler.
@@ -38,7 +48,7 @@ func NewHandler(service *Service, cfg HandlerConfig) *Handler {
 	if principal == nil {
 		principal = func(*gin.Context) (Actor, bool) { return Actor{}, false }
 	}
-	return &Handler{service: service, principal: principal}
+	return &Handler{service: service, principal: principal, stepUp: cfg.StepUp}
 }
 
 // Routes mounts backups and site transfer under /api/v1.
@@ -50,6 +60,7 @@ func (h *Handler) Routes(r gin.IRouter, requireAuth gin.HandlerFunc, protected .
 	platform.POST("", h.create)
 	platform.GET("", h.list)
 	platform.GET("/:backupID/download", h.download)
+	platform.POST("/:backupID/restore", h.restore)
 
 	guards := append([]gin.HandlerFunc{requireAuth}, protected...)
 	sites := r.Group("/sites/:siteID", guards...)
@@ -124,6 +135,53 @@ func (h *Handler) download(c *gin.Context) {
 	}
 	_ = file.Close()
 	c.FileAttachment(artifact.Path, artifact.FileName)
+}
+
+// restore replaces the live database and local media from one stored package.
+//
+// It always requires a platform administrator and a valid X-PP-Step-Up grant.
+// The check is deliberately local instead of relying only on the site's
+// high-threat switch: restoring an instance is destructive even on a site where
+// the switch has been turned off.
+func (h *Handler) restore(c *gin.Context) {
+	actor, ok := h.actor(c)
+	if !ok {
+		return
+	}
+	if err := requirePlatformAdmin(actor); err != nil {
+		_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "platform_admin_required"))
+		return
+	}
+	if h.stepUp == nil {
+		_ = c.Error(apperr.Internal(errors.New("step-up verifier is not configured")))
+		return
+	}
+	if !h.stepUp(c.GetHeader(site.StepUpHeaderName), actor.UserID, actor.SiteID) {
+		_ = c.Error(apperr.PermissionDenied().WithDetail("reason", "step_up_required"))
+		return
+	}
+	if h.service == nil {
+		_ = c.Error(apperr.Internal(errors.New("backup service is not configured")))
+		return
+	}
+	result, err := h.service.RestoreStored(
+		context.WithoutCancel(c.Request.Context()),
+		c.Param("backupID"),
+		actor,
+		middleware.RequestIDFrom(c),
+	)
+	if err != nil {
+		var failure *RestoreFailure
+		if errors.As(err, &failure) {
+			_ = c.Error(apperr.Internal(failure).
+				WithDetail("safety_backup_id", failure.SafetyBackupID).
+				WithDetail("rolled_back", failure.RolledBack))
+			return
+		}
+		_ = c.Error(h.mapError(err))
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // export writes a site package directly to the response.
@@ -230,6 +288,8 @@ func (h *Handler) mapError(err error) *apperr.Problem {
 	case errors.Is(err, ErrEncryptionKeyRequired), errors.Is(err, ErrEncryptionKeyInvalid),
 		errors.Is(err, ErrDecryptionFailed):
 		return apperr.Validation(cleanError(err)).WithDetail("reason", "backup_encryption_error")
+	case errors.Is(err, ErrRestoreUnsupported):
+		return apperr.Validation(cleanError(err)).WithDetail("reason", "restore_unsupported")
 	case errors.Is(err, ErrInvalidInput):
 		return apperr.Validation(cleanError(err))
 	default:

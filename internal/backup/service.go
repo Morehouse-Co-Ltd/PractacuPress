@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/practacu/practacu-press/internal/audit"
 	"github.com/practacu/practacu-press/internal/content"
 	"github.com/practacu/practacu-press/internal/infrastructure/db"
 	"github.com/practacu/practacu-press/internal/media"
@@ -102,7 +104,11 @@ type Config struct {
 	Driver      string
 	DSN         string
 	Snapshotter Snapshotter
-	MediaRoots  []MediaRoot
+	// Online enables whole-instance restores through the live SQLite handle.
+	// Nil keeps the CLI file-replacement path available but disables the HTTP
+	// restore endpoint.
+	Online     OnlineRestorer
+	MediaRoots []MediaRoot
 	// MediaRootsProvider, when set, is read at the start of every archive. The
 	// runtime storage manager uses it so a strategy switch is reflected without a
 	// process restart. MediaRoots stays as the static CLI/test form.
@@ -118,6 +124,9 @@ type Config struct {
 
 	AppVersion string
 	Now        func() time.Time
+	// Audit records destructive restores. Nil keeps the service usable in CLI
+	// and unit-test setups without an audit store.
+	Audit audit.Recorder
 
 	Sites    SiteReader
 	Content  ContentStore
@@ -138,6 +147,12 @@ type Service struct {
 	appVersion         string
 	now                func() time.Time
 	encryptionKey      []byte
+	online             OnlineRestorer
+	audit              audit.Recorder
+
+	// mu serializes whole-instance restores against backup creation. Restore takes
+	// the write lock; backups and scheduled runs take the read lock.
+	mu sync.RWMutex
 
 	sites    SiteReader
 	content  ContentStore
@@ -178,6 +193,8 @@ func NewService(cfg Config) (*Service, error) {
 		appVersion:         cfg.AppVersion,
 		now:                cfg.Now,
 		encryptionKey:      key,
+		online:             cfg.Online,
+		audit:              cfg.Audit,
 		sites:              cfg.Sites,
 		content:            cfg.Content,
 		taxonomy:           cfg.Taxonomy,
