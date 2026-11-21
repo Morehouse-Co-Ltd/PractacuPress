@@ -103,7 +103,8 @@ import type {
 import type { SiteConfigSaved, SiteConfigSnapshot } from './siteConfig';
 import type { ContactPayload } from './contactForm';
 import { readCaptchaStatus } from './captcha';
-import { canReview, ROLE_RANK, slugify } from './format';
+import { canReview, ROLE_RANK } from './format';
+import { contentSlugFromTitle, isValidContentSlug } from './contentSlug';
 import { passwordCreationProblem, passwordProblemText } from './passwordPolicy';
 import { htmlToText, renderSource } from './markdown';
 import {
@@ -2031,8 +2032,8 @@ export class DemoBackend {
     if (input.title.length > 200) this.fail(400, 'validation_failed', '标题不能超过 200 个字符。');
     if (!input.source_body.trim()) this.fail(400, 'validation_failed', '正文不能为空。');
     if (input.source_body.length > 200_000) this.fail(400, 'validation_failed', '正文不能超过 200000 个字符。');
-    if (input.slug && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(input.slug)) {
-      this.fail(400, 'validation_failed', '路径只能使用小写字母、数字和连字符。');
+    if (input.slug?.trim() && !isValidContentSlug(input.slug)) {
+      this.fail(400, 'validation_failed', '路径只能使用文字、数字和连字符。');
     }
     const now = new Date().toISOString();
     const content: Content & { source_body: string; author_id: string; author_name: string } = {
@@ -2040,7 +2041,7 @@ export class DemoBackend {
       kind,
       status: 'draft',
       title: input.title.trim(),
-      slug: input.slug || slugify(input.title) || `draft-${uuid().slice(0, 6)}`,
+      slug: input.slug?.trim() || contentSlugFromTitle(input.title) || `draft-${uuid().slice(0, 6)}`,
       summary: input.summary?.slice(0, 500),
       source_format: input.source_format ?? 'markdown',
       source_body: input.source_body,
@@ -2096,7 +2097,8 @@ export class DemoBackend {
     // 首次修订前先把旧状态补。v1，之后每次保存都追加一个版本。
     this.ensureRevisions(content);
     content.title = input.title.trim();
-    if (input.slug) content.slug = input.slug;
+    // 与服务端 UpdateDraft 一致：地址留空时按文章名重新生成，而不是保留旧地址。
+    content.slug = input.slug?.trim() || contentSlugFromTitle(content.title);
     content.summary = input.summary?.slice(0, 500);
     content.source_format = input.source_format ?? content.source_format;
     content.source_body = input.source_body;

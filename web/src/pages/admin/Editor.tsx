@@ -66,6 +66,7 @@ import { useCustomization } from '../../lib/customize';
 import { coverFor, coverImageStyle } from '../../lib/covers';
 import { useMediaSrc } from '../../lib/assetUrl';
 import { normalizeEditorSource } from '../../lib/editorSource';
+import { isValidContentSlug } from '../../lib/contentSlug';
 import { htmlToMarkdown } from '../../lib/htmlToMarkdown';
 import { htmlToText, renderMarkdown, sanitizeHtml } from '../../lib/markdown';
 import { toExportMarkdown } from '../../lib/markdownExport';
@@ -788,8 +789,8 @@ function EditorWorkspace() {
     if (form.summary.length > 500) return t('摘要不能超过 500 个字符。');
     if (!form.source_body.trim()) return t('正文不能为空。');
     if (form.source_body.length > 200000) return t('正文不能超过 200000 个字符。');
-    if (form.slug && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.slug)) {
-      return t('路径只能使用小写字母、数字和连字符，例如 hello-world。');
+    if (form.slug.trim() && !isValidContentSlug(form.slug)) {
+      return t('路径只能使用文字、数字和连字符，例如 hello-world 或 中文标题。');
     }
     if (form.access_mode === 'password' && !form.access_password && !item?.has_access_password) {
       return t('密码访问需要设置一个访问密码。');
@@ -1863,14 +1864,13 @@ function EditorWorkspace() {
                   <Field
                     label={t('路径（slug）')}
                     htmlFor="editor-slug"
-                    hint={t('创建后仍可修改，但旧链接会失效。')}
+                    hint={t('留空会自动使用文章名；支持中文、数字和连字符，修改后旧链接会失效。')}
                   >
                     <Input
                       id="editor-slug"
                       value={form.slug}
                       onChange={(e) => update({ slug: e.target.value })}
-                      placeholder={t('留空自动生成')}
-                      pattern="[a-z0-9-]*"
+                      placeholder={t('留空自动使用文章名')}
                       disabled={!editable}
                     />
                   </Field>

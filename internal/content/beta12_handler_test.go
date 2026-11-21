@@ -271,7 +271,7 @@ func TestHandlerPreviewLinkOpensDraft(t *testing.T) {
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &grant))
 	require.NotEmpty(t, grant.Token)
 	require.NotEmpty(t, grant.ExpiresAt)
-	require.Equal(t, "/a/secret?preview_token="+url.QueryEscape(grant.Token), grant.Path)
+	require.Equal(t, "/secret?preview_token="+url.QueryEscape(grant.Token), grant.Path)
 
 	// Without a session and without the token the draft stays hidden.
 	harness.actor = nil

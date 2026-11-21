@@ -27,6 +27,18 @@ func TestPathRendersBuiltInStructures(t *testing.T) {
 	}
 }
 
+func TestDefaultsUseArticleName(t *testing.T) {
+	settings := Defaults()
+	require.Equal(t, StructurePostName, settings.ArticleStructure)
+	require.Equal(t, StructurePostName, settings.PostStructure)
+	require.Equal(t, "/quiet-yard", Path(settings, Item{
+		Kind: "article", ID: "art_42", Slug: "quiet-yard",
+	}))
+	require.Equal(t, "/release", Path(settings, Item{
+		Kind: "post", ID: "post_9", Slug: "release",
+	}))
+}
+
 func TestCustomStructureAndPostFollowSettings(t *testing.T) {
 	settings := Defaults()
 	settings.ArticleStructure = StructureCustom

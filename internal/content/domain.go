@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	apperr "github.com/practacu/practacu-press/internal/platform/errors"
 	"github.com/practacu/practacu-press/internal/site"
@@ -329,7 +330,10 @@ const (
 	MaxCoverAltLength = 200
 )
 
-var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+// slugPattern admits Unicode letters, digits and combining marks so a Chinese or
+// accented title can be used verbatim as the public address. Hyphens are only
+// separators: leading, trailing and doubled hyphens stay invalid.
+var slugPattern = regexp.MustCompile(`^[\p{L}\p{N}\p{M}]+(?:-[\p{L}\p{N}\p{M}]+)*$`)
 
 // invalidField builds a field error that stays matchable as ErrInvalidInput.
 //
@@ -770,12 +774,12 @@ func ValidateDraft(in DraftInput) (DraftInput, error) {
 		return DraftInput{}, invalidField("body", "too_long", "body is too long")
 	}
 	if in.Slug != "" {
-		if len(in.Slug) > MaxSlugLength {
+		if len([]rune(in.Slug)) > MaxSlugLength {
 			return DraftInput{}, invalidField("slug", "too_long", "slug is too long")
 		}
 		if !slugPattern.MatchString(in.Slug) {
 			return DraftInput{}, invalidField("slug", "malformed",
-				"slug must be lowercase letters, digits and hyphens")
+				"slug must use letters, digits and hyphens")
 		}
 	}
 	if in.CategoryID != "" && len(in.CategoryID) > 36 {
@@ -896,15 +900,18 @@ func DecodeTags(raw string) []string {
 
 // SlugFromTitle derives a stable slug from a title.
 //
-// Non ASCII titles produce an empty slug on purpose: inventing a transliteration
-// would produce collisions across languages, so the caller keeps the id based URL.
+// The title is kept in its own script instead of being transliterated: "中文标题"
+// becomes "中文标题", while spaces and punctuation collapse to one hyphen. This is
+// deliberately not a pinyin transliterator, so two different Chinese titles can
+// never collide because of a lossy romanisation. A title with no letters or digits
+// (emoji, punctuation only) still yields an empty slug and keeps the id based URL.
 func SlugFromTitle(title string) string {
 	var builder strings.Builder
 	lastHyphen := true
 
 	for _, r := range strings.ToLower(title) {
 		switch {
-		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r):
 			builder.WriteRune(r)
 			lastHyphen = false
 		case !lastHyphen:
@@ -913,9 +920,19 @@ func SlugFromTitle(title string) string {
 		}
 	}
 
-	slug := strings.Trim(builder.String(), "-")
-	if len(slug) > MaxSlugLength {
-		slug = strings.Trim(slug[:MaxSlugLength], "-")
+	runes := []rune(strings.Trim(builder.String(), "-"))
+	if len(runes) > MaxSlugLength {
+		runes = []rune(strings.Trim(string(runes[:MaxSlugLength]), "-"))
 	}
-	return slug
+	return string(runes)
+}
+
+// withDefaultSlug keeps a manual slug and otherwise derives one from the title.
+// Create, update, manual publish and scheduled publish all go through this helper so
+// "leave the address empty" means the same thing on every path.
+func withDefaultSlug(title, slug string) string {
+	if slug != "" {
+		return slug
+	}
+	return SlugFromTitle(title)
 }

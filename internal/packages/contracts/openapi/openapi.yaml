@@ -7111,7 +7111,15 @@ components:
       required: [title, source_body]
       properties:
         title: { type: string, maxLength: 200 }
-        slug: { type: string, maxLength: 120, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+        slug:
+          type: string
+          maxLength: 120
+          pattern: '^[\p{L}\p{N}\p{M}]+(?:-[\p{L}\p{N}\p{M}]+)*$'
+          description: >-
+            URL path segment. When omitted or empty the server derives it from the
+            title; Unicode letters, digits and combining marks are kept, spaces and
+            punctuation collapse to one hyphen, and Latin letters are lowercased.
+            A title without letters or digits keeps the id based fallback address.
         summary: { type: string, maxLength: 500 }
         source_format: { type: string, enum: [markdown, html, plain], default: markdown }
         source_body: { type: string, maxLength: 200000 }

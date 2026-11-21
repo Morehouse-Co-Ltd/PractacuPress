@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -466,7 +467,7 @@ func TestPreviewTokenLetsAnonymousReadDraft(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, grant.Token)
 	require.Equal(t, betaNow().Add(PreviewTokenTTL), grant.ExpiresAt)
-	require.Equal(t, "/a/secret-draft?preview_token="+grant.Token, grant.Path)
+	require.Equal(t, "/secret-draft?preview_token="+grant.Token, grant.Path)
 
 	// An anonymous reader without the token is refused ...
 	anonymous := Actor{SiteID: author.SiteID}
@@ -601,30 +602,95 @@ func TestDigestRendersTitleSummaryAndPath(t *testing.T) {
 	author := actor("author", site.RoleMember)
 
 	article := createPublished(t, service, author, "hello-world")
-	title, summary, url, ok, err := service.Digest(ctx, author.SiteID, article.ID)
+	title, summary, articleURL, ok, err := service.Digest(ctx, author.SiteID, article.ID)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, article.Title, title)
 	require.Equal(t, article.Summary, summary)
-	require.Equal(t, "/a/hello-world", url)
+	require.Equal(t, "/hello-world", articleURL)
 
-	// The URL falls back to the id when the item has no slug.
+	// A Chinese title is its own address; the digest escapes it like any other slug.
 	post, err := service.CreateDraft(ctx, author, KindPost, DraftInput{
 		Title:        "中文标题",
 		SourceFormat: FormatMarkdown,
 		SourceBody:   "# body",
 	})
 	require.NoError(t, err)
-	require.Empty(t, post.Slug, "a non ASCII title derives no slug")
-	_, _, fallbackURL, ok, err := service.Digest(ctx, author.SiteID, post.ID)
+	require.Equal(t, "中文标题", post.Slug)
+	_, _, unicodeURL, ok, err := service.Digest(ctx, author.SiteID, post.ID)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "/p/"+post.ID, fallbackURL)
+	require.Equal(t, "/"+url.PathEscape(post.Slug), unicodeURL)
+
+	// A title with no letters or digits still falls back to the id.
+	emoji, err := service.CreateDraft(ctx, author, KindPost, DraftInput{
+		Title:        "🎉！",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   "# body",
+	})
+	require.NoError(t, err)
+	require.Empty(t, emoji.Slug, "a title without letters or digits derives no slug")
+	_, _, fallbackURL, ok, err := service.Digest(ctx, author.SiteID, emoji.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "/"+emoji.ID, fallbackURL)
 
 	// An unknown id is reported as missing, not as an error.
 	_, _, _, ok, err = service.Digest(ctx, author.SiteID, "missing")
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+func TestPublishDerivesSlugForDraftWithNone(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	service := newBetaService(t, repo, nil)
+	author := actor("author", site.RoleMember)
+
+	draft, err := service.CreateDraft(ctx, author, KindArticle, DraftInput{
+		Title:        "中文标题",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   "# body",
+	})
+	require.NoError(t, err)
+
+	// Simulate a draft written before the title-as-address rule.
+	stored := repo.items[draft.ID]
+	stored.Slug = ""
+	repo.items[draft.ID] = stored
+
+	published, err := service.Apply(ctx, author, draft.ID, ActionPublish, "")
+	require.NoError(t, err)
+	require.Equal(t, StatusPublished, published.Status)
+	require.Equal(t, "中文标题", published.Slug)
+}
+
+func TestScheduledPublishDerivesSlugForDraftWithNone(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	service := newBetaService(t, repo, nil)
+	author := actor("author", site.RoleMember)
+
+	draft, err := service.CreateDraft(ctx, author, KindArticle, DraftInput{
+		Title:        "预约文章",
+		SourceFormat: FormatMarkdown,
+		SourceBody:   "# body",
+	})
+	require.NoError(t, err)
+
+	stored := repo.items[draft.ID]
+	stored.Slug = ""
+	due := betaNow().Add(-time.Minute)
+	stored.PublishAt = &due
+	repo.items[draft.ID] = stored
+
+	result, err := service.ProcessScheduledPublishing(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Published)
+
+	published := repo.items[draft.ID]
+	require.Equal(t, StatusPublished, published.Status)
+	require.Equal(t, "预约文章", published.Slug)
 }
 
 // slugRecorder captures the automatic redirect calls of a slug change.
@@ -654,7 +720,7 @@ func TestSlugChangeOfPublishedItemRecordsRedirect(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, recorder.calls, 1)
-	require.Equal(t, slugChange{siteID: author.SiteID, from: "/a/old-slug", to: "/a/new-slug"}, recorder.calls[0])
+	require.Equal(t, slugChange{siteID: author.SiteID, from: "/old-slug", to: "/new-slug"}, recorder.calls[0])
 
 	// Saving the same slug again records nothing.
 	_, err = service.UpdateDraft(ctx, author, item.ID, renamed)

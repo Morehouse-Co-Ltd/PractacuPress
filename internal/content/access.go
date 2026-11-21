@@ -310,6 +310,7 @@ func (s *Service) ProcessScheduledPublishing(ctx context.Context) (ScheduledPubl
 
 		updated := item
 		updated.Status = StatusPublished
+		updated.Slug = withDefaultSlug(updated.Title, updated.Slug)
 		updated.PublishedAt = &now
 		updated.PublishAt = nil
 		updated.PublishAttempts = 0

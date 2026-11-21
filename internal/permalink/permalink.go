@@ -54,10 +54,13 @@ var (
 	placeholderPattern = regexp.MustCompile(`%(year|monthnum|day|postname|post_id)%`)
 )
 
+// Defaults is the address structure for a site that has not saved an explicit
+// choice: both articles and posts live directly under their own name ("/%postname%",
+// the "文章名" option). A saved legacy or custom structure is never rewritten.
 func Defaults() Settings {
 	return Settings{
-		ArticleStructure: StructureLegacy,
-		PostStructure:    StructureLegacy,
+		ArticleStructure: StructurePostName,
+		PostStructure:    StructurePostName,
 	}
 }
 

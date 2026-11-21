@@ -123,11 +123,11 @@ func TestFeedServesRSSForTheResolvedHost(t *testing.T) {
 	require.NotEmpty(t, res.Header.Get("ETag"))
 	require.NotEmpty(t, res.Header.Get("Last-Modified"))
 	require.Contains(t, body, "<title>Press</title>")
-	require.Contains(t, body, "http://press.example.com/a/a1")
+	require.Contains(t, body, "http://press.example.com/a1")
 	require.Contains(t, body, "Hello &amp; welcome")
 	require.Contains(t, body, "Ada")
 	require.Contains(t, body, "News")
-	require.NotContains(t, body, "/a/draft")
+	require.NotContains(t, body, "http://press.example.com/draft")
 	require.Equal(t, "site_1", lister.actor.SiteID)
 	require.Equal(t, 20, lister.limit)
 
@@ -165,7 +165,7 @@ func TestFeedUsesTheConfiguredCanonicalBase(t *testing.T) {
 	}`)}, lister, taxonomies, authors)
 
 	_, body := get(t, server, "/rss.xml")
-	require.Contains(t, body, "https://press.example.com/a/a1")
+	require.Contains(t, body, "https://press.example.com/a1")
 	require.Contains(t, body, `href="https://press.example.com/rss.xml"`)
 }
 

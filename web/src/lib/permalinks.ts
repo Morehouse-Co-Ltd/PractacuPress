@@ -1,11 +1,13 @@
 import type { Content, ContentKind, PermalinkPattern, PermalinkSettings, PermalinkStructure } from '../types';
 
+// New and unsaved sites use the article name as the address ("/%postname%"). A site
+// that has explicitly saved legacy or a custom structure keeps that choice.
 export const DEFAULT_PERMALINKS: PermalinkSettings = {
-  article_structure: 'legacy',
+  article_structure: 'post_name',
   article_custom: '/%postname%',
   article_aliases: [],
   posts_follow_articles: false,
-  post_structure: 'legacy',
+  post_structure: 'post_name',
   post_custom: '/%postname%',
   post_aliases: [],
 };

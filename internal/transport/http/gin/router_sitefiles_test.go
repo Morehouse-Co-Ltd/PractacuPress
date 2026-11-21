@@ -120,9 +120,9 @@ func TestSitemapIsServedForTheResolvedHost(t *testing.T) {
 	require.Contains(t, res.Header.Get("Cache-Control"), "max-age=300")
 
 	require.Contains(t, body, `<loc>http://press.example.com/</loc>`)
-	require.Contains(t, body, `<loc>http://press.example.com/a/a1</loc>`)
+	require.Contains(t, body, `<loc>http://press.example.com/a1</loc>`)
 	require.Contains(t, body, `<loc>http://press.example.com/about</loc>`)
-	require.NotContains(t, body, `/a/draft`)
+	require.NotContains(t, body, `<loc>http://press.example.com/draft</loc>`)
 	require.NotContains(t, body, `/private`)
 	require.Contains(t, body, `<lastmod>2026-11-06</lastmod>`)
 	require.Equal(t, []string{"site_1"}, lister.siteIDs)
@@ -206,7 +206,7 @@ func TestMembersOnlySiteExposesNoCrawlableContent(t *testing.T) {
 	)
 
 	_, sitemap := get(t, server, "/sitemap.xml")
-	require.NotContains(t, sitemap, "/a/a1")
+	require.NotContains(t, sitemap, "/a1")
 
 	_, robots := get(t, server, "/robots.txt")
 	require.Equal(t, "User-agent: *\nDisallow: /\n", robots)

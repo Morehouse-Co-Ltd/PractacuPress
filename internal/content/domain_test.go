@@ -1,6 +1,7 @@
 package content
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -208,6 +209,12 @@ func TestValidateDraft(t *testing.T) {
 	_, err = ValidateDraft(DraftInput{Title: "x", Slug: "Bad Slug!", SourceBody: "x"})
 	require.Error(t, err, "slug must be url safe")
 
+	withChineseSlug, err := ValidateDraft(DraftInput{
+		Title: "中文标题", Slug: "中文-标题", SourceBody: "x",
+	})
+	require.NoError(t, err, "Unicode letters and hyphens are a valid address")
+	require.Equal(t, "中文-标题", withChineseSlug.Slug)
+
 	longTitle := make([]rune, MaxTitleLength+1)
 	for i := range longTitle {
 		longTitle[i] = 'a'
@@ -219,8 +226,15 @@ func TestValidateDraft(t *testing.T) {
 func TestSlugFromTitle(t *testing.T) {
 	require.Equal(t, "hello-world", SlugFromTitle("Hello, World!"))
 	require.Equal(t, "a-b-c", SlugFromTitle("  A   B   C  "))
-	require.Equal(t, "", SlugFromTitle("中文标题"), "non ASCII titles do not invent a slug")
+	require.Equal(t, "中文标题", SlugFromTitle("中文标题"), "the title is kept in its own script")
+	require.Equal(t, "你好-世界", SlugFromTitle("你好，世界！"))
+	require.Equal(t, "café-déjà-vu", SlugFromTitle("Café déjà vu"))
 	require.Equal(t, "go-1-26", SlugFromTitle("Go 1.26"))
+	require.Equal(t, "", SlugFromTitle("🎉！"), "emoji and punctuation only keeps the id fallback")
+
+	truncated := SlugFromTitle(strings.Repeat("中", MaxSlugLength+20))
+	require.Equal(t, MaxSlugLength, len([]rune(truncated)))
+	require.Equal(t, strings.Repeat("中", MaxSlugLength), truncated)
 }
 
 func TestStatusHelpers(t *testing.T) {

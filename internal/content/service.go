@@ -394,9 +394,7 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if item.Slug == "" {
-		item.Slug = SlugFromTitle(item.Title)
-	}
+	item.Slug = withDefaultSlug(item.Title, item.Slug)
 	// Access mode, password hash and the comment override are part of the draft, so
 	// they are validated and written before sanitization changes the status.
 	if err := s.applyAccessFields(ctx, &item, validated, true); err != nil {
@@ -534,10 +532,7 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 	}
 
 	item.Title = validated.Title
-	item.Slug = validated.Slug
-	if item.Slug == "" {
-		item.Slug = SlugFromTitle(item.Title)
-	}
+	item.Slug = withDefaultSlug(validated.Title, validated.Slug)
 	item.Summary = validated.Summary
 	item.SourceFormat = validated.SourceFormat
 	item.SourceBody = validated.SourceBody
@@ -668,6 +663,10 @@ func (s *Service) Apply(ctx context.Context, actor Actor, contentID string, acti
 	updated.UpdatedAt = now
 	switch next {
 	case StatusPublished:
+		// A draft created before the title-as-address rule, or inserted by an older
+		// client, may still have an empty slug. Fill it at the transition so a
+		// published item never falls back to its opaque id in the public URL.
+		updated.Slug = withDefaultSlug(updated.Title, updated.Slug)
 		updated.PublishedAt = &now
 		// A manual publish consumes the schedule: keeping it would let the
 		// background publisher act on an item that is already live.

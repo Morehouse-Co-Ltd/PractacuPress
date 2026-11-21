@@ -275,6 +275,14 @@ func newTestService(t *testing.T, repo Repository, locator ContentLocator) *Serv
 	// Run the detached hit counter inline so an assertion right after Resolve is
 	// deterministic instead of racing the goroutine.
 	service.launch = func(task func()) { task() }
+	// These tests describe the old /a and /p routes, so pin the structure instead of
+	// depending on the product default. The default itself is covered separately.
+	service.permalinks = func(context.Context, string) (permalink.Settings, error) {
+		settings := permalink.Defaults()
+		settings.ArticleStructure = permalink.StructureLegacy
+		settings.PostStructure = permalink.StructureLegacy
+		return settings, nil
+	}
 	return service
 }
 
@@ -614,6 +622,27 @@ func TestResolvePathServesSlugFormDirectly(t *testing.T) {
 	require.Equal(t, KindContent, resolution.Kind)
 	require.Equal(t, 200, resolution.Status)
 	require.Equal(t, "/a/hello-world", resolution.CanonicalPath)
+}
+
+func TestResolvePathUsesPostNameByDefault(t *testing.T) {
+	repo := newFakeRepo()
+	locator := newFakeLocator()
+	locator.add(LocateKindArticle, "hello-world", "content_1", "hello-world", "Hello")
+	service := newTestService(t, repo, locator)
+	service.permalinks = nil
+
+	resolution, err := service.ResolvePath(context.Background(), "site_1", "/hello-world")
+	require.NoError(t, err)
+	require.Equal(t, KindContent, resolution.Kind)
+	require.Equal(t, 200, resolution.Status)
+	require.Equal(t, "/hello-world", resolution.CanonicalPath)
+
+	// The old prefixed form stays readable and is permanently moved to the new one.
+	resolution, err = service.ResolvePath(context.Background(), "site_1", "/a/hello-world")
+	require.NoError(t, err)
+	require.Equal(t, KindContent, resolution.Kind)
+	require.Equal(t, 301, resolution.Status)
+	require.Equal(t, "/hello-world", resolution.CanonicalPath)
 }
 
 func TestResolvePathWithoutSlugKeepsIDPathAtTwoHundred(t *testing.T) {

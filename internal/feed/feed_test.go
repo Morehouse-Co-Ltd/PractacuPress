@@ -253,7 +253,7 @@ func TestBuildProjectionAndVisibility(t *testing.T) {
 	require.Equal(t, DefaultLimit, lister.limit)
 	require.Len(t, channel.Items, 1)
 	entry := channel.Items[0]
-	require.Equal(t, "https://press.example.com/a/hello", entry.URL)
+	require.Equal(t, "https://press.example.com/hello", entry.URL)
 	require.Equal(t, "Ada", entry.AuthorName)
 	require.Equal(t, "News", entry.CategoryName)
 	require.Equal(t, []string{"Go"}, entry.Tags)
@@ -287,9 +287,9 @@ func TestBuildUsesSlugCanonicalAndIDFallbacks(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, channel.Items, 3)
-	require.Equal(t, "https://press.example.com/a/hello-world", channel.Items[0].URL)
+	require.Equal(t, "https://press.example.com/hello-world", channel.Items[0].URL)
 	require.Equal(t, "https://elsewhere.example/republished", channel.Items[1].URL)
-	require.Equal(t, "https://press.example.com/a/legacy", channel.Items[2].URL)
+	require.Equal(t, "https://press.example.com/legacy", channel.Items[2].URL)
 }
 
 func TestBuildUsesConfiguredPermalinkStructure(t *testing.T) {

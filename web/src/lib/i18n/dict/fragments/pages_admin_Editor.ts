@@ -42,8 +42,8 @@ const fragment: Dictionary = {
   '摘要不能超过 500 个字符。': 'The summary cannot be longer than 500 characters.',
   '正文不能为空。': 'The body cannot be empty.',
   '正文不能超过 200000 个字符。': 'The body cannot be longer than 200000 characters.',
-  '路径只能使用小写字母、数字和连字符，例如 hello-world。':
-    'The path can only use lowercase letters, digits, and hyphens, for example hello-world.',
+  '路径只能使用文字、数字和连字符，例如 hello-world 或 中文标题。':
+    'The path can only use letters, digits, and hyphens, for example hello-world or my-title.',
   '草稿已保存，但状态切换失败': 'The draft was saved, but the status change failed',
   '内容已保存，但状态切换失败': 'The content was saved, but the status change failed',
   内容已保存: 'Content saved',
@@ -74,9 +74,9 @@ const fragment: Dictionary = {
   创建: 'Created',
   安全策略: 'Security policy',
   '路径（slug）': 'Path (slug)',
-  '创建后仍可修改，但旧链接会失效。':
-    'It can still be changed after creation, but old links will stop working.',
-  留空自动生成: 'Leave empty to generate one',
+  '留空会自动使用文章名；支持中文、数字和连字符，修改后旧链接会失效。':
+    'Leave it empty to use the article title; Chinese characters, digits, and hyphens are supported. Old links stop working after a change.',
+  留空自动使用文章名: 'Leave empty to use the article title',
   '分类用于归档，标签用于跨分类关联主题。':
     'Categories group content; tags connect topics across categories.',
   管理: 'Manage',

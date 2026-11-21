@@ -39,9 +39,9 @@ func TestBuildListsPublicRoutesAndPublishedEntries(t *testing.T) {
 		"https://press.example.com/",
 		"https://press.example.com/articles",
 		"https://press.example.com/posts",
-		"https://press.example.com/a/hello-world",
-		"https://press.example.com/p/release-notes",
-		"https://press.example.com/a/legacy",
+		"https://press.example.com/hello-world",
+		"https://press.example.com/release-notes",
+		"https://press.example.com/legacy",
 		"https://elsewhere.example/post",
 		"https://press.example.com/about",
 	}, locations)

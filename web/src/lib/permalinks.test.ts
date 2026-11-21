@@ -16,8 +16,12 @@ const article = {
 } as Content;
 
 describe('permalinks', () => {
-  it('preserves the current route defaults', () => {
-    expect(contentPermalink(article, DEFAULT_PERMALINKS)).toBe('/a/quiet-yard');
+  it('uses the article name as the default address', () => {
+    expect(contentPermalink(article, DEFAULT_PERMALINKS)).toBe('/quiet-yard');
+    expect(contentPermalink(article, {
+      ...DEFAULT_PERMALINKS,
+      article_structure: 'legacy',
+    })).toBe('/a/quiet-yard');
   });
 
   it('renders and matches date, numeric and custom formats', () => {
