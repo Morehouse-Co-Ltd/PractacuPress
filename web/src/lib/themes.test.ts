@@ -104,7 +104,7 @@ describe('built-in big themes', () => {
 });
 
 describe('blank themes', () => {
-  it('creates a theme with no palette, typography or layout', () => {
+  it('creates a theme with no palette or typography and a blank layout', () => {
     const blank = blankTheme('空白主题', '从零开始');
     expect(blank.id).toMatch(/^theme_/);
     expect(blank.name).toBe('空白主题');
@@ -113,6 +113,8 @@ describe('blank themes', () => {
     expect(blank.variant).toBeUndefined();
     expect(blank.appearance).toBeUndefined();
     expect(blank.preview).toBeUndefined();
+    expect(blank.layout?.home?.blocks).toHaveLength(0);
+    expect(blank.layout?.article?.blocks).toHaveLength(0);
     expect(themeHasSettings(blank)).toBe(false);
     expect(themeHasVariant(blank)).toBe(false);
   });
@@ -137,6 +139,24 @@ describe('blank themes', () => {
     });
     expect(explicit?.variant).toBe('bento');
     expect(explicit?.theme?.accent).toBe('#123456');
+  });
+
+  it('keeps the theme original layout when reading a stored theme', () => {
+    const stored = normalizeCustomTheme({
+      id: 'theme_layout',
+      name: '带编排',
+      note: '',
+      layout: {
+        home: {
+          blocks: [
+            { id: 'h', type: 'text', title: '首页', props: {}, animation: 'none', hidden: false },
+          ],
+        },
+        article: { blocks: [] },
+      },
+    });
+    expect(stored?.layout?.home?.blocks[0]?.id).toBe('h');
+    expect(stored?.layout?.article?.blocks).toHaveLength(0);
   });
 
   it('matches the blank bundle only while the site still uses the defaults', () => {

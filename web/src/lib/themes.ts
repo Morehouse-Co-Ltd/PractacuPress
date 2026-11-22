@@ -1,7 +1,9 @@
 import type {
   AppearanceSectionId,
   LayoutVariant,
+  ScreenLayout,
   SiteTheme,
+  ThemeLayoutEntry,
   ThemePreviewSpec,
   ThemeSettings,
 } from '../types';
@@ -244,11 +246,16 @@ export function newThemeId(): string {
  * 一套真正的空白主题：只有名字与备注。
  *
  * 不写 `theme` / `variant` / `appearance` / `preview`：渲染时令牌与版式分别回落到
- * 内置「原版」主题与单栏版式；详情页据此显示「未设置」。创建时由调用方为它准备
- * 空白的首页/文章页编排（见 `theme_layouts`）。
+ * 内置「原版」主题与单栏版式；详情页据此显示「未设置」。原始编排是空白画布，
+ * 之后用户的编辑才写进 `theme_layouts`。
  */
 export function blankTheme(name: string, note = ''): SiteTheme {
-  return { id: newThemeId(), name, note };
+  return {
+    id: newThemeId(),
+    name,
+    note,
+    layout: { home: { blocks: [] }, article: { blocks: [] } },
+  };
 }
 
 /**
@@ -288,6 +295,20 @@ function themeText(value: unknown, fallback: string, max: number): string {
   return typeof value === 'string' ? value.slice(0, max) : fallback;
 }
 
+/** 主题原始编排的结构收敛；深层的区块归一化由 `customize.ts` 完成。 */
+function themeLayoutValue(value: unknown): ThemeLayoutEntry | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const entry: ThemeLayoutEntry = {};
+  if (raw.home && typeof raw.home === 'object' && !Array.isArray(raw.home)) {
+    entry.home = raw.home as ScreenLayout;
+  }
+  if (raw.article && typeof raw.article === 'object' && !Array.isArray(raw.article)) {
+    entry.article = raw.article as ScreenLayout;
+  }
+  return entry.home || entry.article ? entry : undefined;
+}
+
 /**
  * 把配置里读到的自定义主题收敛成合法结构。
  *
@@ -307,6 +328,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
   const appearance = normalizeAppearance(raw.appearance);
   const settings = normalizeThemeSettingsSchema(raw.settings);
   const preview = normalizeThemePreview(raw.preview);
+  const layout = themeLayoutValue(raw.layout);
   // 空白主题的关键：字段缺失就保持缺失，不能在读取路径上补成一套默认令牌，
   // 否则「未设置」会被伪装成显式配置，导出时也会写成一份默认主题的副本。
   const theme =
@@ -319,6 +341,7 @@ export function normalizeCustomTheme(value: unknown): SiteTheme | null {
     note: themeText(raw.note, '', 160),
     ...(variant ? { variant } : {}),
     ...(theme ? { theme } : {}),
+    ...(layout ? { layout } : {}),
     ...(appearance ? { appearance } : {}),
     ...(settings ? { settings } : {}),
     ...(preview ? { preview } : {}),

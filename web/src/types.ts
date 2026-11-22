@@ -1280,6 +1280,14 @@ export interface SiteTheme {
    * 读取时不要用默认值把它填满，否则「未设置」会被伪装成一套显式配置。
    */
   theme?: ThemeSettings;
+  /**
+   * 主题自带的首页 / 文章页编排，是这套主题的「原始定义」。
+   *
+   * 用户之后的编辑另存于 `customization.theme_layouts[themeId]`；恢复主题默认时
+   * 清掉覆盖即可回到这里。内置主题有自己的默认编排，导入主题来自主题包，
+   * 另存主题来自保存时的快照。
+   */
+  layout?: ThemeLayoutEntry;
   /** 主题制作者声明的外观功能；缺省时按内置全集处理。 */
   appearance?: ThemeAppearance;
   /** 主题作者自己写的预览；缺省时按版式画一张通用预览。 */

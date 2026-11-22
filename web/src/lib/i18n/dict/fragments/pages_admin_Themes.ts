@@ -33,19 +33,17 @@ const fragment: Dictionary = {
   '新栏目': 'New column',
   '新条目': 'New item',
   '已切换到「{name}」': 'Switched to “{name}”',
-  '配色、排版与{layout}版式已切换，这套主题的默认首页编排也一起写入。':
-    'Colours, typography and the {layout} layout switched, and this theme’s default home arrangement was written too.',
+  '配色、排版与{layout}版式已切换；首页与文章页编排按这套主题自己的编排显示。':
+    'Colours, typography and the {layout} layout switched; the home and article arrangements now follow this theme’s own definition.',
   '双栏': 'two-column',
   '单栏': 'single-column',
-  '配色、排版与{layout}版式已切换；首页与文章页编排跟随主题，已有编排不会丢失。':
-    'Colours, typography and the {layout} layout switched; the home and article layouts follow the theme and existing arrangements are kept.',
   '配色、排版与双栏版式已一起切换；已有首页编排不会删除，可在页面编排里继续调整。':
     'Colours, typography and the two-column layout all switched together; your existing home page arrangement is kept and can be adjusted in Page layout.',
   '配色、排版与单栏版式已一起切换；已有首页编排不会删除。':
     'Colours, typography and the single-column layout all switched together; your existing home page arrangement is kept.',
   '已恢复主题默认': 'Theme defaults restored',
-  '当前主题的配色、排版与版式回到原始定义。':
-    'The colours, typography and layout of the current theme are back to their original definition.',
+  '当前主题的配色、排版、版式与首页/文章页编排回到原始定义。':
+    'The colours, typography, layout and home/article arrangements of the current theme are back to their original definition.',
   '无法读取这个主题文件。': 'This theme file could not be read.',
   '最多保存 20 套自定义主题，请先删除不用的主题。':
     'You can keep at most 20 custom themes; delete one you do not use first.',

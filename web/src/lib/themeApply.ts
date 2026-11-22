@@ -1,5 +1,4 @@
 import type { SiteCustomization, SiteTheme } from '../types';
-import { defaultHomeLayout } from './blocks';
 import { resolveThemeSettings, resolveThemeVariant } from './themes';
 
 /**
@@ -37,41 +36,25 @@ function withoutBlockIds(value: unknown): unknown {
 
 export interface ThemeApplyResult {
   patch: Partial<SiteCustomization>;
-  /** 首页是否跟着版式一起换成了该主题的默认编排。 */
-  homeWasDefault: boolean;
 }
 
 /**
  * 套用一套主题时的配置补丁。
  *
- * 配色/版式取解析后的值（空白主题回落到内置「原版」）；首页/文章页编排不在补丁里
- * 直接改写，而是由 `theme_layouts` 投影。只有目标主题还没有自己的首页编排、且当前
- * 首页仍是旧版式的默认编排时，才把新版式的默认编排种到目标主题名下——保留「换版式
- * 时默认首页跟着换」的既有体验，同时不覆盖站长自己排过的首页。
+ * 配色/版式取解析后的值（空白主题回落到内置「原版」）；首页/文章页编排在读取时
+ * 由 `theme_layouts` 投影：有用户覆盖用覆盖，否则用主题自带的原始编排。这里只负责
+ * 切主题，并把 `theme_layouts` 标记为已启用（旧站点第一次切换后进入按主题模式）。
  */
 export function themeApplyPatch(
   customization: SiteCustomization,
   bundle: SiteTheme,
 ): ThemeApplyResult {
-  const variant = resolveThemeVariant(bundle);
-  const targetEntry = customization.theme_layouts?.[bundle.id];
-  const homeWasDefault =
-    !targetEntry?.home &&
-    variant !== customization.layout.variant &&
-    sameLayout(customization.home, defaultHomeLayout(customization.layout.variant));
-  const nextLayouts = homeWasDefault
-    ? {
-        ...customization.theme_layouts,
-        [bundle.id]: { ...(targetEntry ?? {}), home: defaultHomeLayout(variant) },
-      }
-    : customization.theme_layouts;
   return {
-    homeWasDefault,
     patch: {
       theme: cloneTheme(resolveThemeSettings(bundle)),
-      layout: { ...customization.layout, variant },
+      layout: { ...customization.layout, variant: resolveThemeVariant(bundle) },
       active_theme: bundle.id,
-      ...(homeWasDefault ? { theme_layouts: nextLayouts } : {}),
+      theme_layouts: customization.theme_layouts ?? {},
     },
   };
 }

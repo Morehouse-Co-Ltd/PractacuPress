@@ -38,8 +38,8 @@ import {
   themeSections,
   variantLabel,
 } from '../../lib/themes';
-import { cloneTheme, useThemeSwitch } from '../../lib/themeSwitch';
-import { withThemeLayout } from '../../lib/themeLayouts';
+import { cloneTheme, themeApplyPatch } from '../../lib/themeSwitch';
+import { withoutThemeLayout } from '../../lib/themeLayouts';
 import { cloneThemePreview } from '../../lib/themePreview';
 import { useTitle } from '../../lib/hooks';
 import { useT } from '../../lib/i18n';
@@ -69,7 +69,6 @@ export function ThemesPage() {
   const { site } = useAuth();
   const { customization, update } = useCustomization();
   const toast = useToast();
-  const { applyBundle } = useThemeSwitch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveNote, setSaveNote] = useState('');
@@ -368,8 +367,16 @@ export function ThemesPage() {
   const restoreCurrent = () => {
     const bundle = selected ?? fallback;
     if (!bundle) return;
-    applyBundle(bundle, false);
-    toast.push('ok', t('已恢复主题默认'), t('当前主题的配色、排版与版式回到原始定义。'));
+    const { patch } = themeApplyPatch(customization, bundle);
+    update({
+      ...patch,
+      theme_layouts: withoutThemeLayout(customization.theme_layouts, bundle.id),
+    });
+    toast.push(
+      'ok',
+      t('已恢复主题默认'),
+      t('当前主题的配色、排版、版式与首页/文章页编排回到原始定义。'),
+    );
   };
 
   const openSave = () => {
@@ -396,19 +403,16 @@ export function ThemesPage() {
       variant: customization.layout.variant,
       theme: cloneTheme(currentTheme),
       appearance: { sections: [...selectedSections] },
+      // 另存的主题把当前这套编排作为自己的原始定义；之后的编辑才写 theme_layouts。
+      layout: {
+        home: customization.home,
+        article: customization.article ?? { blocks: [] },
+      },
       ...(selected?.preview ? { preview: cloneThemePreview(selected.preview) } : {}),
     };
-    // 另存为主题会把当前这套编排一起存进新主题，之后切回来仍是同一份页面。
-    const withHome = withThemeLayout(customization.theme_layouts, item.id, 'home', customization.home);
-    const themeLayouts = withThemeLayout(
-      withHome,
-      item.id,
-      'article',
-      customization.article ?? { blocks: [] },
-    );
     update({
       themes: [...customThemes, item],
-      theme_layouts: themeLayouts,
+      theme_layouts: customization.theme_layouts ?? {},
       active_theme: item.id,
     });
     setSaveOpen(false);

@@ -12,35 +12,33 @@ const base = readCustomization({
 describe('theme switching', () => {
   it('applies palette, variant and active id in one patch', () => {
     const night = builtinThemeBundle('night')!;
-    const { patch, homeWasDefault } = themeApplyPatch(base, night);
-    expect(homeWasDefault).toBe(true);
+    const { patch } = themeApplyPatch(base, night);
     expect(patch.active_theme).toBe('night');
     expect(patch.layout?.variant).toBe('bento');
     expect(patch.theme?.mode).toBe('dark');
-    // 默认首页跟着版式换，但编排归到目标主题名下，而不是改写站点级 home。
+    // 首页 / 文章页由按主题投影提供，不在补丁里直接改写站点级 home。
     expect(patch.home).toBeUndefined();
-    expect(sameLayout(patch.theme_layouts?.night?.home, defaultHomeLayout('bento'))).toBe(true);
+    // 旧站点第一次切换后进入按主题模式。
+    expect(patch.theme_layouts).toEqual({});
+  });
+
+  it('keeps existing per-theme overrides when switching', () => {
+    const night = builtinThemeBundle('night')!;
+    const customization = {
+      ...base,
+      theme_layouts: { theme_x: { home: { blocks: [] } } },
+    } as never;
+    const { patch } = themeApplyPatch(customization, night);
+    expect(patch.theme_layouts).toEqual({ theme_x: { home: { blocks: [] } } });
   });
 
   it('applies a blank theme as the default theme with the classic layout', () => {
     const blank = blankTheme('空白主题');
-    const { patch, homeWasDefault } = themeApplyPatch(base, blank);
-    expect(homeWasDefault).toBe(false);
+    const { patch } = themeApplyPatch(base, blank);
     expect(patch.active_theme).toBe(blank.id);
     expect(patch.layout?.variant).toBe('classic');
     expect(patch.theme?.preset).toBe(DEFAULT_THEME.preset);
     expect(patch.theme?.mode).toBe(DEFAULT_THEME.mode);
-  });
-
-  it('does not seed a default home when the theme already has its own blank layout', () => {
-    const blank = blankTheme('空白主题');
-    const customization = {
-      ...base,
-      theme_layouts: { [blank.id]: { home: { blocks: [] } } },
-    };
-    const { patch, homeWasDefault } = themeApplyPatch(customization, blank);
-    expect(homeWasDefault).toBe(false);
-    expect(patch.theme_layouts).toBeUndefined();
   });
 
   it('no longer offers the retired daylight theme', () => {
@@ -56,9 +54,8 @@ describe('theme switching', () => {
       home: { blocks: [{ id: 'custom-block', type: 'text', props: {} }] },
     } as never;
     const night = builtinThemeBundle('night')!;
-    const { patch, homeWasDefault } = themeApplyPatch(custom, night);
-    expect(homeWasDefault).toBe(false);
-    expect(patch.theme_layouts).toBeUndefined();
+    const { patch } = themeApplyPatch(custom, night);
+    expect(patch.home).toBeUndefined();
     expect(patch.layout?.variant).toBe('bento');
   });
 

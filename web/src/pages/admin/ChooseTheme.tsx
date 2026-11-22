@@ -22,6 +22,7 @@ import {
 import { themeApplyPatch, useThemeSwitch } from '../../lib/themeSwitch';
 import {
   themeLayoutFor,
+  themeOriginalLayout,
   withoutThemeLayout,
 } from '../../lib/themeLayouts';
 import {
@@ -161,20 +162,16 @@ export function ChooseThemePage() {
           });
         }
       }
-      const entry: ThemeLayoutEntry = {
+      const originalLayout: ThemeLayoutEntry = {
         ...(layouts.home ? { home: layouts.home } : {}),
         ...(layouts.article ? { article: layouts.article } : {}),
       };
-      const hasEntry = !!(entry.home || entry.article);
-      const themeLayouts = hasEntry
-        ? { ...customization.theme_layouts, [bundle.id]: entry }
-        : customization.theme_layouts;
-      // 主题包里的首页/文章页编排属于这套主题，不再写进站点级 home/article；
-      // 目标主题已有自己的首页编排时，切换逻辑不会再把默认编排种进去。
-      const { patch } = themeApplyPatch(
-        hasEntry ? { ...customization, theme_layouts: themeLayouts } : customization,
-        bundle,
-      );
+      // 主题包里的首页/文章页编排属于这套主题的原始定义；用户之后的编辑才写进
+      // theme_layouts，恢复默认时清掉覆盖即可回到这里。
+      if (originalLayout.home || originalLayout.article) {
+        bundle.layout = originalLayout;
+      }
+      const { patch } = themeApplyPatch(customization, bundle);
       update({
         ...patch,
         themes: [...customThemes, bundle],
@@ -182,7 +179,6 @@ export function ChooseThemePage() {
           ? { appearance: pendingPackage.manifest.appearance }
           : {}),
         ...(layouts.pages.length ? { pages: nextPages } : {}),
-        ...(hasEntry ? { theme_layouts: themeLayouts } : {}),
       });
       toast.push(
         'ok',
@@ -246,6 +242,33 @@ export function ChooseThemePage() {
     }
     setDetailId(remaining[0]?.id ?? 'default');
     setDeleteTarget(null);
+  };
+
+  /**
+   * 卡片右上角的「恢复」：清掉这套主题的编排覆盖，回到主题自带的原始定义。
+   *
+   * 当前主题会立即重套原始配色 / 版式并生效；其它主题只清覆盖，下次使用时生效。
+   * 一次 update 写完，避免同一事件里连续两次保存互相覆盖。
+   */
+  const restoreTheme = (bundle: SiteTheme) => {
+    const nextLayouts = withoutThemeLayout(customization.theme_layouts, bundle.id);
+    if (customization.active_theme === bundle.id) {
+      const { patch } = themeApplyPatch(customization, bundle);
+      update({ ...patch, theme_layouts: nextLayouts });
+      toast.push(
+        'ok',
+        t('已恢复「{name}」的默认设置', { name: bundle.name }),
+        t('配色、版式与首页/文章页编排已回到这套主题的原始定义。'),
+      );
+    } else {
+      update({ theme_layouts: nextLayouts });
+      toast.push(
+        'ok',
+        t('已恢复「{name}」的默认设置', { name: bundle.name }),
+        t('下次使用这套主题时会按原始定义显示。'),
+      );
+    }
+    setDetailId(bundle.id);
   };
 
   /**
@@ -340,21 +363,11 @@ export function ChooseThemePage() {
       setCreateError(t('最多保存 20 套自定义主题，请先删除不用的主题。'));
       return;
     }
-    // 真正的空白主题：不写配色/字体/版式/外观分区；只给这套主题准备一份空白的
-    // 首页与文章页编排。渲染时由解析层回落到内置「原版」的组件样式。
+    // 真正的空白主题：不写配色/字体/版式/外观分区；原始编排是空白画布。
+    // 渲染时由解析层回落到内置「原版」的组件样式；用户之后的编辑写 theme_layouts。
     const item = blankTheme(name, createNote.trim().slice(0, 160));
-    const blankLayout: ThemeLayoutEntry = {
-      home: { blocks: [] },
-      article: { blocks: [] },
-    };
-    const themeLayouts = { ...customization.theme_layouts, [item.id]: blankLayout };
-    const { patch } = themeApplyPatch({ ...customization, theme_layouts: themeLayouts }, item);
-    update({
-      ...patch,
-      themes: [...customThemes, item],
-      theme_layouts: themeLayouts,
-      active_theme: item.id,
-    });
+    const { patch } = themeApplyPatch(customization, item);
+    update({ ...patch, themes: [...customThemes, item] });
     setCreateOpen(false);
     setDetailId(item.id);
     toast.push(
@@ -398,17 +411,21 @@ export function ChooseThemePage() {
     return entry ? t(entry.name) : id;
   };
 
-  /** 这套主题自己的首页组件（没有条目时退回其版式的默认编排）。 */
-  const homeBlockLabels = (bundle: SiteTheme): string[] => {
-    const own = themeLayoutFor(customization, bundle.id)?.home;
-    return (own ?? defaultHomeLayout(resolveThemeVariant(bundle))).blocks.map((block) =>
+  /** 这套主题当前实际使用的首页编排：用户覆盖 → 主题原始编排 → 版式默认。 */
+  const effectiveHomeLayout = (bundle: SiteTheme) =>
+    themeLayoutFor(customization, bundle.id)?.home ??
+    themeOriginalLayout(bundle)?.home ??
+    defaultHomeLayout(resolveThemeVariant(bundle));
+
+  /** 这套主题自己的首页组件（恢复默认后回到主题原始编排）。 */
+  const homeBlockLabels = (bundle: SiteTheme): string[] =>
+    effectiveHomeLayout(bundle).blocks.map((block) =>
       t(blockDef(block.type)?.name ?? block.type),
     );
-  };
 
   /** 详情里的首页组件为空时说明这是空白编排，而不是渲染坏了。 */
   const homeBlocksAreBlank = (bundle: SiteTheme): boolean =>
-    themeLayoutFor(customization, bundle.id)?.home?.blocks.length === 0;
+    effectiveHomeLayout(bundle).blocks.length === 0;
 
   return (
     <RoleGate capability="manage_site" need={t('站点管理员')}>
@@ -527,8 +544,17 @@ export function ChooseThemePage() {
                         </span>
                       </span>
                     </button>
-                    {/* 悬停时右上角浮出两个图标按钮：主题设置与删除。 */}
+                    {/* 悬停时右上角浮出三个图标按钮：恢复、主题设置与删除。 */}
                     <div className="theme-tile-corner-actions">
+                      <button
+                        type="button"
+                        className="theme-tile-corner"
+                        aria-label={t('恢复「{name}」的默认设置', { name: bundle.name })}
+                        title={t('恢复主题默认')}
+                        onClick={() => restoreTheme(bundle)}
+                      >
+                        <Icon name="refresh" size={14} />
+                      </button>
                       <button
                         type="button"
                         className="theme-tile-corner"

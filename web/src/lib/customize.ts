@@ -1345,7 +1345,18 @@ function normalizeThemeLayouts(
     out[key] = entry;
     count += 1;
   }
-  return count ? out : undefined;
+  // 字段存在就给回对象（包括 `{}`）：它表示站点已进入「按主题管理编排」模式，
+  // 即使所有覆盖都清掉了，内置 / 导入主题也要继续用各自的原始编排，而不是退回
+  // 站点级旧值。字段缺失才返回 undefined。
+  return out;
+}
+
+/** 归一化一个主题原始编排；两层都为空时返回 undefined。 */
+function normalizeThemeLayoutEntry(value: ThemeLayoutEntry): ThemeLayoutEntry | undefined {
+  const entry: ThemeLayoutEntry = {};
+  if (value.home) entry.home = normalizeScreenLayout(value.home);
+  if (value.article) entry.article = normalizeScreenLayout(value.article);
+  return entry.home || entry.article ? entry : undefined;
 }
 
 /** 把任意（可能是旧版本或导入的）配置收敛成可用的结构。 */
@@ -1401,6 +1412,9 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
     for (const item of raw.themes) {
       const normalized = normalizeCustomTheme(item);
       if (!normalized || themes.some((entry) => entry.id === normalized.id)) continue;
+      if (normalized.layout) {
+        normalized.layout = normalizeThemeLayoutEntry(normalized.layout);
+      }
       themes.push(normalized);
       if (themes.length >= 20) break;
     }
@@ -1419,6 +1433,20 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
     FALLBACK_THEME_ID,
   ]);
   const themeLayouts = normalizeThemeLayouts(raw.theme_layouts, validThemeIds);
+  // 旧数据没有主题原始编排：把第一次读到的覆盖当作原始编排，避免恢复默认时丢掉
+  // 导入包 / 另存主题原本的布局。空白主题的原始定义始终是空白画布，跳过。
+  if (themeLayouts) {
+    for (const theme of themes) {
+      if (theme.layout) continue;
+      if (!theme.theme && !theme.variant) continue;
+      const snapshot = themeLayouts[theme.id];
+      if (!snapshot) continue;
+      const layout: ThemeLayoutEntry = {};
+      if (snapshot.home) layout.home = snapshot.home;
+      if (snapshot.article) layout.article = snapshot.article;
+      if (layout.home || layout.article) theme.layout = layout;
+    }
+  }
   return {
     // 结构版本随读入结果一起返回：它就是让迁移器下次读取直接返回、不再重跑的印记。
     schema_version: CURRENT_SCHEMA_VERSION,

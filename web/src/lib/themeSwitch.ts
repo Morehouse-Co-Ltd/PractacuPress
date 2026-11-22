@@ -2,7 +2,7 @@ import type { SiteTheme } from '../types';
 import { useCustomization } from './customize';
 import { t } from './i18n';
 import { useToast } from './toast';
-import { themeApplyPatch, type ThemeApplyResult } from './themeApply';
+import { themeApplyPatch } from './themeApply';
 import { resolveThemeVariant, variantLabel } from './themes';
 
 /**
@@ -29,19 +29,15 @@ export function useThemeSwitch(): { applyBundle: (bundle: SiteTheme, announce?: 
   const toast = useToast();
 
   const applyBundle = (bundle: SiteTheme, announce = true) => {
-    const { patch, homeWasDefault }: ThemeApplyResult = themeApplyPatch(customization, bundle);
+    const { patch } = themeApplyPatch(customization, bundle);
     update(patch);
     if (!announce) return;
     toast.push(
       'ok',
       t('已切换到「{name}」', { name: bundle.name }),
-      homeWasDefault
-        ? t('配色、排版与{layout}版式已切换，这套主题的默认首页编排也一起写入。', {
-            layout: variantLabel(resolveThemeVariant(bundle)),
-          })
-        : t('配色、排版与{layout}版式已切换；首页与文章页编排跟随主题，已有编排不会丢失。', {
-            layout: variantLabel(resolveThemeVariant(bundle)),
-          }),
+      t('配色、排版与{layout}版式已切换；首页与文章页编排按这套主题自己的编排显示。', {
+        layout: variantLabel(resolveThemeVariant(bundle)),
+      }),
     );
   };
 

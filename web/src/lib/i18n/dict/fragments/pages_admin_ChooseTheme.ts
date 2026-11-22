@@ -101,6 +101,12 @@ const fragment: Dictionary = {
   '例如：先搭一个空白版面。': 'For example: build a blank layout first.',
   '主题创建后会自动切换为当前主题。点「创建并编排页面」会直接打开页面编排，为首页与文章页加组件。':
     'The new theme is applied immediately. Choose “Create and compose pages” to open the page builder and add blocks to the home and article pages.',
+  '恢复「{name}」的默认设置': 'Restore the default settings of “{name}”',
+  '已恢复「{name}」的默认设置': 'Restored the default settings of “{name}”',
+  '配色、版式与首页/文章页编排已回到这套主题的原始定义。':
+    'The palette, layout and home/article arrangements are back to this theme’s original definition.',
+  '下次使用这套主题时会按原始定义显示。':
+    'The theme will use its original definition the next time it is applied.',
 };
 
 export default fragment;

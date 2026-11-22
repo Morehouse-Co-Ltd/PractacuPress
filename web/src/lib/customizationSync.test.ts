@@ -145,13 +145,15 @@ describe('hydrateCustomization', () => {
     expect(applied.article?.blocks.map((block) => block.id)).toEqual(['legacy-article']);
     expect(applied.theme_layouts?.theme_blank?.home?.blocks).toHaveLength(0);
 
-    // 渲染视图仍然投影当前主题自己的空白编排；切到没有条目的主题则回退到站点级。
+    // 渲染视图仍然投影当前主题自己的空白编排；切到没有条目的内置主题时，
+    // 使用内置主题自己的默认编排，而不是站点级兜底。
     const effective = readCustomization({ customization: applied });
     expect(effective.home.blocks).toHaveLength(0);
-    const legacyView = readCustomization({
+    const defaultView = readCustomization({
       customization: { ...applied, active_theme: 'default' },
     });
-    expect(legacyView.home.blocks.map((block) => block.id)).toEqual(['legacy-home']);
+    expect(defaultView.home.blocks.length).toBeGreaterThan(0);
+    expect(defaultView.home.blocks.map((block) => block.id)).not.toEqual(['legacy-home']);
   });
 
   it('404 时保留本地设计：不写入、不抛错', async () => {

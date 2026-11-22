@@ -400,6 +400,43 @@ describe('按主题保存的首页/文章页编排', () => {
     expect(customization.theme_layouts).toBeUndefined();
   });
 
+  it('空的 theme_layouts 会保留，内置主题显示自己的默认首页', () => {
+    const config = {
+      customization: {
+        theme: { ...DEFAULT_THEME },
+        layout: { variant: 'classic' },
+        theme_layouts: {},
+      },
+    };
+    const stored = readStoredCustomization(config as never);
+    expect(stored.theme_layouts).toEqual({});
+
+    const effective = readCustomization(config as never);
+    expect(effective.home.blocks.length).toBeGreaterThan(0);
+    expect(effective.article?.blocks).toHaveLength(0);
+  });
+
+  it('旧自定义主题把第一次读到的覆盖迁移为原始编排', () => {
+    const stored = readStoredCustomization({
+      customization: {
+        theme: { ...DEFAULT_THEME },
+        layout: { variant: 'classic' },
+        active_theme: 'theme_a',
+        themes: [
+          {
+            id: 'theme_a',
+            name: 'A',
+            note: '',
+            variant: 'classic',
+            theme: { ...DEFAULT_THEME },
+          },
+        ],
+        theme_layouts: { theme_a: { home: { blocks: [legacyBlock] } } },
+      },
+    } as never);
+    expect(stored.themes?.[0]?.layout?.home?.blocks[0]?.id).toBe('legacy');
+  });
+
   it('已存形状不投影主题编排；渲染视图才投影', () => {
     const stored = readStoredCustomization(configWithLayouts() as never);
     expect(stored.home.blocks[0]?.id).toBe('legacy');

@@ -150,7 +150,13 @@ describe('选择主题 · 创建空白主题', () => {
 
     expect(state.update).toHaveBeenCalledTimes(1);
     const patch = state.update.mock.calls[0][0] as {
-      themes: { id: string; name: string; theme?: unknown; variant?: unknown }[];
+      themes: {
+        id: string;
+        name: string;
+        theme?: unknown;
+        variant?: unknown;
+        layout?: { home?: { blocks: unknown[] }; article?: { blocks: unknown[] } };
+      }[];
       theme_layouts: Record<
         string,
         { home?: { blocks: unknown[] }; article?: { blocks: unknown[] } }
@@ -164,11 +170,49 @@ describe('选择主题 · 创建空白主题', () => {
     expect(created.name).toBe('空白测试');
     expect(created.theme).toBeUndefined();
     expect(created.variant).toBeUndefined();
-    expect(patch.theme_layouts[created.id].home?.blocks).toEqual([]);
-    expect(patch.theme_layouts[created.id].article?.blocks).toEqual([]);
+    // 空白主题的原始编排是空白画布，不再往 theme_layouts 写空条目。
+    expect(created.layout?.home?.blocks).toEqual([]);
+    expect(created.layout?.article?.blocks).toEqual([]);
+    expect(patch.theme_layouts).toEqual({});
     expect(patch.active_theme).toBe(created.id);
     expect(patch.layout.variant).toBe('classic');
     expect(patch.theme.mode).toBe('light');
+  });
+
+  it('每张主题卡右上角有恢复按钮，恢复非当前主题只清掉它的覆盖', async () => {
+    state.customization = baseCustomization({
+      themes: [{ id: 'theme_x', name: 'X 主题', note: '' }],
+      theme_layouts: {
+        theme_x: {
+          home: {
+            blocks: [
+              { id: 'x-home', type: 'text', title: 'X 首页', props: {}, animation: 'none', hidden: false },
+            ],
+          },
+        },
+      },
+    }) as never;
+
+    const view = await renderPage();
+    const tiles = [...view.querySelectorAll<HTMLElement>('.theme-tile:not(.is-new)')];
+    expect(tiles.length).toBe(3);
+    for (const tile of tiles) {
+      expect(tile.querySelector('.theme-tile-corner-actions')).not.toBeNull();
+    }
+
+    const custom = tiles.find((tile) => tile.textContent?.includes('X 主题'));
+    expect(custom).toBeTruthy();
+    const restore = [...custom!.querySelectorAll<HTMLButtonElement>('.theme-tile-corner')].find(
+      (node) => node.getAttribute('aria-label')?.includes('恢复'),
+    );
+    expect(restore).toBeTruthy();
+
+    await act(async () => {
+      restore!.click();
+    });
+
+    expect(state.update).toHaveBeenCalledTimes(1);
+    expect(state.update.mock.calls[0][0]).toEqual({ theme_layouts: {} });
   });
 
   it('空白主题的详情显示「未设置」与空白编排', async () => {

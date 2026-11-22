@@ -9109,7 +9109,7 @@ body.builder-mode .admin-side { display: none !important; }
   opacity: 1;
   transform: translate(-50%, -50%);
 }
-/* 右上角两个图标按钮：主题设置与删除。 */
+/* 右上角三个图标按钮：恢复、主题设置与删除。 */
 .theme-tile-corner-actions {
   position: absolute;
   top: 10px;
