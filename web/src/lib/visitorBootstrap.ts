@@ -1,6 +1,6 @@
 import type { SiteCustomization, WebConfig } from '../types';
 import { probeSetupStatus, type SetupStatus } from './backend';
-import { readCustomization } from './customize';
+import { readStoredCustomization } from './customize';
 import { readSiteConfig } from './siteConfig';
 
 /**
@@ -102,7 +102,9 @@ async function loadVisitorCustomization(
     }
     return {
       outcome: 'applied',
-      customization: readCustomization({
+      // 访客引导拿到的是「已存形状」：渲染时仍会经 `readCustomization` 投影当前主题
+      // 的编排；若把投影结果放进配置，之后保存/复用会把站点级兜底覆盖掉。
+      customization: readStoredCustomization({
         customization: body.customization as unknown as SiteCustomization,
       }),
     };

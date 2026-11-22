@@ -1542,17 +1542,33 @@ function normalizeCustomization(config: Pick<WebConfig, 'customization'>): SiteC
 }
 
 /**
+ * 读入「已存形状」：只归一化，不投影主题编排，也不叠加真实前台预览。
+ *
+ * 凡是把读入结果写回配置 / 服务端的路径（开机水合、整份设计导入、访客引导）都必须
+ * 用它。用 `readCustomization` 的结果回写会把当前主题的编排复制进站点级
+ * `home`/`article`，让没有自己编排的主题在切换后显示成空白。
+ */
+export function readStoredCustomization(
+  config: Pick<WebConfig, 'customization'>,
+): SiteCustomization {
+  return normalizeCustomization(config);
+}
+
+/**
  * 读取站点设计，并在「真实前台」主题预览里叠加被预览的主题。
  *
  * 预览只在 `documentPreviewTheme()` 认领到主题的那份文档里生效（见
  * `themePreviewLive.ts`）：不改配置、不写服务端，后台窗口与页面编排预览都不受影响。
  * 放在读取层而不是页面层，是因为主题令牌、版式变体、页面编排与首屏 CSS 变量都从
  * 这里出发——一处覆盖，整个前台就是这套主题真实运转的样子。
+ *
+ * 返回值是「渲染用的有效视图」：当前主题自己的编排会投影到 `home`/`article`。
+ * 不要把它的结果写回存储——写回请用 `readStoredCustomization`。
  */
 export function readCustomization(config: Pick<WebConfig, 'customization'>): SiteCustomization {
   // 先投影当前主题自己的编排，再叠加真实前台预览：预览比较「默认首页」时看到的
   // 必须是当前主题实际生效的那一份，而不是站点级旧值。
-  const base = projectThemeLayouts(normalizeCustomization(config));
+  const base = projectThemeLayouts(readStoredCustomization(config));
   const preview = documentPreviewTheme();
   if (!preview) return base;
   return projectThemeLayouts({ ...base, ...themeApplyPatch(base, preview).patch });
@@ -1645,7 +1661,7 @@ export function useCustomization(): {
     (patch: Partial<SiteCustomization>) => {
       // 以「已存形状」为基准，不用 readCustomization 的投影结果：否则一次普通保存
       // 会把当前主题的编排写回顶层 home/article，切到没有自己编排的主题时会串版。
-      const current = normalizeCustomization(config);
+      const current = readStoredCustomization(config);
       updateConfig({ customization: applyCustomizationPatch(current, patch) });
     },
     [config, updateConfig],
@@ -1886,5 +1902,5 @@ export function parseCustomizationFile(raw: string): SiteCustomization {
   ) {
     throw new Error(t('文件里没有可识别的外观、页面、封面或扩展配置。'));
   }
-  return readCustomization({ customization: source as unknown as SiteCustomization });
+  return readStoredCustomization({ customization: source as unknown as SiteCustomization });
 }

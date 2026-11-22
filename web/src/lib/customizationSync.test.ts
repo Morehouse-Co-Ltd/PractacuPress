@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiteCustomization, WebConfig } from '../types';
 import type { SiteCustomizationSnapshot } from './api';
-import { DEFAULT_CUSTOMIZATION } from './customize';
+import { DEFAULT_CUSTOMIZATION, readCustomization } from './customize';
 import {
   SAVE_DEBOUNCE_MS,
   createRevisionStore,
@@ -101,6 +101,57 @@ describe('hydrateCustomization', () => {
     // 归一化器把未知枚举收敛成默认值、把缺失的开关补成默认值。
     expect(applied.layout.header_style).toBe('classic');
     expect(applied.extensions.reading_progress).toBe(true);
+  });
+
+  it('水合不会把当前主题的编排投影到站点级 home/article', async () => {
+    const legacy = (id: string) => ({
+      id,
+      type: 'text',
+      title: id,
+      props: {},
+      animation: 'none',
+      hidden: false,
+    });
+    const remote: SiteCustomizationSnapshot = {
+      customization: {
+        theme: { ...DEFAULT_CUSTOMIZATION.theme },
+        layout: { variant: 'classic' },
+        active_theme: 'theme_blank',
+        themes: [{ id: 'theme_blank', name: '空白', note: '' }],
+        theme_layouts: {
+          theme_blank: { home: { blocks: [] }, article: { blocks: [] } },
+        },
+        home: { blocks: [legacy('legacy-home')] },
+        article: { blocks: [legacy('legacy-article')] },
+      } as unknown as SiteCustomization,
+      revision: 8,
+      updated_at: '2026-11-22T00:00:00.000Z',
+    };
+    const storage = makeStorage(makeConfig());
+
+    const result = await hydrateCustomization({
+      read: storage.read,
+      write: storage.write,
+      api: fakeApi({ siteCustomization: async () => remote }),
+      siteId: 'site_1',
+      revisions: createRevisionStore(),
+      logger: makeLogger().logger,
+    });
+
+    expect(result.status).toBe('applied');
+    const applied = storage.current()!.customization!;
+    // 站点级兜底保留远端原值，不被当前空白主题的空白编排覆盖。
+    expect(applied.home.blocks.map((block) => block.id)).toEqual(['legacy-home']);
+    expect(applied.article?.blocks.map((block) => block.id)).toEqual(['legacy-article']);
+    expect(applied.theme_layouts?.theme_blank?.home?.blocks).toHaveLength(0);
+
+    // 渲染视图仍然投影当前主题自己的空白编排；切到没有条目的主题则回退到站点级。
+    const effective = readCustomization({ customization: applied });
+    expect(effective.home.blocks).toHaveLength(0);
+    const legacyView = readCustomization({
+      customization: { ...applied, active_theme: 'default' },
+    });
+    expect(legacyView.home.blocks.map((block) => block.id)).toEqual(['legacy-home']);
   });
 
   it('404 时保留本地设计：不写入、不抛错', async () => {

@@ -1,6 +1,6 @@
 import type { SiteCustomization, WebConfig } from '../types';
 import type { SiteCustomizationSaved, SiteCustomizationSnapshot } from './api';
-import { readCustomization, sanitizeCustomCss } from './customize';
+import { readStoredCustomization, sanitizeCustomCss } from './customize';
 
 /**
  * 站点设计的服务端同步。
@@ -10,8 +10,8 @@ import { readCustomization, sanitizeCustomCss } from './customize';
  * 会退回内置默认外观，页面编排出来的页面还会 404。这里把 localStorage 当作“首屏
  * 立即绘制的离线缓存”，服务端副本才是跨设备、跨访客的事实来源：
  *
- * - `hydrateCustomization`：开屏拉一次远端设计，用 `readCustomization` 归一化后写回
- *   本地缓存；404 / 401 / 403 / 断网一律静默失败，继续用本地缓存，绝不阻塞开屏。
+ * - `hydrateCustomization`：开屏拉一次远端设计，用 `readStoredCustomization` 归一化后
+ *   写回本地缓存；404 / 401 / 403 / 断网一律静默失败，继续用本地缓存，绝不阻塞开屏。
  * - `scheduleCustomizationSave`：编辑之后尾随防抖写回远端，携带最后看到的 revision
  *   做乐观并发控制；冲突、越权、超限都不能把错误抛到界面上。
  *
@@ -176,7 +176,10 @@ export async function hydrateCustomization(
   }
 
   // 必须走既有的归一化器：旧版本配置、缺字段、枚举越界、超限区块都在这里收敛。
-  const customization = readCustomization({
+  // 但只能用「已存形状」：`readCustomization` 会把当前主题自己的编排投影到
+  // `home`/`article`，写回本地会把站点级兜底覆盖成当前主题的编排（空白主题下就是
+  // 清空），之后切到没有自己编排的主题就会出现空首页。
+  const customization = readStoredCustomization({
     customization: remote.customization as unknown as SiteCustomization,
   });
   const revision = typeof remote.revision === 'number' ? remote.revision : null;

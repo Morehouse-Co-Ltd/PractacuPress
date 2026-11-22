@@ -4,12 +4,15 @@ import {
   applyCustomizationPatch,
   highRiskCustomCssMarker,
   pageSearchText,
+  parseCustomizationFile,
   readCustomization,
+  readStoredCustomization,
   sanitizeCustomCss,
   starterPages,
 } from './customize';
 import { takeMigrationReport } from './migrationNotice';
 import { DEFAULT_THEME } from './theme';
+import { themeApplyPatch } from './themeSwitch';
 
 describe('readCustomization nested blocks', () => {
   it('keeps recursive children and clamps columns', () => {
@@ -397,8 +400,71 @@ describe('按主题保存的首页/文章页编排', () => {
     expect(customization.theme_layouts).toBeUndefined();
   });
 
+  it('已存形状不投影主题编排；渲染视图才投影', () => {
+    const stored = readStoredCustomization(configWithLayouts() as never);
+    expect(stored.home.blocks[0]?.id).toBe('legacy');
+    expect(stored.article?.blocks).toHaveLength(0);
+    expect(stored.theme_layouts?.theme_a?.home?.blocks).toHaveLength(0);
+
+    const effective = readCustomization(configWithLayouts() as never);
+    expect(effective.home.blocks).toHaveLength(0);
+  });
+
+  it('编辑当前主题首页后切换主题再切回，编排仍在', () => {
+    let state = readStoredCustomization(configWithLayouts() as never);
+    state = applyCustomizationPatch(state, {
+      home: {
+        blocks: [
+          { id: 'a-edit', type: 'text', title: 'A 编辑', props: {}, animation: 'none', hidden: false },
+        ],
+      },
+    });
+    expect(state.theme_layouts?.theme_a?.home?.blocks[0]?.id).toBe('a-edit');
+
+    // 切到 theme_b
+    let effective = readCustomization({ customization: state } as never);
+    state = applyCustomizationPatch(
+      state,
+      themeApplyPatch(effective, {
+        id: 'theme_b',
+        name: 'B',
+        note: '',
+        variant: 'bento',
+        theme: { ...DEFAULT_THEME },
+      }).patch,
+    );
+
+    // 切回 theme_a：它自己的编排不应该被切换清空。
+    effective = readCustomization({ customization: state } as never);
+    state = applyCustomizationPatch(
+      state,
+      themeApplyPatch(effective, { id: 'theme_a', name: 'A', note: '' }).patch,
+    );
+    const final = readCustomization({ customization: state } as never);
+    expect(final.home.blocks[0]?.id).toBe('a-edit');
+  });
+
+  it('整份设计导入保存的是未投影的已存形状', () => {
+    const parsed = parseCustomizationFile(
+      JSON.stringify({
+        customization: {
+          theme: { ...DEFAULT_THEME },
+          layout: { variant: 'classic' },
+          active_theme: 'theme_a',
+          themes: [{ id: 'theme_a', name: 'A', note: '' }],
+          theme_layouts: { theme_a: { home: { blocks: [] } } },
+          home: { blocks: [legacyBlock] },
+          article: { blocks: [] },
+        },
+      }),
+    );
+    // 导入保存的顶层 home 仍是站点级旧值，不是活动主题的空白编排。
+    expect(parsed.home.blocks[0]?.id).toBe('legacy');
+    expect(parsed.theme_layouts?.theme_a?.home?.blocks).toHaveLength(0);
+  });
+
   it('update 写 home/article 时路由到当前主题，顶层旧值不动', () => {
-    const current = readCustomization({
+    const current = readStoredCustomization({
       customization: {
         theme: { ...DEFAULT_THEME },
         layout: { variant: 'classic' },
@@ -417,7 +483,7 @@ describe('按主题保存的首页/文章页编排', () => {
   });
 
   it('显式带 theme_layouts 的补丁不路由，便于导入/创建整套主题', () => {
-    const current = readCustomization({
+    const current = readStoredCustomization({
       customization: {
         theme: { ...DEFAULT_THEME },
         layout: { variant: 'classic' },
