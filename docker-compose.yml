@@ -14,7 +14,7 @@
 #
 # 默认只绑定 127.0.0.1；生产在前面加 TLS 反代，不要把未安装完的实例暴露到公网。
 # Bound to 127.0.0.1 by default; put a TLS proxy in front for public deployments.
-# 详细步骤 / Full guide: docs/deployment/production-profile.md
+# 详细步骤 / Full guide: .github/readme/md/deployment/production-profile.md
 
 name: practacu-press
 
