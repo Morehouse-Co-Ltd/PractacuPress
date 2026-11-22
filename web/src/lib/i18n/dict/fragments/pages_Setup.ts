@@ -39,8 +39,12 @@ const fragment: Dictionary = {
   '没有可用的登录会话，请返回上一步重新登录。':
     'No active sign-in session. Go back one step and sign in again.',
   '请填写数据库主机。': 'Enter the database host.',
+  '请填写数据库端口。': 'Enter the database port.',
+  '数据库端口必须是 1 到 65535 之间的整数。':
+    'The database port must be a whole number between 1 and 65535.',
   '请填写数据库名称。': 'Enter the database name.',
   '请填写数据库用户。': 'Enter the database user.',
+  '请填写数据库密码。': 'Enter the database password.',
   '请填写管理员邮箱。': 'Enter the administrator email.',
   '请填写密码。': 'Enter the password.',
   '请填写有效的邮箱地址。': 'Enter a valid email address.',

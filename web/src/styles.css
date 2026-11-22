@@ -4529,19 +4529,6 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   border-radius: 999px;
 }
 .wiz-pane-scroll::-webkit-scrollbar-thumb:hover { background: #a9a99d; }
-/* 底部留一点白色渐隐只表示「下面还有内容」：由 Setup.tsx 检测真实滚动状态，
-   只在可滚动且没有滚到底时挂 .is-more-below，滚到底自动消失——否则最后一两行
-   文字会被这个渐变永久盖住（第 4 步的提交说明、第 7 步的检查清单都中招过）。 */
-.wiz-pane-scroll.is-more-below::after {
-  content: "";
-  position: sticky;
-  bottom: 0;
-  display: block;
-  height: 28px;
-  margin-top: -28px;
-  background: linear-gradient(to top, #fff 30%, rgba(255, 255, 255, 0));
-  pointer-events: none;
-}
 .wiz-body.is-stage .wiz-foot {
   flex: none;
   margin: 0;
@@ -5081,8 +5068,6 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
   /* 卡片随内容长高；同时取消卡片自身的 overflow 裁剪，让底部操作栏可以 sticky 到视口。 */
   .wiz-pane { height: auto; overflow: visible; }
   .wiz-pane-scroll { overflow: visible; padding: 26px 22px 28px; }
-  .wiz-pane-scroll::after,
-  .wiz-pane-scroll.is-more-below::after { display: none; }
   /* 长步骤（站点形态、检查清单）不用滚到卡片尽头才能点「继续」：操作栏贴住视口底部。 */
   .wiz-body.is-stage .wiz-foot {
     position: sticky;

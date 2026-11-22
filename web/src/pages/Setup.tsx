@@ -16,6 +16,7 @@ import {
   passwordProblemText,
   weakPasswordProblem,
 } from '../lib/passwordPolicy';
+import { databaseDraftError } from '../lib/setupValidation';
 import { useWeakPasswordConfirm } from '../components/WeakPasswordDialog';
 import { installCustomization } from '../lib/customize';
 import { DEFAULT_THEME } from '../lib/theme';
@@ -262,42 +263,6 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
   const probingRef = useRef(false);
   const errorRef = useRef<HTMLDivElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
-  /**
-   * 阶段卡片滚动区的真实状态。
-   *
-   * 底部渐隐只在「内容确实超过卡片高度」且「还没滚到底」时出现：内容是固定高度卡片里
-   * 的一屏，最后一行不应该被白色渐变吃掉（第 4 步的提交说明、第 7 步的检查清单都中招
-   * 过）。窄屏是整页滚动，此时滚动容器高度等于内容高度，不会误报。
-   */
-  const paneScrollRef = useRef<HTMLDivElement>(null);
-  const [paneScroll, setPaneScroll] = useState({ scrollable: false, atBottom: true });
-
-  useLayoutEffect(() => {
-    const el = paneScrollRef.current;
-    if (!el) return;
-    const sync = () => {
-      const scrollable = el.scrollHeight > el.clientHeight + 1;
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-      setPaneScroll((prev) =>
-        prev.scrollable === scrollable && prev.atBottom === atBottom
-          ? prev
-          : { scrollable, atBottom },
-      );
-    };
-    sync();
-    el.addEventListener('scroll', sync, { passive: true });
-    // 语言切换、展开故障排查、错误提示出现都会改变内容高度：两种观察者一起兜住。
-    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync);
-    resize?.observe(el);
-    const mutation = typeof MutationObserver === 'undefined' ? null : new MutationObserver(sync);
-    mutation?.observe(el, { childList: true, subtree: true, characterData: true });
-    return () => {
-      el.removeEventListener('scroll', sync);
-      resize?.disconnect();
-      mutation?.disconnect();
-    };
-  }, [step]);
-
 
   // 服务端已配置 PUBLIC_BASE_URL 时不再显示“需要重启”的提示。
   useEffect(() => {
@@ -661,10 +626,8 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
     // 连接阶段由自动探测负责，没有需要手填的字段。
     if (index === 1) return '';
     if (index === 2 && draft.database !== 'sqlite') {
-      if (!draft.db.host.trim()) return t('请填写数据库主机。');
-      if (!draft.db.name.trim()) return t('请填写数据库名称。');
-      if (!draft.db.user.trim()) return t('请填写数据库用户。');
-      return '';
+      const message = databaseDraftError(draft.db);
+      return message ? t(message) : '';
     }
     if (index === 3) {
       if (liveMe) return '';
@@ -1113,10 +1076,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
               role="group"
               aria-label={stepLabel[currentKey]}
             >
-              <div
-                className={`wiz-pane-scroll${paneScroll.scrollable && !paneScroll.atBottom ? ' is-more-below' : ''}`}
-                ref={paneScrollRef}
-              >
+              <div className="wiz-pane-scroll">
           {resetNotice ? (
             <div className="mb-24">
               <Callout tone="warn" icon="alert" title={t('服务端的站点已经不在了')}>
