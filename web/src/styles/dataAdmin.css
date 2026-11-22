@@ -46,9 +46,40 @@
   align-items: start;
 }
 
+/*
+ * 导出 / 导入的双列瀑布流。
+ *
+ * 之前两个分组各自再分两列：同组里一张卡矮、一张卡高，矮卡下方会留下整块空白，
+ * 下一组只能等最高的那张结束才开始。现在把两个分组本身当作两列，组内卡片连续
+ * 向下排列：左列是全部导出，右列是全部导入，组与组之间不再有等待最高卡的空白。
+ * 页签与「导出」标题之间也在这里补出呼吸感。
+ */
+.dio-transfer {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.dio-transfer .dio-group {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+/* 每个分组在瀑布流里是一列，卡内字段仍按原卡片宽度排布。 */
+.dio-transfer .data-io-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 @media (max-width: 1100px) {
   .data-io-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dio-transfer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
   }
 }
 

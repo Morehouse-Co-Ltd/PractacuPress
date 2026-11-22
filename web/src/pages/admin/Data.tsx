@@ -843,7 +843,7 @@ export function DataPage() {
       />
 
       {tab === 'transfer' ? (
-        <>
+        <div className="dio-transfer">
           <div className="dio-group">
             <div className="dio-group-head">
               <h2>{t('导出')}</h2>
@@ -1371,7 +1371,7 @@ export function DataPage() {
       </section>
           </div>
           </div>
-        </>
+        </div>
       ) : null}
 
       {tab === 'backup' ? (
