@@ -104,11 +104,13 @@ interface FakeBackend {
   backend: Backend;
   updateSite: ReturnType<typeof vi.fn>;
   updateConfig: (patch: Partial<WebConfig>) => void;
+  applyStorage: ReturnType<typeof vi.fn>;
 }
 
 function fakeBackend(): FakeBackend {
   const updateSite = vi.fn(async () => undefined);
   const updateConfig = vi.fn<(patch: Partial<WebConfig>) => void>();
+  const applyStorage = vi.fn(async () => STATUS);
   const backend = {
     mode: 'live' as const,
     origin: 'http://api.test',
@@ -116,10 +118,10 @@ function fakeBackend(): FakeBackend {
     me: async () => ME,
     site: async () => siteOf(),
     storageStatus: async () => STATUS,
-    applyStorage: async () => STATUS,
+    applyStorage,
     updateSite,
   } as unknown as Backend;
-  return { backend, updateSite, updateConfig };
+  return { backend, updateSite, updateConfig, applyStorage };
 }
 
 let container: HTMLDivElement;
@@ -183,6 +185,42 @@ function headings(): string[] {
   return [...container.querySelectorAll('h1, h3, h4')].map((node) => node.textContent ?? '');
 }
 
+function scopeCard(name: string): HTMLElement {
+  const card = [...container.querySelectorAll<HTMLElement>('.storage-scope')].find((node) =>
+    (node.textContent ?? '').includes(name),
+  );
+  if (!card) throw new Error(`找不到用途卡片 ${name}`);
+  return card;
+}
+
+async function openAllocationDialog(name: string): Promise<HTMLElement> {
+  const trigger = scopeCard(name).querySelector<HTMLButtonElement>('.storage-current');
+  if (!trigger) throw new Error('找不到分配弹窗入口');
+  await act(async () => {
+    trigger.click();
+  });
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+  if (!dialog) throw new Error('找不到分配弹窗');
+  return dialog;
+}
+
+async function clickAllocationTab(dialog: HTMLElement, label: string): Promise<void> {
+  const tab = [...dialog.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) =>
+    (node.textContent ?? '').includes(label),
+  );
+  if (!tab) throw new Error(`找不到分配方式 ${label}`);
+  await act(async () => {
+    tab.click();
+  });
+}
+
+/** 等过页面自动保存的 700ms 防抖窗口。 */
+async function waitPastAutoSave(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  });
+}
+
 describe('储存与媒体页', () => {
   it('renders the renamed sections without the runtime status panel', async () => {
     const fake = fakeBackend();
@@ -229,5 +267,57 @@ describe('储存与媒体页', () => {
     expect(fake.updateSite).toHaveBeenCalledWith('site_1', { media_quota_bytes: 1572864 });
     // 保存成功后进度提示落在字段下方，页面头的储存自动保存状态不受影响。
     await waitFor(() => (container.textContent ?? '').includes('已自动保存'));
+  });
+
+  it('keeps allocation edits local until 完成 is clicked', async () => {
+    const fake = fakeBackend();
+    await renderStorage(fake);
+    expect(fake.applyStorage).not.toHaveBeenCalled();
+
+    const dialog = await openAllocationDialog('文章媒体');
+    await clickAllocationTab(dialog, '多策略');
+
+    // 弹窗里切换分配方式后等过防抖窗口：页面不应保存，也不应弹「已自动保存」。
+    await waitPastAutoSave();
+    expect(fake.applyStorage).not.toHaveBeenCalled();
+    expect(container.querySelector('.toast')).toBeNull();
+    expect(scopeCard('文章媒体').textContent).toContain('单策略');
+
+    const done = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === '完成',
+    );
+    expect(done).toBeTruthy();
+    await act(async () => {
+      done!.click();
+    });
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(scopeCard('文章媒体').textContent).toContain('多策略');
+
+    // 点完成才写回页面草稿，并按手动保存立即写盘 / 应用。
+    await waitFor(() => fake.applyStorage.mock.calls.length > 0);
+    expect(container.querySelector('.toast strong')?.textContent).toBe('已保存');
+    // 页面头的保存状态保持在已保存，不因随后到达的防抖轮询退回「修改会自动保存」。
+    expect(container.querySelector('.autosave-status')?.textContent).toContain('已自动保存');
+  });
+
+  it('discards allocation edits when the dialog is closed without 完成', async () => {
+    const fake = fakeBackend();
+    await renderStorage(fake);
+
+    const dialog = await openAllocationDialog('文章媒体');
+    await clickAllocationTab(dialog, '多策略');
+
+    const close = dialog.querySelector<HTMLButtonElement>('.icon-btn');
+    expect(close).not.toBeNull();
+    await act(async () => {
+      close!.click();
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+    await waitPastAutoSave();
+    expect(fake.applyStorage).not.toHaveBeenCalled();
+    expect(container.querySelector('.toast')).toBeNull();
+    expect(scopeCard('文章媒体').textContent).toContain('单策略');
   });
 });

@@ -145,6 +145,14 @@ export function StoragePage() {
   const [editing, setEditing] = useState<EditorState | null>(null);
   /** 正在弹窗里调整分配方式的用途；null 表示弹窗关闭。 */
   const [allocationScope, setAllocationScope] = useState<StorageScope | null>(null);
+  /**
+   * 弹窗自己的分配草稿。
+   *
+   * 弹窗是手工保存的：里面的切换、选择与输入只改这份副本，点「完成」才写回页面
+   * 草稿；直接关闭（X / 遮罩 / Esc）丢弃。否则每次输入都会触发页面的 700ms
+   * 自动保存并在右下角弹「已自动保存」。
+   */
+  const [allocationDraft, setAllocationDraft] = useState<StorageScopeAllocation | null>(null);
   const [form, setForm] = useState<StorageStrategy>(() => emptyStrategy());
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<StorageStrategy | null>(null);
@@ -276,11 +284,11 @@ export function StoragePage() {
   })();
 
   /** 把一次保存排进串行队列；执行时签名已对齐就说明无需再写。 */
-  const enqueueSave = (sig: string, next: StorageSettings) => {
+  const enqueueSave = (sig: string, next: StorageSettings, manual = false) => {
     saveQueue.current = saveQueue.current
       .then(() => {
         if (sig === savedSig.current) {
-          setSaveState('idle');
+          setSaveState((state) => (state === 'saving' || state === 'saved' ? state : 'idle'));
           return;
         }
         setSaveState('saving');
@@ -288,7 +296,7 @@ export function StoragePage() {
         updateConfig({ storage: next });
         savedSig.current = sig;
         setSaveState('saved');
-        toast.push('ok', t('已自动保存'));
+        toast.push('ok', manual ? t('已保存') : t('已自动保存'));
         // 与旧的手动保存一致：期间没有新的输入时把草稿归一化成真正写入的值。
         if (payloadKeyRef.current === sig) {
           setDraft(next);
@@ -399,7 +407,7 @@ export function StoragePage() {
   // 草稿变化后尾随防抖自动保存：与已保存值一致就不动，校验不通过只报错不写入。
   useEffect(() => {
     if (payloadKey === savedSig.current) {
-      setSaveState((state) => (state === 'saving' ? state : 'idle'));
+      setSaveState((state) => (state === 'saving' || state === 'saved' ? state : 'idle'));
       setSaveError('');
       lastInvalidRef.current = '';
       return;
@@ -449,7 +457,7 @@ export function StoragePage() {
   const allocationMeta = allocationScope
     ? SCOPE_META.find((meta) => meta.scope === allocationScope) ?? null
     : null;
-  const activeAllocation = allocationScope ? scopeAllocation(draft, allocationScope) : null;
+  const activeAllocation = allocationDraft;
   const activePrimary =
     allocationScope && activeAllocation
       ? findStrategy(
@@ -594,44 +602,66 @@ export function StoragePage() {
     );
   };
 
+  /** 打开一个用途的分配弹窗：从页面草稿拷贝一份本地副本。 */
+  const openAllocation = (scope: StorageScope) => {
+    const allocation = scopeAllocation(draft, scope);
+    setAllocationDraft({
+      ...allocation,
+      entries: allocation.entries.map((entry) => ({ ...entry })),
+    });
+    setAllocationScope(scope);
+  };
+
+  /** 关闭弹窗并丢弃未提交的分配改动。 */
+  const closeAllocation = () => {
+    setAllocationScope(null);
+    setAllocationDraft(null);
+  };
+
   /**
-   * 更新一个用途的完整分配。
+   * 「完成」：把弹窗里的分配写回页面草稿并立即保存。
    *
-   * 先走一次 normalizeStorage，保证旧草稿也带上 allocations；再把主策略
-   * `scopes[scope]` 同步成分配顺序的第一套。
+   * 弹窗内编辑只改本地副本，所以不会在点「完成」之前触发保存提示；点「完成」
+   * 后不走 700ms 尾随防抖，直接排进保存队列，按手动保存提示「已保存」。
    */
-  const patchAllocation = (
-    scope: StorageScope,
+  const commitAllocation = () => {
+    if (!allocationScope || !allocationDraft) {
+      closeAllocation();
+      return;
+    }
+    const scope = allocationScope;
+    const allocation = allocationDraft;
+    const normalized = normalizeStorage(draft);
+    const allocations = { ...normalized.allocations!, [scope]: allocation };
+    const scopes = {
+      ...normalized.scopes,
+      [scope]: allocation.entries[0]?.strategy_id ?? normalized.scopes[scope],
+    };
+    const next = normalizeStorage({ ...normalized, scopes, allocations });
+    setDraft(next);
+    closeAllocation();
+    if (!validationError) {
+      enqueueSave(JSON.stringify(next), next, true);
+    }
+  };
+
+  /** 只改弹窗本地草稿，不碰页面 `draft`。 */
+  const patchAllocationDraft = (
     update: (allocation: StorageScopeAllocation) => StorageScopeAllocation,
   ) => {
-    setDraft((prev) => {
-      const normalized = normalizeStorage(prev);
-      const allocations = {
-        ...normalized.allocations!,
-        [scope]: update(normalized.allocations![scope]),
-      };
-      const scopes = {
-        ...normalized.scopes,
-        [scope]:
-          allocations[scope].entries[0]?.strategy_id ?? normalized.scopes[scope],
-      };
-      return { ...normalized, scopes, allocations };
-    });
+    setAllocationDraft((prev) => (prev ? update(prev) : prev));
   };
 
-  const setScopeMode = (scope: StorageScope, mode: StorageScopeAllocation['mode']) => {
-    patchAllocation(scope, (allocation) => ({ ...allocation, mode }));
+  const setScopeMode = (mode: StorageScopeAllocation['mode']) => {
+    patchAllocationDraft((allocation) => ({ ...allocation, mode }));
   };
 
-  const setScopeOverflow = (
-    scope: StorageScope,
-    overflow: StorageScopeAllocation['overflow'],
-  ) => {
-    patchAllocation(scope, (allocation) => ({ ...allocation, overflow }));
+  const setScopeOverflow = (overflow: StorageScopeAllocation['overflow']) => {
+    patchAllocationDraft((allocation) => ({ ...allocation, overflow }));
   };
 
-  const setSingleStrategy = (scope: StorageScope, strategyId: string) => {
-    patchAllocation(scope, (allocation) => {
+  const setSingleStrategy = (strategyId: string) => {
+    patchAllocationDraft((allocation) => {
       const first = allocation.entries[0] ?? { strategy_id: strategyId, quota_gb: 0 };
       const rest = allocation.entries
         .slice(1)
@@ -643,10 +673,10 @@ export function StoragePage() {
     });
   };
 
-  const setEntryStrategy = (scope: StorageScope, index: number, strategyId: string) => {
-    const allocation = scopeAllocation(draft, scope);
+  const setEntryStrategy = (index: number, strategyId: string) => {
+    if (!allocationDraft) return;
     if (
-      allocation.entries.some(
+      allocationDraft.entries.some(
         (entry, entryIndex) =>
           entryIndex !== index && entry.strategy_id === strategyId,
       )
@@ -658,7 +688,7 @@ export function StoragePage() {
       );
       return;
     }
-    patchAllocation(scope, (current) => ({
+    patchAllocationDraft((current) => ({
       ...current,
       entries: current.entries.map((entry, entryIndex) =>
         entryIndex === index ? { ...entry, strategy_id: strategyId } : entry,
@@ -666,11 +696,11 @@ export function StoragePage() {
     }));
   };
 
-  const setEntryQuota = (scope: StorageScope, index: number, raw: number) => {
+  const setEntryQuota = (index: number, raw: number) => {
     const quota = Number.isFinite(raw)
       ? Math.min(MAX_ALLOCATION_QUOTA_GB, Math.max(0, Math.round(raw)))
       : 0;
-    patchAllocation(scope, (allocation) => ({
+    patchAllocationDraft((allocation) => ({
       ...allocation,
       entries: allocation.entries.map((entry, entryIndex) =>
         entryIndex === index ? { ...entry, quota_gb: quota } : entry,
@@ -678,8 +708,8 @@ export function StoragePage() {
     }));
   };
 
-  const moveEntry = (scope: StorageScope, index: number, delta: -1 | 1) => {
-    patchAllocation(scope, (allocation) => {
+  const moveEntry = (index: number, delta: -1 | 1) => {
+    patchAllocationDraft((allocation) => {
       const target = index + delta;
       if (target < 0 || target >= allocation.entries.length) return allocation;
       const entries = [...allocation.entries];
@@ -688,8 +718,9 @@ export function StoragePage() {
     });
   };
 
-  const addEntry = (scope: StorageScope) => {
-    const allocation = scopeAllocation(draft, scope);
+  const addEntry = () => {
+    if (!allocationDraft) return;
+    const allocation = allocationDraft;
     if (allocation.entries.length >= MAX_ALLOCATION_ENTRIES) {
       toast.push(
         'info',
@@ -708,7 +739,7 @@ export function StoragePage() {
       );
       return;
     }
-    patchAllocation(scope, (current) => ({
+    patchAllocationDraft((current) => ({
       ...current,
       mode: 'quota',
       entries: [
@@ -718,9 +749,9 @@ export function StoragePage() {
     }));
   };
 
-  const removeEntry = (scope: StorageScope, index: number) => {
-    const allocation = scopeAllocation(draft, scope);
-    if (allocation.entries.length <= 1) {
+  const removeEntry = (index: number) => {
+    if (!allocationDraft) return;
+    if (allocationDraft.entries.length <= 1) {
       toast.push(
         'info',
         t('至少保留一套策略。'),
@@ -728,7 +759,7 @@ export function StoragePage() {
       );
       return;
     }
-    patchAllocation(scope, (current) => ({
+    patchAllocationDraft((current) => ({
       ...current,
       entries: current.entries.filter((_, entryIndex) => entryIndex !== index),
     }));
@@ -1042,7 +1073,7 @@ export function StoragePage() {
                         <button
                           type="button"
                           className="storage-current"
-                          onClick={() => setAllocationScope(meta.scope)}
+                          onClick={() => openAllocation(meta.scope)}
                           aria-haspopup="dialog"
                           aria-label={t('查看「{scope}」的储存策略', {
                             scope: scopeLabel(meta.scope),
@@ -1120,11 +1151,11 @@ export function StoragePage() {
           <Modal
             open
             title={t('「{scope}」的储存策略', { scope: scopeLabel(allocationScope) })}
-            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存并应用。')}
-            onClose={() => setAllocationScope(null)}
+            description={t('这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；点「完成」保存并应用，直接关闭不会保存。')}
+            onClose={closeAllocation}
             width={680}
             footer={
-              <Button onClick={() => setAllocationScope(null)} icon="check">
+              <Button onClick={commitAllocation} icon="check">
                 {t('完成')}
               </Button>
             }
@@ -1140,7 +1171,7 @@ export function StoragePage() {
               >
                 <Tabs
                   value={activeAllocation.mode}
-                  onChange={(mode) => setScopeMode(allocationScope, mode)}
+                  onChange={setScopeMode}
                   items={[
                     { key: 'single', label: t('单策略') },
                     { key: 'quota', label: t('多策略 · 容量切换') },
@@ -1167,7 +1198,7 @@ export function StoragePage() {
                             'storage-strategy-option',
                             selected && 'is-selected',
                           )}
-                          onClick={() => setSingleStrategy(allocationScope, item.id)}
+                          onClick={() => setSingleStrategy(item.id)}
                         >
                           <span className="storage-strategy-option-icon">
                             <Icon
@@ -1225,7 +1256,7 @@ export function StoragePage() {
                           value={entry.strategy_id}
                           aria-label={t('第 {index} 套策略', { index: index + 1 })}
                           onChange={(event) =>
-                            setEntryStrategy(allocationScope, index, event.target.value)
+                            setEntryStrategy(index, event.target.value)
                           }
                         >
                           {draft.strategies.map((item) => {
@@ -1251,7 +1282,6 @@ export function StoragePage() {
                             aria-label={t('容量上限')}
                             onChange={(event) =>
                               setEntryQuota(
-                                allocationScope,
                                 index,
                                 Number(event.target.value),
                               )
@@ -1267,7 +1297,7 @@ export function StoragePage() {
                             title={t('上移')}
                             aria-label={t('上移')}
                             disabled={index === 0}
-                            onClick={() => moveEntry(allocationScope, index, -1)}
+                            onClick={() => moveEntry(index, -1)}
                           />
                           <Button
                             variant="ghost"
@@ -1277,7 +1307,7 @@ export function StoragePage() {
                             title={t('下移')}
                             aria-label={t('下移')}
                             disabled={index === activeAllocation.entries.length - 1}
-                            onClick={() => moveEntry(allocationScope, index, 1)}
+                            onClick={() => moveEntry(index, 1)}
                           />
                           <Button
                             variant="ghost"
@@ -1286,7 +1316,7 @@ export function StoragePage() {
                             title={t('移除这套策略')}
                             aria-label={t('移除这套策略')}
                             disabled={activeAllocation.entries.length <= 1}
-                            onClick={() => removeEntry(allocationScope, index)}
+                            onClick={() => removeEntry(index)}
                           />
                         </div>
                       </div>
@@ -1306,7 +1336,7 @@ export function StoragePage() {
                         activeAllocation.entries.length >= MAX_ALLOCATION_ENTRIES ||
                         !activeHasAvailable
                       }
-                      onClick={() => addEntry(allocationScope)}
+                      onClick={() => addEntry()}
                     >
                       {t('添加一套策略')}
                     </Button>
@@ -1322,7 +1352,6 @@ export function StoragePage() {
                       value={activeAllocation.overflow}
                       onChange={(event) =>
                         setScopeOverflow(
-                          allocationScope,
                           event.target.value as StorageScopeAllocation['overflow'],
                         )
                       }

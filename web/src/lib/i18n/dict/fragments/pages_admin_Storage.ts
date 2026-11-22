@@ -56,8 +56,6 @@ const fragment: Dictionary = {
   '{count} 套策略': { one: '1 strategy', other: '{count} strategies' },
   '查看「{scope}」的储存策略': 'View the storage strategy for “{scope}”',
   '「{scope}」的储存策略': 'Storage strategies for “{scope}”',
-  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存。':
-    'This scope can use one strategy, or several in order with capacity caps; changes are saved automatically when the dialog closes.',
   '位置：{path}': 'Location: {path}',
   '有用途指向云策略，但全局策略还是本地储存':
     'A scope points at a cloud strategy, but the global strategy is still local storage',
@@ -304,8 +302,8 @@ const fragment: Dictionary = {
     'After saving, the server uses the strategies in write order: single mode ignores the cap; in multi mode, once a strategy is full (quota_gb, 0 = unlimited) the “When full” rule stops or switches to the next one.',
   '所有策略都写满时，新的上传会失败并返回 storage_quota_exceeded（507）。':
     'When every strategy is full, new uploads fail with storage_quota_exceeded (507).',
-  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；关闭弹窗后改动会自动保存并应用。':
-    'This scope can use one strategy, or several in order with capacity caps; changes are saved and applied automatically when the dialog closes.',
+  '这个用途可以只用一套策略，也可以按顺序分配多套并设置容量上限；点「完成」保存并应用，直接关闭不会保存。':
+    'This scope can use one strategy, or several in order with capacity caps; choose “Done” to save and apply, or close without saving.',
   '只使用一套策略，最省心；单策略模式下配额不生效。':
     'Use one strategy; the simplest option. Capacity caps do not apply in single mode.',
   '按写入顺序使用多套策略；服务端在前一套写满（quota_gb）后，按「写满后」的规则停止或切换。':
