@@ -32,7 +32,7 @@ const fragment: Dictionary = {
   访问与域名: 'Access & domains',
   人机验证: 'Bot protection',
   性能优化: 'Performance',
-  储存策略: 'Storage strategies',
+  储存与媒体: 'Storage and media',
 
   // 顶栏标题（面包屑右侧的页面名）
   管理后台: 'Admin',

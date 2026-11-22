@@ -1,6 +1,6 @@
-/* ---------- 储存策略页（web/src/pages/admin/Storage.tsx） ---------- */
+/* ---------- 储存与媒体页（web/src/pages/admin/Storage.tsx） ---------- */
 /*
- * 只补后台「储存策略」页自己的结构：策略卡片、用途分配网格、多策略分配
+ * 只补后台「储存与媒体」页自己的结构：策略卡片、各用途的选择网格、多策略分配
  * 与底部的恢复默认区。其余排版（panel / form-grid / danger-zone 等）沿用
  * 全局样式，颜色一律走主题令牌，深浅色主题都会自动跟随。
  */
@@ -13,6 +13,34 @@
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/* ---------------- 策略与用途之间的分隔 ---------------- */
+
+.storage-subsection {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.storage-subsection-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.storage-subsection-head h4 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.storage-subsection-head p {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
 }
 
 /* ---------------- 策略卡片列表 ---------------- */

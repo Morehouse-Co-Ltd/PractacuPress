@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
-  MediaQuotaBytes,
   PublishMode,
   Role,
   Site,
@@ -19,7 +18,6 @@ import { useSaveSiteConfig } from '../../lib/siteConfigSave';
 import { noteActivity } from '../../lib/activity';
 import { useCustomization } from '../../lib/customize';
 import { errorText, useT } from '../../lib/i18n';
-import { bytesToMbString, parseMediaQuotaMbInput } from '../../lib/mediaQuota';
 import {
   PUBLISH_LABEL,
   VISIBILITY_LABEL,
@@ -57,8 +55,6 @@ interface SettingsDraft {
   visibility: VisibilityMode;
   publish: PublishMode;
   registrationOpen: boolean;
-  /** `bytes:<字节数>` 或 `raw:<原始输入>`：无效输入也有稳定签名，但不会发请求。 */
-  mediaQuota: string;
   adminPath: string;
   kind: SiteKind;
 }
@@ -72,17 +68,9 @@ function normalizedAdminPathValue(raw: string): string {
   return (raw.trim() || '/admin').replace(/\/+$/, '');
 }
 
-function mediaQuotaSignature(
-  parsed: ReturnType<typeof parseMediaQuotaMbInput>,
-  raw: string,
-): string {
-  return parsed.valid ? `bytes:${parsed.value}` : `raw:${raw}`;
-}
-
 /** 服务端当前快照对应的「已保存」基线：水合与保存成功后都用它。 */
 function savedDraftOf(site: Site, config: WebConfig): SettingsDraft {
   const kind = siteKindOf(config);
-  const mediaQuotaDraft = bytesToMbString(site.media_quota_bytes);
   return {
     name: site.name.trim(),
     domain: site.domain.trim().toLowerCase(),
@@ -91,7 +79,6 @@ function savedDraftOf(site: Site, config: WebConfig): SettingsDraft {
     visibility: kind === 'personal' ? 'public' : site.visibility_mode,
     publish: kind === 'personal' ? 'open' : site.publish_mode,
     registrationOpen: kind === 'personal' ? false : site.registration_open !== false,
-    mediaQuota: mediaQuotaSignature(parseMediaQuotaMbInput(mediaQuotaDraft), mediaQuotaDraft),
     adminPath: normalizedAdminPathValue(adminPathOf({ admin_path: config.admin_path })),
     kind,
   };
@@ -111,8 +98,6 @@ export function SettingsPage() {
   const [publishMode, setPublishMode] = useState<PublishMode>(site?.publish_mode ?? 'review');
   /** O-3：站点是否开放自助注册；旧后端没有该字段时按开放处理。 */
   const [registrationOpen, setRegistrationOpen] = useState(site?.registration_open !== false);
-  /** 媒体额度按 MB 编辑；空串表示继承部署默认。 */
-  const [mediaQuotaDraft, setMediaQuotaDraft] = useState(bytesToMbString(site?.media_quota_bytes));
   const [kind, setKind] = useState<SiteKind>(siteKindOf(config));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -161,7 +146,6 @@ export function SettingsPage() {
     setVisibility(site.visibility_mode);
     setPublishMode(site.publish_mode);
     setRegistrationOpen(site.registration_open !== false);
-    setMediaQuotaDraft(bytesToMbString(site.media_quota_bytes));
     // 后台入口存在站点级配置里：空闲时跟配置对齐，避免把别处改过的入口又写回去。
     setAdminPath(config.admin_path ?? '/admin');
     setDescriptionTouched(false);
@@ -263,8 +247,6 @@ export function SettingsPage() {
   };
 
   const kindChanged = kind !== siteKindOf(config);
-  const mediaQuota = parseMediaQuotaMbInput(mediaQuotaDraft);
-  const savedMediaQuotaDraft = bytesToMbString(site?.media_quota_bytes);
   const descriptionKnown = descriptionTouched || site?.description !== undefined;
   /** 当前表单对应的归一化快照：只有它偏离「已保存」基线时才会发请求。 */
   const draft: SettingsDraft = {
@@ -275,7 +257,6 @@ export function SettingsPage() {
     visibility: kind === 'personal' ? 'public' : visibility,
     publish: kind === 'personal' ? 'open' : publishMode,
     registrationOpen: kind === 'personal' ? false : registrationOpen,
-    mediaQuota: mediaQuotaSignature(mediaQuota, mediaQuotaDraft),
     adminPath: normalizedAdminPathValue(adminPath),
     kind,
   };
@@ -377,9 +358,6 @@ export function SettingsPage() {
   /** 表单校验：返回可直接展示的错误；空串表示可以保存。 */
   const validationIssue = (): string => {
     if (!name.trim()) return t('站点名称不能为空。');
-    if (!mediaQuota.valid) {
-      return t('媒体额度必须是非负整数或小数（MB），且不能超过可存储上限。');
-    }
     // 与服务端同一套规则：提前拦住只会被拒绝的保存（占用站点路径、带查询参数等）。
     return adminPathError(normalizedAdminPathValue(adminPath));
   };
@@ -415,10 +393,6 @@ export function SettingsPage() {
     const nextPublish: PublishMode = kind === 'personal' ? 'open' : publishMode;
     // O-3：个人博客固定关闭注册，不把开关的旧值写回去。
     const nextRegistration = kind === 'personal' ? false : registrationOpen;
-    // 只有输入框里的额度变了才带上：留空 = 继承部署默认（null），0 = 无限。
-    const mediaQuotaBytes: MediaQuotaBytes = mediaQuota.valid ? mediaQuota.value : null;
-    const mediaQuotaPatch: { media_quota_bytes?: MediaQuotaBytes } =
-      mediaQuotaDraft !== savedMediaQuotaDraft ? { media_quota_bytes: mediaQuotaBytes } : {};
     setError('');
     setBusy(true);
     savingRef.current = true;
@@ -444,7 +418,6 @@ export function SettingsPage() {
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
         registration_open: nextRegistration,
-        ...mediaQuotaPatch,
       });
       if (nextDomain !== site.domain) {
         await backend.setSiteDomain(site.id, nextDomain);
@@ -457,7 +430,6 @@ export function SettingsPage() {
         visibility_mode: nextVisibility,
         publish_mode: nextPublish,
         registration_open: nextRegistration,
-        ...mediaQuotaPatch,
       });
       if (switching) {
         updateConfig({ site_kind: kind });
@@ -745,31 +717,6 @@ export function SettingsPage() {
                   <Input value={site?.slug ?? ''} readOnly disabled />
                 </Field>
               </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h3>{t('媒体额度')}</h3>
-              </div>
-            </div>
-            <div className="panel-body">
-              <Field
-                label={t('本站媒体额度（MB）')}
-                htmlFor="setting-media-quota"
-                hint={t('媒体额度单位为 MB（1 MB = 1024 × 1024 字节）；留空继承部署默认，0 表示无限。')}
-              >
-                <Input
-                  id="setting-media-quota"
-                  aria-label={t('本站媒体额度（MB）')}
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9.]*"
-                  value={mediaQuotaDraft}
-                  onChange={(event) => setMediaQuotaDraft(event.target.value)}
-                />
-              </Field>
             </div>
           </section>
 

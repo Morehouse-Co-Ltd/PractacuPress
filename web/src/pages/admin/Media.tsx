@@ -172,7 +172,7 @@ export function MediaPage() {
   const visible = scan === 'all' ? assets : assets.filter((asset) => asset.scan_status === scan);
 
   // 单文件上限是接口层的硬限制，与站点额度是两件事：额度是站点累计可用的总量
-  // （在「站点设置 → 媒体额度」里配置，null 表示跟随部署默认，0 表示无限）。
+  // （在「储存与媒体 → 储存设置」里配置，null 表示跟随部署默认，0 表示无限）。
   const fileLimit = demo ? 2 * 1024 * 1024 : 25 * 1024 * 1024;
   const siteQuota = (() => {
     const raw = site?.media_quota_bytes;

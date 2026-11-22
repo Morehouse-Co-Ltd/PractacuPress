@@ -380,7 +380,7 @@ export function AdminShell() {
         { to: '/admin/verification', label: t('人机验证'), icon: 'lock', keyword: '人机验证' },
         { to: '/admin/seo', label: 'SEO', icon: 'search', keyword: 'SEO' },
         { to: '/admin/performance', label: t('性能优化'), icon: 'server', keyword: '性能优化' },
-        { to: '/admin/storage', label: t('储存策略'), icon: 'database', keyword: '储存策略' },
+        { to: '/admin/storage', label: t('储存与媒体'), icon: 'database', keyword: '储存与媒体' },
         { to: '/admin/data', label: t('数据与备份'), icon: 'download', keyword: '数据与备份' },
       ] as NavItem[])
     : [];
@@ -554,7 +554,7 @@ export function AdminShell() {
     { match: /^\/admin\/domains/, title: t('访问与域名') },
     { match: /^\/admin\/verification/, title: t('人机验证') },
     { match: /^\/admin\/performance/, title: t('性能优化') },
-    { match: /^\/admin\/storage/, title: t('储存策略') },
+    { match: /^\/admin\/storage/, title: t('储存与媒体') },
     { match: /^\/admin\/data/, title: t('数据与备份') },
     { match: /^\/admin\/(members|users)/, title: t('用户管理') },
     { match: /^\/admin\/permissions/, title: t('用户组') },

@@ -3,6 +3,16 @@ import type { Dictionary } from '../../plural';
 /** 来源：`web/src/pages/admin/Storage.tsx` */
 const fragment: Dictionary = {
   // ---- 页头与通用 ----
+  '储存与媒体': 'Storage and media',
+  '储存设置': 'Storage settings',
+  '决定上传的图片与附件写到哪里，并管理正文长度、上传提示与站点媒体额度。':
+    'Decide where uploaded images and attachments are written, and manage the content length limit, upload hint, and site media quota.',
+  '正文长度上限、上传提示与站点媒体额度；修改后随本页自动保存。':
+    'Content length limit, upload hint, and site media quota; changes are saved automatically with this page.',
+  '每套策略就是一个存储目标；下面为每个用途选择使用哪一套，也可以按顺序分配多套并设置容量上限。':
+    'Each strategy is a storage target; below, choose which one each scope uses, or assign several in order with capacity caps.',
+  '各用途使用哪套策略': 'Which strategy each scope uses',
+  未连接站点: 'Not connected to a site',
   '储存策略': 'Storage strategies',
   '站点管理员': 'Site admin',
   '媒体库': 'Media library',
@@ -30,23 +40,7 @@ const fragment: Dictionary = {
   '用户头像': 'User avatars',
   '用户数据与附件': 'User data and attachments',
 
-  '决定上传的图片与附件写到哪里：先建一套或几套储存策略（本地目录或 S3 兼容的云对象存储），':
-    'Decides where uploaded images and attachments are written: first create one or more storage strategies (a local directory, or any S3-compatible cloud object storage),',
-  '再让每个用途各选一套。浏览器只能保存部署意图，真正生效要靠服务器上的':
-    'then point each scope at one of them. The browser can only record the deployment intent; what actually takes effect depends on the server’s',
-  '与重启 API。': 'and on an API restart.',
-  '本页只写入这台电脑的本地安装配置，并把选择翻译成可粘贴的 API':
-    'This page only writes the local install config on this computer and turns the choice into a paste-ready API',
-  '片段；服务器需要把片段写进': 'snippet; the server needs that snippet in its',
-  '并重启 API 才生效。演示模式与真实后端行为一致：':
-    'and the API restarted before it takes effect. Demo mode behaves like a real backend:',
-  '都可以保存与生成片段，但演示模式没有真正的服务端进程可重启。':
-    'both can save and generate the snippet, but demo mode has no real server process to restart.',
-
   // ---- 储存策略列表 ----
-  '每套策略就是一个存储目标；被最多用途使用的那套会写成 .env 的全局 STORAGE_DRIVER，':
-    'Each strategy is one storage target; the one used by the most scopes becomes the global STORAGE_DRIVER in .env,',
-  '其余用途只写自己的覆盖变量。': 'and every other scope only writes its own override variables.',
   '{count} 套': { one: '1 strategy', other: '{count} strategies' },
   '新建储存策略': 'New storage strategy',
   '用于：{scopes}': 'Used by: {scopes}',
@@ -57,10 +51,7 @@ const fragment: Dictionary = {
   '最多只能有 {max} 套储存策略': 'At most {max} storage strategies are allowed',
   '先删掉一套不再使用的策略，再新建。': 'Delete a strategy you no longer use, then create a new one.',
 
-  // ---- 用途分配 ----
-  '用途分配': 'Scope assignment',
-  '四个用途各自从已有策略里选一套：图片可以放图床，附件可以继续留在本地。':
-    'Each of the four scopes picks one existing strategy: images can live on a CDN bucket while attachments stay local.',
+  // ---- 各用途的储存策略 ----
   '{count} 套在用': { one: '1 in use', other: '{count} in use' },
   '{count} 套策略': { one: '1 strategy', other: '{count} strategies' },
   '查看「{scope}」的储存策略': 'View the storage strategy for “{scope}”',
@@ -89,12 +80,8 @@ const fragment: Dictionary = {
   '用户上传的附件与私有数据，通常需要鉴权后才能访问。':
     'Attachments and private data uploaded by users, which usually need authentication to reach.',
 
-  // ---- 上传体积提示 ----
+  // ---- 储存设置 ----
   '上传体积提示': 'Upload size hint',
-  '只用于前端提示，不会改变服务端上限。':
-    'A front-end hint only; it does not change the server-side limit.',
-  '非服务端参数': 'Not a server-side setting',
-  '单文件上限提示': 'Per-file size hint',
   'API 默认限制 25 MiB；要传更大的文件，需要同时调整 API 与反向代理的请求体上限，而不是只改这里。':
     'The API defaults to a 25 MiB limit; to upload larger files, raise the request body limit on both the API and the reverse proxy rather than only changing this value.',
   '超过 API 默认的 25 MiB 附件上限': 'Above the API default of 25 MiB per attachment',
@@ -127,8 +114,6 @@ const fragment: Dictionary = {
   '先备份，再切换。': 'Back up first, then switch.',
   '备份本地 data/media 目录，或记下旧桶名与前缀。':
     'Back up the local data/media directory, or note the old bucket name and prefix.',
-  '新建或编辑目标储存策略，再把要迁移的用途分配过去。':
-    'Create or edit the target storage strategy, then assign the scopes to it.',
   '保存修改，复制下方的 .env 片段。':
     'Save the changes and copy the .env snippet below.',
   '把片段写进服务器 .env，重启 API（不是刷新后台）。':
@@ -144,8 +129,6 @@ const fragment: Dictionary = {
 
   // ---- 新建 / 编辑弹窗 ----
   '编辑储存策略': 'Edit storage strategy',
-  '策略名会出现在用途分配与 .env 片段注释里；密钥不在这个弹窗保存。':
-    'The strategy name shows up in scope assignment and in the .env snippet comments; the secret is not saved from this dialog.',
   '保存这套策略': 'Save this strategy',
   '添加这套策略': 'Add this strategy',
   '必填且不能与已有策略重名，最多 {max} 个字符。':
@@ -217,11 +200,9 @@ const fragment: Dictionary = {
   '回到一套「本地储存」（./data/media），四个用途都指向它；不会删除任何文件，也不会修改服务器的 .env。':
     'Back to a single “Local storage” strategy (./data/media) that all four scopes point at; no files are deleted and the server .env is untouched.',
 
-  // ---- 用途分配：单策略 / 多策略 ----
+  // ---- 各用途的储存策略 ----
   '每个用途可以只用一套策略，也可以分配多套并设置各自的容量上限。':
     'Each scope can use one strategy, or several with individual capacity caps.',
-  '再为每个用途分配一套或多套；多套时按顺序使用，并可在达到容量上限后自动切换。':
-    'Then assign one or more strategies to each scope; with several, they are used in order and can switch automatically when a capacity cap is reached.',
   '分配方式': 'Allocation mode',
   '单策略': 'Single strategy',
   '多策略': 'Multiple',
@@ -271,8 +252,6 @@ const fragment: Dictionary = {
     'Which storage the server actually uses is still decided by the storage config at deployment time; demo mode behaves like a real backend.',
   '服务器目前只支持一套云凭据；多套云策略需要部署方另行提供 endpoint、区域与 Access Key。':
     'The server currently supports one set of cloud credentials; multiple cloud strategies need the deployer to provide the endpoint, region, and Access Key separately.',
-  '已写入这台电脑的本地安装配置；用途分配、容量上限与切换顺序都会一并保存。':
-    'Written to this computer’s local install config; scope assignments, capacity caps, and switching order are saved together.',
   '引用它的用途已经从分配里移除，空出来的位置回落到第一套策略；改动会自动保存，不会删除任何文件。':
     'The scopes using it have removed it from their assignments and the freed slots fall back to the first strategy; the change is saved automatically and no files are deleted.',
   '没有用途在使用这套策略，删除不会改变上传位置，也不会删除任何文件。':
@@ -283,26 +262,15 @@ const fragment: Dictionary = {
     'Deleting only changes this computer’s config: no files are removed, the server storage config is untouched, and uploaded files stay where they are.',
   '改动会自动写入这台电脑的本地安装配置。':
     'The change is saved automatically to this computer’s local install config.',
-  '策略名会出现在用途分配里；密钥不在这个弹窗保存。':
-    'The strategy name appears in scope assignments; the secret is not saved from this dialog.',
   '回到一套「本地储存」（./data/media），四个用途都改为单策略并指向它；不会删除文件，也不会修改服务器的存储配置。':
     'Back to a single “Local storage” strategy (./data/media) that all four scopes use in single-strategy mode; no files are deleted and the server storage config is untouched.',
 
-  // ---- 当前生效与运行状态（运行期储存） ----
-  '全局（部署默认）': 'Global (deployment default)',
-  '桶：{bucket}': 'Bucket: {bucket}',
-  桶未设置: 'Bucket not set',
-  '区域：{region}': 'Region: {region}',
-  '前缀：{prefix}': 'Prefix: {prefix}',
-  跟随服务器默认目录: 'Server default directory',
+  // ---- 运行期储存与立即应用 ----
   '保存后立即生效': 'Takes effect as soon as you save',
   '平台管理员保存后会自动应用：服务器把设置写进 data/storage-settings.json 并马上换用，无需重启；这个文件优先于 .env 里的 STORAGE_* 变量。':
     'When a platform admin saves, the settings are applied automatically: the server writes them to data/storage-settings.json and switches over at once, with no restart; that file takes precedence over STORAGE_* in .env.',
   '容量上限与多策略切换由服务端在写入时执行；已有文件不会自动迁移，旧目录或旧桶里的对象仍在原处。':
     'Capacity caps and multi-strategy switching are enforced by the server at write time; existing files are not migrated, and objects in the old directory or bucket stay where they are.',
-  '当前生效与运行状态': 'In force now and runtime status',
-  '这些值来自 API 进程真正在用的设置；保存后是否已经应用也在这里显示。':
-    'These values come from the settings the API process really uses; whether your last save has been applied is shown here too.',
   '应用中…': 'Applying…',
   '已生效': 'In force',
   '待应用': 'Not applied yet',
@@ -313,17 +281,9 @@ const fragment: Dictionary = {
   '服务器已换用新设置并写进 data/storage-settings.json；已有文件不会自动迁移。':
     'The server switched to the new settings and wrote them to data/storage-settings.json; existing files are not migrated.',
   '无法读取服务端的储存状态': 'Cannot read the server storage status',
-  '来源：{source}': 'Source: {source}',
-  '后台设置': 'Dashboard settings',
-  '部署环境变量': 'Deployment environment variables',
-  '最近应用：{time}': 'Last applied: {time}',
-  '尚未通过后台应用；当前值来自部署环境变量。':
-    'Not applied from the dashboard yet; the current values come from the deployment environment variables.',
   '部署片段（备用）': 'Deployment snippet (fallback)',
   '片段只描述位置与驱动，不含任何密钥；旧后端或没有运行期应用权限时，把它写进 API 的 .env 再重启，新的上传才会写到这些位置。':
     'The snippet describes only locations and drivers and contains no credentials; on an old backend or without runtime-apply permission, write it into the API .env and restart for new uploads to land in these locations.',
-  '当前后端没有提供储存状态，无法确认服务端在用哪套存储。':
-    'This backend does not expose storage status, so which storage the server uses cannot be confirmed.',
   '「立即应用」不可用': '“Apply now” is unavailable',
   '保存后自动应用，失败可以重试': 'Saved settings are applied automatically; failures can be retried',
   '保存成功会自动调用「立即应用」；失败时保留原来的生效状态，页面上会出现错误原因与重试按钮。':
@@ -363,8 +323,8 @@ const fragment: Dictionary = {
     'Used only for this one apply request and never written to the config on this computer; leave it empty to keep the secret already saved on the server.',
   '会保存在本地安装配置里，并随应用请求提交；建议使用只允许该桶读写的子账号。':
     'Stored in the local install config and sent with the apply request; prefer a sub-account that may only read and write this bucket.',
-  '策略名会出现在用途分配里；Secret Key 只保存在本页内存，仅随「立即应用」提交一次。':
-    'The strategy name shows up in scope assignment; the Secret Key stays in this page’s memory and is submitted once with “Apply now”.',
+  '策略名会出现在各用途的选择里；Secret Key 只保存在本页内存，仅随「立即应用」提交一次。':
+    'The strategy name appears in each scope’s selection; the Secret Key stays in this page’s memory and is submitted once with “Apply now”.',
   '删除只改这份储存设置，下一次保存 / 应用后服务端才会换用新顺序；不会删除任何文件，已经上传的文件仍留在原位置。':
     'Deleting only changes this storage setting; the server switches to the new order on the next save / apply. No files are deleted and uploaded files stay where they are.',
 };

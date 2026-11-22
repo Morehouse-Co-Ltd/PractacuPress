@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
-  EffectiveConfig,
-  EffectiveStorageScope,
+  MediaQuotaBytes,
   StorageRuntimeAllocationEntry,
   StorageScope,
   StorageScopeAllocation,
@@ -40,7 +39,7 @@ import {
   strategyLocation,
   usedStrategies,
 } from '../../lib/storage';
-import { formatBytes, formatDateTime } from '../../lib/format';
+import { formatBytes } from '../../lib/format';
 import { errorText, useAsync, useTitle } from '../../lib/hooks';
 import { noteActivity } from '../../lib/activity';
 import { useToast } from '../../lib/toast';
@@ -54,12 +53,12 @@ import {
   Input,
   Modal,
   Select,
-  Skeleton,
   Tabs,
   cx,
 } from '../../components/ui';
 import { Icon, type IconName } from '../../components/Icon';
 import { NumberField } from '../../components/NumberField';
+import { MediaQuotaField } from '../../components/MediaQuotaField';
 import { RoleGate } from '../../components/Guards';
 import { AutoSaveStatus, type AutoSaveState } from '../../components/AutoSaveStatus';
 
@@ -124,46 +123,6 @@ function strategyOptionLabel(strategy: StorageStrategy): string {
     : strategyName(strategy);
 }
 
-/**
- * 生效快照里的用途键。
- *
- * 服务端在「用途」之外还多一行 `global`（部署默认，其余用途没覆盖时继承它），
- * 它不在 `STORAGE_SCOPES` 里，所以这里单独给一个名字。
- */
-function effectiveScopeLabel(scope: string, t: ReturnType<typeof useT>): string {
-  if (scope === 'global') return t('全局（部署默认）');
-  const known = STORAGE_SCOPES.find((item) => item === scope);
-  return known ? scopeLabel(known) : scope;
-}
-
-/** 生效快照里一行的位置：本地给目录，云存储给桶 / 区域 / 前缀。 */
-function effectiveLocation(row: EffectiveStorageScope, t: ReturnType<typeof useT>): string {
-  if (row.driver === 's3') {
-    const parts = [
-      row.s3_bucket?.trim()
-        ? t('桶：{bucket}', { bucket: row.s3_bucket.trim() })
-        : t('桶未设置'),
-    ];
-    if (row.s3_region?.trim()) parts.push(t('区域：{region}', { region: row.s3_region.trim() }));
-    if (row.s3_prefix?.trim()) parts.push(t('前缀：{prefix}', { prefix: row.s3_prefix.trim() }));
-    return parts.join(' · ');
-  }
-  return row.local_dir?.trim() || t('跟随服务器默认目录');
-}
-
-/** 旧后端只有生效快照：折算成运行期状态的形状，让下面只维护一套渲染逻辑。 */
-function statusFromEffective(config: EffectiveConfig): StorageStatus {
-  return {
-    live: !config.restart_required,
-    source: config.storage_source === 'saved' ? 'saved' : 'env',
-    updated_at: config.storage_updated_at ?? null,
-    global_strategy_id: '',
-    strategies: [],
-    scopes: {},
-    effective: config.storage,
-  };
-}
-
 /** 某个用途当前写入条目的用量；用于用途卡片的一行摘要。 */
 function currentUsage(
   status: StorageStatus | null,
@@ -176,8 +135,8 @@ function currentUsage(
 
 export function StoragePage() {
   const t = useT();
-  useTitle(t('储存策略'));
-  const { config, site, me, updateConfig } = useAuth();
+  useTitle(t('储存与媒体'));
+  const { config, site, me, updateConfig, applySite } = useAuth();
   const backend = useBackend();
   const toast = useToast();
   const saved = useMemo(() => readStorage(config), [config]);
@@ -248,14 +207,12 @@ export function StoragePage() {
   /**
    * 服务端运行期储存状态。
    *
-   * 优先用新端点：它同时给出「保存值是否已生效」与每个用途的服务端分配 / 用量。
-   * 旧后端没有这个端点，退回只读的 `/system/effective-config`；两者都没有就返回
-   * null，页面其余部分照常可用。
+   * 新端点同时给出「保存值是否已生效」与每个用途的服务端分配 / 用量；旧后端没有
+   * 这个端点就返回 null，页面其余部分照常可用。
    */
   const runtime = useAsync<StorageStatus | null>(async () => {
     if (typeof backend.storageStatus === 'function') return backend.storageStatus();
-    if (typeof backend.effectiveConfig !== 'function') return null;
-    return statusFromEffective(await backend.effectiveConfig());
+    return null;
   }, [backend]);
 
   // 服务端已经是唯一事实来源：首次读到运行期设置时接管草稿，并同步进本地安装
@@ -403,6 +360,21 @@ export function StoragePage() {
     if (validationError) return;
     enqueueApply(desiredSig, payload, true);
   };
+
+  /**
+   * 媒体额度写站点设置。
+   *
+   * 额度是站点级数据，和上面的储存草稿（本机配置 + 运行期应用）是两条路径；
+   * 成功后更新共享的 Site，媒体库等页面立刻看到新值。
+   */
+  const saveMediaQuota = useCallback(
+    async (next: MediaQuotaBytes) => {
+      if (!site) throw new Error(t('未连接站点'));
+      await backend.updateSite(site.id, { media_quota_bytes: next });
+      applySite({ ...site, media_quota_bytes: next });
+    },
+    [applySite, backend, site, t],
+  );
 
   /** 记下一套策略的密钥草稿；空串表示沿用服务器已保存的密钥。 */
   const patchSecretDraft = (id: string, value: string) => {
@@ -818,13 +790,32 @@ export function StoragePage() {
     <RoleGate capability="manage_site" need={t('站点管理员')}>
       <div className="admin-page-head">
         <div>
-          <h1>{t('储存策略')}</h1>
-          <p>
-            {t('决定上传的图片与附件写到哪里：先建一套或几套储存策略（本地目录或 S3 兼容的云对象存储），')}{' '}
-            {t('再为每个用途分配一套或多套；多套时按顺序使用，并可在达到容量上限后自动切换。')}
-          </p>
+          <h1>{t('储存与媒体')}</h1>
+          <p>{t('决定上传的图片与附件写到哪里，并管理正文长度、上传提示与站点媒体额度。')}</p>
         </div>
         <div className="admin-page-actions">
+          {statusBadge ? <Badge tone={statusBadge.tone}>{statusBadge.label}</Badge> : null}
+          {canApply ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="check"
+              loading={applying}
+              disabled={applying || Boolean(validationError)}
+              onClick={applyNow}
+            >
+              {t('立即应用')}
+            </Button>
+          ) : null}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="refresh"
+            loading={runtime.loading}
+            onClick={runtime.reload}
+          >
+            {t('刷新')}
+          </Button>
           <AutoSaveStatus state={saveState} error={saveError} />
           <Link to="/admin/media" className="btn btn-ghost btn-sm">
             <Icon name="image" size={14} /> {t('媒体库')}
@@ -832,135 +823,67 @@ export function StoragePage() {
         </div>
       </div>
 
-      <Callout tone="info" icon="database" title={t('保存后立即生效')}>
-        {t(
-          '平台管理员保存后会自动应用：服务器把设置写进 data/storage-settings.json 并马上换用，无需重启；这个文件优先于 .env 里的 STORAGE_* 变量。',
-        )}{' '}
-        {t('容量上限与多策略切换由服务端在写入时执行；已有文件不会自动迁移，旧目录或旧桶里的对象仍在原处。')}
-      </Callout>
-
-      <section className="panel mt-20">
-        <div className="panel-head">
-          <div>
-            <h3>{t('当前生效与运行状态')}</h3>
-            <p>{t('这些值来自 API 进程真正在用的设置；保存后是否已经应用也在这里显示。')}</p>
-          </div>
-          <div className="storage-panel-actions">
-            {statusBadge ? <Badge tone={statusBadge.tone}>{statusBadge.label}</Badge> : null}
+      {applyError ? (
+        <div className="mt-12">
+          <Callout tone="danger" icon="alert" title={t('立即应用失败')}>
+            {applyError}
             {canApply ? (
+              <div className="mt-12">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="refresh"
+                  loading={applying}
+                  disabled={applying || Boolean(validationError)}
+                  onClick={applyNow}
+                >
+                  {t('立即应用')}
+                </Button>
+              </div>
+            ) : null}
+          </Callout>
+        </div>
+      ) : null}
+
+      {runtime.error ? (
+        <div className="mt-12">
+          <Callout tone="danger" icon="alert" title={t('无法读取服务端的储存状态')}>
+            {errorText(runtime.error)}
+            <div className="mt-12">
               <Button
                 variant="secondary"
                 size="sm"
-                icon="check"
-                loading={applying}
-                disabled={applying || Boolean(validationError)}
-                onClick={applyNow}
+                icon="refresh"
+                loading={runtime.loading}
+                onClick={runtime.reload}
               >
-                {t('立即应用')}
+                {t('刷新')}
               </Button>
-            ) : null}
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="refresh"
-              loading={runtime.loading}
-              onClick={runtime.reload}
-            >
-              {t('刷新')}
-            </Button>
-          </div>
+            </div>
+          </Callout>
         </div>
-        <div className="panel-body">
-          {runtime.loading && !runtime.data ? (
-            <Skeleton lines={6} />
-          ) : runtime.error ? (
-            <Callout tone="danger" icon="alert" title={t('无法读取服务端的储存状态')}>
-              {errorText(runtime.error)}
-            </Callout>
-          ) : runtime.data ? (
-            <>
-              {applyError ? (
-                <Callout tone="danger" icon="alert" title={t('立即应用失败')}>
-                  {applyError}
-                  {canApply ? (
-                    <div className="mt-12">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon="refresh"
-                        loading={applying}
-                        disabled={applying || Boolean(validationError)}
-                        onClick={applyNow}
-                      >
-                        {t('立即应用')}
-                      </Button>
-                    </div>
-                  ) : null}
-                </Callout>
-              ) : null}
-              <div className="mini-list mt-12">
-                {runtime.data.effective.map((row) => (
-                  <div className="mini-row" key={row.scope}>
-                    <span className="mini-label">{effectiveScopeLabel(row.scope, t)}</span>
-                    <span
-                      className="mini-value"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-end',
-                        flexWrap: 'wrap',
-                        gap: 8,
-                      }}
-                    >
-                      <Badge tone={row.driver === 's3' ? 'accent' : 'neutral'}>
-                        {storageDriverLabel(row.driver === 's3' ? 's3' : 'local')}
-                      </Badge>
-                      <span className="mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>
-                        {effectiveLocation(row, t)}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="tiny faint mt-12">
-                {t('来源：{source}', {
-                  source: runtime.data.source === 'saved' ? t('后台设置') : t('部署环境变量'),
-                })}
-                {' · '}
-                {runtime.data.updated_at
-                  ? t('最近应用：{time}', {
-                      time: formatDateTime(runtime.data.updated_at),
-                    })
-                  : t('尚未通过后台应用；当前值来自部署环境变量。')}
-              </p>
-              <details className="mt-12">
-                <summary className="link-btn">{t('部署片段（备用）')}</summary>
-                <p className="tiny faint">
-                  {t(
-                    '片段只描述位置与驱动，不含任何密钥；旧后端或没有运行期应用权限时，把它写进 API 的 .env 再重启，新的上传才会写到这些位置。',
-                  )}
-                </p>
-                <pre className="auth-env-code">{envSnippet}</pre>
-                <CopyButton value={envSnippet} label={t('复制 .env')} />
-              </details>
-            </>
-          ) : (
-            <p className="small muted">
-              {t('当前后端没有提供储存状态，无法确认服务端在用哪套存储。')}
-            </p>
-          )}
-        </div>
-      </section>
+      ) : null}
 
-      {!canApply ? (
-        <Callout tone="warn" icon="alert" title={t('「立即应用」不可用')}>
-          {applyUnavailableReason}
+      <div className="mt-12">
+        <Callout tone="info" icon="database" title={t('保存后立即生效')}>
+          {t(
+            '平台管理员保存后会自动应用：服务器把设置写进 data/storage-settings.json 并马上换用，无需重启；这个文件优先于 .env 里的 STORAGE_* 变量。',
+          )}{' '}
+          {t('容量上限与多策略切换由服务端在写入时执行；已有文件不会自动迁移，旧目录或旧桶里的对象仍在原处。')}
         </Callout>
-      ) : (
-        <Callout tone="info" icon="database" title={t('保存后自动应用，失败可以重试')}>
-          {t('保存成功会自动调用「立即应用」；失败时保留原来的生效状态，页面上会出现错误原因与重试按钮。')}
-        </Callout>
-      )}
+      </div>
+
+      <div className="mt-12">
+        {!canApply ? (
+          <Callout tone="warn" icon="alert" title={t('「立即应用」不可用')}>
+            {applyUnavailableReason}
+          </Callout>
+        ) : (
+          <Callout tone="info" icon="database" title={t('保存后自动应用，失败可以重试')}>
+            {t('保存成功会自动调用「立即应用」；失败时保留原来的生效状态，页面上会出现错误原因与重试按钮。')}
+          </Callout>
+        )}
+      </div>
 
       <div className="editor-main mt-20">
         <section className="panel">
@@ -968,7 +891,7 @@ export function StoragePage() {
             <div>
               <h3>{t('储存策略')}</h3>
               <p>
-                {t('每套策略就是一个存储目标；被最多用途使用的那套会标记为全局策略。')}
+                {t('每套策略就是一个存储目标；下面为每个用途选择使用哪一套，也可以按顺序分配多套并设置容量上限。')}
               </p>
             </div>
             <div className="storage-panel-actions">
@@ -987,22 +910,6 @@ export function StoragePage() {
             </div>
           </div>
           <div className="panel-body">
-            <div style={{ maxWidth: 440, marginBottom: 20 }}>
-              <NumberField
-                id="storage-max-content-chars"
-                label={t('正文长度上限')}
-                hint={t('1 到 {max} 个 Unicode 字符；保存后文章与帖子立即按此上限校验。', {
-                  max: MAX_CONTENT_SOURCE_CHARS.toLocaleString(),
-                })}
-                value={draft.max_content_chars}
-                min={1}
-                max={MAX_CONTENT_SOURCE_CHARS}
-                unit={t('字符')}
-                onChange={(value) =>
-                  setDraft((previous) => ({ ...previous, max_content_chars: value }))
-                }
-              />
-            </div>
             <div className="storage-strategy-list">
               {draft.strategies.map((strategy) => {
                 const usedBy = scopesUsingStrategy(draft, strategy.id);
@@ -1087,107 +994,102 @@ export function StoragePage() {
             <p className="tiny faint mt-12">
               {t('至少保留一套、最多 {max} 套：只有一套时删除按钮不可用，达到上限时不能再新建。删除被用途引用的策略时，那些用途会回落到第一套。', { max: MAX_STRATEGIES })}
             </p>
-          </div>
-        </section>
 
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>{t('用途分配')}</h3>
-              <p>
-                {t('每个用途可以只用一套策略，也可以分配多套并设置各自的容量上限。')}
-              </p>
-            </div>
-            <Badge tone="muted">
-              {t('{count} 套在用', { count: usedStrategies(draft).length })}
-            </Badge>
-          </div>
-          <div className="panel-body">
-            <div className="storage-scope-grid">
-              {SCOPE_META.map((meta) => {
-                const allocation = scopeAllocation(draft, meta.scope);
-                const shownEntries =
-                  allocation.mode === 'single'
-                    ? allocation.entries.slice(0, 1)
-                    : allocation.entries;
-                const primary = findStrategy(
-                  draft,
-                  allocation.entries[0]?.strategy_id ?? draft.scopes[meta.scope],
-                );
-                const strategyNames = shownEntries
-                  .map((entry) => strategyName(findStrategy(draft, entry.strategy_id)))
-                  .join(' → ');
-                // 当前写入条目的服务端用量；旧后端 / 演示没有状态时不显示。
-                const currentEntry = currentUsage(runtime.data, meta.scope);
-                return (
-                  <div key={meta.scope} className="storage-scope">
-                    <div className="storage-scope-head">
-                      <span className="storage-scope-icon">
-                        <Icon name={meta.icon} size={16} />
-                      </span>
-                      <div className="storage-scope-body">
-                        <strong>{scopeLabel(meta.scope)}</strong>
-                        <p>{scopeDescription[meta.scope]}</p>
+            <div className="storage-subsection">
+              <div className="storage-subsection-head">
+                <div>
+                  <h4>{t('各用途使用哪套策略')}</h4>
+                  <p>{t('每个用途可以只用一套策略，也可以分配多套并设置各自的容量上限。')}</p>
+                </div>
+                <Badge tone="muted">
+                  {t('{count} 套在用', { count: usedStrategies(draft).length })}
+                </Badge>
+              </div>
+              <div className="storage-scope-grid">
+                {SCOPE_META.map((meta) => {
+                  const allocation = scopeAllocation(draft, meta.scope);
+                  const shownEntries =
+                    allocation.mode === 'single'
+                      ? allocation.entries.slice(0, 1)
+                      : allocation.entries;
+                  const primary = findStrategy(
+                    draft,
+                    allocation.entries[0]?.strategy_id ?? draft.scopes[meta.scope],
+                  );
+                  const strategyNames = shownEntries
+                    .map((entry) => strategyName(findStrategy(draft, entry.strategy_id)))
+                    .join(' → ');
+                  // 当前写入条目的服务端用量；旧后端 / 演示没有状态时不显示。
+                  const currentEntry = currentUsage(runtime.data, meta.scope);
+                  return (
+                    <div key={meta.scope} className="storage-scope">
+                      <div className="storage-scope-head">
+                        <span className="storage-scope-icon">
+                          <Icon name={meta.icon} size={16} />
+                        </span>
+                        <div className="storage-scope-body">
+                          <strong>{scopeLabel(meta.scope)}</strong>
+                          <p>{scopeDescription[meta.scope]}</p>
+                        </div>
+                        <Badge tone={allocation.mode === 'quota' ? 'accent' : 'muted'}>
+                          {allocation.mode === 'quota'
+                            ? t('多策略')
+                            : t('单策略')}
+                        </Badge>
                       </div>
-                      <Badge tone={allocation.mode === 'quota' ? 'accent' : 'muted'}>
-                        {allocation.mode === 'quota'
-                          ? t('多策略')
-                          : t('单策略')}
-                      </Badge>
-                    </div>
 
-                    <Field label={t('储存策略')}>
-                      <button
-                        type="button"
-                        className="storage-current"
-                        onClick={() => setAllocationScope(meta.scope)}
-                        aria-haspopup="dialog"
-                        aria-label={t('查看「{scope}」的储存策略', {
-                          scope: scopeLabel(meta.scope),
-                        })}
-                      >
-                        <span className="storage-current-icon">
-                          <Icon
-                            name={primary.driver === 's3' ? 'globe' : 'server'}
-                            size={15}
-                          />
-                        </span>
-                        <span className="storage-current-body">
-                          <span className="storage-current-title">
-                            <strong>
+                      <Field label={t('储存策略')}>
+                        <button
+                          type="button"
+                          className="storage-current"
+                          onClick={() => setAllocationScope(meta.scope)}
+                          aria-haspopup="dialog"
+                          aria-label={t('查看「{scope}」的储存策略', {
+                            scope: scopeLabel(meta.scope),
+                          })}
+                        >
+                          <span className="storage-current-icon">
+                            <Icon
+                              name={primary.driver === 's3' ? 'globe' : 'server'}
+                              size={15}
+                            />
+                          </span>
+                          <span className="storage-current-body">
+                            <span className="storage-current-title">
+                              <strong>
+                                {allocation.mode === 'quota'
+                                  ? t('{count} 套策略', { count: shownEntries.length })
+                                  : strategyName(primary)}
+                              </strong>
+                              {allocation.mode === 'single' && strategyNeedsDriver(primary) ? (
+                                <Badge tone={primary.driver === 's3' ? 'accent' : 'neutral'}>
+                                  {storageDriverLabel(primary.driver)}
+                                </Badge>
+                              ) : null}
+                            </span>
+                            <span className="storage-current-meta">
                               {allocation.mode === 'quota'
-                                ? t('{count} 套策略', { count: shownEntries.length })
-                                : strategyName(primary)}
-                            </strong>
-                            {allocation.mode === 'single' && strategyNeedsDriver(primary) ? (
-                              <Badge tone={primary.driver === 's3' ? 'accent' : 'neutral'}>
-                                {storageDriverLabel(primary.driver)}
-                              </Badge>
-                            ) : null}
+                                ? `${strategyNames} · ${quotaSummary(allocation, t)}`
+                                : strategyLocation(primary)}
+                              {currentEntry
+                                ? ` · ${t('已用 {size}', {
+                                    size: formatBytes(currentEntry.used_bytes),
+                                  })}`
+                                : ''}
+                            </span>
                           </span>
-                          <span className="storage-current-meta">
-                            {allocation.mode === 'quota'
-                              ? `${strategyNames} · ${quotaSummary(allocation, t)}`
-                              : strategyLocation(primary)}
-                            {currentEntry
-                              ? ` · ${t('已用 {size}', {
-                                  size: formatBytes(currentEntry.used_bytes),
-                                })}`
-                              : ''}
+                          <span className="storage-current-side">
+                            <span className="tiny">{t('查看')}</span>
+                            <Icon name="chevron-right" size={15} />
                           </span>
-                        </span>
-                        <span className="storage-current-side">
-                          <span className="tiny">{t('查看')}</span>
-                          <Icon name="chevron-right" size={15} />
-                        </span>
-                      </button>
-                    </Field>
-                  </div>
-                );
-              })}
-            </div>
+                        </button>
+                      </Field>
+                    </div>
+                  );
+                })}
+              </div>
 
-            <div className="storage-callouts">
+              <div className="storage-callouts">
               {draftGlobal.driver !== 's3' && draftCloud ? (
                 <Callout tone="warn" icon="alert" title={t('有用途指向云策略，但全局策略还是本地储存')}>
                   {t('服务器目前只支持一套云凭据；多套云策略需要部署方另行提供 endpoint、区域与 Access Key。')}{' '}
@@ -1198,7 +1100,19 @@ export function StoragePage() {
                 {t('保存后服务端按写入顺序使用每套策略：单策略忽略配额；多策略时前一套写满（quota_gb，0 表示不限）后，按「写满后」的规则停止或切到下一套。')}{' '}
                 {t('所有策略都写满时，新的上传会失败并返回 storage_quota_exceeded（507）。')}
               </Callout>
+              </div>
             </div>
+
+            <details className="mt-12">
+              <summary className="link-btn">{t('部署片段（备用）')}</summary>
+              <p className="tiny faint">
+                {t(
+                  '片段只描述位置与驱动，不含任何密钥；旧后端或没有运行期应用权限时，把它写进 API 的 .env 再重启，新的上传才会写到这些位置。',
+                )}
+              </p>
+              <pre className="auth-env-code">{envSnippet}</pre>
+              <CopyButton value={envSnippet} label={t('复制 .env')} />
+            </details>
           </div>
         </section>
 
@@ -1436,16 +1350,29 @@ export function StoragePage() {
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h3>{t('上传体积提示')}</h3>
-              <p>{t('只用于前端提示，不会改变服务端上限。')}</p>
+              <h3>{t('储存设置')}</h3>
+              <p>{t('正文长度上限、上传提示与站点媒体额度；修改后随本页自动保存。')}</p>
             </div>
-            <Badge tone="muted">{t('非服务端参数')}</Badge>
           </div>
           <div className="panel-body">
             <div className="form-grid">
               <NumberField
+                id="storage-max-content-chars"
+                label={t('正文长度上限')}
+                hint={t('1 到 {max} 个 Unicode 字符；保存后文章与帖子立即按此上限校验。', {
+                  max: MAX_CONTENT_SOURCE_CHARS.toLocaleString(),
+                })}
+                value={draft.max_content_chars}
+                min={1}
+                max={MAX_CONTENT_SOURCE_CHARS}
+                unit={t('字符')}
+                onChange={(value) =>
+                  setDraft((previous) => ({ ...previous, max_content_chars: value }))
+                }
+              />
+              <NumberField
                 id="storage-max-upload"
-                label={t('单文件上限提示')}
+                label={t('上传体积提示')}
                 hint={t('API 默认限制 25 MiB；要传更大的文件，需要同时调整 API 与反向代理的请求体上限，而不是只改这里。')}
                 value={draft.max_upload_mb}
                 min={1}
@@ -1453,11 +1380,18 @@ export function StoragePage() {
                 unit="MB"
                 onChange={(max_upload_mb) => setDraft({ ...draft, max_upload_mb })}
               />
+              <MediaQuotaField
+                value={site?.media_quota_bytes}
+                onSave={saveMediaQuota}
+                disabled={!site}
+              />
             </div>
             {draft.max_upload_mb > 25 ? (
-              <Callout tone="warn" icon="alert" title={t('超过 API 默认的 25 MiB 附件上限')}>
-                {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 的请求体上限，否则请求会被更早的一层拒绝。')}
-              </Callout>
+              <div className="mt-12">
+                <Callout tone="warn" icon="alert" title={t('超过 API 默认的 25 MiB 附件上限')}>
+                  {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 的请求体上限，否则请求会被更早的一层拒绝。')}
+                </Callout>
+              </div>
             ) : null}
           </div>
         </section>
@@ -1476,7 +1410,7 @@ export function StoragePage() {
       <Modal
         open={!!editing}
         title={editing?.mode === 'edit' ? t('编辑储存策略') : t('新建储存策略')}
-        description={t('策略名会出现在用途分配里；Secret Key 只保存在本页内存，仅随「立即应用」提交一次。')}
+        description={t('策略名会出现在各用途的选择里；Secret Key 只保存在本页内存，仅随「立即应用」提交一次。')}
         onClose={() => setEditing(null)}
         width={660}
         footer={

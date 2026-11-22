@@ -756,7 +756,7 @@ export function buildStorageEnvSnippet(
   const normalized = normalizeStorage(settings);
   const globalStrategy = globalStrategyOf(normalized);
   const lines: string[] = [
-    t('# 由 Practacu Press「站点设置 → 储存策略」生成'),
+    t('# 由 Practacu Press「站点设置 → 储存与媒体」生成'),
     t('# 复制到 API 的 .env 后重启服务才生效；本页不会修改服务器'),
     `MAX_CONTENT_SOURCE_CHARS=${normalized.max_content_chars}`,
     '',
