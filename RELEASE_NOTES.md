@@ -1,4 +1,4 @@
-# Practacu Press 0.1.2-beta 功能更新
+# Practacu Press 0.1.3-beta 功能更新
 
 > 本文件取代 `docs/releases/2026-11-16-beta-1.2.md` 与 `docs/releases/beta 1.2 release.md`。
 > 记录范围：上一轮架构清理与版本口径统一、2026-11-21 的后台与编辑器功能，以及
@@ -18,7 +18,7 @@ version_code = MAJOR*1_000_000 + MINOR*10_000 + PATCH*100 + STAGE
 STAGE = 99（稳定版） | N（测试版序号 1..98）
 ```
 
-当前构建：`0.1.2-beta`（`version_code: 10201`），来源 `web/public/version.json`，
+当前构建：`0.1.3-beta`（`version_code: 10301`），来源 `web/public/version.json`，
 `web/package.json` 必须与它一致（`appVersion.test.ts` 把关）。
 
 三份实现必须同步修改：

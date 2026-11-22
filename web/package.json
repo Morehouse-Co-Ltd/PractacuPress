@@ -1,7 +1,7 @@
 {
   "name": "@practacu/web",
   "private": true,
-  "version": "0.1.2-beta",
+  "version": "0.1.3-beta",
   "type": "module",
   "description": "Practacu Press 前台与管理后台（React）",
   "scripts": {

@@ -18,7 +18,7 @@ import { parseVersion } from './version';
  */
 describe('app version', () => {
   it('uses the version manifest as the single source of truth', () => {
-    expect(manifest.version).toBe('0.1.2-beta');
+    expect(manifest.version).toBe('0.1.3-beta');
     expect(APP_VERSION).toBe(manifest.version);
     expect(APP_VERSION_LABEL).toBe(`v${manifest.version}`);
     expect(webPackage.version).toBe(manifest.version);
@@ -26,9 +26,9 @@ describe('app version', () => {
 
   it('exposes the canonical channel and integer version code', () => {
     expect(manifest.channel).toBe('beta');
-    expect(manifest.version_code).toBe(10201);
+    expect(manifest.version_code).toBe(10301);
     expect(APP_VERSION_CHANNEL).toBe('beta');
-    expect(APP_VERSION_CODE).toBe(10201);
+    expect(APP_VERSION_CODE).toBe(10301);
     const parsed = parseVersion(manifest.version);
     expect(parsed?.channel).toBe(manifest.channel);
     expect(parsed?.code).toBe(manifest.version_code);
@@ -43,6 +43,6 @@ describe('app version', () => {
       version_code: manifest.version_code,
     });
     expect(APP_VERSION_MANIFEST.channel).toBe('beta');
-    expect(APP_VERSION_MANIFEST.version_code).toBe(10201);
+    expect(APP_VERSION_MANIFEST.version_code).toBe(10301);
   });
 });
