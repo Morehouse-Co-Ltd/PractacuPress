@@ -6,30 +6,23 @@
 | :---: | :---: |
 | ![站点前台](.github/readme/frontend.png) | ![管理后台](.github/readme/admin.png) |
 
-> **自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
-> Go API（内嵌前端与安全检查）+ React 前台与后台，由同一份 OpenAPI 3.1 契约对齐；
-> Windows 与 Linux 都是一等公民，源码、容器、Linux 原生包与 Windows 便携包共用一套配置。
+> 一个自托管的社区型 CMS。Go 写后端，React 写前台和后台；前端构建后嵌进 API 二进制，默认使用 SQLite，部署时跑一个进程就够了。
 
-## 为什么是它
+## 这是什么
 
-- **一个进程就够**：Go API 内嵌整套前端与安全检查，SQLite 数据库就是一个文件；默认部署只有一个 API 容器，运行时不依赖 Node。
-- **装完即用**：八步安装引导自带健康检查，`docker compose up -d` 或 Windows 便携包一条命令起全栈；备份只需复制 `data/`。
-- **可定制**：2 套大主题 + 7 套配色，主题可导入导出；页面编排支持桌面 / 平板 / 手机三端独立布局，写作可插入思维导图、逻辑图、统计图与鱼骨图。
-- **开放**：所有能力都通过 REST（OpenAPI 3.1）与 WebSocket 暴露，想换前端按契约接入即可；数据库支持 SQLite、MySQL、PostgreSQL。
+Practacu Press 面向想自己托管社区的团队和个人。写文章、发帖子、评论、审核、成员与权限、主题和页面编排都在一套后台里。后端是 Go + Gin + Ent，前端是 React 19 + Vite，两边按同一份 OpenAPI 3.1 契约对接。
 
-**功能面**：写作与 Markdown、评论 / 点赞 / 收藏 / 关注 / 私信 / 通知 / 举报与审核流、主题与页面编排、SEO、访问限制、域名与 SSL、存储策略、访问统计、扩展系统、站点更新、多站点隔离。
+Windows 和 Linux 都能部署。源码、Docker、Linux 安装包和 Windows 便携包共用同一套环境变量与 `data/` 目录。架构和取舍放在[完整介绍](.github/readme/md/introduction.md)，英文版在[同一页面下方](.github/readme/md/introduction.md#english)。
 
-完整介绍（架构、技术栈与工程取舍）见 **[.github/readme/md/introduction.md](.github/readme/md/introduction.md)**　·　English: **[Introduction](.github/readme/md/introduction.md#english)**
-
----
+写作界面支持 Markdown、实时预览和图文混排，也能插入思维导图、逻辑图、统计图和鱼骨图。社区功能包括评论、点赞、收藏、关注、私信、通知、举报和审核队列。后台可以换主题、编排首页、配置导航与页脚、SEO、访问限制、域名与 SSL、存储策略和访问统计；需要时也能拆成多站点，分别隔离内容、成员和权限。
 
 ## 安装
 
-四种方式任选：**Docker**（Linux / 服务器推荐）、**Linux 原生包**、**Windows 便携包**（本机最省事）、**源码**。所有方式共用同一套配置；首个安装账户即平台管理员。
+按运行环境选一种。单站点模式下，安装时创建的第一个账户是平台管理员。
 
-### Docker（Linux / 服务器）
+### Docker
 
-需要 Docker Engine 与 Compose v2（命令是 `docker compose`）。在仓库根目录：
+需要 Docker Engine 和 Compose v2，命令是 `docker compose`。在仓库根目录执行：
 
 ```bash
 docker compose up -d --build
@@ -37,54 +30,55 @@ docker compose ps
 curl -fsS http://127.0.0.1:8080/api/healthz
 ```
 
-打开 **http://localhost:8080** 走完八步安装引导。默认只绑定 `127.0.0.1`，避免未装完的实例被公网抢先注册；数据库与媒体在命名卷 `practacu-data`，`docker compose down` 不删数据。
+打开 **http://localhost:8080**，按八步引导装完。默认只把端口绑到 `127.0.0.1`，免得还没装好的实例被人从公网注册成管理员。数据库和媒体在 `practacu-data` 卷里；`docker compose down` 不会删数据，`down -v` 才会。
 
-生产部署用 `--env-file .env.prod` 切生产语义与持久密钥，并在前面加 TLS 反代；步骤见 [生产部署文档](.github/readme/md/deployment/production-profile.md)。发布镜像可直接运行：
+装完后按[生产部署文档](.github/readme/md/deployment/production-profile.md)创建 `.env.prod`，再用 `docker compose --env-file .env.prod up -d --build` 切到生产配置，并在前面加一层 TLS 反代。
+
+官方镜像在 Docker Hub 的 `practacupress/press`，启动命令如下：
 
 ```bash
 PP_IMAGE=practacupress/press:v1.0.0 docker compose pull
 PP_IMAGE=practacupress/press:v1.0.0 docker compose up -d
 ```
 
-### Linux 原生包（tar.gz / deb / rpm）
+### Linux 原生包
 
-包里是单个 `practacu-press` 二进制、交互式 `install.sh` 与 systemd / Nginx 模板，目标机不需要 Go / Node：
+服务器上不想装 Go 和 Node，可以直接用发布的原生包。里面是单个 `practacu-press` 二进制、交互式 `install.sh`，以及 systemd 和 Nginx 模板：
 
 ```bash
 tar -xzf PractacuPress-Linux-<x64|arm64>.tar.gz
 cd PractacuPress-Linux-<x64|arm64>
 sudo ./install.sh
 
-# 或直接安装 .deb / .rpm
+# 或者装 deb / rpm
 sudo apt install ./practacu-press_<version>_<arch>.deb
 sudo dnf install ./practacu-press-<version>.<arch>.rpm
 ```
 
-安装后引导只监听 `127.0.0.1:8080`，远程服务器用 `ssh -L 8080:127.0.0.1:8080 用户@服务器` 打开；装完后切访问形态：
+安装时引导只会监听 `127.0.0.1:8080`。如果服务器不在手边，用 `ssh -L 8080:127.0.0.1:8080 用户@服务器` 转发到本机浏览器完成安装，然后切访问模式：
 
 ```bash
 sudo /opt/practacu-press/install.sh --finalize --mode lan
 sudo /opt/practacu-press/install.sh --finalize --mode public --domain a.com
 ```
 
-完整步骤（含升级、卸载、备份与排障）见 [deploy/linux/INSTALL.md](deploy/linux/INSTALL.md)。
+升级、卸载、备份和排障的步骤在 [deploy/linux/INSTALL.md](deploy/linux/INSTALL.md)。
 
 ### Windows 便携包
 
-仓库根目录运行 `启动.bat`：自动准备依赖，启动 Go API 与 SQLite，并在 `http://127.0.0.1:5173/?mode=live` 打开前端。只检查环境用 `启动.bat --check`。停止时在 API 窗口按 `Ctrl+C`。
+双击 `启动.bat`。第一次运行会在缺 `web/node_modules` 时自动安装依赖，然后分别打开 API 和 Vite 两个窗口，浏览器地址是 `http://127.0.0.1:5173/?mode=live`。只检查环境运行 `启动.bat --check`；停止时在 API 窗口按 `Ctrl+C`。
 
-打包 Windows 便携包：
+打包便携版时双击 `打包.bat`，或者执行：
 
 ```powershell
-# 双击仓库根目录的 打包.bat，或者：
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
-脚本会构建前端、编译内嵌前端的 Windows API、组装启动文件，并在临时端口实际启动产物做自检；通过后输出 `release/PractacuPress/` 与 `release/PractacuPress-Windows-<x64|arm64>.zip`。解压后双击 `启动.cmd` 或运行 `PractacuPress.exe`，数据在同目录 `data/`。
+脚本会构建前端、把前端嵌进 Windows API，再在临时端口启动产物自检。通过后生成 `release/PractacuPress/` 和 `release/PractacuPress-Windows-<x64|arm64>.zip`。解压后双击 `启动.cmd`，数据在旁边的 `data/` 里。
 
-### 源码运行
+### 源码
 
-需要 **Go 1.26+**、**Node.js 22+**、Git；安全检查已编译进 API，无需额外服务。
+需要 Go 1.26+、Node.js 22+ 和 Git。下面以 Linux 的 bash 为例，先构建前端、准备环境变量：
 
 ```bash
 cd web && npm ci && npm run build && cd ../..
@@ -96,44 +90,45 @@ export DATABASE_DRIVER=sqlite
 export DATABASE_DSN='file:./data/practacu.db'
 export STORAGE_DRIVER=local
 export STORAGE_DIR=./data/media
+# 单站点自托管；多站点或 SaaS 部署不要打开
 export PP_DESKTOP=true
 EOF
 source ~/.practacu-env.sh
 mkdir -p data/media
+```
 
+第一次启动前，先建表和默认站点：
+
+```bash
 go run ./cmd/server seed -driver sqlite -dsn "$DATABASE_DSN"
 go run ./cmd/server
 ```
 
-确认就绪后打开 **http://127.0.0.1:8080**；`/api/healthz` 与 `/api/readyz` 都返回 200 即正常。前端开发服务器用 `npm run dev -- --port 5173`，安装地址是 `http://127.0.0.1:5173/?mode=live`。源码直接 `go run` 只提供 API；要验证单二进制形态，先 `make embed-web`。更多细节见 [web/README.md](web/README.md)。
+`/api/healthz` 和 `/api/readyz` 都返回 200 后，打开 **http://127.0.0.1:8080**。开发前端时改用 `npm run dev -- --port 5173`，安装地址是 `http://127.0.0.1:5173/?mode=live`。直接 `go run` 只提供 API；想看单二进制效果，先执行 `make embed-web`。前端相关说明在 [web/README.md](web/README.md)。
 
-> **发布**：提交信息或 tag 带版本号（如 `v1.0.0`、`v1.0.1-beta1`）会触发 CI，生成 Windows / Linux / macOS 包、`SHA256SUMS` 与多架构 Docker 镜像。说明见 [发布文档](.github/readme/md/deployment/releases.md)。
-
----
+提交信息或 tag 里带版本号（例如 `v1.0.0`、`v1.0.1-beta1`）会触发发布流程，产出 Windows、Linux、macOS 包和多架构 Docker 镜像。细节见[发布文档](.github/readme/md/deployment/releases.md)。
 
 ## 中英双语
 
-站点可在**简体中文 ↔ English** 之间切换，但只在安装引导第一步选择一次；语言是站点级设置，前台、后台与提示文案一起切换，访客不需要单独选择。
+安装第一步选择简体中文或 English，装完后后台不提供语言开关。语言是站点级设置，前台、后台和提示文案会一起切换，访客不用单独选择。
 
-实现上中文原文就是翻译键：`t('站点设置')` 在中文下原样返回，在英文下查字典；英文片段按源文件放在 `web/src/lib/i18n/dict/fragments/*.ts`。文章正文、评论与站长填写的导航文案不翻译。
+界面文案的中文原文就是翻译键。`t('站点设置')` 在中文下原样返回，在英文下查字典；英文片段按源文件放在 `web/src/lib/i18n/dict/fragments/*.ts`。文章正文、评论和站长填写的导航文案不翻译。
 
----
+## 接口示例
 
-## 快速验证
+装好后直接调 API：
 
 ```bash
-# 注册并拿到 access token
+# 注册，返回 access token
 curl -fsS http://127.0.0.1:8080/api/v1/auth/register/email \
   -H 'Content-Type: application/json' \
   -d '{"email":"a@example.com","password":"correct horse battery","display_name":"A"}'
 
-# 公开文章列表（无需登录）
+# 公开文章列表，不需要登录
 curl -fsS http://127.0.0.1:8080/api/v1/articles
 ```
 
-更多接口见运行中的 `/api/v1/docs` 或 `internal/packages/contracts/openapi/openapi.yaml`。
-
----
+运行中的 `/api/v1/docs` 是接口文档，OpenAPI 文件在 `internal/packages/contracts/openapi/openapi.yaml`。
 
 ## 目录结构
 
@@ -150,62 +145,59 @@ web/                                                    React 前台、管理后
 scripts/                                                dev / test / gen / package 脚本
 ```
 
----
-
 ## 测试
 
+日常检查用：
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\test.ps1   # go build + vet + test
+powershell -ExecutionPolicy Bypass -File scripts\test.ps1
 ```
 
-真实浏览器冒烟（自动起 API、全新 SQLite 与前端，覆盖安装、登录、草稿/发布、评论、后台设置等）：
+浏览器冒烟会自己起一套全新的 API、SQLite 和前端，覆盖安装、登录、草稿与发布、评论、举报和后台设置：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
-# 报告与截图：.tmp\e2e\artifacts\
+# 截图和报告在 .tmp\e2e\artifacts\
 ```
 
-前置：Chrome、`web` 已 `npm install`。细节见 [internal/tests/README.md](internal/tests/README.md)；E2E 是独立可选工作流，不阻塞基础 CI。
-
----
+需要本机有 Chrome，`web` 目录也要先 `npm install`。更多细节见 [internal/tests/README.md](internal/tests/README.md)。E2E 在 CI 里是可选工作流，不会挡住基础 CI。
 
 ## 配置
 
-完整变量见 [.env.example](.env.example)。容易踩的点：
+完整变量清单在 [.env.example](.env.example)。下面几个如果留空或填错，行为会不一样：
 
 | 变量 | 说明 |
 | --- | --- |
-| `DATABASE_DRIVER` | `sqlite` / `mysql` / `postgres`；SQLite pragma 由服务端自动补 |
-| `AUTH_JWT_ED25519_PRIVATE_KEY` | 生产必填；开发环境缺省会生成临时密钥并告警 |
-| `TRUSTED_PROXIES` | 留空表示不信任任何代理，`X-Forwarded-*` 全被忽略 |
-| `PUBLIC_BASE_URL` | 绝对链接前缀；桌面 / localhost 的 http 部署必须显式设置，否则回调与邮件链接会指向 https |
-| `STORAGE_DRIVER` | `local` 或 `s3`；S3 需要 `STORAGE_S3_BUCKET` |
-| `SMTP_HOST` | 留空即关闭找回密码；配置后密码重置与邮箱验证才可用 |
-
----
+| `DATABASE_DRIVER` | `sqlite`、`mysql` 或 `postgres`；SQLite 的 pragma 由服务端补 |
+| `AUTH_JWT_ED25519_PRIVATE_KEY` | 生产环境必填。开发时缺省会临时生成，并在日志里告警 |
+| `TRUSTED_PROXIES` | 留空表示谁都不信，`X-Forwarded-*` 会被忽略 |
+| `PUBLIC_BASE_URL` | 绝对链接的前缀。本机用 http 访问时必须显式设置，否则邮件和第三方登录回调会拼成 https |
+| `STORAGE_DRIVER` | `local` 或 `s3`；用 S3 还要配 `STORAGE_S3_BUCKET` |
+| `SMTP_HOST` | 不配就没有找回密码；配好后密码重置和邮箱验证才能用 |
 
 ## 已知限制
 
-- **MySQL / PostgreSQL**：代码层无方言依赖，但尚未实跑验证。
-- **Linux 安装包**：已交叉编译并校验包内容，安装脚本尚未在真实 Linux 主机上实跑。
-- **Windows MSI**：未实现，发行方式为 API zip。
-- **多副本**：WebSocket 票据与 hub、限流都在进程内存，多副本需要共享存储与边缘限流。
-- **浏览器端访问限制**：只能约束使用本站脚本的访问者；IP 级防护需 Nginx / Cloudflare / WAF。
-- **S3 上传**：受 SigV4 限制需先缓冲，内存上限等于单文件上限。
-- **邮件**：已接入找回密码与邮箱验证；评论回复、审核结果等通知邮件尚未接入。
-- **SEO**：标签由前端写入 `<head>`，不执行 JS 的抓取器只能看到 `index.html` 默认值。
+- MySQL 和 PostgreSQL 没有在本机实跑过，只有 SQLite 走完了完整流程。
+- Linux 安装包的交叉编译和包内容检查已经做过，但安装脚本还没在真实 Linux 主机上跑过。
+- Windows 没有 MSI，发行方式就是 zip。
+- WebSocket 票据、hub 和限流都在进程内存里，多副本部署需要共享存储，限流也得放到反向代理或 WAF。
+- 浏览器端访问限制只对使用本站脚本的请求生效，IP 级的访问控制要靠 Nginx 或 Cloudflare。
+- S3 上传受 SigV4 限制，需要先缓冲整个文件，内存上限等于单文件上限。
+- 邮件目前只有找回密码和邮箱验证。评论回复、审核结果之类的通知邮件还没做。
+- SEO 标签由前端写进 `<head>`，不执行 JS 的抓取器只能看到 `index.html` 里的默认值。
 
----
-
-## 文档与许可
+## 文档
 
 - [产品与技术设计](.github/readme/md/superpowers/specs/2026-10-18-practacu-press-design.md)
 - [计划评审与可行性](.github/readme/md/superpowers/reviews/2026-10-18-practacu-press-plan-review.md)
 - [详细实施计划](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-backend-detailed-plan.md)
 - [实施进度](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-progress.md)
-- [部署](.github/readme/md/deployment/production-profile.md)　·　[安全审计](.github/readme/md/security/2026-11-14-security-audit.md)
+- [部署](.github/readme/md/deployment/production-profile.md)
+- [安全审计](.github/readme/md/security/2026-11-14-security-audit.md)
 
-本项目以 **AGPL-3.0** 发布，全文见 [LICENSE](LICENSE)：可商用、可修改、可自建服务；分发修改版或作为网络服务提供时必须公开修改后的完整源码，并保留版权与项目署名。暂不提供闭源商业双许可。
+## 许可证
+
+项目使用 AGPL-3.0，全文见 [LICENSE](LICENSE)。商用和修改都允许。分发修改版，或者把它作为网络服务提供给别人时，需要按同一许可证公开修改后的源码，保留版权声明和项目署名。目前没有闭源商业许可。
 
 ```text
 Practacu Press — 多站点社区型 CMS
