@@ -7,8 +7,9 @@
 #
 # What it does:
 #   1. puts the Go toolchain on PATH
-#   2. creates and seeds the SQLite database once
-#   3. builds and starts the API on $ApiPort and waits until /api/healthz answers
+#   2. builds and starts the API; the first start creates the SQLite database,
+#      schema and default site
+#   3. waits until /api/healthz answers
 
 param(
     [int]$ApiPort = 8080,
@@ -71,16 +72,12 @@ try {
         }
     }
 
-    Write-Host '> applying schema and seeding the default site'
-    & $go run ./cmd/server seed -driver sqlite -dsn $dsn | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "seed failed with exit code $LASTEXITCODE" }
-
     Write-Host '> building the API'
     $apiExe = Join-Path $DataDir 'practacu-press.exe'
     & $go build -o $apiExe ./cmd/server
     if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
 
-    Write-Host '> starting the API'
+    Write-Host '> starting the API (first start creates the database and default site)'
     $apiLog = Join-Path $DataDir 'practacu-press.log'
     $apiErr = Join-Path $DataDir 'practacu-press.err.log'
     $children.Add((Start-Process -FilePath $apiExe -PassThru -NoNewWindow `

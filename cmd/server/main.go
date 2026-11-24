@@ -218,6 +218,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
+	if handle.CreatedFile() {
+		logger.Info("first start: created the SQLite database")
+	}
 	handle.ConfigurePool(cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, cfg.DBConnMaxLifetime)
 	defer func() {
 		if closeErr := handle.Close(); closeErr != nil {
@@ -228,9 +231,9 @@ func run() error {
 	securityClient := securityclient.NewLocal()
 	logger.Info("security checks run in-process", "argon2_concurrency", securityClient.Limits().Concurrency, "argon2_timeout", securityClient.Limits().Timeout)
 
-	// The desktop install starts this process against an empty SQLite file. Making
-	// the database usable is part of startup there, not a separate operator step:
-	// without a site the setup wizard has nothing to configure.
+	// The desktop install starts this process against a missing or empty SQLite
+	// file. Making the database usable is part of startup there, not a separate
+	// operator step: without a site the setup wizard has nothing to configure.
 	if cfg.DesktopMode {
 		siteID, err := bootstrapDesktop(startupCtx, handle, logger)
 		if err != nil {

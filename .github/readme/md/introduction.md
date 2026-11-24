@@ -175,8 +175,7 @@ $env:DATABASE_DRIVER='sqlite'; $env:DATABASE_DSN='file:./data/practacu.db'
 $env:STORAGE_DIR='./data/media'
 $env:PP_DESKTOP='true'      # 首个注册账户成为平台管理员；服务器部署不要打开
 
-go run ./cmd/server seed -driver sqlite -dsn $env:DATABASE_DSN
-go run ./cmd/server migrate
+# 首次启动会自动创建数据库、表和默认站点
 go run ./cmd/server
 ```
 
@@ -421,8 +420,7 @@ Prerequisites: Go 1.26+, Node.js 22+. Security checks are compiled into the API.
 ```
 
 ```powershell
-# manual
-go run ./cmd/server seed -driver sqlite -dsn $env:DATABASE_DSN
+# manual; first start creates the database, tables and default site
 go run ./cmd/server
 cd web; npm install; npm run build; npm start
 

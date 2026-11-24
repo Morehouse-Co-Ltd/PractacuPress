@@ -97,10 +97,9 @@ source ~/.practacu-env.sh
 mkdir -p data/media
 ```
 
-第一次启动前，先建表和默认站点：
+SQLite 文件和默认站点都在第一次启动时自动创建，直接运行：
 
 ```bash
-go run ./cmd/server seed -driver sqlite -dsn "$DATABASE_DSN"
 go run ./cmd/server
 ```
 

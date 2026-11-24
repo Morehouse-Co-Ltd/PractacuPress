@@ -239,8 +239,9 @@ type DB struct {
 	// Client is the generated Ent client. It is the only handle repositories use.
 	Client *entgen.Client
 
-	driver string
-	sqlDB  *sql.DB
+	driver      string
+	sqlDB       *sql.DB
+	createdFile bool
 }
 
 // Open connects to the database and returns a ready handle.
@@ -259,7 +260,16 @@ func Open(ctx context.Context, driverName, dsn string) (*DB, error) {
 	// Ent's schema tooling refuses to run with foreign keys disabled, and WAL plus a
 	// busy timeout are what make concurrent writers queue instead of failing. Applying
 	// them here means no caller has to remember the pragmas.
+	createdFile := false
 	if canonical == config.DriverSQLite {
+		// SQLite will create a missing database file, but it will not create the
+		// directory above it. A first start from a fresh checkout has no data
+		// directory at all, so create both before handing the DSN to SQLite.
+		var err error
+		createdFile, err = ensureSQLiteFile(dsn)
+		if err != nil {
+			return nil, err
+		}
 		dsn = EnsureSQLitePragmas(dsn)
 	}
 
@@ -282,8 +292,18 @@ func Open(ctx context.Context, driverName, dsn string) (*DB, error) {
 	}
 
 	client := entgen.NewClient(entgen.Driver(entsql.OpenDB(dialectOfCanonical(canonical), sqlDB)))
-	return &DB{Client: client, driver: canonical, sqlDB: sqlDB}, nil
+	return &DB{
+		Client:      client,
+		driver:      canonical,
+		sqlDB:       sqlDB,
+		createdFile: createdFile,
+	}, nil
 }
+
+// CreatedFile reports whether Open created the SQLite database file. It is
+// false for existing databases, in-memory DSNs, read-only DSNs and server
+// drivers. Startup uses it to distinguish a genuine first run from a restart.
+func (d *DB) CreatedFile() bool { return d.createdFile }
 
 // ConfigurePool overrides the driver defaults after Open. Zero max-open and
 // max-idle values keep the default chosen above, so a deployment that does not

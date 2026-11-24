@@ -97,10 +97,9 @@ source ~/.practacu-env.sh
 mkdir -p data/media
 ```
 
-On first start, create the tables and default site:
+The SQLite file and the default site are created on first start:
 
 ```bash
-go run ./cmd/server seed -driver sqlite -dsn "$DATABASE_DSN"
 go run ./cmd/server
 ```
 
