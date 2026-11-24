@@ -4,7 +4,7 @@
 
 | Site frontend (default theme: Original · paper light) | Admin dashboard |
 | :---: | :---: |
-| ![Site frontend](.github/readme/frontend.png) | ![Admin dashboard](.github/readme/admin.png) |
+| ![Site frontend](.github/readme/frontend-en.png) | ![Admin dashboard](.github/readme/admin-en.png) |
 
 > A self-hosted community CMS. The backend is Go, the frontend and admin are React; the frontend build is embedded in the API binary, the default database is SQLite, and deployment is a single process.
 
