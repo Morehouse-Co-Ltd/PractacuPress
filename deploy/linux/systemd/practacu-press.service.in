@@ -1,9 +1,8 @@
 [Unit]
-Description=Practacu Press API
+Description=Practacu Press
 Documentation=file://@@INSTALL_DIR@@/INSTALL.md
 After=network-online.target
 Wants=network-online.target
-# 安全检查、HTML 清洗与上传扫描都在 API 进程内完成，没有独立的安全服务单元。
 
 [Service]
 Type=simple

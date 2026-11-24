@@ -307,7 +307,7 @@ function selfCheck() {
     'deploy/nginx/site.conf.in',
     'deploy/nginx/tls.conf.in',
     'deploy/nginx/locations.conf.in',
-    'deploy/systemd/practacu-press-api.service.in',
+    'deploy/systemd/practacu-press.service.in',
   ];
   for (const relative of required) {
     if (!fs.existsSync(path.join(PACKAGE, relative))) fail(`自检失败：缺少 ${relative}`);

@@ -28,9 +28,10 @@ STAGE = 99（稳定版） | N（测试版序号 1..98）
 - `web/src/lib/version.ts`（前端）
 - `scripts/lib/version.mjs`（发布脚本）
 
-发布链路（`.github/workflows/release.yml`、`deploy/docker/api.Dockerfile`、三个
+发布链路（`.github/workflows/release.yml`、`Dockerfile`、三个
 `package-*.mjs`）都在 `npm run build` **之前**写版本清单，保证 Vite 内联的版本与
-站点 `/version.json` 一致。
+站点 `/version.json` 一致。清单写入 `version` 与 `style`；整数 `version_code` 由
+前端按版本号推导。
 
 ## 一、上一轮的架构清理
 

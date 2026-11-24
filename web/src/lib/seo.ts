@@ -16,8 +16,7 @@ const OG_LOCALE = { 'zh-CN': 'zh_CN', en: 'en_US' } as const;
  * 诚实的边界：搜索引擎（Google / Bing / 百度）会执行 JS，能看到这些标签；多数
  * 社交平台的抓取器不执行 JS。Beta 1.2 起这一层由静态服务补上：`scripts/serve.mjs`
  * 在返回 SPA 外壳前先读内容元数据，把 title / description / Open Graph / canonical
- * 注入 `dist/index.html`，抓取器于是能拿到真实卡片（`deploy/nginx/seo-meta.conf.example`
- * 是 nginx 部署下的等价方案）。这里仍然是「运行时的最后一道」：内容级覆盖与站点级
+ * 注入 `dist/index.html`，抓取器于是能拿到真实卡片。这里仍然是「运行时的最后一道」：内容级覆盖与站点级
  * 配置合并的规则只有一份，就在下面的 `seoPayload` 里。
  *
  * 内容级覆盖（Beta 1.2）：`Content` 上的 `seo_title` / `seo_description` /
