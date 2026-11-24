@@ -26,7 +26,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -337,13 +336,3 @@ func Reason(err error) string {
 
 // ErrProviderUnknown marks a settings value this process cannot verify.
 var ErrProviderUnknown = errors.New("captcha: unknown provider")
-
-// redactToken keeps a token out of logs and audit rows. Only the length and a
-// short prefix survive, which is enough to correlate a report with a provider
-// dashboard without storing a redeemable value.
-func redactToken(token string) string {
-	if len(token) <= 8 {
-		return fmt.Sprintf("len=%d", len(token))
-	}
-	return fmt.Sprintf("%s… len=%d", token[:6], len(token))
-}

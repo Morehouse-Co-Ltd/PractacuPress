@@ -58,6 +58,41 @@ func TestListRejectsNonAdministrators(t *testing.T) {
 	}
 }
 
+// The guard classifies the audit route with view_log, so the service must agree:
+// a custom group that holds view_log without site.manage can read the ledger.
+func TestListAuthorizesTheViewLogCapability(t *testing.T) {
+	repo := &fakeRepo{}
+	service, err := audit.NewService(repo)
+	require.NoError(t, err)
+
+	_, err = service.List(context.Background(), site.Member{
+		UserID: "u1", SiteID: "s1", Role: site.RoleSiteAdmin, Status: site.MemberStatusActive,
+		Permissions: site.PermissionSet{
+			site.CapabilityViewLog:    true,
+			site.CapabilityManageSite: false,
+		},
+	}, "s1", audit.Filter{}, 20, page.Cursor{})
+	require.NoError(t, err)
+	require.True(t, repo.calledWith)
+}
+
+// The inverse holds too: an explicit matrix that revoked view_log is denied even
+// though the role would otherwise grant it.
+func TestListRejectsAMatrixWithoutViewLog(t *testing.T) {
+	repo := &fakeRepo{}
+	service, err := audit.NewService(repo)
+	require.NoError(t, err)
+
+	_, err = service.List(context.Background(), site.Member{
+		UserID: "u1", SiteID: "s1", Role: site.RoleSiteAdmin, Status: site.MemberStatusActive,
+		Permissions: site.PermissionSet{
+			site.CapabilityManageSite: true,
+		},
+	}, "s1", audit.Filter{}, 20, page.Cursor{})
+	require.ErrorIs(t, err, audit.ErrPermissionDenied)
+	require.False(t, repo.calledWith)
+}
+
 func TestListRejectsAnotherSite(t *testing.T) {
 	repo := &fakeRepo{}
 	service, _ := audit.NewService(repo)

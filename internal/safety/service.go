@@ -48,6 +48,9 @@ type Actor struct {
 	UserID string
 	SiteID string
 	Role   site.Role
+	// Permissions is the caller's permission matrix. Nil means the role defaults
+	// apply.
+	Permissions site.PermissionSet
 }
 
 // WordInput creates one sensitive word.
@@ -635,6 +638,8 @@ func validateRateConfig(config RateConfig) error {
 //
 // Managing content safety is site administration, exactly like changing the comment
 // switches, and the site in the path must be the site the session was issued for.
+// The rule is the manage_site capability rather than a bare role comparison so it
+// agrees with the route guard and with an operator-edited permission matrix.
 func authorize(actor Actor, siteID string) error {
 	if actor.UserID == "" || siteID == "" {
 		return ErrPermissionDenied
@@ -642,7 +647,7 @@ func authorize(actor Actor, siteID string) error {
 	if actor.SiteID != siteID {
 		return ErrPermissionDenied
 	}
-	if !actor.Role.AtLeast(site.RoleSiteAdmin) {
+	if !site.CanWithMatrix(actor.Role, actor.Permissions, site.CapabilityManageSite) {
 		return ErrPermissionDenied
 	}
 	return nil

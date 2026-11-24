@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-
-	"github.com/practacu/practacu-press/internal/site"
 )
 
 // Service implements the analytics use cases.
@@ -159,9 +157,10 @@ func (s *Service) pruneVisitKeysLocked(current time.Time) {
 // Report builds the dashboard payload for one site and range.
 //
 // Authorization lives here, not in the handler, so every future caller inherits it:
-// the caller must be authenticated, act on its own site, and hold at least site
-// administrator authority. A platform administrator is allowed because that role
-// outranks site administrator.
+// the caller must be authenticated, act on its own site, and hold the view_log
+// capability (the same authority the dashboard uses to show 访问洞察 and the route
+// guard uses to protect it). A matrix without the capability is denied even when
+// the role is site administrator.
 func (s *Service) Report(
 	ctx context.Context,
 	actor Actor,
@@ -175,7 +174,7 @@ func (s *Service) Report(
 	if actor.SiteID != siteID {
 		return Report{}, ErrCrossSite
 	}
-	if !actor.Role.AtLeast(site.RoleSiteAdmin) {
+	if !actor.allowsViewLog() {
 		return Report{}, ErrPermissionDenied
 	}
 	if rangeValue == "" {

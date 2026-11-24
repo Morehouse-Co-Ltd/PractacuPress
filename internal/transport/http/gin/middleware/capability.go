@@ -44,9 +44,18 @@ func requiredCapability(c *gin.Context) (site.Capability, bool) {
 			return site.CapabilityManagePermission, true
 		case "settings", "customization", "site-config", "domain":
 			return site.CapabilityManageSite, true
-		}
-		if rest[0] == "audit-logs" {
+		case "audit-logs", "activity":
+			// Reading the ledger and the dashboard feed is one capability. The
+			// service checks it too, so the two layers can never disagree about
+			// who may see a site's audit trail.
 			return site.CapabilityViewLog, true
+		case "analytics":
+			// 访问洞察 is a read model over the same traffic records as the audit
+			// trail: view_log admits it, and the analytics service re-checks the
+			// same capability for defence in depth.
+			return site.CapabilityViewLog, true
+		case "redirects", "newsletter":
+			return site.CapabilityManageSite, true
 		}
 		return "", false
 	}
@@ -88,8 +97,13 @@ func requiredCapability(c *gin.Context) (site.Capability, bool) {
 			return "", false
 		}
 		return site.CapabilityModerateContent, true
-	case "taxonomy", "safety", "analytics", "backups":
+	case "taxonomy", "safety", "backups":
 		return site.CapabilityManageSite, true
+	case "analytics":
+		// The dashboard shows 访问洞察 to whoever holds view_log, and that is the
+		// authority the analytics service is meant to honour; analytics is a read
+		// model over the same traffic records as the audit trail, not a setting.
+		return site.CapabilityViewLog, true
 	}
 	return "", false
 }

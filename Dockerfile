@@ -1,3 +1,16 @@
+# Practacu Press image. Build from the repository root:
+#   docker build -f Dockerfile .
+#
+# The runtime is Alpine and the binary is fully static: SQLite uses
+# modernc.org/sqlite (pure Go), so CGO can stay disabled and no glibc is needed.
+# The image carries the operator commands next to the server so
+# `docker compose exec practacu-press migrate` (and backup / media-gc / searchindex) work
+# without a second image.
+#
+# The frontend is part of the application image: Go's //go:embed cannot read outside its
+# package, so the build stage first produces web/dist and copies it into
+# internal/web/dist before compiling. One container now serves both the
+# SPA and the application, with no separate Nginx container in the default stack.
 FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
 
 WORKDIR /web

@@ -22,6 +22,8 @@ func capabilityEngine(verifier AccessTokenVerifier, resolver MembershipResolver)
 	})
 	r.Use(RequireAuthForSiteWithCapabilities(verifier, resolver))
 	r.PATCH("/api/v1/sites/:siteID/settings", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	r.GET("/api/v1/sites/:siteID/analytics", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/api/v1/sites/:siteID/audit-logs", func(c *gin.Context) { c.Status(http.StatusOK) })
 	r.POST("/api/v1/articles", func(c *gin.Context) { c.Status(http.StatusCreated) })
 	r.POST("/api/v1/comments", func(c *gin.Context) { c.Status(http.StatusCreated) })
 	return r
@@ -74,6 +76,43 @@ func TestCapabilityGuardAllowsAnEnabledCapability(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := serve(engine, req)
 	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+}
+
+// 访问洞察与审计台账都是「读日志」：view_log 足够，manage_site 不是必需。
+func TestCapabilityGuardMapsLogReadsToViewLog(t *testing.T) {
+	issuer := testIssuer(t)
+	token := issueFor(t, issuer, "site_a")
+	resolver := &fakeMembershipResolver{member: site.Member{
+		Role:        site.RoleSiteAdmin,
+		Status:      site.MemberStatusActive,
+		Permissions: capabilitySet(site.CapabilityViewLog),
+	}}
+	engine := capabilityEngine(issuer, resolver)
+
+	for _, path := range []string{
+		"/api/v1/sites/site_a/analytics",
+		"/api/v1/sites/site_a/audit-logs",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := serve(engine, req)
+		require.Equal(t, http.StatusOK, w.Code, "%s: %s", path, w.Body.String())
+	}
+
+	// 反向：只有 manage_site 的矩阵读不到日志，guard 与用例各拦一次。
+	resolver.member.Permissions = capabilitySet(site.CapabilityManageSite)
+	for _, path := range []string{
+		"/api/v1/sites/site_a/analytics",
+		"/api/v1/sites/site_a/audit-logs",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := serve(engine, req)
+		require.Equal(t, http.StatusForbidden, w.Code, "%s: %s", path, w.Body.String())
+		problem := decodeProblem(t, w.Body.Bytes())
+		details := problem["details"].(map[string]any)
+		require.Equal(t, "view_log", details["capability"])
+	}
 }
 
 func TestCapabilityGuardMapsContentWrites(t *testing.T) {

@@ -161,6 +161,20 @@ type Actor struct {
 	UserID string
 	SiteID string
 	Role   site.Role
+	// Permissions is the capability matrix of the caller's permission group.
+	// Nil means the actor was built without persistence (tests, older call sites)
+	// and the role defaults decide, exactly like site.Member.Allows.
+	Permissions site.PermissionSet
+}
+
+// allowsViewLog reports whether the actor may read the traffic report.
+//
+// The dashboard exposes 访问洞察 to the view_log capability and the route guard
+// enforces the same capability; authorising by role here as well would deny a
+// moderator whose group was granted view_log and would ignore a matrix that
+// revoked it from an administrator.
+func (a Actor) allowsViewLog() bool {
+	return site.CanWithMatrix(a.Role, a.Permissions, site.CapabilityViewLog)
 }
 
 // Totals are the headline numbers of a report.

@@ -40,7 +40,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | **占地少** | 单文件 API 内嵌整套前端；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件，不用另装、另调、另备份一个数据库服务。默认容器部署只有一个镜像：API（内嵌前端与安全检查）。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，运行时不依赖 Node，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 八步安装引导自带健康检查，装完即用；`docker compose up -d` 或 `启动.bat` 一条命令起全栈。备份就是把 `data/` 目录整体复制走。 |
-| **自定义好** | 3 套大主题 + 8 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 83 条路径 / 100 个操作）之后，换前端按契约写即可。 |
+| **自定义好** | 2 套大主题（原版：纸白浅色单栏 / 夜航：冷石墨深色双栏）+ 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机三端独立布局，每个组件可设圆角、阴影、裁剪等外观并内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图；导航、页脚、SEO、访问限制、域名与证书、存储策略都可逐项配置；全部能力摆在 OpenAPI 3.1（当前契约 157 条路径 / 188 个操作）之后，换前端按契约写即可。 |
 
 然后再回到产品本身——Practacu Press 想同时拿到三样：
 
@@ -75,7 +75,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 
 | 模块 | 能做什么 |
 | --- | --- |
-| **主题** | 3 套内置大主题（原版：纸白单栏 / 白昼：白底日报 / 夜航：暖黑暗色双栏）+ 8 套配色预设；导入 JSON 主题、导出当前主题、另存为自定义主题 |
+| **主题** | 2 套内置大主题（原版：纸白浅色单栏 / 夜航：冷石墨深色双栏）+ 7 套配色预设；导入 JSON 主题、导出当前主题、另存为自定义主题 |
 | **页面编排** | 区块组件库（文本、图片、视频、网站、幻灯片、按钮、图表、留言箱等），每个组件可单独设圆角、阴影、裁剪、背景、内边距与描边；首页与自定义页面可编排，**桌面 / 平板 / 手机三端各自独立**；可一键恢复默认组件 |
 | **导航与页脚** | 顶部 Tab 可配图标、左右位置与排序，最多 8 个二级入口（胶囊栏或下拉）；页脚栏目、条目、版权、社交快捷链接逐项可配 |
 | **主题微调** | 背景柔光、组件混色、过渡时长、页头模糊；系统开启"减少动效"时自动降级 |
@@ -127,7 +127,7 @@ Practacu Press 是一个**自托管的社区型内容管理系统**。它把三�
 | 数据库 | SQLite（纯 Go 驱动）/ MySQL / PostgreSQL |
 | 安全检查 | Go · x/crypto/argon2 · x/net/html 白名单清洗 · 上传魔数检查 |
 | 前端 | React 19 · Vite 7 · TypeScript 5.9 · React Router 7（零 UI 框架依赖） |
-| 契约 | OpenAPI 3.1（**83 条路径 / 100 个操作**；站点根路径的 sitemap / robots 与内置文档页不在契约内） |
+| 契约 | OpenAPI 3.1（**157 条路径 / 188 个操作**；站点根路径的 sitemap / robots 与内置文档页不在契约内） |
 | 实时 | WebSocket（`coder/websocket`）+ outbox 事件补偿 |
 | 桌面分发 | Go API（`go:embed` 内嵌前端 + 进程内安全检查） |
 
@@ -329,8 +329,8 @@ Most options force a trade-off: blog engines write well but have no community; f
 | --- | --- |
 | **Small footprint** | The single API binary embeds the whole frontend; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is one file — nothing extra to install, tune or back up. The container deployment is one image: the API with the frontend and security checks embedded. |
 | **Fast** | One request layer (Gin); Ent-generated code talks straight to `database/sql`; pool and SQLite WAL / busy_timeout are configured by the server. The frontend is a static SPA with no Node at runtime and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets. |
-| **Quick to run** | A seven-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
-| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts where every block can set its own corner radius, shadow, crop, background, padding and border, with a built-in button block; mind maps, logic charts, statistical charts and fishbone diagrams can be inserted while writing; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (currently 83 paths / 100 operations; site-root sitemap / robots and the built-in docs page are outside the contract). |
+| **Quick to run** | An eight-step wizard with live health checks: `docker compose up -d` or `启动.bat` brings up the whole stack. Backup means copying the `data/` directory. |
+| **Easy to make your own** | 2 themes + 7 colour presets with JSON import/export; independent desktop / tablet / phone layouts where every block can set its own corner radius, shadow, crop, background, padding and border, with a built-in button block; mind maps, logic charts, statistical charts and fishbone diagrams can be inserted while writing; navigation, footer, SEO, access limits, domains and TLS all configurable; everything behind an OpenAPI 3.1 contract (currently 157 paths / 188 operations; site-root sitemap / robots and the built-in docs page are outside the contract). |
 
 Practacu Press aims for all three at low deployment cost:
 
@@ -344,7 +344,7 @@ Practacu Press aims for all three at low deployment cost:
 - **Reading** — header search that queries as you type (220 ms debounce, top 6 hits, `/` to focus, Enter for the full result page); SEO with title templates, canonical, Open Graph / Twitter, JSON-LD (WebSite, SearchAction, Article, BreadcrumbList, Person), site verification, a global noindex switch, and downloadable `sitemap.xml` / `robots.txt`.
 - **Community** — articles and posts, threaded comments, likes, bookmarks, follows, DM conversations, in-app notifications, reports and moderation. A 5-state / 5-action review state machine, with per-site publishing policy; authors cannot approve their own work.
 - **Realtime** — WebSocket upgrades with a **one-time ticket** (60 s, single use, stored hashed) so access tokens never land in URLs, plus a REST catch-up endpoint (`GET /events`) for reconnects.
-- **Admin** — 3 built-in themes (paper single-column; "Daylight" white card-based editorial; "Night Flight" warm-dark two-column) with 8 colour presets and JSON import/export; no-code page composition **independently per desktop / tablet / phone**; fully configurable navigation and footer; access limits, domains and TLS, performance and storage settings that emit ready-to-deploy Nginx and `.env` snippets; members and 4-role permissions; media library, review queue, taxonomy, analytics, built-in extensions.
+- **Admin** — 2 built-in themes (Paper: light single-column; "Night Flight" cold-graphite dark two-column) with 7 colour presets and JSON import/export; no-code page composition **independently per desktop / tablet / phone**; fully configurable navigation and footer; access limits, domains and TLS, performance and storage settings that emit ready-to-deploy Nginx and `.env` snippets; members and 4-role permissions; media library, review queue, taxonomy, analytics, built-in extensions.
 - **Delivery** — an eight-step first-run wizard (demo data in `localStorage`, or a real backend found automatically); a Windows API package that embeds the frontend via `go:embed` and serves `/api` on the same origin; and a packaging script that **actually boots the artifact on a temporary port** and smoke-tests registration, article creation (verifying `<script>` is stripped) and publishing before producing a zip.
 
 ## Architecture
@@ -376,7 +376,7 @@ Three decisions worth calling out:
 | Database | SQLite (pure Go) / MySQL / PostgreSQL |
 | Security | Go · x/crypto/argon2 · x/net/html allow-list · upload magic checks |
 | Frontend | React 19 · Vite 7 · TypeScript 5.9 · React Router 7 (no UI framework) |
-| Contract | OpenAPI 3.1 (**83 paths / 100 operations**; site-root sitemap / robots and the built-in docs page are outside the contract) |
+| Contract | OpenAPI 3.1 (**157 paths / 188 operations**; site-root sitemap / robots and the built-in docs page are outside the contract) |
 | Realtime | WebSocket (`coder/websocket`) + outbox catch-up |
 | Desktop | Go API (`go:embed` embedded frontend + in-process security) |
 
@@ -407,7 +407,7 @@ Details in [Current implementation vs. documentation](superpowers/reports/2026-1
 docker compose up -d --build     # API + security service + Nginx static site
 ```
 
-Open `http://localhost:8080` and finish the seven-step wizard — the first account becomes the platform administrator. The port is bound to loopback by default, and data lives in the named volume `practacu-data`. Full details in the [README](../../../README.md).
+Open `http://localhost:8080` and finish the eight-step wizard — the first account becomes the platform administrator. The port is bound to loopback by default, and data lives in the named volume `practacu-data`. Full details in the [README](../../../README.md).
 
 > The API (frontend embedded) and security-service images plus the compose stack have been built and started for real (both services healthy; registration/login, media upload with the security-service scan, an instance backup and the RSS/sitemap paths were exercised). The host TLS proxy still needs a staging run.
 
@@ -448,3 +448,6 @@ There is no commercial dual-licensing for cases that cannot accept AGPL — embe
 ## Contributing
 
 There is no `CONTRIBUTING.md` yet. Issues (bug reports, feature requests) are welcome. Because most decisions here are backed by tests and written design docs, pull requests should explain both the motivation and how the change was verified.
+
+
+

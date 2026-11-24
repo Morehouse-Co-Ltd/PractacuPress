@@ -120,9 +120,12 @@ func NewService(repo Repository) (*Service, error) {
 
 // List returns one page of a site's audit trail.
 //
-// Authorization is site administration (site_admin or platform_admin) on the
-// exact site the caller is authenticated for: the site id in the path must never
-// be allowed to widen a tenant boundary.
+// Authorization is the same `view_log` capability the dashboard's activity feed
+// uses (see Activity), not site administration: the guard already requires that
+// capability, and a permission group that grants it without granting
+// site.manage must still be able to read the ledger it is allowed to see.
+// The membership must still belong to the site in the path, so the path cannot
+// widen a tenant boundary.
 func (s *Service) List(
 	ctx context.Context,
 	actor site.Member,
@@ -131,7 +134,7 @@ func (s *Service) List(
 	limit int,
 	after page.Cursor,
 ) (Page, error) {
-	if actor.SiteID != siteID || !site.Can(actor, site.ActionManageSite) {
+	if actor.SiteID != siteID || !site.Can(actor, site.ActionViewLog) {
 		return Page{}, ErrPermissionDenied
 	}
 

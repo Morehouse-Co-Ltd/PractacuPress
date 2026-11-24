@@ -4,8 +4,8 @@ React 19 + Vite + TypeScript 单页应用，严格按
 [`internal/packages/contracts/openapi/openapi.yaml`](../internal/packages/contracts/openapi/openapi.yaml)（v0.1.0）
 和设计文档第 7、11 章实现。包含**站点前台**、**管理后台**和**首次打开安装引导**。
 
-内置 **3 套大主题**（原版：纸白单栏 / 白昼：白底日报 / 夜航：暖黑暗色双栏）与 **8 套配色预设**
-（纸白、暖砂、雾蓝、灰绿、陶土、白昼、夜航、夜航·浅色），以及
+内置 **2 套大主题**（原版：纸白浅色单栏 / 夜航：冷石墨深色双栏）与 **7 套配色预设**
+（纸白、暖砂、雾蓝、灰绿、陶土、夜航、白昼），以及
 **无代码页面编排**（区块组件库 + 首页 / 页面编排 + 思维链逻辑 + 页面模板），全部零新增依赖。
 
 > 设计稿原计划由外部团队实现前端；此目录是按该契约落地的前端，仅依赖公开 REST 接口。
@@ -472,7 +472,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 ## 契约对齐与仍有边界
 
-前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 83 条路径 / 100 个操作）实现。
+前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 157 条路径 / 188 个操作）实现。
 下面按“已实现（不再是缺口）”“仅演示模式 / 前端本地策略”“已知限制”三档记录；判断以代码与契约为准，
 不把演示效果写成服务端能力。
 

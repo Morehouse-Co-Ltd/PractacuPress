@@ -75,6 +75,14 @@ func TestReportAuthorization(t *testing.T) {
 	member := Actor{UserID: "u1", SiteID: "site_1", Role: site.RoleMember}
 	otherSite := Actor{UserID: "u1", SiteID: "site_2", Role: site.RoleSiteAdmin}
 	admin := Actor{UserID: "u2", SiteID: "site_1", Role: site.RoleSiteAdmin}
+	moderatorWithLog := Actor{
+		UserID: "u3", SiteID: "site_1", Role: site.RoleEditor,
+		Permissions: site.PermissionSet{site.CapabilityViewLog: true},
+	}
+	adminWithoutLog := Actor{
+		UserID: "u4", SiteID: "site_1", Role: site.RoleSiteAdmin,
+		Permissions: site.PermissionSet{site.CapabilityManageSite: true},
+	}
 
 	_, err := service.Report(context.Background(), Actor{}, "site_1", Range24h)
 	require.ErrorIs(t, err, ErrPermissionDenied)
@@ -83,6 +91,14 @@ func TestReportAuthorization(t *testing.T) {
 	require.ErrorIs(t, err, ErrCrossSite)
 
 	_, err = service.Report(context.Background(), member, "site_1", Range24h)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	// The guard maps 访问洞察 to view_log, so the service must honour that
+	// capability: a moderator group granted view_log may read, an administrator
+	// whose matrix revoked it may not.
+	_, err = service.Report(context.Background(), moderatorWithLog, "site_1", Range24h)
+	require.NoError(t, err)
+	_, err = service.Report(context.Background(), adminWithoutLog, "site_1", Range24h)
 	require.ErrorIs(t, err, ErrPermissionDenied)
 
 	_, err = service.Report(context.Background(), admin, "site_1", Range("90d"))

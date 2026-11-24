@@ -37,7 +37,6 @@ import (
 // same error writer the API uses, so the tests do not depend on the router package.
 
 const testPhone = "13800138000"
-const otherPhone = "13900139000"
 
 // fakeSMSSender records delivered codes and can be made to fail.
 type fakeSMSSender struct {

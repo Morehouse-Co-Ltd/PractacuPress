@@ -970,8 +970,10 @@ func (h *Handler) GetSiteConfig(c *gin.Context) {
 		return
 	}
 
-	scope := siteConfigScopePublic
-	payload := stored.Document
+	var (
+		scope   = siteConfigScopePublic
+		payload json.RawMessage
+	)
 	if h.canManageSite(c, resolved.ID) {
 		scope = siteConfigScopeAdmin
 		// The administrator sees the whole document, except the step-up secret: the

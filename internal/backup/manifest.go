@@ -77,6 +77,9 @@ type Actor struct {
 	UserID string
 	SiteID string
 	Role   site.Role
+	// Permissions is the caller's permission matrix. Nil means the role defaults
+	// apply.
+	Permissions site.PermissionSet
 }
 
 // Entry is one file in a package.

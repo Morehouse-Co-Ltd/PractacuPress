@@ -73,7 +73,7 @@ running API; the checks above stay network-free.
 
 What one run covers, in order:
 
-1. the seven-step install wizard (live mode, first admin, site rules) and a real
+1. the eight-step install wizard (live mode, first admin, site rules) and a real
    logout → password login round trip;
 2. creating a draft, saving it twice, publishing, and saving a post-publish
    revision (version history grows, status stays `published`);
@@ -165,3 +165,4 @@ required CI: it needs Chrome, while `ci.yml` stays fast. It uploads `.tmp/e2e/ar
 
 MySQL/PostgreSQL round trips are included automatically when
 `PP_TEST_MYSQL_DSN` / `PP_TEST_POSTGRES_DSN` are exported.
+

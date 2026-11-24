@@ -124,6 +124,12 @@ func (m *Manager) ImportZip(reader io.Reader, maxBytes int64) (Extension, error)
 	if err != nil {
 		m.logger.Warn("applying the extension enable state failed",
 			"extension", manifest.ID, "error", err)
+		// Enable/Disable may have left the package unloaded; report and persist what
+		// the host actually holds instead of the requested state, so the dashboard
+		// and the next boot agree with the running process.
+		if actual, ok := m.host.Get(manifest.ID); ok {
+			status = actual
+		}
 	}
 	if backup != "" {
 		_ = os.RemoveAll(backup)
@@ -131,7 +137,7 @@ func (m *Manager) ImportZip(reader io.Reader, maxBytes int64) (Extension, error)
 
 	m.manifests[manifest.ID] = manifest
 	m.dirs[manifest.ID] = destination
-	m.state[manifest.ID] = stateEntry{Enabled: enabled}
+	m.state[manifest.ID] = stateEntry{Enabled: status.State == plugins.StateEnabled}
 	m.persistLocked()
 	extension := extensionFromManifest(manifest, status)
 	m.applyIntegrityLocked(&extension, destination)

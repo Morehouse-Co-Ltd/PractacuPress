@@ -114,7 +114,7 @@ sudo ./install.sh --yes
   # 然后浏览器打开 http://127.0.0.1:8080
   ```
 
-在产品自带的七步引导里：
+在产品自带的八步引导里：
 
 1. 选择语言；
 2. 连接后端（安装器已经起好 API，通常自动通过）；
@@ -275,3 +275,4 @@ node scripts/package-linux.mjs --arch amd64
 ```
 
 产物在 `release/`：`PractacuPress-Linux-x64/`（目录）、`.tar.gz` 与 `.sha256`。
+

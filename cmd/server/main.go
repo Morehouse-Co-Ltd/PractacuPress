@@ -947,9 +947,10 @@ func run() error {
 					return analytics.Actor{}, false
 				}
 				return analytics.Actor{
-					UserID: principal.UserID,
-					SiteID: principal.SiteID,
-					Role:   principal.Role,
+					UserID:      principal.UserID,
+					SiteID:      principal.SiteID,
+					Role:        principal.Role,
+					Permissions: membershipPermissions(c),
 				}, true
 			},
 			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
@@ -961,9 +962,10 @@ func run() error {
 					return taxonomy.Actor{}, false
 				}
 				return taxonomy.Actor{
-					UserID: principal.UserID,
-					SiteID: principal.SiteID,
-					Role:   principal.Role,
+					UserID:      principal.UserID,
+					SiteID:      principal.SiteID,
+					Role:        principal.Role,
+					Permissions: membershipPermissions(c),
 				}, true
 			},
 			Site: func(c *gin.Context) (site.Site, bool) { return middleware.SiteFrom(c) },
@@ -975,9 +977,10 @@ func run() error {
 					return safety.Actor{}, false
 				}
 				return safety.Actor{
-					UserID: principal.UserID,
-					SiteID: principal.SiteID,
-					Role:   principal.Role,
+					UserID:      principal.UserID,
+					SiteID:      principal.SiteID,
+					Role:        principal.Role,
+					Permissions: membershipPermissions(c),
 				}, true
 			},
 		}),
@@ -991,9 +994,10 @@ func run() error {
 					return backup.Actor{}, false
 				}
 				return backup.Actor{
-					UserID: principal.UserID,
-					SiteID: principal.SiteID,
-					Role:   principal.Role,
+					UserID:      principal.UserID,
+					SiteID:      principal.SiteID,
+					Role:        principal.Role,
+					Permissions: membershipPermissions(c),
 				}, true
 			},
 		}),
@@ -1587,6 +1591,20 @@ func (n contentReviewNotifier) NotifyReview(ctx context.Context, in content.Revi
 		},
 	})
 	return err
+}
+
+// membershipPermissions returns the caller's permission matrix for actor types that
+// authorize by capability rather than by role.
+//
+// The middleware resolves the active membership for every authenticated request;
+// a request that reaches a handler without one (anonymous reads) yields nil, which
+// makes the module fall back to the role defaults.
+func membershipPermissions(c *gin.Context) site.PermissionSet {
+	member, ok := middleware.MembershipFrom(c)
+	if !ok {
+		return nil
+	}
+	return member.Permissions
 }
 
 // truncatePayload bounds a free text value for a notification payload.
