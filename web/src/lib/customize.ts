@@ -1719,12 +1719,12 @@ export function createCustomizationWithPages(): SiteCustomization {
 }
 
 /**
- * 安装完成后的默认大主题：夜航。
+ * 安装完成后的默认主题：沉思。
  *
- * 2026-11 起安装向导不再让用户挑主题，新站点统一以「夜航」交付（深色 + 双栏）。
- * 站长之后仍可在后台「主题设置」里换成原版或自定义主题。
+ * 2026-11 起新站点以「沉思」交付：石白纸面、单栏阅读，浅色与深色都可用。
+ * 站长之后仍可在后台「主题设置」里换成原版、夜航或自定义主题。
  */
-export const INSTALL_DEFAULT_THEME_ID = 'night';
+export const INSTALL_DEFAULT_THEME_ID = 'contemplation';
 
 /** 首次安装完成时写进站点设计的完整配置：默认大主题 + 安装时选择的语言与正文字号。 */
 export function installCustomization(language: Locale, bodySize?: number): SiteCustomization {

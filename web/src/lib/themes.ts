@@ -86,6 +86,31 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
     },
   },
   {
+    id: 'contemplation',
+    name: t('沉思'),
+    note: t('石白与青灰 · 安静的单栏阅读；浅色和深色各有一套完整纸面。'),
+    preset: 'contemplation',
+    variant: 'classic',
+    style: {
+      heading_font: 'sans',
+      body_size: 18,
+      content_width: 840,
+      radius: 3,
+    },
+    preview: {
+      brand: 'PRACTACU PRESS',
+      nav: [t('文章'), t('专题'), t('关于')],
+      kicker: t('沉思 · 石白与青灰'),
+      title: t('给长文一点安静'),
+      subtitle: t('石白纸面、青灰强调，单栏排版，适合随笔、笔记与长文。'),
+      blocks: [
+        { type: 'media', weight: 2 },
+        { type: 'text' },
+        { type: 'quote', text: t('版面退后，文字向前。') },
+      ],
+    },
+  },
+  {
     id: 'night',
     name: t('夜航'),
     note: t('冷石墨与电光蓝 · 深色杂志布局；切到浅色会得到同一套设计的冷白重配。'),

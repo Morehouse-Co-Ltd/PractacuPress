@@ -32,6 +32,8 @@ export function CustomizationLayer({ children }: { children: ReactNode }) {
     applySoftenAttributes(customization.theme);
     // 版式变体也写到 <html>：页头、浮层这些在首页容器之外的元素需要跟着变。
     document.documentElement.dataset.variant = customization.layout.variant;
+    // 预设 id 只给主题样式做作用域，不参与组件逻辑；换主题时同步更新。
+    document.documentElement.dataset.preset = customization.theme.preset;
 
     // 站点图标：留空时回到 index.html 里的默认图标。
     const icon = (customization.layout.site_icon ?? '').trim();

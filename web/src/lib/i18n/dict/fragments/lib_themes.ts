@@ -19,6 +19,9 @@ const fragment: Dictionary = {
   原版: 'Default',
   '纸白浅色 · 经典单栏，适合安静的长文阅读。':
     'Paper white · classic single column, made for quiet long-form reading.',
+  沉思: 'Contemplation',
+  '石白与青灰 · 安静的单栏阅读；浅色和深色各有一套完整纸面。':
+    'Stone white and slate · quiet single-column reading, with complete light and dark palettes.',
   夜航: 'Night flight',
   白昼: 'Daylight',
   '暖黑暗色 · 双栏杂志布局，适合社区与图片较多的站点。':
@@ -40,6 +43,11 @@ const fragment: Dictionary = {
     'Long reads, essays and features in a quiet, restrained reading layout.',
   '版面安静下来，文字才有回声。': 'When the page quiets down, the words begin to echo.',
   开始阅读: 'Start reading',
+  '沉思 · 石白与青灰': 'Contemplation · stone white and slate',
+  给长文一点安静: 'A little quiet for long reads',
+  '石白纸面、青灰强调，单栏排版，适合随笔、笔记与长文。':
+    'Stone-white paper, slate accents and a single column for essays, notes and long reads.',
+  '版面退后，文字向前。': 'The layout recedes; the words come forward.',
   '夜航 · 冷石墨双栏': 'Night flight · cold graphite, two columns',
   在冷石墨上读长夜: 'Read through the night on cold graphite',
   '电光蓝强调与杂志网格，适合图片、专题与社区。':

@@ -75,6 +75,43 @@ const NIGHT_LIGHT: ThemeTokenSet = {
   prose: '#333944',
 };
 
+/**
+ * 沉思（浅色）：石白纸面、青灰强调，留白多，适合长文与笔记。
+ *
+ * 色阶比纸白更灰，强调色取偏灰的墨绿；深色换成低饱和苔绿。
+ */
+const CONTEMPLATION_LIGHT: ThemeTokenSet = {
+  background: '#f1eee5',
+  ink: '#1b1b17',
+  accent: '#3d5a4c',
+  bg_subtle: '#e8e4d9',
+  bg_sunken: '#ddd7c9',
+  ink_soft: '#424037',
+  muted: '#6f6b60',
+  faint: '#969184',
+  line: '#d8d2c4',
+  line_strong: '#c5bdae',
+  accent_soft: '#e3eae3',
+  accent_ink: '#ffffff',
+  prose: '#2d2c25',
+};
+
+const CONTEMPLATION_DARK: ThemeTokenSet = {
+  background: '#111310',
+  ink: '#ebe8de',
+  accent: '#91aa93',
+  bg_subtle: '#181b18',
+  bg_sunken: '#20241f',
+  ink_soft: '#cac7bd',
+  muted: '#969286',
+  faint: '#6b685e',
+  line: '#2b2f29',
+  line_strong: '#3a3f38',
+  accent_soft: '#91aa9324',
+  accent_ink: '#121a12',
+  prose: '#d2cfc4',
+};
+
 /** 白昼：已合并进夜航的冷白重配，旧配置读取时由 customize.ts 折算。 */
 const RAW_THEME_PRESETS: ThemePreset[] = [
   {
@@ -264,6 +301,14 @@ const RAW_THEME_PRESETS: ThemePreset[] = [
     mode: 'dark',
     light: NIGHT_LIGHT,
     dark: NIGHT_DARK,
+  },
+  {
+    id: 'contemplation',
+    name: t('沉思'),
+    note: t('石白纸面与青灰强调，留白多，适合长文和笔记；深色是同一套版面的夜读配色。'),
+    mode: 'light',
+    light: CONTEMPLATION_LIGHT,
+    dark: CONTEMPLATION_DARK,
   },
   {
     id: 'dawn',
