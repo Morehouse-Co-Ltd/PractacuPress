@@ -202,7 +202,7 @@ function buildGo(binDir) {
   log(`构建 Go 二进制（linux/${ARCH}，纯静态，内嵌前端）`);
   syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
   const targets = [
-    { pkg: './cmd/server', name: 'practacu-api' },
+    { pkg: './cmd/server', name: 'practacu-press' },
     { pkg: './cmd/migrate', name: 'practacu-migrate' },
     { pkg: './cmd/seed', name: 'practacu-seed' },
     { pkg: './cmd/backup', name: 'practacu-backup' },
@@ -270,7 +270,7 @@ function assemble() {
   stampWebVersion(path.join(ROOT, 'web', 'dist'));
   buildGo(builtBin);
   const binaries = [
-    'practacu-api',
+    'practacu-press',
     'practacu-migrate',
     'practacu-seed',
     'practacu-backup',
@@ -299,7 +299,7 @@ function selfCheck() {
     'README.txt',
     'VERSION',
     'ARCH',
-    'bin/practacu-api',
+    'bin/practacu-press',
     'bin/practacu-migrate',
     'bin/practacu-seed',
     'bin/practacu-backup',
@@ -326,7 +326,7 @@ function selfCheck() {
   }
   ok('安装脚本为 LF bash 脚本');
 
-  assertElf(path.join(PACKAGE, 'bin', 'practacu-api'), 'bin/practacu-api');
+  assertElf(path.join(PACKAGE, 'bin', 'practacu-press'), 'bin/practacu-press');
   assertElf(path.join(PACKAGE, 'bin', 'practacu-seed'), 'bin/practacu-seed');
 }
 

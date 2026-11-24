@@ -90,5 +90,5 @@ Write-Host ''
 Write-Host "[DONE] Package built in $([int]$elapsed.TotalSeconds)s." -ForegroundColor Green
 Write-Host '       Directory: release\PractacuPress'
 Write-Host "       ZIP:       release\PractacuPress-Windows-$archLabel.zip"
-Write-Host '       Unzip, then double-click 启动.cmd or run PractacuPressAPI.exe.'
+Write-Host '       Unzip, then double-click 启动.cmd or run PractacuPress.exe.'
 exit 0

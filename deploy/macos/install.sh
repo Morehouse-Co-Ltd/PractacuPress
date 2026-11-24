@@ -59,7 +59,7 @@ if [ -n "$PKG_ARCH" ] && [ "$PKG_ARCH" != "$HOST_ARCH" ]; then
     die "这个包是 ${PKG_ARCH} 版本，当前机器是 ${HOST_ARCH}。"
 fi
 
-[ -x "$SELF_DIR/bin/practacu-api" ] || die "安装包不完整：缺少 bin/practacu-api"
+[ -x "$SELF_DIR/bin/practacu-press" ] || die "安装包不完整：缺少 bin/practacu-press"
 
 log "安装程序文件到 $INSTALL_DIR"
 install -d -m 0755 "$INSTALL_DIR"

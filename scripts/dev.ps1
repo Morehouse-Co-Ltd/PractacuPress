@@ -76,13 +76,13 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "seed failed with exit code $LASTEXITCODE" }
 
     Write-Host '> building the API'
-    $apiExe = Join-Path $DataDir 'practacu-api.exe'
+    $apiExe = Join-Path $DataDir 'practacu-press.exe'
     & $go build -o $apiExe ./cmd/server
     if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
 
     Write-Host '> starting the API'
-    $apiLog = Join-Path $DataDir 'api.log'
-    $apiErr = Join-Path $DataDir 'api.err.log'
+    $apiLog = Join-Path $DataDir 'practacu-press.log'
+    $apiErr = Join-Path $DataDir 'practacu-press.err.log'
     $children.Add((Start-Process -FilePath $apiExe -PassThru -NoNewWindow `
         -RedirectStandardOutput $apiLog -RedirectStandardError $apiErr))
 
@@ -97,14 +97,14 @@ try {
         catch { }
     }
     if (-not $ready) {
-        Write-Host '--- api stderr ---'
+        Write-Host '--- practacu-press stderr ---'
         Get-Content $apiErr -ErrorAction SilentlyContinue | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
         throw 'the API did not become healthy'
     }
 
     Write-Host ''
     Write-Host '  Practacu Press is running'
-    Write-Host "  API        http://127.0.0.1:$ApiPort"
+    Write-Host "  App        http://127.0.0.1:$ApiPort"
     Write-Host "  OpenAPI    http://127.0.0.1:$ApiPort/api/v1/openapi.json"
     Write-Host "  healthz    http://127.0.0.1:$ApiPort/api/healthz"
     Write-Host "  data       $DataDir"

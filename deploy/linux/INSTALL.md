@@ -25,7 +25,7 @@ PractacuPress-Linux-<x64|arm64>/
 ├── VERSION
 ├── ARCH                       本包的架构（amd64 / arm64）
 ├── bin/
-│   ├── practacu-api           Go API（内嵌前端静态文件 + SQLite 驱动）
+│   ├── practacu-press           Go API（内嵌前端静态文件 + SQLite 驱动）
 │   ├── practacu-migrate       只应用数据库结构（升级/排障用）
 │   ├── practacu-seed          建表 + 创建默认站点（幂等）
 │   ├── practacu-backup        整库备份 / 恢复 / 校验

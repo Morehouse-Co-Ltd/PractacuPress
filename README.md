@@ -425,7 +425,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 产物：
 
-- `release/PractacuPress/PractacuPressAPI.exe`：单文件 Go API，内嵌前台、后台、安装引导与安全检查；
+- `release/PractacuPress/PractacuPress.exe`：单文件 Go 程序，内嵌前台、后台、安装引导与安全检查；
 - `release/PractacuPress/启动.cmd`：双击启动并打开 `http://127.0.0.1:8080`；
 - `release/PractacuPress-Windows-<x64|arm64>.zip`（及同名 `.sha256`）：整个文件夹的压缩包。
 
@@ -442,7 +442,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 CI 可以直接调用底层脚本（与上面是同一套流程）：
 `node scripts\package-windows.mjs --arch amd64|arm64 [--skip-smoke] [--no-zip] [--release-dir <目录>]`。
 
-解压后双击 `启动.cmd`，或在该目录运行 `PractacuPressAPI.exe`，然后打开
+解压后双击 `启动.cmd`，或在该目录运行 `PractacuPress.exe`，然后打开
 `http://127.0.0.1:8080`。数据库、媒体与备份都在同目录 `data/`。
 
 ---

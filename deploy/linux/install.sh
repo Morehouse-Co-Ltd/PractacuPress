@@ -208,7 +208,7 @@ need_arch() {
 }
 
 check_package() {
-    [ -x "$SELF_DIR/bin/practacu-api" ]  || die "安装包不完整：缺少 bin/practacu-api"
+    [ -x "$SELF_DIR/bin/practacu-press" ]  || die "安装包不完整：缺少 bin/practacu-press"
     [ -x "$SELF_DIR/bin/practacu-seed" ] || die "安装包不完整：缺少 bin/practacu-seed"
     [ -d "$TEMPLATE_DIR/nginx" ]         || die "安装包不完整：缺少 deploy/nginx 模板"
     [ -d "$TEMPLATE_DIR/systemd" ]       || die "安装包不完整：缺少 deploy/systemd 模板"

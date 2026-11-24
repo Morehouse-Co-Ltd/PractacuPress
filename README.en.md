@@ -380,7 +380,7 @@ Any failing step stops immediately and prints the reason; a failing self-test ne
 
 Artifacts:
 
-- `release/PractacuPress/PractacuPressAPI.exe`: one Go binary with the site, admin console, setup wizard and security checks embedded;
+- `release/PractacuPress/PractacuPress.exe`: one Go binary with the site, admin console, setup wizard and security checks embedded;
 - `release/PractacuPress/启动.cmd`: starts it and opens `http://127.0.0.1:8080`;
 - `release/PractacuPress-Windows-<x64|arm64>.zip` (plus a matching `.sha256`): the whole folder zipped.
 
@@ -397,7 +397,7 @@ Common `scripts/package.ps1` parameters:
 CI can call the underlying script directly (same pipeline):
 `node scripts\package-windows.mjs --arch amd64|arm64 [--skip-smoke] [--no-zip] [--release-dir <dir>]`.
 
-After unzipping, double-click `启动.cmd` (or run `PractacuPressAPI.exe` in that directory) and open
+After unzipping, double-click `启动.cmd` (or run `PractacuPress.exe` in that directory) and open
 `http://127.0.0.1:8080`. The database, media and backups live in `data/` next to it.
 
 ---
