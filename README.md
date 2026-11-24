@@ -4,7 +4,7 @@
 
 | 站点前台（默认主题：原版 · 纸白浅色） | 管理后台（仪表盘） |
 | :---: | :---: |
-| ![站点前台](github/readme/frontend.png) | ![管理后台](github/readme/admin.png) |
+| ![站点前台](.github/readme/frontend.png) | ![管理后台](.github/readme/admin.png) |
 
 > **自托管的社区型 CMS：占地少、跑得快、开箱即用、想怎么改就怎么改。**
 > Go API（内嵌前端与安全检查）+ React 前台与后台，由同一份 OpenAPI 3.1 契约对齐；
@@ -24,13 +24,13 @@
 - **写作**：工具栏编辑器 + Markdown、实时预览、按渲染后的纯文本计字数；可插入思维导图、逻辑图、统计图（柱状 / 折线 / 环形 / 饼图）与鱼骨图，保存在正文的 `pp-diagram` 围栏里
 - **社区**：评论、点赞、收藏、关注、私信、通知、举报，配 5 状态审核流
 - **运营**：主题、页面编排、SEO、访问限制、域名与 SSL、存储策略、访问统计
-- **安全**：Argon2id（12–128 位、弱口令黑名单）、HTML 白名单清洗、上传检查都在 API 进程内完成；失败时按设计 fail-closed。静态数据另有字段级 AES-256-GCM 加密（登录邮箱 / 手机号 / 私信正文）、整库备份加密（`.ppbak`）与 Windows DPAPI 私钥保护。本地授权安全审计报告见 [`docs/security/2026-11-14-security-audit.md`](docs/security/2026-11-14-security-audit.md)
+- **安全**：Argon2id（12–128 位、弱口令黑名单）、HTML 白名单清洗、上传检查都在 API 进程内完成；失败时按设计 fail-closed。静态数据另有字段级 AES-256-GCM 加密（登录邮箱 / 手机号 / 私信正文）、整库备份加密（`.ppbak`）与 Windows DPAPI 私钥保护。本地授权安全审计报告见 [`.github/readme/md/security/2026-11-14-security-audit.md`](.github/readme/md/security/2026-11-14-security-audit.md)
 - **多站点**：单站点开箱即用；需要时按站点隔离内容、成员、主题、审核规则与权限边界
 
 **平台与许可**：Windows / Linux 皆可（源码、Windows 便携包、Docker Compose）；数据库支持 SQLite、MySQL、PostgreSQL。
 **AGPL-3.0**——可商用，但修改版与网络服务必须同样开源并保留署名。
 
-完整介绍（架构、技术栈、工程取舍、现状与限制）见 **[docs/introduction.md](docs/introduction.md)**　·　English: **[Introduction](docs/introduction.md#english)**
+完整介绍（架构、技术栈、工程取舍、现状与限制）见 **[.github/readme/md/introduction.md](.github/readme/md/introduction.md)**　·　English: **[Introduction](.github/readme/md/introduction.md#english)**
 
 ---
 
@@ -61,7 +61,7 @@
   不执行 JS 的社交抓取器只能看到 `index.html` 的默认值。
 - **主题**：后台「主题设置」把配色、排版与单栏/卡片/双栏版式作为一套「大主题」整体切换。
   内置原版（纸白单栏）、白昼（白底日报）与夜航（暖黑暗色双栏）；主题选择区可导入 / 导出
-  主题包（zip：主题清单 + 组件 + 页面编排，见 [主题开发文档](docs/themes/README.md)）、
+  主题包（zip：主题清单 + 组件 + 页面编排，见 [主题开发文档](.github/readme/md/themes/README.md)）、
   另存为自定义主题与删除自定义主题。页面编排、外观（品牌/页脚）与加载动画归入同一导航组；
   只有首页仍为默认编排时，切换主题才会同步替换默认组件。页脚的全部内容（品牌标题/副标题/简介、
   状态标签、栏目与条目、版权与底部说明）都可以在「主题设置 → 导航与页脚」里逐项自定义；
@@ -189,7 +189,7 @@ curl -fsS http://127.0.0.1:8080/api/healthz
 - **数据**：命名卷 `practacu-data` 里是 `practacu.db` 与 `media/`。`docker compose down` 不删数据，`down -v` 才删。想直接用宿主机目录，把 compose 里的卷换成 `./data:/data` 并先 `mkdir -p data && sudo chown 10001:10001 data`。
 - **单站点形态**：compose 用 `PP_DESKTOP=true`，走的是和 Windows 便携包一样的零配置引导（自动建表、建默认站点、首个账户成为平台管理员）。Docker 端口映射会隐藏客户端地址，所以默认开启 `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定；它只在回环端口上安全，完成安装后可设为 `0`。多站点 / SaaS 请设为 `false`，并自行准备数据库与管理员账户。
 - **日志与运维**：`docker compose logs -f`、`docker compose exec practacu-press migrate`、`docker compose exec practacu-press seed`，镜像里还带有 `backup`、`media-gc`、`searchindex`。
-- **生产部署**：同一份 `docker-compose.yml` 配合 `--env-file .env.prod` 提供 production 语义、持久 JWT 私钥与 Secure Cookie；`deploy/production/nginx.conf` 负责 TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [docs/deployment/production-profile.md](docs/deployment/production-profile.md)。
+- **生产部署**：同一份 `docker-compose.yml` 配合 `--env-file .env.prod` 提供 production 语义、持久 JWT 私钥与 Secure Cookie；`deploy/production/nginx.conf` 负责 TLS 终止、安全响应头与 `location /__pp/ { return 404; }`。**首次安装必须在回环完成后再切生产**，步骤、密钥生成、备份/升级见 [.github/readme/md/deployment/production-profile.md](.github/readme/md/deployment/production-profile.md)。
 - **单独构建镜像**：`docker build -f Dockerfile .`。
 
 > 默认 API 镜像与 compose 栈已在 Docker 中构建并启动验证：API healthy，`/api/healthz`、`/api/readyz`、RSS/Atom/sitemap/robots、首个管理员注册与登录、媒体上传（含内置安全检查）和整库备份均跑通；`docker compose config` 通过。宿主机 TLS 反代仍需在预发环境按部署文档验证证书与 HSTS。
@@ -326,7 +326,7 @@ npm run dev -- --port 5173
 打开 **http://127.0.0.1:5173/?mode=live** 走完八步安装引导；**引导里创建的第一个账户就是平台管理员**。
 （Vite 配置默认想监听 80，Linux 上非 root 绑不上会自动顺延，所以这里显式指定 5173。）
 
-> 单域名自托管、不用开发服务器时：先 `make embed-web` 把前端编进 API，再用 Nginx 之类的反向代理把 `/` 与 `/api` 都转到 API 端口（模板见 `deploy/production/nginx.conf` 与 [生产部署 profile](docs/deployment/production-profile.md)）。`npm start` 只托管静态文件、自己不代理 API，默认端口也是 8080，会和 API 撞车——那种部署里不要跑它。
+> 单域名自托管、不用开发服务器时：先 `make embed-web` 把前端编进 API，再用 Nginx 之类的反向代理把 `/` 与 `/api` 都转到 API 端口（模板见 `deploy/production/nginx.conf` 与 [生产部署 profile](.github/readme/md/deployment/production-profile.md)）。`npm start` 只托管静态文件、自己不代理 API，默认端口也是 8080，会和 API 撞车——那种部署里不要跑它。
 
 ### Windows 本地启动
 
@@ -480,7 +480,7 @@ internal/
   tests/                         CI / 部署 / 迁移测试
   plugins/                       插件宿主与示例
 web/                          React 前台、管理后台与安装引导
-docs/superpowers/                  设计稿、实施计划、评审报告、交付状态
+.github/readme/md/superpowers/     设计稿、实施计划、评审报告、交付状态
 scripts/                           dev / test / gen 脚本
 ```
 
@@ -571,16 +571,16 @@ go test ./internal/media/ -run TestS3 -v
 | sitemap / robots | Go API 已按 Host 在站点根路径动态输出 `/sitemap.xml` 与 `/robots.txt`，后台也可下载静态副本；不经 API 的纯静态托管仍需手动放到站点根目录 |
 | 未实现 | 前端 SDK 生成、OAuth 适配器、手机验证码、搜索分页游标 |
 
-更细的现状见 [当前实现与文档差异](docs/superpowers/reports/2026-11-07-documentation-reality-check.md)。[2026-10-20 交付状态报告](docs/superpowers/reports/2026-10-20-delivery-status.md) 保留为历史快照，其中“未实现”清单已不代表当前代码。
+更细的现状见 [当前实现与文档差异](.github/readme/md/superpowers/reports/2026-11-07-documentation-reality-check.md)。[2026-10-20 交付状态报告](.github/readme/md/superpowers/reports/2026-10-20-delivery-status.md) 保留为历史快照，其中“未实现”清单已不代表当前代码。
 
 ---
 
 ## 设计文档
 
-- [产品与技术设计](docs/superpowers/specs/2026-10-18-practacu-press-design.md)
-- [计划评审与可行性](docs/superpowers/reviews/2026-10-18-practacu-press-plan-review.md)
-- [详细实施计划](docs/superpowers/plans/2026-10-18-practacu-press-backend-detailed-plan.md)
-- [实施进度](docs/superpowers/plans/2026-10-18-practacu-press-progress.md)
+- [产品与技术设计](.github/readme/md/superpowers/specs/2026-10-18-practacu-press-design.md)
+- [计划评审与可行性](.github/readme/md/superpowers/reviews/2026-10-18-practacu-press-plan-review.md)
+- [详细实施计划](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-backend-detailed-plan.md)
+- [实施进度](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-progress.md)
 
 ---
 
@@ -604,4 +604,4 @@ SPDX-License-Identifier: AGPL-3.0-only
 ```
 
 > 版权行里的名字是占位口径（"contributors"）。如果你希望以个人名义持有版权，
-> 把 `Copyright (C) 2026 <你的名字>` 替换到上面这段、并在 [docs/introduction.md](docs/introduction.md) 的许可段落同步即可。
+> 把 `Copyright (C) 2026 <你的名字>` 替换到上面这段、并在 [.github/readme/md/introduction.md](.github/readme/md/introduction.md) 的许可段落同步即可。

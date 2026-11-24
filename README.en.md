@@ -4,7 +4,7 @@
 
 | Site frontend (default theme: Original · paper light) | Admin dashboard |
 | :---: | :---: |
-| ![Site frontend](github/readme/frontend.png) | ![Admin dashboard](github/readme/admin.png) |
+| ![Site frontend](.github/readme/frontend.png) | ![Admin dashboard](.github/readme/admin.png) |
 
 > **A self-hosted community CMS: small footprint, fast, quick to run, easy to make your own.**
 > A Go API with in-process security checks, and a React frontend plus admin — all aligned by one
@@ -25,13 +25,13 @@
 - **Writing**: toolbar editor plus Markdown, live preview, word count on the rendered text; insert mind maps, logic charts, statistical charts (bar / line / donut / pie) and fishbone diagrams, stored in the body as `pp-diagram` fenced blocks
 - **Community**: comments, likes, bookmarks, follows, DMs, notifications and reports, with a 5-state review flow
 - **Operations**: themes, page composition, SEO, access limits, domains and SSL, storage policies, analytics
-- **Security**: Argon2id, HTML allow-list sanitization and upload inspection run in the API process; failures fail closed by design. The local authorized security audit report is in [`docs/security/2026-11-14-security-audit.md`](docs/security/2026-11-14-security-audit.md)
+- **Security**: Argon2id, HTML allow-list sanitization and upload inspection run in the API process; failures fail closed by design. The local authorized security audit report is in [`.github/readme/md/security/2026-11-14-security-audit.md`](.github/readme/md/security/2026-11-14-security-audit.md)
 - **Multi-site**: single-site out of the box; isolate content, members, themes, review rules and permissions per site when you need to
 
 **Platform and license**: Windows / Linux, via source, the Windows portable package or Docker Compose; SQLite, MySQL and PostgreSQL are supported.
 **AGPL-3.0** — commercial use is fine, but modified versions and network services must stay open source with the attribution preserved.
 
-A longer introduction (architecture, stack, engineering trade-offs, current status and limitations) is in **[docs/introduction.md](docs/introduction.md#english)**.
+A longer introduction (architecture, stack, engineering trade-offs, current status and limitations) is in **[.github/readme/md/introduction.md](.github/readme/md/introduction.md#english)**.
 
 ---
 
@@ -126,7 +126,7 @@ Open **http://localhost:8080** and complete the seven-step wizard; **the first a
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
 - **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows package (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
 - **Operations**: `docker compose logs -f`, `docker compose exec practacu-press migrate`, `docker compose exec practacu-press seed`; the image also ships `backup`, `media-gc` and `searchindex`.
-- **Production deployment**: the same `docker-compose.yml` with `--env-file .env.prod` provides production semantics, a persistent JWT signing key and Secure cookies; `deploy/production/nginx.conf` handles TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [docs/deployment/production-profile.md](docs/deployment/production-profile.md).
+- **Production deployment**: the same `docker-compose.yml` with `--env-file .env.prod` provides production semantics, a persistent JWT signing key and Secure cookies; `deploy/production/nginx.conf` handles TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [.github/readme/md/deployment/production-profile.md](.github/readme/md/deployment/production-profile.md).
 - **Build one image**: `docker build -f Dockerfile .`.
 
 > The default API image (embedded frontend and in-process security checks) and the compose stack have been built and started for real: the API reports healthy, and `/api/healthz`, `/api/readyz`, RSS/Atom/sitemap/robots, first-admin registration and login, media upload and a whole-instance backup were exercised. `docker compose config` passes. The host TLS proxy still needs a staging run to validate certificates and HSTS.
@@ -286,7 +286,7 @@ cannot bind, so 5173 is passed explicitly.)
 
 > For single-domain self-hosting without the dev server: run `make embed-web` to embed the SPA in the
 > API, then let Nginx (or similar) reverse-proxy `/` and `/api` to the API port (see
-> `deploy/production/nginx.conf` and the [production deployment profile](docs/deployment/production-profile.md)).
+> `deploy/production/nginx.conf` and the [production deployment profile](.github/readme/md/deployment/production-profile.md)).
 > `npm start` only serves static files and does not proxy the API, and its default port (8080) collides with
 > the API — do not run it in that setup.
 
@@ -438,7 +438,7 @@ internal/
   tests/                         CI / deploy / migration checks
   plugins/                       plugin host and examples
 web/                          React frontend, admin console and setup wizard
-docs/superpowers/                  design specs, implementation plans, reviews, delivery status
+.github/readme/md/superpowers/     design specs, implementation plans, reviews, delivery status
 scripts/                           dev / test / gen scripts
 ```
 
@@ -518,16 +518,16 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | sitemap / robots | The Go API serves `/sitemap.xml` and `/robots.txt` at the site root per Host, and the admin can download static copies; static-only hosting must still place them in the site root manually |
 | Not implemented | Frontend SDK generation, OAuth adapters, SMS codes, search pagination cursors |
 
-For the detailed picture see [Current implementation vs. documentation](docs/superpowers/reports/2026-11-07-documentation-reality-check.md). The [2026-10-20 delivery status report](docs/superpowers/reports/2026-10-20-delivery-status.md) is a historical snapshot; its "not implemented" list no longer describes the current code.
+For the detailed picture see [Current implementation vs. documentation](.github/readme/md/superpowers/reports/2026-11-07-documentation-reality-check.md). The [2026-10-20 delivery status report](.github/readme/md/superpowers/reports/2026-10-20-delivery-status.md) is a historical snapshot; its "not implemented" list no longer describes the current code.
 
 ---
 
 ## Design documents
 
-- [Product and technical design](docs/superpowers/specs/2026-10-18-practacu-press-design.md) (Chinese)
-- [Plan review and feasibility](docs/superpowers/reviews/2026-10-18-practacu-press-plan-review.md) (Chinese)
-- [Detailed implementation plan](docs/superpowers/plans/2026-10-18-practacu-press-backend-detailed-plan.md) (Chinese)
-- [Implementation progress](docs/superpowers/plans/2026-10-18-practacu-press-progress.md) (Chinese)
+- [Product and technical design](.github/readme/md/superpowers/specs/2026-10-18-practacu-press-design.md) (Chinese)
+- [Plan review and feasibility](.github/readme/md/superpowers/reviews/2026-10-18-practacu-press-plan-review.md) (Chinese)
+- [Detailed implementation plan](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-backend-detailed-plan.md) (Chinese)
+- [Implementation progress](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-progress.md) (Chinese)
 
 ---
 
