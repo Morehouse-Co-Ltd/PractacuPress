@@ -40,9 +40,47 @@ html.pp-theme-tween .read-tool svg {
   animation: pp-route-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+/* PJAX progress line: visible only while a client-side page swap is committing. */
+.pp-pjax-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 2147483000;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--accent, var(--brand, #b4532a));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent, var(--brand, #b4532a)) 65%, transparent);
+}
+
+.pp-pjax-progress[data-active='true'] {
+  opacity: 1;
+  animation: pp-pjax-progress 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes pp-pjax-progress {
+  0% {
+    transform: scaleX(0);
+  }
+  35% {
+    transform: scaleX(0.55);
+  }
+  70% {
+    transform: scaleX(0.82);
+  }
+  100% {
+    transform: scaleX(0.94);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .route-transition {
     animation: none;
+  }
+  .pp-pjax-progress[data-active='true'] {
+    animation: none;
+    transform: scaleX(1);
   }
 }
 

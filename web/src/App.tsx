@@ -38,6 +38,7 @@ import { SiteSettingsLayer } from './components/SiteSettingsLayer';
 import { DomainGuard } from './components/DomainGuard';
 import { ProtectionLayer } from './components/ProtectionLayer';
 import { LoadingLayer } from './components/LoadingLayer';
+import { PjaxBridge } from './components/PjaxBridge';
 import { AnalyticsTracker } from './components/AnalyticsTracker';
 import { RequireAuth } from './components/Guards';
 import { HomePage } from './pages/site/Home';
@@ -553,6 +554,7 @@ export default function App() {
             <PreviewRouteLock />
             {/* 主题真实预览：站内跳转后把预览令牌写回地址，刷新也不丢主题。 */}
             <ThemePreviewParamKeeper />
+            <PjaxBridge />
             <DomainGuard>
             <ProtectionLayer>
             <LoadingLayer>
