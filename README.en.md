@@ -122,11 +122,11 @@ curl -fsS http://127.0.0.1:8080/api/healthz
 Open **http://localhost:8080** and complete the eight-step wizard; **the first account it creates is the platform administrator**.
 
 - **What runs**: `practacu-press` (one Go binary with the embedded SPA and security checks, serving `/api`, static assets and the SPA fallback). Only `practacu-press` is published to the host; there is no separate web/Nginx or security container.
-- **Loopback by default**: the mapping is `127.0.0.1:8080:8080`, so an unfinished install cannot be claimed by the public internet. After setup, use `.env.prod` plus a host TLS proxy; do not expose an unfinished instance on `0.0.0.0:8080`.
+- **Loopback by default**: the mapping is `127.0.0.1:8080:8080`, so an unfinished install cannot be claimed by the public internet. After setup, create `.env.prod` following the [production profile](.github/readme/md/deployment/production-profile.md) and run with a host TLS proxy; do not expose an unfinished instance on `0.0.0.0:8080`.
 - **Data**: the named volume `practacu-data` holds `practacu.db` and `media/`. `docker compose down` keeps it; `down -v` deletes it. To use a host directory instead, swap the volume for `./data:/data` and run `mkdir -p data && sudo chown 10001:10001 data` first.
 - **Single-site shape**: compose sets `PP_DESKTOP=true`, the same zero-configuration bootstrap as the Windows package (create tables, create the default site, promote the first account). Docker port publishing hides the client address, so the default profile also sets `PP_FIRST_ADMIN_TRUST_PROXY=1` to relax the first-admin check; that is only safe on a loopback-bound port and can be set to `0` after installation. Set `PP_DESKTOP=false` for multi-site / SaaS and prepare the database and an administrator yourself.
 - **Operations**: `docker compose logs -f`, `docker compose exec practacu-press migrate`, `docker compose exec practacu-press seed`; `backup`, `media-gc` and `searchindex` are subcommands of the same binary, and the image carries no second executable.
-- **Production deployment**: the same `docker-compose.yml` with `--env-file .env.prod` provides production semantics, a persistent JWT signing key and Secure cookies; `deploy/production/nginx.conf` handles TLS termination, security response headers and `location /__pp/ { return 404; }`. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [.github/readme/md/deployment/production-profile.md](.github/readme/md/deployment/production-profile.md).
+- **Production deployment**: the same `docker-compose.yml` with `--env-file .env.prod` provides production semantics, a persistent JWT signing key and Secure cookies; TLS termination and `/__pp/` rejection belong to the host proxy, while the API already sends CSP, XFO, Referrer-Policy and the other security headers, so the edge only adds HSTS and passes them through. **Finish the first install on loopback before switching to production**; steps, key generation, backup and upgrade live in [.github/readme/md/deployment/production-profile.md](.github/readme/md/deployment/production-profile.md).
 - **Build one image**: `docker build -f Dockerfile .`.
 
 > The default API image (embedded frontend and in-process security checks) and the compose stack have been built and started for real: the API reports healthy, and `/api/healthz`, `/api/readyz`, RSS/Atom/sitemap/robots, first-admin registration and login, media upload and a whole-instance backup were exercised. `docker compose config` passes. The host TLS proxy still needs a staging run to validate certificates and HSTS.
@@ -285,8 +285,8 @@ creates is the platform administrator**. (Vite wants port 80 by default, which a
 cannot bind, so 5173 is passed explicitly.)
 
 > For single-domain self-hosting without the dev server: run `make embed-web` to embed the SPA in the
-> API, then let Nginx (or similar) reverse-proxy `/` and `/api` to the API port (see
-> `deploy/production/nginx.conf` and the [production deployment profile](.github/readme/md/deployment/production-profile.md)).
+> API, then let Nginx (or similar) reverse-proxy `/` and `/api` to the API port, allowing WebSocket
+> upgrades for `/api/v1/ws` (see the [production deployment profile](.github/readme/md/deployment/production-profile.md)).
 > `npm start` only serves static files and does not proxy the API, and its default port (8080) collides with
 > the API — do not run it in that setup.
 

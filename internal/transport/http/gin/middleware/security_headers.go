@@ -7,8 +7,8 @@ import "github.com/gin-gonic/gin"
 // The API itself only writes JSON, but the same process serves the SPA when the
 // frontend is embedded. The captcha and page-builder preview capabilities need
 // the slightly wider script/frame sources; every other directive stays
-// same-origin. Keep this string byte-identical to deploy/production/nginx.conf and
-// deploy/linux/nginx/locations.conf.in; the deployment header test compares the copies.
+// same-origin. Keep this string byte-identical to
+// deploy/linux/nginx/locations.conf.in; the deployment header test compares both copies.
 const ContentSecurityPolicy = "default-src 'self'; img-src 'self' data: https:; " +
 	"font-src 'self' data:; style-src 'self' 'unsafe-inline' " +
 	"https://challenges.cloudflare.com https://*.hcaptcha.com https://www.gstatic.com; " +
