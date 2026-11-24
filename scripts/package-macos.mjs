@@ -113,20 +113,14 @@ function main() {
   fs.mkdirSync(binDir, { recursive: true });
   syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
   const go = goCommand();
-  const targets = [
-    { pkg: './cmd/server', name: 'practacu-press' },
-    { pkg: './cmd/migrate', name: 'practacu-migrate' },
-    { pkg: './cmd/seed', name: 'practacu-seed' },
-    { pkg: './cmd/backup', name: 'practacu-backup' },
-    { pkg: './cmd/media-gc', name: 'practacu-media-gc' },
-    { pkg: './cmd/searchindex', name: 'practacu-searchindex' },
-  ];
-  for (const target of targets) {
-    const out = path.join(binDir, target.name);
-    run(go, ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', out, target.pkg], {
-      env: { GOOS: 'darwin', GOARCH: ARCH, CGO_ENABLED: '0' },
-    });
-  }
+  // One executable: the SPA is embedded and the maintenance commands are
+  // subcommands, so migrate / seed / backup / media-gc / searchindex never
+  // ship as separate files.
+  run(
+    go,
+    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', path.join(binDir, 'practacu-press'), './cmd/server'],
+    { env: { GOOS: 'darwin', GOARCH: ARCH, CGO_ENABLED: '0' } },
+  );
   fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
 

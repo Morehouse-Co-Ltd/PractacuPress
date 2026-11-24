@@ -158,11 +158,12 @@ required CI: it needs Chrome, while `ci.yml` stays fast. It uploads `.tmp/e2e/ar
 
 | Command | What it runs |
 | --- | --- |
-| `bash scripts/ci/verify.sh all` | Go build/vet/test, web typecheck/build/vitest, SQLite migration round trip + `cmd/migrate` idempotency, workflow/Compose validation |
+| `bash scripts/ci/verify.sh all` | Go build/vet/test, web typecheck/build/vitest, SQLite migration round trip + `practacu-press migrate` idempotency, workflow/Compose validation |
 | `powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 -Task all` | the same on Windows |
 | `make verify` | the same on Linux/macOS through the Makefile |
 | `go test ./internal/tests/...` | only the checks in this directory |
 
 MySQL/PostgreSQL round trips are included automatically when
 `PP_TEST_MYSQL_DSN` / `PP_TEST_POSTGRES_DSN` are exported.
+
 

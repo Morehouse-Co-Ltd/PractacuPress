@@ -12,8 +12,8 @@
 #   PP_TEST_MYSQL_DSN=...       disposable MySQL for the up/down round trip
 #   PP_TEST_POSTGRES_DSN=...    disposable PostgreSQL for the up/down round trip
 #   PP_MIGRATE_SQLITE_DSN=...   override the temporary SQLite file
-#   PP_MIGRATE_MYSQL_DSN=...    disposable MySQL for `cmd/migrate` idempotency
-#   PP_MIGRATE_POSTGRES_DSN=... disposable PostgreSQL for `cmd/migrate` idempotency
+#   PP_MIGRATE_MYSQL_DSN=...    disposable MySQL for `practacu-press migrate` idempotency
+#   PP_MIGRATE_POSTGRES_DSN=... disposable PostgreSQL for `practacu-press migrate` idempotency
 
 param(
     [ValidateSet('go', 'web', 'migrations', 'config', 'all')]
@@ -118,10 +118,10 @@ function Invoke-MigrateTwice {
         [string]$Dialect,
         [string]$Dsn
     )
-    Write-Step "cmd/migrate $Dialect (first run)"
-    Invoke-Go @('run', './cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
-    Write-Step "cmd/migrate $Dialect (second run, must be idempotent)"
-    Invoke-Go @('run', './cmd/migrate', '-driver', $Dialect, '-dsn', $Dsn)
+    Write-Step "practacu-press migrate $Dialect (first run)"
+    Invoke-Go @('run', './cmd/server', 'migrate', '-driver', $Dialect, '-dsn', $Dsn)
+    Write-Step "practacu-press migrate $Dialect (second run, must be idempotent)"
+    Invoke-Go @('run', './cmd/server', 'migrate', '-driver', $Dialect, '-dsn', $Dsn)
 }
 
 function Invoke-MigrationsTask {
@@ -191,3 +191,4 @@ if ($Task -in @('config', 'all')) { Invoke-ConfigTask }
 
 Write-Host ""
 Write-Host "verify: $Task passed"
+

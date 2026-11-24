@@ -13,8 +13,8 @@
 #   PP_TEST_MYSQL_DSN=...       disposable MySQL for the up/down round trip
 #   PP_TEST_POSTGRES_DSN=...    disposable PostgreSQL for the up/down round trip
 #   PP_MIGRATE_SQLITE_DSN=...   override the temporary SQLite file
-#   PP_MIGRATE_MYSQL_DSN=...    disposable MySQL for `cmd/migrate` idempotency
-#   PP_MIGRATE_POSTGRES_DSN=... disposable PostgreSQL for `cmd/migrate` idempotency
+#   PP_MIGRATE_MYSQL_DSN=...    disposable MySQL for `practacu-press migrate` idempotency
+#   PP_MIGRATE_POSTGRES_DSN=... disposable PostgreSQL for `practacu-press migrate` idempotency
 set -euo pipefail
 
 task="${1:-all}"
@@ -72,10 +72,10 @@ run_web() {
 
 run_migrate_twice() {
   local dialect="$1" dsn="$2"
-  log "cmd/migrate $dialect (first run)"
-  "$go_bin" run ./cmd/migrate -driver "$dialect" -dsn "$dsn"
-  log "cmd/migrate $dialect (second run, must be idempotent)"
-  "$go_bin" run ./cmd/migrate -driver "$dialect" -dsn "$dsn"
+  log "practacu-press migrate $dialect (first run)"
+  "$go_bin" run ./cmd/server migrate -driver "$dialect" -dsn "$dsn"
+  log "practacu-press migrate $dialect (second run, must be idempotent)"
+  "$go_bin" run ./cmd/server migrate -driver "$dialect" -dsn "$dsn"
 }
 
 run_migrations() {
@@ -142,3 +142,4 @@ case "$task" in
 esac
 
 log "verify: $task passed"
+

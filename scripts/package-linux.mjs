@@ -7,10 +7,10 @@
  *   node scripts/package-linux.mjs --arch arm64 --skip-web --version v1.0.1-beta1
  *
  * What it does
- *   1. builds the frontend (unless --skip-web) and the Go binaries with GOOS=linux;
- *   3. assembles PractacuPress-Linux-<arch>/ from deploy/linux templates + artifacts;
- *   4. runs static self-checks (ELF arch, frontend presence, LF-only scripts);
- *   5. writes a deterministic-ish tar.gz (ustar + gzip) and its sha256.
+ *   1. builds the frontend (unless --skip-web) and the single Go binary with GOOS=linux;
+ *   2. assembles PractacuPress-Linux-<arch>/ from deploy/linux templates + artifacts;
+ *   3. runs static self-checks (ELF arch, single binary, LF-only scripts);
+ *   4. writes a deterministic-ish tar.gz (ustar + gzip) and its sha256.
  *
  * The .deb/.rpm wrappers are produced separately from the assembled tree with
  * deploy/package/nfpm.yaml (see .github/workflows/release.yml).
@@ -192,23 +192,16 @@ function buildWeb() {
 // ---- 2. Go ----------------------------------------------------------------
 function buildGo(binDir) {
   const go = goCommand();
-  log(`构建 Go 二进制（linux/${ARCH}，纯静态，内嵌前端）`);
+  log(`构建 Go 二进制（linux/${ARCH}，纯静态，内嵌前端与运维子命令）`);
   syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
-  const targets = [
-    { pkg: './cmd/server', name: 'practacu-press' },
-    { pkg: './cmd/migrate', name: 'practacu-migrate' },
-    { pkg: './cmd/seed', name: 'practacu-seed' },
-    { pkg: './cmd/backup', name: 'practacu-backup' },
-    { pkg: './cmd/media-gc', name: 'practacu-media-gc' },
-    { pkg: './cmd/searchindex', name: 'practacu-searchindex' },
-  ];
-  for (const target of targets) {
-    const out = path.join(binDir, target.name);
-    run(go, ['build', '-trimpath', '-ldflags', '-s -w', '-o', out, target.pkg], {
-      env: { GOOS: 'linux', GOARCH: ARCH, CGO_ENABLED: '0', GOFLAGS: '' },
-    });
-    assertElf(out, target.name);
-  }
+  // The release ships one executable. migrate / seed / backup / media-gc /
+  // searchindex are subcommands of this file, so the package never carries a
+  // second binary that could drift from the API it maintains.
+  const out = path.join(binDir, 'practacu-press');
+  run(go, ['build', '-trimpath', '-ldflags', '-s -w', '-o', out, './cmd/server'], {
+    env: { GOOS: 'linux', GOARCH: ARCH, CGO_ENABLED: '0', GOFLAGS: '' },
+  });
+  assertElf(out, 'practacu-press');
 }
 
 // ---- 4. 组装 --------------------------------------------------------------
@@ -262,17 +255,7 @@ function assemble() {
   // tree into internal/web/dist, and the package no longer ships web/.
   stampWebVersion(path.join(ROOT, 'web', 'dist'));
   buildGo(builtBin);
-  const binaries = [
-    'practacu-press',
-    'practacu-migrate',
-    'practacu-seed',
-    'practacu-backup',
-    'practacu-media-gc',
-    'practacu-searchindex',
-  ];
-  for (const name of binaries) {
-    copyFile(path.join(builtBin, name), path.join(binDir, name), 0o755);
-  }
+  copyFile(path.join(builtBin, 'practacu-press'), path.join(binDir, 'practacu-press'), 0o755);
 
   fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${packageVersion()}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
@@ -293,11 +276,6 @@ function selfCheck() {
     'VERSION',
     'ARCH',
     'bin/practacu-press',
-    'bin/practacu-migrate',
-    'bin/practacu-seed',
-    'bin/practacu-backup',
-    'bin/practacu-media-gc',
-    'bin/practacu-searchindex',
     'deploy/nginx/site.conf.in',
     'deploy/nginx/tls.conf.in',
     'deploy/nginx/locations.conf.in',
@@ -320,7 +298,6 @@ function selfCheck() {
   ok('安装脚本为 LF bash 脚本');
 
   assertElf(path.join(PACKAGE, 'bin', 'practacu-press'), 'bin/practacu-press');
-  assertElf(path.join(PACKAGE, 'bin', 'practacu-seed'), 'bin/practacu-seed');
 }
 
 // ---- 5. tar.gz ------------------------------------------------------------

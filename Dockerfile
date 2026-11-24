@@ -3,9 +3,9 @@
 #
 # The runtime is Alpine and the binary is fully static: SQLite uses
 # modernc.org/sqlite (pure Go), so CGO can stay disabled and no glibc is needed.
-# The image carries the operator commands next to the server so
-# `docker compose exec practacu-press migrate` (and backup / media-gc / searchindex) work
-# without a second image.
+# One executable carries the server and the operator commands, so
+# `docker compose exec practacu-press migrate` (and backup / media-gc /
+# searchindex / seed) run the same file without a second image or a second binary.
 #
 # The frontend is part of the application image: Go's //go:embed cannot read outside its
 # package, so the build stage first produces web/dist and copies it into
@@ -54,12 +54,10 @@ COPY --from=web /web/dist ./internal/web/dist
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/practacu-press ./cmd/server \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/migrate ./cmd/migrate \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/seed ./cmd/seed \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/backup ./cmd/backup \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/media-gc ./cmd/media-gc \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/searchindex ./cmd/searchindex
+    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/practacu-press ./cmd/server
+
+# The final image is one binary: the SPA is embedded, and migrate / seed / backup /
+# media-gc / searchindex are subcommands of that same file.
 
 # Stay on the stable Alpine branch and pull only the patched musl from edge:
 # Alpine 3.24 still ships musl 1.2.6-r3 (CVE-2026-107891), while 1.2.6-r6 is
@@ -102,7 +100,7 @@ STOPSIGNAL SIGTERM
 
 # wget is BusyBox's, already present in the base image.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=25s --retries=5 \
-    CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/api/healthz || exit 1
 
 # Subcommands are available for `docker compose exec practacu-press <command>`.
 CMD ["practacu-press"]

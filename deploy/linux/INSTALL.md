@@ -25,12 +25,8 @@ PractacuPress-Linux-<x64|arm64>/
 ├── VERSION
 ├── ARCH                       本包的架构（amd64 / arm64）
 ├── bin/
-│   ├── practacu-press           Go API（内嵌前端静态文件 + SQLite 驱动）
-│   ├── practacu-migrate       只应用数据库结构（升级/排障用）
-│   ├── practacu-seed          建表 + 创建默认站点（幂等）
-│   ├── practacu-backup        整库备份 / 恢复 / 校验
-│   ├── practacu-media-gc      清理无引用的媒体对象
-│   ├── practacu-searchindex   重建全文搜索索引
+│   └── practacu-press          唯一二进制：API + 内嵌前端 + SQLite 驱动
+│                               （migrate / seed / backup / media-gc / searchindex 是它的子命令）
 └── deploy/
     ├── systemd/*.service.in   systemd 单元模板（安装器渲染后写入 /etc/systemd/system）
     └── nginx/*.conf.in        Nginx 站点模板（安装器渲染后写入 /etc/nginx）

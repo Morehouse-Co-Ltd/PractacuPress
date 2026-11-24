@@ -208,8 +208,7 @@ need_arch() {
 }
 
 check_package() {
-    [ -x "$SELF_DIR/bin/practacu-press" ]  || die "安装包不完整：缺少 bin/practacu-press"
-    [ -x "$SELF_DIR/bin/practacu-seed" ] || die "安装包不完整：缺少 bin/practacu-seed"
+    [ -x "$SELF_DIR/bin/practacu-press" ] || die "安装包不完整：缺少 bin/practacu-press"
     [ -d "$TEMPLATE_DIR/nginx" ]         || die "安装包不完整：缺少 deploy/nginx 模板"
     [ -d "$TEMPLATE_DIR/systemd" ]       || die "安装包不完整：缺少 deploy/systemd 模板"
 }
@@ -418,7 +417,7 @@ run_as_service() {
 
 seed_database() {
     log "建表并创建默认站点（幂等，可重复执行）"
-    run_as_service "$INSTALL_DIR/bin/practacu-seed" \
+    run_as_service "$INSTALL_DIR/bin/practacu-press" seed \
         -driver sqlite -dsn "file:$DATA_DIR/data/practacu.db" >/dev/null
     ok "数据库与默认站点就绪"
 }

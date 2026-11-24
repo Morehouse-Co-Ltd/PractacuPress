@@ -54,6 +54,7 @@ import (
 	"github.com/practacu/practacu-press/internal/newsletter"
 	"github.com/practacu/practacu-press/internal/notifications"
 	"github.com/practacu/practacu-press/internal/observability"
+	"github.com/practacu/practacu-press/internal/operator"
 	"github.com/practacu/practacu-press/internal/outbox"
 	"github.com/practacu/practacu-press/internal/platform/config"
 	"github.com/practacu/practacu-press/internal/platform/emailgateway"
@@ -140,6 +141,27 @@ func findModuleRoot() string {
 }
 
 func main() {
+	// One binary serves the API and the maintenance commands. The subcommand is
+	// dispatched before configuration is loaded so `practacu-press migrate` does
+	// not need a listening address or a frontend.
+	if len(os.Args) > 1 {
+		command := os.Args[1]
+		if command == "help" || command == "-h" || command == "--help" || command == "commands" {
+			operator.Usage(os.Stdout)
+			return
+		}
+		if operator.Known(command) {
+			if err := operator.Run(command, os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "%s failed: %v\n", command, err)
+				os.Exit(1)
+			}
+			return
+		}
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", command)
+		operator.Usage(os.Stderr)
+		os.Exit(2)
+	}
+
 	if err := run(); err != nil {
 		logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 		logger.Error("process exited with error", "error", err)
