@@ -14,10 +14,10 @@
 
 | | |
 | --- | --- |
-| **占地少** | 单文件 API **内嵌整套前端**；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。默认容器部署只有两个镜像：API（内嵌前端与安全检查）。 |
+| **占地少** | 单文件 API **内嵌整套前端**；前端构建产物 1.3 MB。SQLite 用纯 Go 驱动，数据库就是一个文件——不用另装、另调、另备份一个数据库服务。默认容器部署只有一个镜像：API（内嵌前端与安全检查）。 |
 | **性能高** | 请求只经过 Gin 一层，Ent 生成的代码直连 `database/sql`；连接池与 SQLite 的 WAL / busy_timeout 由服务端自己配好。前端是纯静态单页应用，**运行时不依赖 Node**，没有服务端渲染往返；网关负责 gzip 与「带哈希资源长期缓存」，首屏请求合并、媒体懒加载都在后台可配。 |
 | **使用便捷** | 八步安装引导自带健康检查，装完即用：`docker compose up -d` 或 `启动.bat` 一条命令起全栈（API 已内嵌前端与安全检查）。备份就是把 `data/` 目录整体复制走。 |
-| **自定义好** | 2 套大主题（原版：纸白浅色单栏 / 夜航：冷石墨深色双栏）+ 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**，每个组件可单独设置圆角、阴影、裁剪、背景、内边距与描边，内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图，随文章发布并按主题重绘；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（当前契约 157 条路径 / 188 个操作，含健康检查与安装状态；站点根路径的 sitemap / robots 与内置 `/api/v1/docs` 不在契约内）后面，想换前端按契约写就行。 |
+| **自定义好** | 2 套大主题（原版：纸白浅色单栏 / 夜航：冷石墨深色双栏）+ 7 套配色预设，主题可导入 / 导出 JSON；页面编排支持桌面 / 平板 / 手机**三端独立布局**，每个组件可单独设置圆角、阴影、裁剪、背景、内边距与描边，内置按钮组件；写作时可插入思维导图、逻辑图、统计图与鱼骨图，随文章发布并按主题重绘；导航、页脚、SEO、访问限制、域名与证书、存储策略都在后台逐项配置；所有能力都摆在 OpenAPI 3.1（当前契约 155 条路径 / 186 个操作，含健康检查与安装状态；站点根路径的 sitemap / robots 与内置 `/api/v1/docs` 不在契约内）后面，想换前端按契约写就行。 |
 
 **功能面**
 
@@ -297,7 +297,7 @@ mkdir -p data/media
 ```bash
 # 只做一次：建表 + 默认站点
 source ~/.practacu-env.sh
-go run ./cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
+go run ./cmd/server seed -driver sqlite -dsn "$DATABASE_DSN"
 
 # 终端：Go API（监听 127.0.0.1:8080）
 source ~/.practacu-env.sh
@@ -374,8 +374,8 @@ $env:STORAGE_DIR='./data/media'
 # 本地单站点安装：首个注册账户成为平台管理员；服务器部署不要打开这一项。
 $env:PP_DESKTOP='true'
 
-go run ./cmd/seed  -driver sqlite -dsn $env:DATABASE_DSN
-go run ./cmd/migrate                      # 只建表，不建站点
+go run ./cmd/server seed  -driver sqlite -dsn $env:DATABASE_DSN
+go run ./cmd/server migrate                      # 只建表，不建站点
 go run ./cmd/server
 ```
 

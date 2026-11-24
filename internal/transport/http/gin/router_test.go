@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -162,4 +163,50 @@ func TestRouterSetupStatusFailureIsProblemJSON(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	require.Equal(t, "application/problem+json", w.Header().Get("Content-Type"))
+}
+
+// TestEveryRouteOutsideAPIisSiteContent locks the namespace: every JSON endpoint
+// belongs to /api, and only crawler files, feeds and the plugin runtime bundle may
+// be served from the document root.
+func TestEveryRouteOutsideAPIisSiteContent(t *testing.T) {
+	r := testRouter(t, Dependencies{})
+
+	allowedExact := map[string]bool{
+		"/sitemap.xml": true,
+		"/robots.txt":  true,
+		"/rss.xml":     true,
+		"/atom.xml":    true,
+		"/feed.xml":    true,
+	}
+	allowedPrefixes := []string{"/category/", "/tag/", "/plugins/"}
+
+	for _, route := range r.Routes() {
+		if strings.HasPrefix(route.Path, "/api/") || allowedExact[route.Path] {
+			continue
+		}
+		allowed := false
+		for _, prefix := range allowedPrefixes {
+			if strings.HasPrefix(route.Path, prefix) {
+				allowed = true
+				break
+			}
+		}
+		if allowed {
+			continue
+		}
+		t.Errorf("%s %s is served outside /api; add it to the API group or to the site-content allowlist", route.Method, route.Path)
+	}
+}
+
+func TestLegacyHealthAliasesAreGone(t *testing.T) {
+	r := testRouter(t, Dependencies{})
+
+	for _, path := range []string{"/healthz", "/readyz"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+
+		// The paths stay reserved so a stale probe never receives index.html.
+		require.Equal(t, http.StatusNotFound, w.Code, path)
+		require.Equal(t, "application/problem+json", w.Header().Get("Content-Type"), path)
+	}
 }

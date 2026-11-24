@@ -13,7 +13,7 @@ import (
 //
 // The rows here are inserted by hand because the migration only creates the
 // schema; the API fills the index after a content row commits, and
-// "go run ./cmd/searchindex -rebuild" is the backfill for older rows.
+// "go run ./cmd/server searchindex -rebuild" is the backfill for older rows.
 func TestContentSearchMigrationCreatesQueryableIndex(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

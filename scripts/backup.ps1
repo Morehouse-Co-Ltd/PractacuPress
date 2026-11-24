@@ -4,9 +4,10 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\backup.ps1 verify -Archive .\data\backups\backup-....zip
 #   powershell -ExecutionPolicy Bypass -File scripts\backup.ps1 restore -Archive .\data\backups\backup-....zip -Confirm
 #
-# The command itself lives in cmd/backup so the packaged server and the
-# source checkout use exactly the same code. Database defaults come from the same
-# DATABASE_DRIVER / DATABASE_DSN / STORAGE_DIR / BACKUP_DIR variables the API uses.
+# The command itself lives behind the server's backup subcommand, so the packaged
+# server and the source checkout use exactly the same code. Database defaults come
+# from the same DATABASE_DRIVER / DATABASE_DSN / STORAGE_DIR / BACKUP_DIR variables
+# the API uses.
 
 param(
     [Parameter(Position = 0)]
@@ -36,7 +37,7 @@ if ($Command -eq 'help') {
 $go = 'C:\Program Files\Go\bin\go.exe'
 if (-not (Test-Path $go)) { $go = 'go' }
 
-$arguments = @('run', './cmd/backup', $Command, '--driver', $Driver)
+$arguments = @('run', './cmd/server backup', $Command, '--driver', $Driver)
 # PowerShell drops empty array elements when splatting, so an empty --dsn would
 # swallow the next flag as its value. Only pass values that exist.
 if ($Dsn) { $arguments += @('--dsn', $Dsn) }

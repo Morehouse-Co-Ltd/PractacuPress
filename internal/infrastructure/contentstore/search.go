@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/practacu/practacu-press/internal/content"
 	entgen "github.com/practacu/practacu-press/internal/ent"
 	"github.com/practacu/practacu-press/internal/ent/contentitem"
-	"github.com/practacu/practacu-press/internal/content"
 	"github.com/practacu/practacu-press/internal/platform/page"
 )
 
@@ -66,7 +66,7 @@ func (s *Store) searchDialect() searchDialect {
 // they are missing, then memoizes the answer.
 //
 // Production applies the reviewed migration; this lazy fallback exists because
-// `cmd/migrate` and the integration tests create the Ent schema only, and a
+// `cmd/server migrate` and the integration tests create the Ent schema only, and a
 // developer database must still get working search. If the handle or dialect
 // cannot provide full text search the caller uses the LIKE path instead.
 func (s *Store) ensureSearch(ctx context.Context) bool {

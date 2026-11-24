@@ -72,7 +72,7 @@ try {
     }
 
     Write-Host '> applying schema and seeding the default site'
-    & $go run ./cmd/seed -driver sqlite -dsn $dsn | Out-Null
+    & $go run ./cmd/server seed -driver sqlite -dsn $dsn | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "seed failed with exit code $LASTEXITCODE" }
 
     Write-Host '> building the API'

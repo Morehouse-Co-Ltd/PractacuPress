@@ -18,7 +18,7 @@
 | **Small footprint** | The single API binary **embeds the entire frontend**; the frontend build is 1.3 MB. SQLite runs on a pure-Go driver, so the database is a single file — nothing extra to install, tune or back up. The default container deployment is one image: the API with the frontend and security checks embedded. |
 | **Fast** | Requests pass through exactly one layer (Gin); Ent-generated code talks straight to `database/sql`; the pool and SQLite's WAL / busy_timeout are configured by the server itself. The frontend is a static single-page app with **no Node at runtime** and no server-render round trip; the gateway handles gzip and long-lived caching for fingerprinted assets, while first-screen request coalescing and media lazy-loading are configurable in the admin. |
 | **Quick to run** | An eight-step setup wizard with live health checks: `docker compose up -d` or `启动.bat` starts the whole stack (API with embedded frontend and in-process security) in one command. Backup means copying the `data/` directory. |
-| **Easy to make your own** | 2 built-in themes (Paper: light single-column; Night Flight: cold-graphite dark two-column) + 7 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 157 paths / 188 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
+| **Easy to make your own** | 2 built-in themes (Paper: light single-column; Night Flight: cold-graphite dark two-column) + 7 colour presets with JSON import/export; page composition with **independent desktop / tablet / phone layouts**, and every block can set its own corner radius, shadow, crop, background, padding and border, including a built-in button block; while writing you can insert mind maps, logic charts, statistical charts and fishbone diagrams that ship with the post and are redrawn with the theme; navigation, footer, SEO, access limits, domains and TLS, storage policies — all configurable item by item; everything sits behind an OpenAPI 3.1 contract (currently 155 paths / 186 operations, including health checks and install status; site-root sitemap / robots and the built-in `/api/v1/docs` page are outside the contract), so you can build your own frontend against it. |
 
 **What it does**
 
@@ -252,7 +252,7 @@ source the file again in each one:
 ```bash
 # once: create tables + default site
 source ~/.practacu-env.sh
-go run ./cmd/seed -driver sqlite -dsn "$DATABASE_DSN"
+go run ./cmd/server seed -driver sqlite -dsn "$DATABASE_DSN"
 
 # terminal B: Go API (listens on 127.0.0.1:8080)
 source ~/.practacu-env.sh
@@ -336,8 +336,8 @@ $env:STORAGE_DIR='./data/media'
 # Do not enable this for server deployments.
 $env:PP_DESKTOP='true'
 
-go run ./cmd/seed  -driver sqlite -dsn $env:DATABASE_DSN
-go run ./cmd/migrate                      # tables only, no site
+go run ./cmd/server seed  -driver sqlite -dsn $env:DATABASE_DSN
+go run ./cmd/server migrate                      # tables only, no site
 go run ./cmd/server
 ```
 

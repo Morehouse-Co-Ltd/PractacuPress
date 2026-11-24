@@ -472,7 +472,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 ## 契约对齐与仍有边界
 
-前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 157 条路径 / 188 个操作）实现。
+前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 155 条路径 / 186 个操作）实现。
 下面按“已实现（不再是缺口）”“仅演示模式 / 前端本地策略”“已知限制”三档记录；判断以代码与契约为准，
 不把演示效果写成服务端能力。
 

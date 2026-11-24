@@ -23,7 +23,7 @@ generate:
 	$(GO) generate ./internal/ent/...
 
 migrate:
-	$(GO) run ./cmd/migrate
+	$(GO) run ./cmd/server migrate
 
 tidy:
 	$(GO) mod tidy
@@ -80,8 +80,8 @@ verify-web: web-install web-typecheck web-build web-test
 
 verify-migrations: migrations-test
 	@mkdir -p .tmp/verify
-	$(GO) run ./cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
-	$(GO) run ./cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
+	$(GO) run ./cmd/server migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
+	$(GO) run ./cmd/server migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
 
 verify-config: config-test
 	@command -v docker >/dev/null 2>&1 && docker compose -f docker-compose.yml config -q \

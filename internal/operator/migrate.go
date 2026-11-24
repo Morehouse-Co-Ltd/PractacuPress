@@ -3,8 +3,7 @@
 //
 // All of them read the same DATABASE_* / STORAGE_* environment as the API, so a
 // deployment configures one binary once instead of shipping extra executables.
-// The commands stay usable on their own (`go run ./cmd/migrate`) through thin
-// wrappers for development.
+// They are reached as subcommands of that binary (`go run ./cmd/server migrate`).
 package operator
 
 import (

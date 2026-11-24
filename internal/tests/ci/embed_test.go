@@ -118,3 +118,21 @@ func TestReleaseShipsOneBinary(t *testing.T) {
 		t.Error("install.sh still expects a separate practacu-seed binary")
 	}
 }
+
+// TestRepositoryHasSingleBackendEntrypoint keeps the source tree as consolidated
+// as the release: cmd/server is the only main package, and every maintenance
+// command is a subcommand of it rather than a sibling binary.
+func TestRepositoryHasSingleBackendEntrypoint(t *testing.T) {
+	root := repoRoot(t)
+	entries, err := os.ReadDir(filepath.Join(root, "cmd"))
+	if err != nil {
+		t.Fatalf("read cmd: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "server" || !entries[0].IsDir() {
+		var names []string
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Fatalf("cmd/ must contain only server, found %v; move the command into operator and dispatch it from cmd/server", names)
+	}
+}
