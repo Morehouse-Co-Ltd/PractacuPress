@@ -175,16 +175,18 @@ The full variable list is in [.env.example](.env.example). These are the ones wh
 | `STORAGE_DRIVER` | `local` or `s3`; S3 also needs `STORAGE_S3_BUCKET` |
 | `SMTP_HOST` | Leave it empty and password reset is disabled; after it is configured, password reset and email verification work |
 
-## Known limitations
+## TodoList
 
-- MySQL and PostgreSQL have not been run locally; only SQLite has gone through the complete flow.
-- The Linux package has been cross-compiled and its contents checked, but the installer has not run on a real Linux host.
-- There is no MSI; Windows ships as a zip.
-- WebSocket tickets, the hub and rate limiting live in process memory. Multiple replicas need shared storage, and rate limiting belongs at the reverse proxy or WAF.
-- Browser-side access limits only affect requests that use this site's scripts. IP-level access control needs Nginx or Cloudflare.
-- S3 uploads buffer the whole file because of SigV4, so memory use is capped by the per-file limit.
-- Email covers password reset and verification. Comment-reply and moderation-result notifications are not implemented.
-- SEO tags are written into `<head>` by the frontend, so crawlers that do not execute JS only see the defaults in `index.html`.
+These are the open items, roughly ordered by impact.
+
+- [ ] Run install, migration and regression on MySQL and PostgreSQL; only SQLite has been through the full flow.
+- [ ] Verify deb / rpm and `install.sh` on a real Linux host; so far only cross-compilation and package contents have been checked.
+- [ ] Evaluate a Windows MSI; if it stays out of scope, document the zip as the only packaged Windows build.
+- [ ] Add shared WebSocket tickets and an event bus for multi-replica deployments, and include a rate-limit example for the reverse proxy or WAF.
+- [ ] Add IP-level access control examples for Nginx and Cloudflare; browser-side limits only cover requests that use this site's scripts.
+- [ ] Rework S3 uploads to use streaming signatures or multipart upload instead of buffering the whole file.
+- [ ] Add notification email for comment replies and moderation results; email currently covers password reset and verification only.
+- [ ] Render SEO tags on the server, or provide prerendered snapshots for crawlers that do not run JS.
 
 ## Documentation
 

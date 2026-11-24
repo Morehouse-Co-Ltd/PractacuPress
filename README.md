@@ -175,16 +175,18 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 | `STORAGE_DRIVER` | `local` 或 `s3`；用 S3 还要配 `STORAGE_S3_BUCKET` |
 | `SMTP_HOST` | 不配就没有找回密码；配好后密码重置和邮箱验证才能用 |
 
-## 已知限制
+## TodoList
 
-- MySQL 和 PostgreSQL 没有在本机实跑过，只有 SQLite 走完了完整流程。
-- Linux 安装包的交叉编译和包内容检查已经做过，但安装脚本还没在真实 Linux 主机上跑过。
-- Windows 没有 MSI，发行方式就是 zip。
-- WebSocket 票据、hub 和限流都在进程内存里，多副本部署需要共享存储，限流也得放到反向代理或 WAF。
-- 浏览器端访问限制只对使用本站脚本的请求生效，IP 级的访问控制要靠 Nginx 或 Cloudflare。
-- S3 上传受 SigV4 限制，需要先缓冲整个文件，内存上限等于单文件上限。
-- 邮件目前只有找回密码和邮箱验证。评论回复、审核结果之类的通知邮件还没做。
-- SEO 标签由前端写进 `<head>`，不执行 JS 的抓取器只能看到 `index.html` 里的默认值。
+下面这些事还没做完，按影响面从大到小排。
+
+- [ ] 在 MySQL 和 PostgreSQL 上跑一遍安装、迁移和回归测试；目前只有 SQLite 走完了完整流程。
+- [ ] 在真实 Linux 主机上验证 deb / rpm 和 `install.sh`；现在只做了交叉编译和包内容检查。
+- [ ] 评估 Windows MSI 安装包；如果不做，就在文档里明确 zip 是 Windows 唯一的预打包安装方式。
+- [ ] 为多副本部署补共享 WebSocket 票据和事件总线，并补一份反向代理或 WAF 的限流配置示例。
+- [ ] 给 Nginx 和 Cloudflare 补 IP 级访问控制示例；浏览器端限制只覆盖走本站脚本的请求。
+- [ ] 把 S3 上传改成流式签名或分片上传，去掉整文件内存缓冲。
+- [ ] 补评论回复和审核结果的通知邮件；现有邮件只覆盖找回密码和邮箱验证。
+- [ ] 由服务端输出 SEO 标签，或者给不执行 JS 的抓取器提供预渲染快照。
 
 ## 文档
 
