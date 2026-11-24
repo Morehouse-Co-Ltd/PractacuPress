@@ -3679,6 +3679,218 @@ html[data-surface='admin'] .admin-shell::before { height: calc(16px / var(--admi
 .perm-cell:disabled { cursor: not-allowed; opacity: 0.55; }
 .perm-cell.is-on:disabled { opacity: 0.85; }
 
+/* 能力矩阵：表头吸顶、首列固定、当前组高亮。 */
+.perm-panel { overflow: hidden; }
+.perm-panel-head { align-items: center; padding: 16px 18px 14px; }
+.perm-panel-title { min-width: 0; }
+.perm-panel-title p { max-width: 68ch; }
+.perm-scroll {
+  max-height: min(64vh, 620px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.perm-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.perm-table th,
+.perm-table td { padding: 8px 12px; }
+.perm-table th {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  background: var(--bg);
+}
+.perm-table tbody td { padding-top: 6px; padding-bottom: 6px; }
+.perm-table td .cell-title { line-height: 1.35; }
+.perm-table td p.tiny {
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.perm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  border-bottom: 1px solid var(--line-strong);
+}
+.perm-table thead th.perm-capability-col {
+  left: 0;
+  z-index: 5;
+  text-align: left;
+  box-shadow: 1px 0 0 var(--line);
+}
+.perm-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--bg);
+  box-shadow: 1px 0 0 var(--line);
+}
+.perm-table tbody tr:hover td:first-child { background: var(--bg-subtle); }
+.perm-table th.is-current,
+.perm-table td.is-current { background: var(--accent-soft); }
+.perm-table tbody tr:hover td.is-current {
+  background: color-mix(in srgb, var(--accent-soft) 78%, var(--bg-subtle));
+}
+.perm-group-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.perm-group-name > span {
+  min-width: 0;
+  max-width: 9.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.perm-group-name > svg { flex: none; color: var(--faint); opacity: 0.65; }
+.perm-group-name:hover:not(:disabled) {
+  background: var(--bg-sunken);
+  border-color: var(--line);
+}
+.perm-group-name:disabled { cursor: default; }
+.perm-group-role {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.perm-rename {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.perm-rename .input {
+  height: 30px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  text-align: center;
+}
+.perm-rename-actions { display: flex; justify-content: center; gap: 2px; }
+.perm-rename-actions .link-btn {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.perm-rename-actions .link-btn:hover { background: var(--bg-sunken); }
+.perm-current-mark {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 窄屏：每个组一张卡，组名在卡头，能力逐行开关。 */
+.perm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+.perm-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.perm-card.is-current {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+.perm-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-subtle);
+}
+.perm-card.is-current .perm-card-head { background: var(--accent-soft); }
+.perm-card-title {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.perm-card-head .perm-group-name {
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+.perm-card-head .perm-group-name:hover:not(:disabled) {
+  background: none;
+  border-color: transparent;
+  color: var(--accent);
+}
+.perm-card-head .perm-group-name > span { max-width: 100%; }
+.perm-card-body { padding: 0; }
+.perm-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--line);
+}
+.perm-card-row:first-child { border-top: 0; }
+.perm-card-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.perm-card-copy .cell-title { font-size: 12.5px; line-height: 1.4; }
+.perm-card-hint {
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.perm-card-hint.is-locked { color: var(--warn); }
+.perm-card-admin {
+  border-top-color: var(--line-strong);
+  background: var(--bg-subtle);
+}
+.perm-card .perm-cell { width: 30px; height: 30px; flex: none; }
+.perm-card-head .spinner { margin-top: 2px; }
+
+@media (max-width: 640px) {
+  .perm-cards { gap: 10px; padding: 10px; }
+  .perm-card-head { padding: 11px 12px; }
+  .perm-card-row { padding: 10px 12px; }
+  .perm-panel-head { flex-wrap: wrap; gap: 8px; }
+}
+
 .danger-zone {
   border: 1px solid #e8d2cc;
   border-radius: var(--r-lg);
