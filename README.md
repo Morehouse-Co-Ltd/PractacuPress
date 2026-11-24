@@ -239,15 +239,12 @@ sudo /opt/practacu-press/install.sh --finalize --mode public --domain a.com  # �
 推送提交信息里带版本号（`v1.0.0` 正式版，`v1.0.1-beta1` 测试版；大小写 `v` 均可）就会触发
 [.github/workflows/release.yml](.github/workflows/release.yml)：创建 GitHub Release，并上传
 Windows x64/arm64 便携包、Linux x86_64/aarch64 的 tar.gz + deb + rpm、macOS x86_64/arm64
-的 tar.gz 与 `SHA256SUMS`；同时把 API 镜像以
-`linux/amd64,linux/arm64` 推到 GHCR 与 Docker Hub。测试版只更新版本标签与 `beta`，不会
-覆盖 `latest`。
+的 tar.gz 与 `SHA256SUMS`；同时把镜像以 `linux/amd64,linux/arm64` 推到 Docker Hub 的
+`practacupress/press`。稳定版和测试版都会更新 `<version>` 与 `latest` 两个标签。
 
-- 需要配置仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（GHCR 使用内置
-  `GITHUB_TOKEN`；没有 Docker Hub 用户名时自动跳过 Docker Hub）。
-- 镜像名：`ghcr.io/<owner>/practacu-press-api:<tag>` 与
-  `<dockerhub-user>/practacu-press-api:<tag>`。
-- 用发布镜像运行：`PP_IMAGE=ghcr.io/<owner>/practacu-press-api:v1.0.0 docker compose pull`，然后 `PP_IMAGE=ghcr.io/<owner>/practacu-press-api:v1.0.0 docker compose up -d`。
+- 需要配置仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。
+- 镜像：`practacupress/press:<version>` 与 `practacupress/press:latest`。
+- 用发布镜像运行：`PP_IMAGE=practacupress/press:v1.0.0 docker compose pull`，然后 `PP_IMAGE=practacupress/press:v1.0.0 docker compose up -d`。
 - 也可以手动触发 Action 并填写版本；打 `v*` / `V*` tag 同样会触发。完整说明见
   [docs/deployment/releases.md](docs/deployment/releases.md)。
 

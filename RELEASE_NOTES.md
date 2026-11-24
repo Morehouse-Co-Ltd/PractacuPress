@@ -18,8 +18,9 @@ version_code = MAJOR*1_000_000 + MINOR*10_000 + PATCH*100 + STAGE
 STAGE = 99（稳定版） | N（测试版序号 1..98）
 ```
 
-当前构建：`0.1.3-beta`（`version_code: 10301`），来源 `web/public/version.json`，
-`web/package.json` 必须与它一致（`appVersion.test.ts` 把关）。
+当前构建：`0.1.3-beta`（`version_code: 10301`，由版本号推导），清单来源
+`web/public/version.json`（`version` + `style`），`web/package.json` 必须与它一致
+（`appVersion.test.ts` 把关）。
 
 三份实现必须同步修改：
 

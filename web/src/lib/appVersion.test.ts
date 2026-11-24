@@ -24,14 +24,13 @@ describe('app version', () => {
     expect(webPackage.version).toBe(manifest.version);
   });
 
-  it('exposes the canonical channel and integer version code', () => {
-    expect(manifest.channel).toBe('beta');
-    expect(manifest.version_code).toBe(10301);
+  it('derives the canonical channel and integer version code from the version', () => {
+    expect(manifest.style).toBe('beta');
     expect(APP_VERSION_CHANNEL).toBe('beta');
     expect(APP_VERSION_CODE).toBe(10301);
     const parsed = parseVersion(manifest.version);
-    expect(parsed?.channel).toBe(manifest.channel);
-    expect(parsed?.code).toBe(manifest.version_code);
+    expect(parsed?.channel).toBe('beta');
+    expect(parsed?.code).toBe(APP_VERSION_CODE);
   });
 
   it('keeps the local manifest self-consistent with the version fields', () => {
@@ -39,8 +38,8 @@ describe('app version', () => {
       title: manifest.title,
       describe: manifest.describe,
       version: manifest.version,
-      channel: manifest.channel,
-      version_code: manifest.version_code,
+      channel: 'beta',
+      version_code: 10301,
     });
     expect(APP_VERSION_MANIFEST.channel).toBe('beta');
     expect(APP_VERSION_MANIFEST.version_code).toBe(10301);

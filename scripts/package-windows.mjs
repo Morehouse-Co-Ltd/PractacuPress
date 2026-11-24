@@ -379,8 +379,7 @@ function stampWebVersion(dir) {
           current.describe ||
           '自托管内容站点：文章、页面、主题与扩展都在你自己的机器上。',
         version: RELEASE.version,
-        channel: RELEASE.channel,
-        version_code: RELEASE.code,
+        style: RELEASE.channel,
       },
       null,
       2,
