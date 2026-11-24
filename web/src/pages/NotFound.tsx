@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { APP_VERSION_LABEL } from '../lib/appVersion';
 import { useSeo } from '../lib/seo';
 import { useT } from '../lib/i18n';
 
@@ -25,7 +26,7 @@ export function NotFoundPage() {
           </Link>
         </div>
         <p className="tiny faint mt-32">
-          <Icon name="info" size={12} /> {t('Practacu Press · 契约 0.1.0')}
+          <Icon name="info" size={12} /> {t('Practacu Press · 契约 {version}', { version: APP_VERSION_LABEL })}
         </p>
       </div>
     </div>

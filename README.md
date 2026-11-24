@@ -105,6 +105,15 @@ go run ./cmd/server
 
 `/api/healthz` 和 `/api/readyz` 都返回 200 后，打开 **http://127.0.0.1:8080**。开发前端时改用 `npm run dev -- --port 5173`，安装地址是 `http://127.0.0.1:5173/?mode=live`。直接 `go run` 只提供 API；想看单二进制效果，先执行 `make embed-web`。前端相关说明在 [web/README.md](web/README.md)。
 
+产品版本只写在根目录的 `VERSION`。改版本或检查一致性：
+
+```bash
+node scripts/version.mjs set 1.2.0-beta1   # 同步前端清单、npm、OpenAPI 与 Go 常量
+node scripts/version.mjs check              # 只检查，不改文件
+```
+
+Windows 也可以运行 `scripts/version.ps1 1.2.0-beta1`。
+
 提交信息或 tag 里带版本号（例如 `v1.0.0`、`v1.0.1-beta1`）会触发发布流程，产出 Windows、Linux、macOS 包和多架构 Docker 镜像。细节见[发布文档](.github/readme/md/deployment/releases.md)。
 
 ## 中英双语

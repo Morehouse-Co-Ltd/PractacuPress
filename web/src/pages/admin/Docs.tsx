@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useBackend } from '../../lib/backend';
+import { APP_VERSION_LABEL } from '../../lib/appVersion';
 import { useAuth } from '../../lib/session';
 import { useTitle } from '../../lib/hooks';
 import { Badge, Callout, CopyButton } from '../../components/ui';
@@ -483,7 +484,7 @@ function DocsWorkspace() {
           <h1>{t('调用接口')}</h1>
           <p>
             {t(
-              '前端严格按 OpenAPI 0.1.0 实现；本页按当前代码分档记录已接入端点、仅演示能力与已知限制。',
+              '前端严格按当前 OpenAPI 契约实现；本页按当前代码分档记录已接入端点、仅演示能力与已知限制。',
             )}
           </p>
         </div>
@@ -546,8 +547,14 @@ function DocsWorkspace() {
                 <span className="mini-value">{t('UTC ISO 8601 · 小写蛇形')}</span>
               </div>
               <div className="mini-row">
+                <span className="mini-label">{t('契约版本')}</span>
+                <span className="mini-value mono" style={{ fontSize: 11 }}>
+                  {APP_VERSION_LABEL}
+                </span>
+              </div>
+              <div className="mini-row">
                 <span className="mini-label">{t('契约规模')}</span>
-                <span className="mini-value">{t('83 条路径 / 100 个操作（OpenAPI 0.1.0）')}</span>
+                <span className="mini-value">{t('83 条路径 / 100 个操作')}</span>
               </div>
               <div className="mini-row">
                 <span className="mini-label">{t('站点文件')}</span>

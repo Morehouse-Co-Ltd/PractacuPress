@@ -105,6 +105,15 @@ go run ./cmd/server
 
 Once `/api/healthz` and `/api/readyz` return 200, open **http://127.0.0.1:8080**. For frontend development, run `npm run dev -- --port 5173`; the setup page is `http://127.0.0.1:5173/?mode=live`. A plain `go run` serves the API only; to test the single-binary build, run `make embed-web` first. Frontend notes are in [web/README.md](web/README.md).
 
+The product version lives only in the root `VERSION` file. To replace it or check consistency:
+
+```bash
+node scripts/version.mjs set 1.2.0-beta1   # updates the web manifest, npm, OpenAPI and the Go constant
+node scripts/version.mjs check              # check only, no writes
+```
+
+On Windows, `scripts/version.ps1 1.2.0-beta1` does the same.
+
 A commit message or tag containing a version, such as `v1.0.0` or `v1.0.1-beta1`, triggers the release workflow, which produces Windows, Linux and macOS packages and multi-arch Docker images. See the [release guide](.github/readme/md/deployment/releases.md).
 
 ## Bilingual UI

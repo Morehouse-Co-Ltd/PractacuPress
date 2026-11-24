@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/practacu/practacu-press/internal/packages/contracts/openapi"
+	"github.com/practacu/practacu-press/internal/version"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,6 +48,13 @@ func composeContract(plugins map[string]*Plugin, order []string) (map[string]any
 	}
 	if document == nil {
 		return nil, fmt.Errorf("plugins: base contract is empty")
+	}
+
+	// The source YAML is stamped by scripts/version.mjs, but release builds can
+	// override the Go constant with -ldflags. Patch the composed document here so
+	// the plugin-aware endpoint reports the same version as the binary.
+	if info, ok := document["info"].(map[string]any); ok {
+		info["version"] = version.Version
 	}
 
 	paths, ok := document["paths"].(map[string]any)

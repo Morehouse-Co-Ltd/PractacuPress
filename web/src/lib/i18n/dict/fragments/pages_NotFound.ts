@@ -12,7 +12,7 @@ const fragment: Dictionary = {
     'The page may have moved, or the site or content in this link does not exist. You can go back to the home page, or browse the article archive.',
   回到首页: 'Back to home',
   浏览文章: 'Browse articles',
-  'Practacu Press · 契约 0.1.0': 'Practacu Press · Contract 0.1.0',
+  'Practacu Press · 契约 {version}': 'Practacu Press · Contract {version}',
 };
 
 export default fragment;

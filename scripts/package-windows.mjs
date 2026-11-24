@@ -44,6 +44,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
+import { goVersionLdflags, normalizeVersion, readProjectVersion } from './lib/project-version.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webDir = path.join(root, 'web');
@@ -60,10 +61,13 @@ const HOST_ARCH = process.arch === 'arm64' ? 'arm64' : 'amd64';
 const ARCH = options.arch || HOST_ARCH;
 const NATIVE_ARCH = ARCH === HOST_ARCH;
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x64';
-const RELEASE_VERSION = String(options.version || '').replace(/^v/i, '');
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta(?:\.?\d+)?)?$/i.test(RELEASE_VERSION)) {
-  throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-beta，收到 ${options.version}`);
-}
+const RELEASE_VERSION = (() => {
+  try {
+    return normalizeVersion(options.version || readProjectVersion(root)).version;
+  } catch (err) {
+    throw new Error(`--version 只支持 X.Y.Z 或 X.Y.Z-beta，收到 ${options.version || err.message}`);
+  }
+})();
 
 const releaseDir = path.resolve(options.releaseDir || process.env.PP_RELEASE_DIR || path.join(root, 'release'));
 const stagingRoot = path.join(releaseDir, '.staging');
@@ -121,7 +125,7 @@ async function main() {
   const apiExe = path.join(stagingDir, 'PractacuPress.exe');
   run(
     go,
-    ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', apiExe, './cmd/server'],
+    ['build', '-trimpath', '-buildvcs=false', '-ldflags', goVersionLdflags(RELEASE_VERSION), '-o', apiExe, './cmd/server'],
     root,
     goEnv,
     'go build api',
@@ -131,7 +135,7 @@ async function main() {
 
   step('写入发布说明');
   writeReleaseReadme();
-  fs.writeFileSync(path.join(stagingDir, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
+  fs.writeFileSync(path.join(stagingDir, 'VERSION'), `${RELEASE_VERSION}\n`, 'utf8');
   writeLocalEnv();
   writeStartScript();
   fs.mkdirSync(path.join(stagingDir, 'data', 'media'), { recursive: true });
@@ -362,7 +366,6 @@ function ensureWebDeps() {
 }
 
 function stampWebVersion(dir) {
-  if (!RELEASE_VERSION) return;
   const file = path.join(dir, 'version.json');
   const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   const beta = /-beta/i.test(RELEASE_VERSION);

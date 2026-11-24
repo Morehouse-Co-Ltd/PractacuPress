@@ -11,7 +11,7 @@ import { liveCatalog } from './i18n/live';
 /**
  * 邮箱之外的登录方式（手机验证码、Google、GitHub、微信）。
  *
- * 契约 v0.1.0 只有邮箱注册与密码登录，没有短信或 OAuth 端点。因此这里保存的是
+ * 当前契约只有邮箱注册与密码登录，没有短信或 OAuth 端点。因此这里保存的是
  * “站点希望开放哪些方式 + 非机密参数”，并据此生成服务端 .env 片段；
  * Client Secret / 短信密钥不会写入 localStorage，也不应该由前端持有。
  */

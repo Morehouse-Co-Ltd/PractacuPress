@@ -36,7 +36,10 @@
 
 - GitHub Release 的 tag / 标题；
 - 各安装包的 `VERSION` 与前端 `version.json`（`style=stable|beta`）；
+- Go 二进制的 `internal/version.Version`（`-ldflags`），因此备份清单和运行时 `openapi.json` 的 `info.version` 也一致；
 - Docker tag：正式版 `vX.Y.Z` + `latest`，测试版 `vX.Y.Z-betaN` + `beta`。
+
+日常改版本只改根目录的 `VERSION`：`node scripts/version.mjs set 1.2.0-beta1` 会同步 npm、前端清单、OpenAPI 源文件和 Go 常量；`node scripts/version.mjs check` 只校验不改文件。发布流程仍以 tag / 提交信息解析出的版本为准，并通过构建参数覆盖 `VERSION` 的默认值。
 
 ## 2. 必需的仓库设置
 
@@ -111,8 +114,9 @@ Windows 包包含 `PractacuPress.exe`、`.env`、`启动.cmd`、`data/`、`VERSI
 ## 5. 本地复现
 
 ```bash
-# 版本解析
-node --test scripts/release-version.test.mjs
+# 版本解析与版本文件同步
+node --test scripts/release-version.test.mjs scripts/version.test.mjs
+node scripts/version.mjs check
 
 # 前端
 cd web && npm ci && npm run build && cd ../..

@@ -83,6 +83,9 @@ function Invoke-WebTask {
     $installMode = $env:PP_WEB_INSTALL
     if (-not $installMode) { $installMode = 'auto' }
 
+    Write-Step 'product version consistency'
+    Invoke-Native 'node' @('scripts/version.mjs', 'check')
+
     Push-Location (Join-Path $root 'web')
     try {
         if ($installMode -eq 'ci' -or ($installMode -eq 'auto' -and -not (Test-Path 'node_modules'))) {
@@ -109,8 +112,8 @@ function Invoke-WebTask {
         Pop-Location
     }
 
-    Write-Step 'node --test scripts/release-version.test.mjs'
-    Invoke-Native 'node' @('--test', 'scripts/release-version.test.mjs')
+    Write-Step 'node --test scripts/release-version.test.mjs scripts/version.test.mjs'
+    Invoke-Native 'node' @('--test', 'scripts/release-version.test.mjs', 'scripts/version.test.mjs')
 }
 
 function Invoke-MigrateTwice {

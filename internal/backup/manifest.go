@@ -17,13 +17,13 @@ import (
 	"fmt"
 	"io"
 	"path"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/practacu/practacu-press/internal/content"
 	"github.com/practacu/practacu-press/internal/site"
+	"github.com/practacu/practacu-press/internal/version"
 )
 
 // Artifact formats. They share a version because they share the entry and
@@ -187,14 +187,14 @@ type ExportManifest struct {
 	Warnings        []string       `json:"warnings,omitempty"`
 }
 
-// BuildVersion returns the module version when the build provides one.
+// BuildVersion returns the product release version this binary was built with.
+//
+// It comes from internal/version, which starts at the repository's VERSION file
+// and is overridden by -ldflags in release packages. Reading debug.ReadBuildInfo
+// here used to yield "(devel)" for every package build, so backup manifests
+// disagreed with the version shown by the frontend.
 func BuildVersion() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		if version := strings.TrimSpace(info.Main.Version); version != "" && version != "(devel)" {
-			return version
-		}
-	}
-	return "dev"
+	return version.Version
 }
 
 // encodeJSON writes indented JSON. Manifests are meant to be readable by an

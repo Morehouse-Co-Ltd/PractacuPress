@@ -44,6 +44,9 @@ run_go() {
 }
 
 run_web() {
+  log "product version consistency"
+  node scripts/version.mjs check
+
   local install_mode="${PP_WEB_INSTALL:-auto}"
   (
     cd web
@@ -66,8 +69,8 @@ run_web() {
     "$npm_bin" test
   )
 
-  log "node --test scripts/release-version.test.mjs"
-  node --test scripts/release-version.test.mjs
+  log "node --test scripts/release-version.test.mjs scripts/version.test.mjs"
+  node --test scripts/release-version.test.mjs scripts/version.test.mjs
 }
 
 run_migrate_twice() {

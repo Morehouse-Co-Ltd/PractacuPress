@@ -23,6 +23,7 @@ import {
   normalizeAdminFontScale,
 } from '../lib/adminFont';
 import { DEFAULT_AUTH } from '../lib/authProviders';
+import { APP_VERSION } from '../lib/appVersion';
 import { errorText, useTitle } from '../lib/hooks';
 import { LOCALES, normalizeLocale, setLocale, useT, type Locale } from '../lib/i18n';
 import { currentPort, readRuntime, type RuntimeInfo } from '../lib/runtime';
@@ -1156,7 +1157,7 @@ export function SetupPage({ forceLive = false }: { forceLive?: boolean } = {}) {
                   </div>
                   <div>
                     <span>{t('契约')}</span>
-                    <b>0.1.0</b>
+                    <b>{APP_VERSION}</b>
                   </div>
                 </div>
               </div>

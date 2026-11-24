@@ -4,8 +4,6 @@ import type { Dictionary } from '../../plural';
 const fragment: Dictionary = {
   // ---- 页头 ----
   '调用接口': 'API access',
-  '前端严格按 OpenAPI 0.1.0 实现；本页记录已接入的端点与仍在契约里的缺口。':
-    'The front end follows OpenAPI 0.1.0 strictly; this page lists the endpoints already wired up and the gaps still left in the contract.',
   '演示模式': 'Demo mode',
   'API 参考': 'API reference',
   '演示模式 · 无远程 API': 'Demo mode · no remote API',
@@ -147,9 +145,6 @@ const fragment: Dictionary = {
   '的静态服务提供，可在站点设置修改；运行时接口':
     'and can be changed in site settings; the runtime endpoint',
   '只监听本机，不属于 API 契约。': 'listens on this machine only and is not part of the API contract.',
-  '举报与审核列表': 'Reports and the moderation queue',
-  '设计文档提到举报，但 v0.1.0 没有 /moderation 或 /reports 路由。前端不提供无法兑现的入口。':
-    'The design document mentions reports, but v0.1.0 has no /moderation or /reports route. The front end does not offer an entry point it cannot deliver.',
 
   // ---- 按当前代码重写的端点分组与状态 ----
   '认证与账号': 'Authentication and account',
@@ -203,13 +198,14 @@ const fragment: Dictionary = {
     'Self-hosted API reference page (not in the contract path table)',
   '内嵌 OpenAPI 文档': 'Embedded OpenAPI document',
   '安装状态与注册开关': 'Install status and the registration switch',
-  '前端严格按 OpenAPI 0.1.0 实现；本页按当前代码分档记录已接入端点、仅演示能力与已知限制。':
-    'The front end follows OpenAPI 0.1.0. This page records, by current-code status, the endpoints already wired up, demo-only capabilities, and known limits.',
+  '前端严格按当前 OpenAPI 契约实现；本页按当前代码分档记录已接入端点、仅演示能力与已知限制。':
+    'The front end follows the current OpenAPI contract. This page records, by current-code status, the endpoints already wired up, demo-only capabilities, and known limits.',
   '契约规模由仓库中的 openapi.yaml 统计；站点文件与文档页不进入契约路径表。':
     'The contract size is counted from the repository’s openapi.yaml; site files and the docs page are not part of the contract path table.',
+  '契约版本': 'Contract version',
   '契约规模': 'Contract size',
-  '83 条路径 / 100 个操作（OpenAPI 0.1.0）':
-    '83 paths / 100 operations (OpenAPI 0.1.0)',
+  '83 条路径 / 100 个操作':
+    '83 paths / 100 operations',
   '站点文件': 'Site files',
   '文档页': 'Docs page',
   '实时事件优先走 WebSocket：登录后申请一次性票据连接 /ws，断线用 GET /events 按游标补偿；连接不可用时自动降级为每 45 秒轮询。':

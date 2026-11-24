@@ -26,6 +26,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
+import { goVersionLdflags, normalizeVersion, readProjectVersion } from './lib/project-version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'release');
@@ -41,13 +42,15 @@ const option = (name, fallback = '') => {
 const SKIP_WEB = flag('--skip-web');
 const ARCH = option('--arch', 'amd64');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
-const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
+let RELEASE_VERSION;
+try {
+  RELEASE_VERSION = normalizeVersion(option('--version') || readProjectVersion(ROOT)).version;
+} catch (err) {
+  fail(`unsupported --version ${option('--version')}: ${err.message}`);
+}
 
 if (!['amd64', 'arm64'].includes(ARCH)) {
   fail(`unsupported --arch ${ARCH} (use amd64 or arm64)`);
-}
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta(?:\.?\d+)?)?$/i.test(RELEASE_VERSION)) {
-  fail(`unsupported --version ${RELEASE_VERSION} (want X.Y.Z or X.Y.Z-beta)`);
 }
 const ARCH_LABEL = ARCH === 'amd64' ? 'x64' : 'arm64';
 const ELF_MACHINE = ARCH === 'amd64' ? 0x3e : 0xb7;
@@ -198,27 +201,22 @@ function buildGo(binDir) {
   // searchindex are subcommands of this file, so the package never carries a
   // second binary that could drift from the API it maintains.
   const out = path.join(binDir, 'practacu-press');
-  run(go, ['build', '-trimpath', '-ldflags', '-s -w', '-o', out, './cmd/server'], {
+  run(go, ['build', '-trimpath', '-ldflags', goVersionLdflags(RELEASE_VERSION), '-o', out, './cmd/server'], {
     env: { GOOS: 'linux', GOARCH: ARCH, CGO_ENABLED: '0', GOFLAGS: '' },
   });
   assertElf(out, 'practacu-press');
 }
 
 // ---- 4. 组装 --------------------------------------------------------------
-// Version stamped into the package. Release builds must pass --version; local
-// builds fall back to the frontend manifest plus the commit.
+// Version stamped into the package. The repository VERSION is the default; a
+// release passes --version so CI tag builds and local packages stay aligned.
 function packageVersion() {
-  if (RELEASE_VERSION) return RELEASE_VERSION;
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'web', 'package.json'), 'utf8'));
-  const git = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
-  const commit = git.status === 0 ? git.stdout.trim() : 'unknown';
-  return `${pkg.version}+${commit}`;
+  return RELEASE_VERSION;
 }
 
-// The frontend reads /version.json for the footer and the update screen. Leave the
-// repository's development value in place unless a release version was supplied.
+// The frontend reads /version.json for the footer and the update screen. Stamp it
+// with the package version so the shipped UI matches the binary.
 function stampWebVersion(webDir) {
-  if (!RELEASE_VERSION) return;
   const file = path.join(webDir, 'version.json');
   const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   const beta = /-beta/i.test(RELEASE_VERSION);

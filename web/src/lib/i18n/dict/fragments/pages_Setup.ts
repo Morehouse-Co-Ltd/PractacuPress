@@ -64,8 +64,6 @@ const fragment: Dictionary = {
   '演示模式不调用 内置安全清洗；真实发布与上传需要它可用。':
     'Demo mode does not call the built-in security checks; live publishing and uploads need it.',
   '演示站点将在此浏览器内立即生效。': 'The demo site takes effect in this browser immediately.',
-  '接口契约版本 0.1.0（演示模式不提供在线文档）。':
-    'Contract version 0.1.0 (demo mode offers no online docs).',
   '无法连接': 'Cannot connect',
   '数据库与迁移': 'Database and migrations',
   '就绪检查覆盖数据库连接；迁移由安装脚本执行。':
@@ -94,7 +92,6 @@ const fragment: Dictionary = {
   '管理后台': 'Admin',
   'API 根路径': 'API base path',
   '演示模式 · 无远程 API': 'Demo mode · no remote API',
-  '契约 0.1.0 · 演示模式': 'Contract 0.1.0 · demo mode',
   '站点形态': 'Site type',
   '仅站长可登录': 'Owner sign-in only',
   '开放注册': 'Registration open',
@@ -302,9 +299,6 @@ const fragment: Dictionary = {
   '邮箱与密码': 'Email and password',
   '已启用': 'Enabled',
   '配置完成后会出现在登录页': 'Configured methods appear on the sign-in page',
-  '填写完整的方式会显示在': 'Fully configured methods appear on',
-  '的邮箱表单下方。演示模式可以模拟这些入口； 连接真实后端时，需要服务端实现对应的短信或 OAuth 端点——契约 v0.1.0 尚未包含它们。':
-    'below the email form. Demo mode can simulate these entries; with a live backend the server must implement the matching SMS or OAuth endpoints — contract v0.1.0 does not include them yet.',
   '在开门之前，先绕房子走一圈。': 'Before opening the door, walk around the house.',
   '安全检查已编译进 API 进程；发布与上传失败时按设计 fail-closed。':
     'Security checks are compiled into the API process; publishing and uploads fail closed by design when a check fails.',

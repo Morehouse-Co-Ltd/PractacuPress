@@ -14,12 +14,13 @@
 FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
 
 WORKDIR /web
+COPY VERSION /VERSION
 COPY web ./
 
-ARG VERSION=development
-ENV VERSION=$VERSION
-RUN npm ci --no-audit --no-fund \
- && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION||'development';j.version=v.replace(/^v/i,'');j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
+ARG VERSION=
+RUN export VERSION="${VERSION:-$(cat /VERSION)}" \
+ && npm ci --no-audit --no-fund \
+ && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION.replace(/^v/i,'');if(!/^\d+\.\d+\.\d+(?:-beta\d*)?$/i.test(v))throw new Error('bad VERSION '+v);j.version=v;j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
  && npm run build \
  && test -f dist/index.html
 
@@ -32,6 +33,7 @@ WORKDIR /src
 # buildx; a plain `docker build` leaves them at the build platform defaults.
 ARG TARGETOS=linux
 ARG TARGETARCH
+ARG VERSION=
 ENV GOOS=$TARGETOS \
     GOARCH=$TARGETARCH
 
@@ -42,6 +44,7 @@ ENV CGO_ENABLED=0 \
     GOFLAGS=-mod=readonly
 
 # Dependency layer: only the module files, so a source edit does not re-download.
+COPY VERSION /src/VERSION
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
@@ -54,7 +57,11 @@ COPY --from=web /web/dist ./internal/web/dist
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/practacu-press ./cmd/server
+    export VERSION="${VERSION:-$(cat /src/VERSION)}" \
+ && VERSION="$(printf '%s' "$VERSION" | sed 's/^[vV]//')" \
+ && go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -X github.com/practacu/practacu-press/internal/version.Version=${VERSION}" \
+      -o /out/practacu-press ./cmd/server
 
 # The final image is one binary: the SPA is embedded, and migrate / seed / backup /
 # media-gc / searchindex are subcommands of that same file.

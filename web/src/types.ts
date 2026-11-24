@@ -1,7 +1,7 @@
 /**
  * Practacu Press 前端类型。
  *
- * 全部来自 `packages/contracts/openapi/openapi.yaml`（v0.1.0）。
+ * 全部来自 `packages/contracts/openapi/openapi.yaml`。
  * 带 `?` 的前端扩展字段只会在演示数据层出现；连接真实后端时按缺失处理，
  * 界面不得依赖它们完成权限或安全判断。
  */
@@ -582,7 +582,7 @@ export interface Content {
   created_at: string;
   updated_at: string;
   actions: ContentAction[];
-  /** 演示数据扩展：契约 v0.1.0 的 Content 不含作者字段。 */
+  /** 演示数据扩展：当前契约的 Content 不含作者字段。 */
   author_id?: string;
   author_name?: string;
   /** 当前版本号；配合 revision 接口做历史查看与回滚。 */
@@ -1081,7 +1081,7 @@ export interface ProbeResult {
 export interface CommentsResult {
   items: Comment[];
   /**
-   * v0.1.0 契约只提供评论的创建 / 编辑 / 删除，没有列表端点。
+   * 当前契约只提供评论的创建 / 编辑 / 删除，没有列表端点。
    * 演示模式为 true；真实后端在补齐 `GET /comments` 之前为 false，界面需要明确告知。
    */
   supported: boolean;
@@ -1425,7 +1425,7 @@ export interface BlockVisibility {
   to?: string;
 }
 
-/** 站点自定义页面。契约 v0.1.0 没有页面端点，页面存在本地安装配置里。 */
+/** 站点自定义页面。当前契约没有页面端点，页面存在本地安装配置里。 */
 export interface SitePage {
   id: string;
   title: string;
@@ -1742,7 +1742,7 @@ export interface LocalCaptchaSolution {
 /* ---------- 评论 ---------- */
 
 /**
- * 评论设置。契约 v0.1.0 没有站点级评论配置端点，因此和主题一样保存在本地安装配置里。
+ * 评论设置。当前契约没有站点级评论配置端点，因此和主题一样保存在本地安装配置里。
  * `require_review` 为真时，新评论进入 pending_review，需要通过后台「评论管理」放行。
  */
 export interface CommentSettings {
@@ -2141,7 +2141,7 @@ export interface SiteCustomization {
   theme_settings?: Record<string, Record<string, Record<string, string | number | boolean>>>;
   /** 评论开关、先审后发与评论须知。 */
   comments: CommentSettings;
-  /** 分类与标签；契约 v0.1.0 没有分类端点，因此与外观一起保存在本地配置。 */
+  /** 分类与标签；当前契约没有分类端点，因此与外观一起保存在本地配置。 */
   taxonomy: TaxonomySettings;
   /** 社区站点的权限组配置；个人博客忽略这份配置，所有账户都是最高权限。 */
   permissions: PermissionSettings;
