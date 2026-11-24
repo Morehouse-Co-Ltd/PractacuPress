@@ -188,15 +188,6 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1
 - [ ] 补评论回复和审核结果的通知邮件；现有邮件只覆盖找回密码和邮箱验证。
 - [ ] 由服务端输出 SEO 标签，或者给不执行 JS 的抓取器提供预渲染快照。
 
-## 文档
-
-- [产品与技术设计](.github/readme/md/superpowers/specs/2026-10-18-practacu-press-design.md)
-- [计划评审与可行性](.github/readme/md/superpowers/reviews/2026-10-18-practacu-press-plan-review.md)
-- [详细实施计划](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-backend-detailed-plan.md)
-- [实施进度](.github/readme/md/superpowers/plans/2026-10-18-practacu-press-progress.md)
-- [部署](.github/readme/md/deployment/production-profile.md)
-- [安全审计](.github/readme/md/security/2026-11-14-security-audit.md)
-
 ## 许可证
 
 项目使用 AGPL-3.0，全文见 [LICENSE](LICENSE)。商用和修改都允许。分发修改版，或者把它作为网络服务提供给别人时，需要按同一许可证公开修改后的源码，保留版权声明和项目署名。目前没有闭源商业许可。
