@@ -76,40 +76,41 @@ const NIGHT_LIGHT: ThemeTokenSet = {
 };
 
 /**
- * 沉思（浅色）：石白纸面、青灰强调，留白多，适合长文与笔记。
+ * 沉思（浅色）：暖纸白、炭黑与墨蓝。
  *
- * 色阶比纸白更灰，强调色取偏灰的墨绿；深色换成低饱和苔绿。
+ * 95% 以上保持中性灰阶，只在链接悬停、阅读进度和极少数核心操作用墨蓝；
+ * 深浅模式都使用同一套排印与留白，不靠阴影制造层级。
  */
 const CONTEMPLATION_LIGHT: ThemeTokenSet = {
-  background: '#f1eee5',
-  ink: '#1b1b17',
-  accent: '#3d5a4c',
-  bg_subtle: '#e8e4d9',
-  bg_sunken: '#ddd7c9',
-  ink_soft: '#424037',
-  muted: '#6f6b60',
-  faint: '#969184',
-  line: '#d8d2c4',
-  line_strong: '#c5bdae',
-  accent_soft: '#e3eae3',
-  accent_ink: '#ffffff',
-  prose: '#2d2c25',
+  background: '#faf9f6',
+  ink: '#18181b',
+  accent: '#2f4a5a',
+  bg_subtle: '#f3f1ec',
+  bg_sunken: '#eae7e0',
+  ink_soft: '#3f3f46',
+  muted: '#71717a',
+  faint: '#a1a1aa',
+  line: '#e4e1da',
+  line_strong: '#d3cec4',
+  accent_soft: '#e7edef',
+  accent_ink: '#faf9f6',
+  prose: '#27272a',
 };
 
 const CONTEMPLATION_DARK: ThemeTokenSet = {
-  background: '#111310',
-  ink: '#ebe8de',
-  accent: '#91aa93',
-  bg_subtle: '#181b18',
-  bg_sunken: '#20241f',
-  ink_soft: '#cac7bd',
-  muted: '#969286',
-  faint: '#6b685e',
-  line: '#2b2f29',
-  line_strong: '#3a3f38',
-  accent_soft: '#91aa9324',
-  accent_ink: '#121a12',
-  prose: '#d2cfc4',
+  background: '#0c0c0e',
+  ink: '#e4e4e7',
+  accent: '#a9bdc7',
+  bg_subtle: '#141416',
+  bg_sunken: '#1b1b1e',
+  ink_soft: '#c7c7cc',
+  muted: '#8e8e93',
+  faint: '#636366',
+  line: '#26262a',
+  line_strong: '#35353a',
+  accent_soft: '#a9bdc71f',
+  accent_ink: '#0c0c0e',
+  prose: '#d4d4d8',
 };
 
 /** 白昼：已合并进夜航的冷白重配，旧配置读取时由 customize.ts 折算。 */
@@ -305,7 +306,7 @@ const RAW_THEME_PRESETS: ThemePreset[] = [
   {
     id: 'contemplation',
     name: t('沉思'),
-    note: t('石白纸面与青灰强调，留白多，适合长文和笔记；深色是同一套版面的夜读配色。'),
+    note: t('暖纸白与墨蓝，杂志式留白；深色是同一套版面的低眩光夜读。'),
     mode: 'light',
     light: CONTEMPLATION_LIGHT,
     dark: CONTEMPLATION_DARK,

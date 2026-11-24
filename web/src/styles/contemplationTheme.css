@@ -1,556 +1,904 @@
 /* =========================================================
-   沉思：石白纸面 / 青灰强调，单栏阅读。
-   只挂在 [data-preset="contemplation"] 下，不改原版、夜航等主题。
+   沉思 · 独立出版物版
+   ---------------------------------------------------------
+   暖纸白 / 石墨黑 / 单点墨蓝。非对称的编辑排版、65ch 阅读列、
+   发丝边框与大面积负空间；所有规则都限定在
+   html[data-preset="contemplation"] 下，不改原版、夜航等主题。
    ========================================================= */
 
-html[data-surface='site'][data-preset='contemplation'] {
-  --ct-hairline: color-mix(in srgb, var(--ink) 10%, transparent);
-  --ct-hairline-strong: color-mix(in srgb, var(--ink) 16%, transparent);
-  --ct-wash: color-mix(in srgb, var(--accent) 7%, transparent);
-  --ct-panel: color-mix(in srgb, var(--bg) 94%, var(--ink) 6%);
-  --ct-focus: color-mix(in srgb, var(--accent) 55%, transparent);
-  --ct-read: 70ch;
+html[data-preset='contemplation'] {
+  --ct-sans: "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Noto Sans SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --ct-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "JetBrains Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+  --ct-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --sans: var(--ct-sans);
+  --mono: var(--ct-mono);
 }
 
-/* 代码语言角标由文章页脚本写入；其它主题不显示。 */
-.code-lang { display: none; }
-
-html[data-surface='site'][data-preset='contemplation'] body {
-  background-image: radial-gradient(
-    960px 480px at 50% -220px,
-    color-mix(in srgb, var(--accent) 9%, transparent),
-    transparent 70%
-  );
-  background-repeat: no-repeat;
+html[data-preset='contemplation'][data-surface='site'] {
+  --ct-hairline: var(--line);
+  --ct-hairline-strong: var(--line-strong);
+  --ct-panel: var(--bg-subtle);
+  --ct-focus: color-mix(in srgb, var(--accent) 42%, transparent);
+  --ct-read: 65ch;
+  --ct-rail: clamp(9.5rem, 14vw, 12rem);
+  --shell: min(100%, 1320px);
 }
 
-html[data-surface='site'][data-preset='contemplation'] ::selection {
-  background: var(--accent-soft);
+html[data-preset='contemplation'][data-surface='site'] body {
+  background: var(--bg);
   color: var(--ink);
+  font-family: var(--ct-sans);
+  font-feature-settings: "kern" 1;
+  text-rendering: optimizeLegibility;
 }
 
-/* ---------- 页头 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .site-header {
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
-  border-bottom-color: var(--ct-hairline);
-  backdrop-filter: blur(14px);
-  transition: transform 240ms ease, background-color 200ms ease, border-color 200ms ease;
-}
-
-html[data-surface='site'][data-preset='contemplation'][data-ct-read-header='hidden'] .site-header {
-  transform: translateY(-100%);
-}
-
-html[data-surface='site'][data-preset='contemplation'][data-ct-read-header='hidden'] .site-header:focus-within {
-  transform: none;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .read-progress {
-  height: 2px;
-  background: var(--accent);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .header-inner {
-  height: 56px;
-  gap: 32px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .brand {
-  gap: 10px;
-  align-items: center;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 600;
-  transform: none;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .brand-text {
-  font-family: var(--sans);
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .brand-sub {
-  margin-top: 2px;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-nav {
-  gap: 24px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-nav a {
-  font-size: 14px;
-  letter-spacing: 0.01em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-nav a.is-active::after {
-  height: 1px;
-  bottom: -5px;
-  background: var(--accent);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-search {
-  margin-right: 4px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-search-field {
-  height: 32px;
-  padding: 0 8px 0 10px;
-  border-color: var(--ct-hairline);
-  border-radius: 3px;
-  background: transparent;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-search-field:hover,
-html[data-surface='site'][data-preset='contemplation'] .site-search-field:focus-within,
-html[data-surface='site'][data-preset='contemplation'] .site-search-field.is-open {
-  border-color: var(--ct-hairline-strong);
-  background: var(--bg-subtle);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-search-field input {
-  width: 148px;
-  font-size: 12px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .site-search-field kbd {
-  border-color: var(--ct-hairline);
-  border-radius: 2px;
-  color: var(--muted);
-}
-
-/* ---------- 首屏 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .hero {
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 56px;
-  padding: 80px 0 64px;
-  border-bottom-color: var(--ct-hairline);
-  align-items: start;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-kicker {
-  gap: 8px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-kicker::before {
-  width: 16px;
-  background: var(--accent);
-  opacity: 0.6;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero h1 {
-  margin-top: 16px;
-  font-family: var(--sans);
-  font-size: clamp(40px, 5vw, 64px);
-  font-weight: 500;
-  line-height: 1.04;
-  letter-spacing: -0.04em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero h1 em {
-  font-style: normal;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-lede {
-  max-width: 456px;
-  margin-top: 24px;
-  font-size: 16.5px;
-  line-height: 1.75;
-  color: var(--muted);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-cta {
-  gap: 8px;
-  margin-top: 32px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-meta {
-  gap: 16px;
-  margin-top: 32px;
-  padding-top: 16px;
-  border-top: 1px solid var(--ct-hairline);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-meta b {
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-feature .cover {
-  border: 1px solid var(--ct-hairline);
-  border-radius: 2px;
-  box-shadow: none;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-feature-body {
-  margin-top: 16px;
-  padding: 16px 0 0;
-  border-top: 1px solid var(--ct-hairline);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-feature-label {
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-feature h2 {
-  margin-top: 8px;
-  font-family: var(--sans);
-  font-size: 24px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.025em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .hero-feature p {
-  margin-top: 8px;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-/* ---------- 列表 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .feed-layout {
-  gap: 56px;
-  padding-top: 48px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .feed-head {
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--ct-hairline-strong);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .feed-head h2 {
-  font-family: var(--sans);
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .feed-head .tab {
-  font-size: 12px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story {
-  padding: 24px 8px;
-  margin: 0 -8px;
-  border-bottom: 1px solid var(--ct-hairline);
-  transition: background-color 160ms ease, transform 160ms ease;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story:hover {
-  background: linear-gradient(90deg, var(--ct-wash), transparent 58%);
-  transform: translateX(2px);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story-index {
-  color: var(--accent);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story-body h3 {
-  font-family: var(--sans);
-  font-size: 24px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.025em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story-body p {
-  margin-top: 8px;
-  font-size: 13.5px;
-  line-height: 1.7;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story-meta {
-  gap: 12px;
-  margin-top: 12px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story-kind {
-  border-color: var(--ct-hairline);
-  border-radius: 2px;
-  padding: 1px 6px;
-  font-family: var(--mono);
-  letter-spacing: 0.08em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story-side {
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--ct-hairline);
-  border-radius: 50%;
-  color: var(--muted);
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .story:hover .story-side {
-  border-color: var(--accent);
+html[data-preset='contemplation'][data-surface='site'] ::selection {
   background: var(--accent);
   color: var(--accent-ink);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .feed-more {
-  padding-top: 24px;
+html[data-preset='contemplation'][data-surface='site'] :is(
+    a,
+    button,
+    input,
+    textarea,
+    select,
+    .btn,
+    .tab,
+    .story,
+    .story-side,
+    .site-header
+  ) {
+  transition-duration: 160ms;
+  transition-timing-function: var(--ct-ease);
 }
 
-/* ---------- 侧栏 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .side-inner {
-  gap: 32px;
+/* 代码语言角标由文章脚本写入；其它主题不显示。 */
+.code-lang { display: none; }
+
+/* ---------- 页头：56px、轻、不抢标题 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .site-header {
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  border-bottom: 1px solid var(--ct-hairline);
+  backdrop-filter: blur(10px);
+  box-shadow: none;
+  transition: transform 180ms var(--ct-ease), background-color 160ms ease,
+    border-color 160ms ease;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-block {
-  padding-top: 16px;
-  border-top: 1px solid var(--ct-hairline-strong);
+html[data-preset='contemplation'][data-surface='site'][data-ct-read-header='hidden'] .site-header {
+  transform: translateY(-100%);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-block h3 {
-  font-family: var(--mono);
+html[data-preset='contemplation'][data-surface='site'][data-ct-read-header='hidden'] .site-header:focus-within {
+  transform: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .read-progress {
+  height: 2px;
+  background: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .header-inner {
+  height: 56px;
+  gap: 36px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .brand {
+  gap: 10px;
+  align-items: center;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .brand-mark {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--ct-hairline-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--ct-mono);
   font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
+  transform: none;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-story strong {
-  font-family: var(--sans);
-  font-size: 16px;
+html[data-preset='contemplation'][data-surface='site'] .brand-text {
+  font-family: var(--ct-sans);
+  font-size: 17px;
   font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.025em;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-story span {
-  margin-top: 4px;
-  font-family: var(--mono);
+html[data-preset='contemplation'][data-surface='site'] .brand-sub {
+  margin-top: 3px;
+  font-family: var(--ct-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-nav {
+  gap: 28px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-nav a {
+  padding: 17px 0;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-nav a:hover,
+html[data-preset='contemplation'][data-surface='site'] .site-nav a.is-active {
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-nav a.is-active::after {
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  height: 1px;
+  background: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .nav-dropdown-menu {
+  padding: 4px 0;
+  border: 1px solid var(--ct-hairline-strong);
+  border-radius: 0;
+  background: var(--bg);
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .nav-dropdown-menu a,
+html[data-preset='contemplation'][data-surface='site'] .nav-dropdown-menu .subnav-plain {
+  padding: 9px 14px;
+  border-radius: 0;
+  font-size: 12.5px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .nav-dropdown-menu a.is-active {
+  background: transparent;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-subnav {
+  border-bottom: 1px solid var(--ct-hairline);
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .subnav-pill {
+  gap: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .subnav-pill > a,
+html[data-preset='contemplation'][data-surface='site'] .subnav-pill > .subnav-plain {
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
   font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-search {
+  margin-right: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-search-field {
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border-color: var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-search-field:hover,
+html[data-preset='contemplation'][data-surface='site'] .site-search-field:focus-within,
+html[data-preset='contemplation'][data-surface='site'] .site-search-field.is-open {
+  border-color: var(--ct-hairline-strong);
+  background: var(--bg-subtle);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-search-field input {
+  width: 148px;
+  font-size: 12px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .site-search-field kbd {
+  border-color: var(--ct-hairline);
+  border-radius: 0;
+  color: var(--faint);
+}
+
+/* ---------- 首页：非对称首屏 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .hero {
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: clamp(40px, 6vw, 88px);
+  padding: clamp(56px, 8vw, 104px) 0 clamp(40px, 6vw, 72px);
+  border-bottom: 1px solid var(--ct-hairline);
+  align-items: start;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero.fade-up {
+  animation: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-kicker {
+  gap: 10px;
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-kicker::before {
+  width: 24px;
+  height: 1px;
+  background: var(--ct-hairline-strong);
+  opacity: 1;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero h1 {
+  max-width: 15ch;
+  margin-top: 22px;
+  font-family: var(--ct-sans);
+  font-size: clamp(40px, 4.7vw, 56px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.038em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero h1 em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--ct-hairline-strong);
+  text-underline-offset: 7px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-lede {
+  max-width: 48ch;
+  margin-top: 22px;
+  font-size: 17px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-cta {
+  gap: 10px;
+  margin-top: 30px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-meta {
+  gap: 18px;
+  margin-top: 34px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ct-hairline);
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-meta b {
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-note {
-  font-size: 13px;
-  line-height: 1.8;
+html[data-preset='contemplation'][data-surface='site'] .hero-feature .cover {
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  box-shadow: none;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-quote {
-  font-family: var(--sans);
-  font-size: 16.5px;
+html[data-preset='contemplation'][data-surface='site'] .hero-feature-body {
+  margin-top: 18px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-feature-label {
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-feature h2 {
+  margin-top: 8px;
+  font-family: var(--ct-sans);
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.028em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-feature p {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+/* ---------- 列表：用排版和留白分隔，不用卡片 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .feed-layout {
+  grid-template-columns: minmax(0, 2.5fr) minmax(180px, 1fr);
+  gap: clamp(40px, 6vw, 80px);
+  padding-top: clamp(40px, 5vw, 64px);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-head h2 {
+  font-family: var(--ct-sans);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-head .tabs {
+  gap: 18px;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-head .tab {
+  padding: 3px 0 5px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-head .tab.is-active {
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-head .tab.is-active::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story {
+  grid-template-columns: 30px minmax(0, 1fr) 22px;
+  gap: 18px;
+  margin: 0;
+  padding: 26px 0;
+  border-bottom: 1px solid var(--ct-hairline);
+  background: transparent;
+  transition: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story:hover {
+  background: transparent;
+  transform: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-index {
+  padding-top: 4px;
+  color: var(--faint);
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-body h3 {
+  font-family: var(--ct-sans);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.028em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-body h3 a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story:hover .story-body h3 a {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 58%, transparent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-body p {
+  max-width: 62ch;
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.78;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-meta {
+  gap: 14px;
+  margin-top: 12px;
+  color: var(--faint);
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-kind {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story-side {
+  justify-content: flex-end;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--faint);
+  font-family: var(--ct-mono);
+  font-size: 16px;
+  transition: transform 160ms var(--ct-ease), color 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .story:hover .story-side {
+  transform: translateX(4px);
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .feed-more {
+  padding-top: 26px;
+}
+
+/* ---------- 侧栏：一条发丝竖线，不堆卡片 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .side {
+  padding-left: clamp(24px, 3vw, 40px);
+  border-left: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-inner {
+  gap: 36px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-block {
+  padding-top: 14px;
+  border-top: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-block:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-block h3 {
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-story strong {
+  font-family: var(--ct-sans);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.018em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-story strong:hover {
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-story span {
+  margin-top: 4px;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-note {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .side-quote {
+  font-family: var(--ct-sans);
+  font-size: 17px;
   font-weight: 400;
   line-height: 1.8;
   color: var(--ink-soft);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-quote footer {
+html[data-preset='contemplation'][data-surface='site'] .side-quote footer {
   margin-top: 12px;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .side-fact b {
-  font-family: var(--mono);
-  font-size: 12px;
+html[data-preset='contemplation'][data-surface='site'] .side-fact b {
+  font-family: var(--ct-mono);
+  font-size: 11.5px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 文章页：70ch 阅读列、面包屑与右侧目录 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .article {
-  padding-top: 40px;
+/* ---------- 文章：65ch 正文，目录作为左侧元信息栏 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .article {
+  padding-top: clamp(36px, 5vw, 56px);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-layout,
-html[data-surface='site'][data-preset='contemplation'] .article-layout > .article {
+html[data-preset='contemplation'][data-surface='site'] .article-layout,
+html[data-preset='contemplation'][data-surface='site'] .article-layout > .article {
   max-width: var(--ct-read);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-head,
-html[data-surface='site'][data-preset='contemplation'] .article-body,
-html[data-surface='site'][data-preset='contemplation'] .article-foot,
-html[data-surface='site'][data-preset='contemplation'] .author-card,
-html[data-surface='site'][data-preset='contemplation'] .comments,
-html[data-surface='site'][data-preset='contemplation'] .article-meta--hero,
-html[data-surface='site'][data-preset='contemplation'] .article-taxonomy--hero,
-html[data-surface='site'][data-preset='contemplation'] .article-toc {
+html[data-preset='contemplation'][data-surface='site'] .article-head,
+html[data-preset='contemplation'][data-surface='site'] .article-body,
+html[data-preset='contemplation'][data-surface='site'] .article-foot,
+html[data-preset='contemplation'][data-surface='site'] .author-card,
+html[data-preset='contemplation'][data-surface='site'] .comments,
+html[data-preset='contemplation'][data-surface='site'] .article-meta--hero,
+html[data-preset='contemplation'][data-surface='site'] .article-taxonomy--hero,
+html[data-preset='contemplation'][data-surface='site'] .article-toc {
   max-width: var(--ct-read);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-hero-inner {
-  max-width: calc(var(--ct-read) + 64px);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-head h1 {
-  font-family: var(--sans);
-  font-size: clamp(34px, 4.4vw, 48px);
+html[data-preset='contemplation'][data-surface='site'] .article-head h1 {
+  max-width: 18ch;
+  font-family: var(--ct-sans);
+  font-size: clamp(34px, 4vw, 48px);
   font-weight: 500;
-  line-height: 1.12;
+  line-height: 1.1;
   letter-spacing: -0.035em;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-lede {
-  font-family: var(--sans);
-  font-size: 17px;
-  line-height: 1.75;
+html[data-preset='contemplation'][data-surface='site'] .article-kicker,
+html[data-preset='contemplation'][data-surface='site'] .article-meta {
+  font-family: var(--ct-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-lede {
+  max-width: 56ch;
+  font-family: var(--ct-sans);
+  font-size: 17.5px;
+  line-height: 1.8;
   color: var(--muted);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-body {
-  margin-top: 40px;
-  font-size: calc(17px * var(--pp-read-scale, 1));
-  line-height: 1.75;
-  color: var(--prose);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body > * + * {
-  margin-top: 1.5em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body p {
-  margin-top: 1.5em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body h2 {
-  margin-top: 2.2em;
-  font-family: var(--sans);
-  font-size: 28px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.025em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body h3 {
-  margin-top: 1.8em;
-  font-family: var(--sans);
-  font-size: 21px;
-  font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: -0.015em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body blockquote {
-  margin: 2em 0;
-  padding: 8px 0 8px 24px;
-  border-left: 2px solid var(--accent);
-  background: linear-gradient(90deg, var(--ct-wash), transparent 72%);
-  font-family: var(--sans);
-  font-size: 17px;
-  line-height: 1.75;
-  color: var(--ink-soft);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92em;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body th,
-html[data-surface='site'][data-preset='contemplation'] .article-body td {
-  border: 1px solid var(--ct-hairline);
-  padding: 8px 12px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body pre {
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 4px;
-  padding: 18px 20px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-body pre:has(.code-lang) {
-  padding-top: 44px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .code-lang {
-  position: absolute;
-  top: 10px;
-  left: 14px;
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid rgb(255 255 255 / 0.16);
-  border-radius: 2px;
-  color: rgb(255 255 255 / 0.52);
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .code-copy {
-  top: 8px;
-  right: 8px;
-  border-radius: 2px;
-  opacity: 1;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-meta {
+html[data-preset='contemplation'][data-surface='site'] .article-meta {
+  padding: 12px 0;
   border-top-color: var(--ct-hairline);
   border-bottom-color: var(--ct-hairline);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-foot {
-  margin-top: 40px;
-  border-top-color: var(--ct-hairline-strong);
+html[data-preset='contemplation'][data-surface='site'] .article-body {
+  max-width: var(--ct-read);
+  margin-top: clamp(30px, 4vw, 44px);
+  font-family: var(--ct-sans);
+  font-size: calc(17.5px * var(--pp-read-scale, 1));
+  line-height: 1.8;
+  letter-spacing: 0.002em;
+  color: var(--prose);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .author-card {
+html[data-preset='contemplation'][data-surface='site'] .article-body > * + * {
+  margin-top: 1.55em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body p {
+  margin-top: 1.55em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body h2 {
+  margin-top: 2.4em;
+  font-family: var(--ct-sans);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.028em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body h3 {
+  margin-top: 1.9em;
+  font-family: var(--ct-sans);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.016em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body blockquote {
+  margin: 2.2em 0;
+  padding: 2px 0 2px 24px;
+  border-left: 2px solid var(--ct-hairline-strong);
+  background: transparent;
+  font-family: var(--ct-sans);
+  font-size: 17px;
+  font-style: normal;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body a {
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--ct-hairline-strong);
+  text-underline-offset: 3px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body a:hover {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--ct-hairline-strong);
+  border-bottom: 1px solid var(--ct-hairline-strong);
+  font-size: 0.92em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body th,
+html[data-preset='contemplation'][data-surface='site'] .article-body td {
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body th {
+  font-family: var(--ct-mono);
+  font-size: 0.78em;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body tr:last-child td {
+  border-bottom: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body code {
+  padding: 1px 5px;
   border: 1px solid var(--ct-hairline);
-  border-radius: 3px;
-  padding: 16px;
-  background: var(--ct-panel);
+  border-radius: 0;
+  background: var(--bg-subtle);
+  font-family: var(--ct-mono);
+  font-size: 0.86em;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .comments {
-  border-top-color: var(--ct-hairline);
+html[data-preset='contemplation'][data-surface='site'] .article-body pre,
+html[data-preset='contemplation'][data-surface='site'] .article-body pre code {
+  border-radius: 0;
+  background: #151517;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-toc--inline {
-  margin-top: 32px;
-  padding: 16px 0;
+html[data-preset='contemplation'][data-surface='site'] .article-body pre {
+  border: 1px solid #27272c;
+  padding: 20px 22px;
+  color: #e4e4e7;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body pre code {
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body pre:has(.code-lang) {
+  padding-top: 46px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .code-lang {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 5px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0;
+  color: rgb(255 255 255 / 0.46);
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .code-copy {
+  top: 10px;
+  right: 10px;
+  padding: 4px 8px;
+  border-radius: 0;
+  opacity: 0.46;
+  transition: opacity 160ms ease, background-color 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body pre:hover .code-copy,
+html[data-preset='contemplation'][data-surface='site'] .code-copy:focus-visible {
+  opacity: 1;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body figure {
+  margin: 2.2em 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body figure img,
+html[data-preset='contemplation'][data-surface='site'] .article-body img {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body figcaption {
+  margin-top: 10px;
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-body hr {
+  margin: 44px 0;
+  border-top: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-foot {
+  margin-top: clamp(36px, 4vw, 52px);
+  border-top: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .author-card {
+  padding: 20px 0;
   border: 0;
   border-top: 1px solid var(--ct-hairline);
   border-bottom: 1px solid var(--ct-hairline);
   border-radius: 0;
   background: transparent;
+  box-shadow: none;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb {
+html[data-preset='contemplation'][data-surface='site'] .author-card strong {
+  font-family: var(--ct-sans);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-pager {
+  max-width: var(--ct-read);
+  margin-top: 40px;
+  border-top: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-pager-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-pager-item > span {
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-pager-item > strong {
+  font-family: var(--ct-sans);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-pager-item:not(.is-disabled):hover {
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-pager-item:not(.is-disabled):hover > strong {
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .comments {
+  border-top-color: var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .comment-form,
+html[data-preset='contemplation'][data-surface='site'] .comment-reply-box {
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .comment-body {
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-cat,
+html[data-preset='contemplation'][data-surface='site'] .article-tag {
+  padding: 3px 7px;
+  border: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-tag:hover,
+html[data-preset='contemplation'][data-surface='site'] .article-cat:hover {
+  border-color: var(--ct-hairline-strong);
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero-veil {
+  background: rgb(10 10 12 / 0.58);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero-inner {
+  max-width: calc(var(--ct-read) + 64px);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero-text h1 {
+  font-family: var(--ct-sans);
+  font-size: clamp(36px, 4.5vw, 52px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb {
   margin: 0 0 16px;
-  font-size: 13px;
+  font-family: var(--ct-mono);
+  font-size: 10px;
   line-height: 1.5;
-  color: var(--muted);
+  letter-spacing: 0.02em;
+  color: var(--faint);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb ol {
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb ol {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -560,39 +908,33 @@ html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb ol {
   list-style: none;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb li {
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb li {
   display: inline-flex;
   align-items: center;
   flex: none;
   min-width: 0;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb li + li::before {
-  content: '/';
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb li + li::before {
+  content: "/";
   margin-right: 8px;
   color: var(--faint);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb li:last-child {
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb li:last-child {
   flex: 1 1 auto;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb a {
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb a {
   color: var(--muted);
-  transition: color 140ms ease;
+  transition: color 160ms ease;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb a:hover {
+html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb a:hover {
   color: var(--ink);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb a:focus-visible {
-  outline: 2px solid var(--ct-focus);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-crumb-current {
+html[data-preset='contemplation'][data-surface='site'] .article-crumb-current {
   display: block;
   width: 100%;
   overflow: hidden;
@@ -601,38 +943,38 @@ html[data-surface='site'][data-preset='contemplation'] .article-crumb-current {
   text-overflow: ellipsis;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-hero .article-breadcrumb {
-  color: rgb(255 255 255 / 0.62);
-}
-
-html[data-surface='site'][data-preset='contemplation'] .article-hero .article-breadcrumb a,
-html[data-surface='site'][data-preset='contemplation'] .article-hero .article-breadcrumb li + li::before,
-html[data-surface='site'][data-preset='contemplation'] .article-hero .article-crumb-current {
+html[data-preset='contemplation'][data-surface='site'] .article-hero .article-breadcrumb,
+html[data-preset='contemplation'][data-surface='site'] .article-hero .article-breadcrumb a,
+html[data-preset='contemplation'][data-surface='site'] .article-hero .article-crumb-current {
   color: rgb(255 255 255 / 0.68);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .article-hero .article-breadcrumb a:hover {
-  color: #fff;
+html[data-preset='contemplation'][data-surface='site'] .article-toc--inline {
+  display: none;
 }
 
 @media (min-width: 1181px) {
-  html[data-surface='site'][data-preset='contemplation']
+  html[data-preset='contemplation'][data-surface='site']
     .article-layout:has(> .article-float-toc) {
     display: grid;
-    grid-template-columns: 192px minmax(0, var(--ct-read)) 192px;
-    column-gap: clamp(24px, 2.4vw, 32px);
+    grid-template-columns: var(--ct-rail) minmax(0, var(--ct-read));
+    column-gap: clamp(40px, 5vw, 72px);
     justify-content: center;
     align-items: start;
-    max-width: none;
+    max-width: calc(var(--ct-rail) + var(--ct-read) + clamp(40px, 5vw, 72px));
+    margin-inline: auto;
   }
 
-  html[data-surface='site'][data-preset='contemplation']
+  html[data-preset='contemplation'][data-surface='site']
     .article-layout:has(> .article-float-toc) > .article-float-toc {
-    grid-column: 3;
+    grid-column: 1;
     grid-row: 1;
+    padding: 2px 26px 0 0;
+    border-right: 1px solid var(--ct-hairline);
+    border-left: 0;
   }
 
-  html[data-surface='site'][data-preset='contemplation']
+  html[data-preset='contemplation'][data-surface='site']
     .article-layout:has(> .article-float-toc) > .article {
     grid-column: 2;
     grid-row: 1;
@@ -640,180 +982,1940 @@ html[data-surface='site'][data-preset='contemplation'] .article-hero .article-br
     margin-inline: 0;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .article-float-toc {
-    padding-left: 16px;
-    border-left: 1px solid var(--ct-hairline);
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc-label {
+    font-family: var(--ct-mono);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    color: var(--faint);
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .article-float-toc a {
-    margin-left: -17px;
-    border-left-width: 2px;
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc-label::before {
+    width: 18px;
+    height: 1px;
+    background: var(--ct-hairline-strong);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc a {
+    margin: 0 -27px 0 0;
+    padding: 5px 24px 5px 0;
+    border: 0;
+    border-right: 2px solid transparent;
     border-radius: 0;
+    background: transparent;
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--muted);
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .article-float-toc a.is-active {
-    border-left-color: var(--accent);
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc a:hover {
     background: transparent;
+    color: var(--ink);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc a.is-active {
+    border-right-color: var(--accent);
+    background: transparent;
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc a.is-sub {
+    padding-left: 0;
+    font-size: 10.5px;
+    color: var(--faint);
   }
 }
 
 @media (max-width: 1180px) {
-  /* 窄屏不再把目录铺在正文前面，交给阅读工具栏的抽屉。 */
-  html[data-surface='site'][data-preset='contemplation'] .article-toc--inline {
+  html[data-preset='contemplation'][data-surface='site'] .article-layout {
+    max-width: var(--ct-read);
+    margin-inline: auto;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-float-toc,
+  html[data-preset='contemplation'][data-surface='site'] .article-toc--inline {
     display: none;
   }
 }
 
-/* ---------- 按钮与焦点 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .btn {
-  border-radius: 3px;
-  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease,
-    color 140ms ease;
+/* ---------- 关于、联络与所有自定义页面 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .page-head,
+html[data-preset='contemplation'][data-surface='site'] .page-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 2.1fr);
+  column-gap: clamp(28px, 7vw, 112px);
+  align-items: start;
+  padding: clamp(52px, 7vw, 88px) 0 clamp(28px, 3vw, 40px);
+  border-bottom: 1px solid var(--ct-hairline-strong);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .btn:active:not(:disabled) {
-  transform: scale(0.98);
+html[data-preset='contemplation'][data-surface='site'] .page-head .eyebrow,
+html[data-preset='contemplation'][data-surface='site'] .page-hero .eyebrow {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 2px 0 0;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .btn-primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-ink);
+html[data-preset='contemplation'][data-surface='site'] .page-head h1,
+html[data-preset='contemplation'][data-surface='site'] .page-hero h1 {
+  grid-column: 2;
+  grid-row: 1;
+  max-width: 18ch;
+  margin: 0;
+  font-family: var(--ct-sans);
+  font-size: clamp(36px, 4.6vw, 54px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .btn-primary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 84%, var(--ink));
-  background: color-mix(in srgb, var(--accent) 84%, var(--ink));
-  color: var(--accent-ink);
+html[data-preset='contemplation'][data-surface='site'] .page-head h1,
+html[data-preset='contemplation'][data-surface='site'] .page-head .eyebrow {
+  padding-top: 0;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .btn-secondary {
+html[data-preset='contemplation'][data-surface='site'] .page-head p,
+html[data-preset='contemplation'][data-surface='site'] .page-hero .page-summary {
+  grid-column: 2;
+  grid-row: 2;
+  max-width: 56ch;
+  margin-top: 20px;
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .page-head-row {
+  grid-column: 2;
+  grid-row: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 28px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .page-meta {
+  grid-column: 2;
+  grid-row: 3;
+  margin-top: 24px;
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .page-body-wrap {
+  max-width: min(100%, 760px);
+  margin: clamp(32px, 4vw, 48px) auto 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .page-body-wrap .back-link {
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .page-bento {
+  --shell: min(100%, 1320px);
+}
+
+/* ---------- 归档、分类、标签与搜索 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .archive-list {
+  margin-top: 12px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-item {
+  grid-template-columns: 84px minmax(0, 1fr) 120px;
+  gap: 30px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--ct-hairline);
+  align-items: baseline;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-date {
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-item h2 {
+  font-family: var(--ct-sans);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.025em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-item h2 a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-item h2 a:hover {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-item p {
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-author {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+  text-align: right;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-year-head {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-year-head h2,
+html[data-preset='contemplation'][data-surface='site'] .archive-month h3 {
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card-grid {
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 28px 44px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card {
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card:hover {
+  transform: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card-cover {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card-cover img {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card-body {
+  padding: 16px 0 24px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card-meta,
+html[data-preset='contemplation'][data-surface='site'] .archive-card-foot {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card h2,
+html[data-preset='contemplation'][data-surface='site'] .archive-card h3 {
+  margin-top: 8px;
+  font-family: var(--ct-sans);
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.32;
+  letter-spacing: -0.025em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card h2 a,
+html[data-preset='contemplation'][data-surface='site'] .archive-card h3 a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card:hover h2 a,
+html[data-preset='contemplation'][data-surface='site'] .archive-card:hover h3 a {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .archive-card p {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .year-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  padding: 12px 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-bottom: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .year-jump-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .year-jump-item:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-grid {
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 28px 44px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card {
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card:hover {
+  transform: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card-cover {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card-body {
+  padding: 16px 0 24px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card-meta {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card h3 {
+  margin-top: 7px;
+  font-family: var(--ct-sans);
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card p {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card-more {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-card:hover .taxonomy-card-more {
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .taxonomy-dot,
+html[data-preset='contemplation'][data-surface='site'] .term-swatch {
+  width: 12px;
+  height: 2px;
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .term-hash {
+  font-family: var(--ct-mono);
+  font-size: 20px;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 28px;
+  padding-top: 4px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .tag-cloud-item {
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .tag-cloud-item:hover {
+  border-bottom-color: var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-box {
+  max-width: 680px;
+  gap: 14px;
+  margin-top: 30px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-box .input {
+  height: 50px;
+  padding-inline: 0;
+  border: 0;
+  border-bottom: 1px solid var(--ct-hairline-strong);
+  border-radius: 0;
+  background: transparent;
+  font-size: 17px;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-box .input:focus {
+  border-bottom-color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-meta {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--ct-hairline);
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-filters {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-results {
+  margin-top: 8px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-history {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-history-head {
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-history-chip {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-history-chip:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .search-hit {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* ---------- 控件、面板与通用编排区块 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .btn {
+  border-radius: 0;
+  box-shadow: none;
+  font-family: var(--ct-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  transition: background-color 160ms ease, border-color 160ms ease,
+    color 160ms ease, opacity 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .btn:active:not(:disabled) {
+  transform: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .btn-primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .btn-primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ink) 84%, var(--bg));
+  background: color-mix(in srgb, var(--ink) 84%, var(--bg));
+  color: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .btn-secondary {
   border-color: var(--ct-hairline-strong);
+  background: transparent;
+  color: var(--ink);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .btn-secondary:hover:not(:disabled) {
-  border-color: var(--ct-hairline-strong);
+html[data-preset='contemplation'][data-surface='site'] .btn-secondary:hover:not(:disabled) {
+  border-color: var(--ink);
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .btn-ghost:hover:not(:disabled) {
   background: var(--bg-subtle);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .btn:focus-visible,
-html[data-surface='site'][data-preset='contemplation'] .site-nav a:focus-visible,
-html[data-surface='site'][data-preset='contemplation'] .story-body h3 a:focus-visible,
-html[data-surface='site'][data-preset='contemplation'] .side-story:focus-visible {
+html[data-preset='contemplation'][data-surface='site'] .btn:focus-visible,
+html[data-preset='contemplation'][data-surface='site'] .site-nav a:focus-visible,
+html[data-preset='contemplation'][data-surface='site'] .story-body h3 a:focus-visible,
+html[data-preset='contemplation'][data-surface='site'] .side-story:focus-visible,
+html[data-preset='contemplation'][data-surface='site'] .article-body a:focus-visible {
   outline: 2px solid var(--ct-focus);
   outline-offset: 3px;
 }
 
-/* ---------- 页脚 ---------- */
-html[data-surface='site'][data-preset='contemplation'] .site-footer {
-  margin-top: 96px;
-  border-top-color: var(--ct-hairline);
-  background: var(--ct-panel);
+html[data-preset='contemplation'][data-surface='site'] .pill,
+html[data-preset='contemplation'][data-surface='site'] .chip,
+html[data-preset='contemplation'][data-surface='site'] .badge {
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  box-shadow: none;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .footer-inner {
-  gap: 48px;
-  padding: 48px 0;
+html[data-preset='contemplation'][data-surface='site'] .pill {
+  padding: 5px 9px;
+  border-color: var(--ct-hairline);
+  font-size: 9.5px;
+  color: var(--muted);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .footer-col h4 {
-  font-family: var(--mono);
-  font-size: 10px;
+html[data-preset='contemplation'][data-surface='site'] .pill:hover {
+  border-color: var(--ct-hairline-strong);
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .chip {
+  padding: 2px 6px;
+  border: 1px solid var(--ct-hairline);
+  font-size: 9px;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .input,
+html[data-preset='contemplation'][data-surface='site'] .textarea,
+html[data-preset='contemplation'][data-surface='site'] .select {
+  border-color: var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--ct-sans);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .input:focus,
+html[data-preset='contemplation'][data-surface='site'] .textarea:focus,
+html[data-preset='contemplation'][data-surface='site'] .select:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .panel {
+  border-color: var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .panel-head {
+  padding: 16px 0;
+  border-bottom-color: var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .panel-head h3 {
+  font-family: var(--ct-sans);
   font-weight: 500;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.01em;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .footer-col a,
-html[data-surface='site'][data-preset='contemplation'] .footer-col span {
+html[data-preset='contemplation'][data-surface='site'] .panel-body {
+  padding: 20px 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .stat {
+  border-color: var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-marketing {
+  margin-top: clamp(40px, 5vw, 64px);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-marketing-heading,
+html[data-preset='contemplation'][data-surface='site'] .pp-content-head h2,
+html[data-preset='contemplation'][data-surface='site'] .pp-contact-heading,
+html[data-preset='contemplation'][data-surface='site'] .pp-guestbook-head h2 {
+  font-family: var(--ct-sans);
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-marketing-heading {
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-feature-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-feature-card {
+  padding: 20px 0 24px;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-feature-icon {
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-feature-title,
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid-title {
+  font-family: var(--ct-sans);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-feature-text,
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid-text {
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.78;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid-card {
+  padding: 20px 0 22px;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid-card:hover,
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid-card.is-link:hover {
+  transform: none;
+  border-color: var(--ct-hairline);
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-card-grid-card.is-link:hover .pp-card-grid-title {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-data-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-stat-card {
+  padding: 20px 0 24px;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-stat-card strong {
+  font-family: var(--ct-sans);
+  font-size: clamp(30px, 4vw, 46px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-stat-card > span {
+  margin-top: 12px;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-module {
+  padding-top: 4px;
+  border-top: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-head {
+  padding: 14px 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-more {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-list {
+  border-top: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-row {
+  gap: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  transition: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-row:hover {
+  background: transparent;
+  transform: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-rank {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-row h3 {
+  font-family: var(--ct-sans);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-row h3 a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-content-row p {
   font-size: 12px;
+  line-height: 1.75;
+  color: var(--muted);
 }
 
-html[data-surface='site'][data-preset='contemplation'] .footer-bottom {
+html[data-preset='contemplation'][data-surface='site'] .pp-content-time {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card {
+  padding: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+  transition: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card:hover,
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card.is-floating:hover {
+  transform: none;
+  border-color: var(--ct-hairline);
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card.is-floating {
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card .pp-article-title {
+  font-family: var(--ct-sans);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card:hover .pp-article-title {
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-cover,
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card .cover {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-media-text {
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: clamp(28px, 5vw, 72px);
+  align-items: start;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-media-text.is-right {
+  grid-template-columns: 0.8fr 1.2fr;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-media-text-figure,
+html[data-preset='contemplation'][data-surface='site'] .pp-media-text-figure img {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-media-text-title {
+  font-family: var(--ct-sans);
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-media-text-body {
+  margin-top: 18px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-pricing {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-pricing-plan {
+  padding: 22px 0 26px;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-pricing-plan.is-featured {
+  border-top: 2px solid var(--ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-pricing-name {
+  font-family: var(--ct-sans);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-pricing-price {
+  font-family: var(--ct-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-pricing-plan.is-featured .pp-pricing-cta {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-testimonial-card {
+  padding: 20px 0 24px;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-testimonial-quote {
+  font-family: var(--ct-sans);
+  font-size: 17px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-guestbook,
+html[data-preset='contemplation'][data-surface='site'] .pp-contact {
+  padding-top: 4px;
+  border-top: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-guestbook-count {
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-guestbook-input textarea,
+html[data-preset='contemplation'][data-surface='site'] .pp-contact-field :is(input, textarea) {
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-anchor-nav {
+  border: 0;
+  border-top: 1px solid var(--ct-hairline-strong);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-anchor-nav-link {
+  border-radius: 0;
+  font-size: 11px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-anchor-nav-link:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-anchor-nav-link.is-active {
+  border-left-color: var(--accent);
+  background: transparent;
+}
+
+/* 没有真实封面时，不再用程序化几何封面占位：把空白留给标题和摘要。 */
+html[data-preset='contemplation'][data-surface='site'] .cover:not(.cover-custom) {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-feature > a:has(> .cover:not(.cover-custom)) {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card:not(:has(.cover-custom)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card:not(:has(.cover-custom)) .pp-article-copy {
+  grid-column: 1 / -1;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) {
+  border-bottom: 1px solid var(--ct-hairline-strong);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) .article-hero-media,
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) .article-hero-veil {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) .article-hero-inner {
+  min-height: 0;
+  gap: 34px;
+  padding-top: 30px;
+  padding-bottom: 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) :is(
+    .article-breadcrumb,
+    .article-breadcrumb a,
+    .article-breadcrumb li,
+    .article-crumb-current,
+    .article-hero-kicker,
+    .article-hero-lede,
+    .article-hero-back
+  ) {
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) .article-hero-kicker,
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) .article-breadcrumb {
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) h1 {
+  max-width: 18ch;
+  color: var(--ink);
+  text-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero:not(:has(.cover-custom)) .article-hero-lede {
+  text-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero-back {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  backdrop-filter: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .article-hero-back:hover {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- 登录、个人主页与零散页面 ---------- */html[data-preset='contemplation'][data-surface='site'] .auth-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  align-items: center;
+  justify-content: center;
+  column-gap: clamp(48px, 8vw, 120px);
+  width: min(100%, 1120px);
+  min-height: calc(100vh - 56px);
+  margin: 0 auto;
+  padding: clamp(48px, 8vh, 96px) clamp(20px, 4vw, 56px);
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-page::before,
+html[data-preset='contemplation'][data-surface='site'] .auth-page::after {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-main {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-card {
+  width: min(100%, 420px);
+  padding: 36px 0 0;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline-strong);
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-card h1 {
+  max-width: 12ch;
+  font-family: var(--ct-sans);
+  font-size: clamp(32px, 4vw, 44px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-card .auth-lede {
+  max-width: 42ch;
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-form {
+  gap: 20px;
+  margin-top: 30px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-switch {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top-color: var(--ct-hairline);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-aside {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  min-height: 360px;
+  padding-left: clamp(28px, 4vw, 56px);
+  border-left: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-quote {
+  max-width: 22ch;
+  font-family: var(--ct-sans);
+  font-size: clamp(25px, 2.8vw, 34px);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.03em;
+  color: var(--ink-soft);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-quote footer,
+html[data-preset='contemplation'][data-surface='site'] .auth-aside-meta {
+  margin-top: 20px;
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .auth-aside-art {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-head {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--ct-hairline-strong);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-head h1 {
+  font-family: var(--ct-sans);
+  font-size: clamp(34px, 4vw, 46px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-head p {
+  margin-top: 6px;
+  font-family: var(--ct-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 32px;
+  margin-top: 28px;
+  border-top: 1px solid var(--ct-hairline);
+  border-bottom: 1px solid var(--ct-hairline);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-stats .stat {
+  padding: 18px 0;
+  border: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-stats b {
+  font-family: var(--ct-mono);
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-stats b.is-small {
+  margin-top: 3px;
+  font-family: var(--ct-sans);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-article-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .profile-article-grid.is-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card h3 {
+  font-family: var(--ct-sans);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .pp-article-card:hover h3 {
+  color: var(--accent);
+}
+
+/* 空状态也不做成虚线盒子：一条上边线、一句说明，足够了。 */
+html[data-preset='contemplation'][data-surface='site'] .empty,
+html[data-preset='contemplation'][data-surface='site'] .empty-compact {
+  display: block;
+  padding: 26px 0;
+  border: 0;
+  border-top: 1px solid var(--ct-hairline-strong);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .empty-icon {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .empty h3 {
+  margin: 0;
+  font-family: var(--ct-sans);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .empty p {
+  max-width: 42ch;
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .hero-feature .empty {
+  padding-top: 30px;
+}
+
+/* ---------- 页脚 ---------- */
+html[data-preset='contemplation'][data-surface='site'] .site-footer {
+  margin-top: clamp(72px, 10vw, 120px);
+  border-top-color: var(--ct-hairline);
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .footer-inner {
+  gap: clamp(32px, 5vw, 64px);
+  padding: clamp(40px, 6vw, 64px) 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .footer-col h4 {
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .footer-col a,
+html[data-preset='contemplation'][data-surface='site'] .footer-col span {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .footer-col a:hover {
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='site'] .footer-bottom {
   padding: 16px 0 24px;
   border-top-color: var(--ct-hairline);
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
+  color: var(--faint);
+  font-family: var(--ct-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .footer-shortcuts .shortcut-link {
-  border-radius: 3px;
+html[data-preset='contemplation'][data-surface='site'] .footer-shortcuts .shortcut-link {
+  border-radius: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .footer-shortcuts .shortcut-link:hover {
   border-color: var(--ct-hairline);
   background: transparent;
 }
 
-html[data-surface='site'][data-preset='contemplation'] .footer-shortcuts .shortcut-link:hover {
+html[data-preset='contemplation'][data-surface='site'] .read-tools {
   border-color: var(--ct-hairline-strong);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .read-tool {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='site'] .read-tool.is-on {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* ---------- 后台：同一套暖纸 / 墨蓝，工作台不做营销卡片 ---------- */
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell {
+  --bg: #faf9f6;
+  --ink: #18181b;
+  --accent: #2f4a5a;
+  --bg-subtle: #f3f1ec;
+  --bg-sunken: #eae7e0;
+  --ink-soft: #3f3f46;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --line: #e4e1da;
+  --line-strong: #d3cec4;
+  --accent-soft: #e7edef;
+  --accent-ink: #faf9f6;
+  --prose: #27272a;
+  --admin-panel: #faf9f6;
+  --admin-panel-alt: #f3f1ec;
+  --admin-border: #e4e1da;
+  --admin-border-soft: #eeeae3;
+  --admin-hover: #f1eee8;
+  --admin-glass: rgb(250 249 246 / 0.92);
+  --admin-glass-strong: rgb(250 249 246 / 0.96);
+  --admin-glow: #faf9f6;
+  --r-sm: 2px;
+  --r-md: 2px;
+  --r-lg: 2px;
   background: var(--bg);
 }
 
-/* ---------- 窄屏 ---------- */
+html[data-preset='contemplation'][data-surface='admin'][data-admin-theme='dark'] .admin-shell {
+  --bg: #0c0c0e;
+  --ink: #e4e4e7;
+  --accent: #a9bdc7;
+  --bg-subtle: #141416;
+  --bg-sunken: #1b1b1e;
+  --ink-soft: #c7c7cc;
+  --muted: #8e8e93;
+  --faint: #636366;
+  --line: #26262a;
+  --line-strong: #35353a;
+  --accent-soft: #a9bdc71f;
+  --accent-ink: #0c0c0e;
+  --prose: #d4d4d8;
+  --admin-panel: #111113;
+  --admin-panel-alt: #161618;
+  --admin-border: #2a2a2e;
+  --admin-border-soft: #222226;
+  --admin-hover: #1a1a1d;
+  --admin-glass: rgb(12 12 14 / 0.92);
+  --admin-glass-strong: rgb(12 12 14 / 0.96);
+  --admin-glow: #0c0c0e;
+  background: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell::before,
+html[data-preset='contemplation'][data-surface='admin'][data-admin-theme='dark'] .admin-shell::before {
+  background: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-side,
+html[data-preset='contemplation'][data-surface='admin'] .admin-topbar {
+  border-color: var(--admin-border);
+  border-radius: 0;
+  background: var(--admin-panel);
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-topbar {
+  height: 56px;
+  backdrop-filter: blur(8px);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-subnav {
+  border-color: var(--admin-border);
+  background: var(--admin-panel-alt);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-subnav::before {
+  background: var(--admin-panel-alt);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-brand {
+  border-bottom-color: var(--admin-border);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-brand-text small {
+  border: 1px solid var(--admin-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-nav-link {
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  transition: background-color 160ms ease, color 160ms ease,
+    border-color 160ms ease;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-nav-link:hover {
+  background: var(--admin-hover);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-nav-link.is-active {
+  border-left-color: var(--accent);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-nav-link.is-active svg {
+  color: var(--accent);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-nav-badge {
+  border-radius: 0;
+  border-color: var(--admin-border);
+  background: transparent;
+  font-family: var(--ct-mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-subnav-link {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-subnav-link.is-active {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-subnav-link.is-active svg {
+  color: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-theme-switch {
+  border-radius: 0;
+  border-color: var(--admin-border);
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-theme-switch button {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-theme-switch button.is-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell :is(
+    .panel,
+    .stat,
+    .dash-analytics,
+    .review-card,
+    .media-card,
+    .page-template-card,
+    .theme-bundle-card,
+    .live-panel,
+    .two-factor-status,
+    .tabs,
+    .ext-card,
+    .page-editor-preview,
+    .group-stat,
+    .group-choice,
+    .taxonomy-stat,
+    .login-summary-card,
+    .live-card,
+    .publish-state,
+    .danger-zone
+  ) {
+  border-color: var(--admin-border);
+  border-radius: 0;
+  background: var(--admin-panel);
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell :is(
+    .admin-page-head,
+    .section-head,
+    .panel-head
+  ) {
+  border-color: var(--admin-border);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell :is(
+    .admin-page-head h1,
+    .panel-head h3,
+    .stat-value,
+    .admin-topbar h1
+  ) {
+  letter-spacing: -0.02em;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell :is(
+    .btn,
+    .tool-btn,
+    .icon-btn,
+    .admin-theme-switch,
+    .segmented,
+    .range-switch
+  ) {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell .btn-primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell .btn-secondary {
+  border-color: var(--admin-border);
+  background: transparent;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell :is(
+    input,
+    textarea,
+    select,
+    .input,
+    .textarea,
+    .select
+  ) {
+  border-radius: 0;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell :is(
+    .admin-side,
+    .admin-topbar,
+    .admin-search,
+    .nav-dropdown-menu
+  ) {
+  box-shadow: none;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell .live-card-online {
+  background: var(--admin-panel);
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell .cover:not(.cover-custom) {
+  display: none;
+}
+
+html[data-preset='contemplation'][data-surface='admin'] .admin-shell .danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--admin-border));
+  background: color-mix(in srgb, var(--danger) 6%, var(--admin-panel));
+}
+
+/* ---------- 平板：保留双栏，但不挤阅读宽度 ---------- */
+@media (max-width: 1080px) {
+  html[data-preset='contemplation'][data-surface='site'] .shell {
+    padding-inline: clamp(24px, 4vw, 40px);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .feed-layout {
+    grid-template-columns: minmax(0, 2.2fr) minmax(170px, 1fr);
+    gap: 44px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .hero {
+    gap: 48px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .hero h1 {
+    font-size: clamp(38px, 5vw, 50px);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .pp-marketing,
+  html[data-preset='contemplation'][data-surface='site'] .pp-content-module {
+    max-width: 920px;
+  }
+
+  html[data-preset='contemplation'][data-surface='admin'] .admin-side,
+  html[data-preset='contemplation'][data-surface='admin'] .admin-topbar {
+    border-radius: 0;
+  }
+}
+
+/* ---------- 平板竖屏 / 手机横屏：首屏与侧栏先后撤 ---------- */
 @media (max-width: 900px) {
-  html[data-surface='site'][data-preset='contemplation'] .header-inner {
+  html[data-preset='contemplation'][data-surface='site'] .header-inner {
     height: 56px;
     gap: 16px;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .hero {
-    gap: 48px;
-    padding: 56px 0 48px;
+  html[data-preset='contemplation'][data-surface='site'] .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding: 56px 0 44px;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .hero h1 {
-    font-size: clamp(36px, 9vw, 48px);
+  html[data-preset='contemplation'][data-surface='site'] .hero h1 {
+    max-width: 17ch;
+    font-size: clamp(38px, 7vw, 48px);
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .hero-lede {
+  html[data-preset='contemplation'][data-surface='site'] .hero-feature {
+    max-width: 520px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .feed-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 50px;
+    padding-top: 40px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .side {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .side-inner {
+    padding-top: 28px;
+    border-top: 1px solid var(--ct-hairline-strong);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .story {
+    grid-template-columns: 26px minmax(0, 1fr) 18px;
+    gap: 14px;
+    padding: 24px 0;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .story-body h3 {
+    font-size: 22px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 18px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head .eyebrow,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero .eyebrow,
+  html[data-preset='contemplation'][data-surface='site'] .page-head h1,
+  html[data-preset='contemplation'][data-surface='site'] .page-head p,
+  html[data-preset='contemplation'][data-surface='site'] .page-head-row,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero h1,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero .page-summary,
+  html[data-preset='contemplation'][data-surface='site'] .page-meta {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head h1,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero h1 {
+    margin-top: 4px;
+    font-size: clamp(34px, 6vw, 46px);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head p,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero .page-summary {
+    margin-top: 0;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .auth-page {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    width: min(100%, 540px);
+    min-height: calc(100vh - 56px);
+    padding-top: 56px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .auth-aside {
+    display: none;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .auth-card {
+    width: 100%;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-head h1 {
+    font-size: clamp(32px, 6vw, 42px);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body {
+    font-size: calc(17px * var(--pp-read-scale, 1));
+  }
+
+  html[data-preset='contemplation'][data-surface='admin'] .admin-topbar {
+    height: 56px;
+  }
+}
+
+/* ---------- 手机：单列、宽窄自适应 ---------- */
+@media (max-width: 720px) {
+  html[data-preset='contemplation'][data-surface='site'] .shell {
+    padding-inline: 18px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .brand-sub {
+    display: none;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .hero {
+    gap: 32px;
+    padding: 44px 0 36px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .hero h1 {
+    margin-top: 16px;
+    font-size: clamp(34px, 9vw, 43px);
+    line-height: 1.1;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .hero-lede {
     margin-top: 16px;
     font-size: 15.5px;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .feed-layout {
-    gap: 48px;
-    padding-top: 40px;
+  html[data-preset='contemplation'][data-surface='site'] .hero-meta {
+    gap: 14px;
+    margin-top: 24px;
+    font-size: 9.5px;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .story {
-    padding: 24px 0;
-    margin: 0;
+  html[data-preset='contemplation'][data-surface='site'] .story {
+    grid-template-columns: 22px minmax(0, 1fr);
+    padding: 22px 0;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .story:hover {
-    transform: none;
-  }
-
-  html[data-surface='site'][data-preset='contemplation'] .story-side {
+  html[data-preset='contemplation'][data-surface='site'] .story-side {
     display: none;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .site-footer {
-    margin-top: 72px;
+  html[data-preset='contemplation'][data-surface='site'] .story-body h3 {
+    font-size: 21px;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .article-body {
+  html[data-preset='contemplation'][data-surface='site'] .story-body p {
+    font-size: 13px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero {
+    padding-top: 42px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .archive-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding: 20px 0;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .archive-date {
+    order: 3;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .archive-author {
+    display: none;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .archive-item h2 {
+    font-size: 20px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .archive-card-grid,
+  html[data-preset='contemplation'][data-surface='site'] .taxonomy-grid,
+  html[data-preset='contemplation'][data-surface='site'] .pp-feature-grid,
+  html[data-preset='contemplation'][data-surface='site'] .pp-card-grid,
+  html[data-preset='contemplation'][data-surface='site'] .pp-data-grid,
+  html[data-preset='contemplation'][data-surface='site'] .pp-article-grid,
+  html[data-preset='contemplation'][data-surface='site'] .profile-article-grid,
+  html[data-preset='contemplation'][data-surface='site'] .pp-pricing {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .pp-media-text,
+  html[data-preset='contemplation'][data-surface='site'] .pp-media-text.is-right {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .pp-media-text.is-right .pp-media-text-figure {
+    order: 2;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .tag-cloud {
+    gap: 0 20px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .search-box {
+    gap: 10px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .search-box .input {
+    height: 46px;
+    font-size: 16px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .profile-stats {
+    gap: 0 18px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .profile-head {
+    align-items: flex-start;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .profile-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .footer-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding: 36px 0;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .auth-page {
+    padding: 36px 20px 52px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-head h1 {
+    font-size: clamp(31px, 8vw, 38px);
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-lede {
+    font-size: 16px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body {
+    margin-top: 28px;
+    font-size: calc(16.5px * var(--pp-read-scale, 1));
+    line-height: 1.82;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body h2 {
+    font-size: 24px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body h3 {
+    font-size: 19px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body pre {
+    margin-inline: -18px;
+    padding: 18px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body pre:has(.code-lang) {
+    padding-top: 44px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body blockquote {
+    padding-left: 16px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-breadcrumb {
+    font-size: 9.5px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-pager {
+    margin-top: 32px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .site-footer {
+    margin-top: 64px;
+  }
+
+  html[data-preset='contemplation'][data-surface='admin'] .admin-content {
+    padding-top: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  html[data-preset='contemplation'][data-surface='site'] .hero h1 {
+    font-size: 33px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .page-head h1,
+  html[data-preset='contemplation'][data-surface='site'] .page-hero h1 {
+    font-size: 32px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-head h1 {
+    font-size: 30px;
+  }
+
+  html[data-preset='contemplation'][data-surface='site'] .article-body {
     font-size: calc(16px * var(--pp-read-scale, 1));
-  }
-
-  html[data-surface='site'][data-preset='contemplation'] .article-head h1 {
-    font-size: clamp(32px, 8vw, 40px);
-  }
-
-  html[data-surface='site'][data-preset='contemplation'] .article-breadcrumb {
-    font-size: 12.5px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-surface='site'][data-preset='contemplation'] .story,
-  html[data-surface='site'][data-preset='contemplation'] .story-side,
-  html[data-surface='site'][data-preset='contemplation'] .btn,
-  html[data-surface='site'][data-preset='contemplation'] .site-header {
-    transition: none;
+  html[data-preset='contemplation'][data-surface='site'] .story,
+  html[data-preset='contemplation'][data-surface='site'] .story-side,
+  html[data-preset='contemplation'][data-surface='site'] .btn,
+  html[data-preset='contemplation'][data-surface='site'] .site-header,
+  html[data-preset='contemplation'][data-surface='admin'] .admin-shell * {
+    transition: none !important;
+    animation: none !important;
   }
 
-  html[data-surface='site'][data-preset='contemplation'] .story:hover,
-  html[data-surface='site'][data-preset='contemplation'] .btn:active:not(:disabled) {
+  html[data-preset='contemplation'][data-surface='site'] .story:hover .story-side {
     transform: none;
   }
 }
