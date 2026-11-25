@@ -51,7 +51,7 @@ npm run dev -- --port 5173  # 80 被占用时换一个端口
 ### Windows 便携包（一键打包）
 
 ```powershell
-# 在仓库根目录双击 打包.bat，或者：
+# 在仓库根目录双击 scripts\打包.bat，或者：
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 

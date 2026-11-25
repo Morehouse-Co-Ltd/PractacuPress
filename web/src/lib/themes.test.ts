@@ -90,8 +90,8 @@ describe('built-in big themes', () => {
   it('keeps both light and dark tokens for contemplation', () => {
     const light = presetTokens('contemplation', 'light');
     const dark = presetTokens('contemplation', 'dark');
-    expect(light?.background).toBe('#faf9f6');
-    expect(dark?.background).toBe('#111113');
+    expect(light?.background).toBe('#f7f2e8');
+    expect(dark?.background).toBe('#14110e');
     expect(light?.ink).not.toBe(dark?.ink);
     expect(light?.accent).not.toBe(dark?.accent);
   });

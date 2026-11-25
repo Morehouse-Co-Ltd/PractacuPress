@@ -2,9 +2,9 @@
 setlocal
 chcp 65001 >nul 2>&1
 title Practacu Press - Package Windows
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\package.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0package.ps1" %*
 set "PP_EXIT=%ERRORLEVEL%"
 
 echo.

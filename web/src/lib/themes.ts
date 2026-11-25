@@ -88,7 +88,7 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
   {
     id: 'contemplation',
     name: t('沉思'),
-    note: t('暖纸与墨蓝 · 杂志式留白；为长文、随笔和独立出版而重做的阅读版面。'),
+    note: t('暖纸与朱砂 · 年轻的中文编辑排版；大字、留白与无边框内容流。'),
     preset: 'contemplation',
     variant: 'classic',
     style: {
@@ -100,9 +100,9 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
     preview: {
       brand: 'PRACTACU PRESS',
       nav: [t('文章'), t('专题'), t('关于')],
-      kicker: t('沉思 · 暖纸与墨蓝'),
-      title: t('让版面退后，文字向前'),
-      subtitle: t('暖纸白、炭黑与墨蓝；非对称的杂志排印，安静地托住长文。'),
+      kicker: t('沉思 · 暖纸与朱砂'),
+      title: t('让版面退后，让表达靠前'),
+      subtitle: t('暖纸白、炭黑与朱砂；更大的中文标题、更松的留白，去掉卡片与描边。'),
       blocks: [
         { type: 'media', weight: 2 },
         { type: 'text' },

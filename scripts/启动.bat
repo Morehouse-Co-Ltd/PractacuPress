@@ -1,7 +1,7 @@
 @echo off
 chcp 936 >nul
 setlocal EnableExtensions EnableDelayedExpansion
-cd /d "%~dp0"
+cd /d "%~dp0.."
 title Practacu Press Ò»¼üÆô¶¯
 
 set "ROOT=%CD%"

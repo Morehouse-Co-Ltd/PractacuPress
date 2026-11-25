@@ -66,9 +66,9 @@ sudo /opt/practacu-press/install.sh --finalize --mode public --domain a.com
 
 ### Windows 便携包
 
-双击 `启动.bat`。第一次运行会在缺 `web/node_modules` 时自动安装依赖，然后分别打开 API 和 Vite 两个窗口，浏览器地址是 `http://127.0.0.1:5173/?mode=live`。只检查环境运行 `启动.bat --check`；停止时在 API 窗口按 `Ctrl+C`。
+双击 `scripts\启动.bat`。第一次运行会在缺 `web/node_modules` 时自动安装依赖，然后分别打开 API 和 Vite 两个窗口，浏览器地址是 `http://127.0.0.1:5173/?mode=live`。只检查环境运行 `scripts\启动.bat --check`；停止时在 API 窗口按 `Ctrl+C`。
 
-打包便携版时双击 `打包.bat`，或者执行：
+打包便携版时双击 `scripts\打包.bat`，或者执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1

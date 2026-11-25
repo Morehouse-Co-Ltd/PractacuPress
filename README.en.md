@@ -66,9 +66,9 @@ Upgrade, uninstall, backup and troubleshooting are in [deploy/linux/INSTALL.md](
 
 ### Windows portable package
 
-Double-click `启动.bat`. On first run it installs dependencies when `web/node_modules` is missing, then opens separate windows for the API and Vite; the browser address is `http://127.0.0.1:5173/?mode=live`. To check the environment only, run `启动.bat --check`; to stop, press `Ctrl+C` in the API window.
+Double-click `scripts\启动.bat`. On first run it installs dependencies when `web/node_modules` is missing, then opens separate windows for the API and Vite; the browser address is `http://127.0.0.1:5173/?mode=live`. To check the environment only, run `scripts\启动.bat --check`; to stop, press `Ctrl+C` in the API window.
 
-To package the portable build, double-click `打包.bat`, or run:
+To package the portable build, double-click `scripts\打包.bat`, or run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
