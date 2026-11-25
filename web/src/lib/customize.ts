@@ -1719,12 +1719,12 @@ export function createCustomizationWithPages(): SiteCustomization {
 }
 
 /**
- * 安装完成后的默认主题：沉思。
+ * 安装完成后的默认主题：原版。
  *
- * 2026-11 起新站点以「沉思」交付：石白纸面、单栏阅读，浅色与深色都可用。
- * 站长之后仍可在后台「主题设置」里换成原版、夜航或自定义主题。
+ * 新站点从「原版」的纸白单栏开始，保持第一次启动时的默认观感；
+ * 站长之后仍可在后台「主题设置」里换成沉思、夜航或自定义主题。
  */
-export const INSTALL_DEFAULT_THEME_ID = 'contemplation';
+export const INSTALL_DEFAULT_THEME_ID = 'default';
 
 /** 首次安装完成时写进站点设计的完整配置：默认大主题 + 安装时选择的语言与正文字号。 */
 export function installCustomization(language: Locale, bodySize?: number): SiteCustomization {

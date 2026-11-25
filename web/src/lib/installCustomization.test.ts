@@ -4,15 +4,15 @@ import { builtinThemeBundle } from './themes';
 import { normalizeThemeSettings } from './theme';
 
 describe('安装完成后的默认站点设计', () => {
-  it('默认使用沉思主题（浅色 + 单栏），不再依赖向导里的主题选择', () => {
+  it('默认使用原版主题（纸白浅色 + 单栏），不再默认套用沉思', () => {
     const customization = installCustomization('zh-CN');
-    const contemplation = builtinThemeBundle(INSTALL_DEFAULT_THEME_ID);
+    const original = builtinThemeBundle(INSTALL_DEFAULT_THEME_ID);
 
-    expect(INSTALL_DEFAULT_THEME_ID).toBe('contemplation');
-    expect(contemplation).not.toBeNull();
-    expect(customization.active_theme).toBe('contemplation');
-    expect(customization.theme).toEqual(contemplation!.theme);
-    expect(customization.theme.preset).toBe('contemplation');
+    expect(INSTALL_DEFAULT_THEME_ID).toBe('default');
+    expect(original).not.toBeNull();
+    expect(customization.active_theme).toBe('default');
+    expect(customization.theme).toEqual(original!.theme);
+    expect(customization.theme.preset).toBe('paper');
     expect(customization.theme.mode).toBe('light');
     expect(customization.layout.variant).toBe('classic');
     expect(customization.home.blocks[0]?.type).toBe('classic-hero');
