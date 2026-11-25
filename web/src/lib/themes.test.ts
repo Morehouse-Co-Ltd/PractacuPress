@@ -91,7 +91,7 @@ describe('built-in big themes', () => {
     const light = presetTokens('contemplation', 'light');
     const dark = presetTokens('contemplation', 'dark');
     expect(light?.background).toBe('#faf9f6');
-    expect(dark?.background).toBe('#0c0c0e');
+    expect(dark?.background).toBe('#111113');
     expect(light?.ink).not.toBe(dark?.ink);
     expect(light?.accent).not.toBe(dark?.accent);
   });
