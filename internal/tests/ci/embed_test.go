@@ -38,6 +38,22 @@ func TestFrontendIsEmbedded(t *testing.T) {
 		}
 	}
 
+	// Local compose builds pass VERSION=development. appVersion.ts parses the
+	// imported manifest at boot, so writing "development" into version.json would
+	// crash the SPA; only real release tags may stamp it, using the shared script.
+	for _, want := range []string{
+		"COPY scripts/stamp-version.mjs /tmp/stamp-version.mjs",
+		`"$VERSION" != "development"`,
+		`node /tmp/stamp-version.mjs --dist public --version "$VERSION"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Dockerfile web stage is missing %q", want)
+		}
+	}
+	if strings.Contains(text, "j.version=") || strings.Contains(text, "j.style=") {
+		t.Error("Dockerfile must not carry a second version parser; use scripts/stamp-version.mjs")
+	}
+
 	compose, err := os.ReadFile(filepath.Join(root, "docker-compose.yml"))
 	if err != nil {
 		t.Fatalf("read docker-compose.yml: %v", err)

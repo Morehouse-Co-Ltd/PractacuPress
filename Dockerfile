@@ -5,8 +5,22 @@ COPY web ./
 
 ARG VERSION=development
 ENV VERSION=$VERSION
+
+# Version stamping must use the release pipeline's own script, never a second
+# parser inside the Dockerfile. The build context is the repository root while
+# this stage works in /web, so copy the script in by absolute path.
+COPY scripts/stamp-version.mjs /tmp/stamp-version.mjs
+
+# `development` is the local docker-compose default: the checked-in manifest
+# (0.1.3-beta) is already valid, so only real release tags are stamped. Never
+# write "development" into version.json: appVersion.ts imports it and refuses
+# to boot on an unparsable version. Stamp *before* the build because that import
+# is inlined; stamping dist/ afterwards would leave the bundle reporting the
+# repository version while /version.json reported the release tag.
 RUN npm ci --no-audit --no-fund \
- && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION||'development';j.version=v.replace(/^v/i,'');j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
+ && if [ -n "$VERSION" ] && [ "$VERSION" != "development" ]; then \
+      node /tmp/stamp-version.mjs --dist public --version "$VERSION"; \
+    fi \
  && npm run build \
  && test -f dist/index.html
 
