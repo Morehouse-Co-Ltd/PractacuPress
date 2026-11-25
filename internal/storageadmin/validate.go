@@ -28,6 +28,28 @@ func normalizeRequest(in UpdateRequest, previous Settings, now time.Time) (Setti
 	if maxContentChars < 1 || maxContentChars > config.DefaultMaxContentSourceChars {
 		return Settings{}, invalid("max_content_chars", "range", "正文长度上限必须在 1 到 1000000 个字符之间")
 	}
+
+	mediaLimits := []struct {
+		field    string
+		label    string
+		incoming *int64
+		previous int64
+	}{
+		{"media_user_quota_bytes", "单个用户媒体总量上限", in.MediaUserQuotaBytes, previous.MediaUserQuotaBytes},
+		{"media_user_upload_bytes", "单个用户单次媒体上传上限", in.MediaUserUploadBytes, previous.MediaUserUploadBytes},
+		{"media_user_article_bytes", "单个用户单次文章额度上限", in.MediaUserArticleBytes, previous.MediaUserArticleBytes},
+	}
+	mediaValues := make(map[string]int64, len(mediaLimits))
+	for _, limit := range mediaLimits {
+		value := limit.previous
+		if limit.incoming != nil {
+			value = *limit.incoming
+		}
+		if value < 0 || value > MaxMediaLimitBytes {
+			return Settings{}, invalid(limit.field, "range", limit.label+"必须在 0 到 4611686018427387904 字节之间（0 表示不限）")
+		}
+		mediaValues[limit.field] = value
+	}
 	if len(in.Strategies) == 0 {
 		return Settings{}, invalid("strategies", "required", "至少需要一套储存策略")
 	}
@@ -189,13 +211,16 @@ func normalizeRequest(in UpdateRequest, previous Settings, now time.Time) (Setti
 	}
 
 	return Settings{
-		Version:          settingsVersion,
-		UpdatedAt:        now,
-		MaxContentChars:  maxContentChars,
-		GlobalStrategyID: globalID,
-		Strategies:       strategies,
-		Scopes:           scopes,
-		Allocations:      allocations,
+		Version:               settingsVersion,
+		UpdatedAt:             now,
+		MaxContentChars:       maxContentChars,
+		MediaUserQuotaBytes:   mediaValues["media_user_quota_bytes"],
+		MediaUserUploadBytes:  mediaValues["media_user_upload_bytes"],
+		MediaUserArticleBytes: mediaValues["media_user_article_bytes"],
+		GlobalStrategyID:      globalID,
+		Strategies:            strategies,
+		Scopes:                scopes,
+		Allocations:           allocations,
 	}, nil
 }
 
@@ -206,11 +231,14 @@ func validateSettings(settings Settings) error {
 		return fmt.Errorf("storage settings version %d is not supported", settings.Version)
 	}
 	in := UpdateRequest{
-		MaxContentChars:  &settings.MaxContentChars,
-		GlobalStrategyID: settings.GlobalStrategyID,
-		Strategies:       make([]StrategyInput, 0, len(settings.Strategies)),
-		Scopes:           settings.Scopes,
-		Allocations:      make(map[string]AllocationInput, len(settings.Allocations)),
+		MaxContentChars:       &settings.MaxContentChars,
+		MediaUserQuotaBytes:   &settings.MediaUserQuotaBytes,
+		MediaUserUploadBytes:  &settings.MediaUserUploadBytes,
+		MediaUserArticleBytes: &settings.MediaUserArticleBytes,
+		GlobalStrategyID:      settings.GlobalStrategyID,
+		Strategies:            make([]StrategyInput, 0, len(settings.Strategies)),
+		Scopes:                settings.Scopes,
+		Allocations:           make(map[string]AllocationInput, len(settings.Allocations)),
 	}
 	for _, strategy := range settings.Strategies {
 		in.Strategies = append(in.Strategies, StrategyInput{

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type HTMLAttributes } from 'react';
 import { enhanceContentImages } from '../lib/markdown';
+import { enhanceVideoCards } from '../lib/videoEmbed';
 
 interface ResponsiveHtmlProps extends HTMLAttributes<HTMLDivElement> {
   /** 服务端清洗后的正文 HTML。 */
@@ -20,6 +21,7 @@ export function ResponsiveHtml({ html, ...rest }: ResponsiveHtmlProps) {
 
   useEffect(() => {
     enhanceContentImages(ref.current);
+    enhanceVideoCards(ref.current);
   }, [html]);
 
   return <div ref={ref} {...rest} dangerouslySetInnerHTML={{ __html: html }} />;

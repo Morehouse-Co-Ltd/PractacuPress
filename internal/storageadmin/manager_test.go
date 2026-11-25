@@ -183,7 +183,11 @@ func TestManagerDefaultsLegacyContentLimit(t *testing.T) {
 	localDir := filepath.Join(base, "media")
 	build := func(context.Context, Target) (media.Storage, error) { return newFakeStore("local"), nil }
 	manager, err := NewManager(Config{
-		Env:     config.Config{StorageDriver: config.StorageDriverLocal, StorageDir: localDir},
+		Env: config.Config{
+			StorageDriver:              config.StorageDriverLocal,
+			StorageDir:                 localDir,
+			MediaDefaultUserQuotaBytes: 12345,
+		},
 		DataDir: base,
 		Logger:  testLogger(),
 		Build:   build,
@@ -203,18 +207,31 @@ func TestManagerDefaultsLegacyContentLimit(t *testing.T) {
 	var legacy map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(raw, &legacy))
 	delete(legacy, "max_content_chars")
+	delete(legacy, "media_user_quota_bytes")
+	delete(legacy, "media_user_upload_bytes")
+	delete(legacy, "media_user_article_bytes")
 	raw, err = json.Marshal(legacy)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(settingsPath, raw, 0o600))
 
 	reloaded, err := NewManager(Config{
-		Env:     config.Config{StorageDriver: config.StorageDriverLocal, StorageDir: localDir},
+		Env: config.Config{
+			StorageDriver:              config.StorageDriverLocal,
+			StorageDir:                 localDir,
+			MediaDefaultUserQuotaBytes: 12345,
+		},
 		DataDir: base,
 		Logger:  testLogger(),
 		Build:   build,
 	})
 	require.NoError(t, err)
 	require.Equal(t, config.DefaultMaxContentSourceChars, reloaded.MaxContentChars())
+	// Old documents inherit the deployment media default instead of becoming
+	// unlimited, and the two new ceilings stay at zero (unlimited).
+	userQuota, _ := reloaded.MediaQuotaDefaults()
+	require.EqualValues(t, 12345, userQuota)
+	require.Zero(t, reloaded.MediaUploadLimitBytes())
+	require.Zero(t, reloaded.MediaArticleLimitBytes())
 }
 
 func TestManagerRejectsInvalidDocuments(t *testing.T) {
@@ -356,4 +373,37 @@ func TestManagerKeepsStoredCloudCredentialsWhenOmitted(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, status.Strategies[0].HasAccessKey)
 	require.False(t, status.Strategies[0].HasSecret)
+}
+
+func TestManagerAppliesMediaUserLimits(t *testing.T) {
+	base := t.TempDir()
+	localDir := filepath.Join(base, "media")
+	manager, err := NewManager(Config{
+		Env:     config.Config{StorageDriver: config.StorageDriverLocal, StorageDir: localDir},
+		DataDir: base,
+		Logger:  testLogger(),
+		Build:   func(context.Context, Target) (media.Storage, error) { return newFakeStore("local"), nil },
+	})
+	require.NoError(t, err)
+
+	quota, upload, article := int64(2048), int64(1024), int64(4096)
+	request := localRequest(map[string]AllocationInput{
+		config.StorageScopeContent:    singleInput("local"),
+		config.StorageScopeSite:       singleInput("local"),
+		config.StorageScopeAvatar:     singleInput("local"),
+		config.StorageScopeAttachment: singleInput("local"),
+	}, "local", StrategyInput{ID: "local", Name: "Local", Driver: "local", LocalDir: localDir})
+	request.MediaUserQuotaBytes = &quota
+	request.MediaUserUploadBytes = &upload
+	request.MediaUserArticleBytes = &article
+
+	status, err := manager.Apply(context.Background(), request)
+	require.NoError(t, err)
+	require.EqualValues(t, quota, status.MediaUserQuotaBytes)
+	require.EqualValues(t, upload, status.MediaUserUploadBytes)
+	require.EqualValues(t, article, status.MediaUserArticleBytes)
+	userQuota, _ := manager.MediaQuotaDefaults()
+	require.EqualValues(t, quota, userQuota)
+	require.EqualValues(t, upload, manager.MediaUploadLimitBytes())
+	require.EqualValues(t, article, manager.MediaArticleLimitBytes())
 }

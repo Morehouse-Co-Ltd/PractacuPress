@@ -24,6 +24,10 @@ const (
 	// MaxQuotaGB bounds one allocation entry. 1 PB is far beyond any real install
 	// and keeps the byte conversion inside int64.
 	MaxQuotaGB int64 = 1_000_000
+	// MaxMediaLimitBytes bounds one per-user media limit. It is far beyond any
+	// real install and keeps byte conversions inside int64; zero always means
+	// unlimited.
+	MaxMediaLimitBytes int64 = 1 << 62
 
 	// ModeSingle uses only the first entry and ignores its quota.
 	ModeSingle = "single"
@@ -77,13 +81,21 @@ type Allocation struct {
 // Settings is the complete runtime document, including secrets. It is never
 // serialized to an API response; Status redacts it first.
 type Settings struct {
-	Version          int                   `json:"version"`
-	UpdatedAt        time.Time             `json:"updated_at"`
-	MaxContentChars  int                   `json:"max_content_chars"`
-	GlobalStrategyID string                `json:"global_strategy_id"`
-	Strategies       []Strategy            `json:"strategies"`
-	Scopes           map[string]string     `json:"scopes"`
-	Allocations      map[string]Allocation `json:"allocations"`
+	Version         int       `json:"version"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	MaxContentChars int       `json:"max_content_chars"`
+	// MediaUserQuotaBytes is the default total media budget per member. Zero is
+	// unlimited; a membership-level override still wins.
+	MediaUserQuotaBytes int64 `json:"media_user_quota_bytes"`
+	// MediaUserUploadBytes caps one upload per member. Zero is unlimited.
+	MediaUserUploadBytes int64 `json:"media_user_upload_bytes"`
+	// MediaUserArticleBytes caps the media bytes one article may reference for a
+	// member. Zero is unlimited.
+	MediaUserArticleBytes int64                 `json:"media_user_article_bytes"`
+	GlobalStrategyID      string                `json:"global_strategy_id"`
+	Strategies            []Strategy            `json:"strategies"`
+	Scopes                map[string]string     `json:"scopes"`
+	Allocations           map[string]Allocation `json:"allocations"`
 }
 
 // StrategyInput is the dashboard payload for one strategy.
@@ -115,11 +127,14 @@ type AllocationInput struct {
 
 // UpdateRequest is the body of PUT /system/storage.
 type UpdateRequest struct {
-	MaxContentChars  *int                       `json:"max_content_chars,omitempty"`
-	GlobalStrategyID string                     `json:"global_strategy_id"`
-	Strategies       []StrategyInput            `json:"strategies"`
-	Scopes           map[string]string          `json:"scopes"`
-	Allocations      map[string]AllocationInput `json:"allocations"`
+	MaxContentChars       *int                       `json:"max_content_chars,omitempty"`
+	MediaUserQuotaBytes   *int64                     `json:"media_user_quota_bytes,omitempty"`
+	MediaUserUploadBytes  *int64                     `json:"media_user_upload_bytes,omitempty"`
+	MediaUserArticleBytes *int64                     `json:"media_user_article_bytes,omitempty"`
+	GlobalStrategyID      string                     `json:"global_strategy_id"`
+	Strategies            []StrategyInput            `json:"strategies"`
+	Scopes                map[string]string          `json:"scopes"`
+	Allocations           map[string]AllocationInput `json:"allocations"`
 }
 
 // ValidationError names the dashboard field that failed and the rule it broke.
@@ -164,12 +179,15 @@ func envSettings(cfg config.Config) Settings {
 	}
 
 	settings := Settings{
-		Version:          settingsVersion,
-		MaxContentChars:  configuredMaxContentChars(cfg),
-		GlobalStrategyID: global.ID,
-		Strategies:       []Strategy{global},
-		Scopes:           map[string]string{},
-		Allocations:      map[string]Allocation{},
+		Version:               settingsVersion,
+		MaxContentChars:       configuredMaxContentChars(cfg),
+		MediaUserQuotaBytes:   boundedMediaLimit(cfg.MediaDefaultUserQuotaBytes),
+		MediaUserUploadBytes:  0,
+		MediaUserArticleBytes: 0,
+		GlobalStrategyID:      global.ID,
+		Strategies:            []Strategy{global},
+		Scopes:                map[string]string{},
+		Allocations:           map[string]Allocation{},
 	}
 
 	for _, scope := range config.StorageScopeNames() {
@@ -205,6 +223,18 @@ func envSettings(cfg config.Config) Settings {
 		}
 	}
 	return settings
+}
+
+// boundedMediaLimit clamps a deployment default into the range the dashboard can
+// persist. Zero keeps its "unlimited" meaning; a negative value is treated as zero.
+func boundedMediaLimit(value int64) int64 {
+	if value <= 0 {
+		return 0
+	}
+	if value > MaxMediaLimitBytes {
+		return MaxMediaLimitBytes
+	}
+	return value
 }
 
 func configuredMaxContentChars(cfg config.Config) int {

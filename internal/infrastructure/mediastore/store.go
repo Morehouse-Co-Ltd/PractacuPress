@@ -325,6 +325,28 @@ func (s *Store) FindAsset(ctx context.Context, siteID, assetID string) (media.As
 // Whether another page exists is decided by asking for one row more than the caller
 // wants: only when that extra row arrives is a cursor issued, so a client is never sent
 // after a page that does not exist.
+// SumAssetBytes totals the sizes of the requested assets inside one site.
+//
+// Missing ids are ignored: a body may keep a stale URL after an asset is deleted,
+// and that must not make every later save fail. The per-article quota only needs
+// the bytes of the assets that still exist.
+func (s *Store) SumAssetBytes(ctx context.Context, siteID string, assetIDs []string) (int64, error) {
+	if siteID == "" || len(assetIDs) == 0 {
+		return 0, nil
+	}
+	rows, err := s.client.MediaAsset.Query().
+		Where(mediaasset.SiteIDEQ(siteID), mediaasset.IDIn(assetIDs...)).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, row := range rows {
+		total += row.Size
+	}
+	return total, nil
+}
+
 func (s *Store) ListAssets(
 	ctx context.Context,
 	siteID string,

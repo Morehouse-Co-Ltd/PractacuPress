@@ -61,10 +61,11 @@ func (p Purpose) Valid() bool {
 	return p == PurposeContent || p == PurposeSite || p == PurposeAvatar || p == PurposeAttachment
 }
 
-// IsImage reports whether the purpose only accepts image types. It keeps validation
-// and the storage scope mapping from drifting apart.
+// IsImage reports whether the purpose only accepts image types. It keeps
+// validation and the storage scope mapping from drifting apart. Article media is
+// not image-only: it also accepts uploaded video.
 func (p Purpose) IsImage() bool {
-	return p == PurposeContent || p == PurposeSite || p == PurposeAvatar
+	return p == PurposeSite || p == PurposeAvatar
 }
 
 // Sentinel errors.
@@ -88,6 +89,9 @@ var (
 	// full (or the allocation says stop at the first full entry). The bytes are not
 	// written anywhere.
 	ErrStorageQuotaExceeded = errors.New("media: storage quota exceeded")
+	// ErrUploadTooLarge means the file is above the live per-member single-upload
+	// limit configured in the storage settings.
+	ErrUploadTooLarge = errors.New("media: upload exceeds the configured limit")
 	// ErrAssetInUse means content still points at the asset, so removing it would break
 	// a page silently: nothing reports a missing image, the author only notices later.
 	ErrAssetInUse = errors.New("media: asset is still referenced by content")
@@ -95,10 +99,12 @@ var (
 
 // Bounds. They are enforced before a byte is stored.
 const (
-	// MaxImageBytes is the image size ceiling.
+	// MaxImageBytes is the image size ceiling. Images are decoded for resize
+	// variants, so they keep a hard memory bound independent of upload settings.
 	MaxImageBytes int64 = 10 << 20
-	// MaxAttachmentBytes is the attachment size ceiling.
-	MaxAttachmentBytes int64 = 25 << 20
+	// MaxUploadHardBytes is the safety ceiling for every non-image upload. The
+	// dashboard's per-user upload limit can lower it, never raise it.
+	MaxUploadHardBytes int64 = 1 << 30
 	// UploadTTL is how long an upload session stays open.
 	UploadTTL = 30 * time.Minute
 	// MaxFileNameLength bounds the declared name.
@@ -125,6 +131,14 @@ var allowedImageTypes = map[string]struct{}{
 var allowedAttachmentTypes = map[string]struct{}{
 	"application/pdf": {},
 	"text/plain":      {},
+}
+
+// allowedVideoTypes is the closed set of video MIME types. Only the two formats
+// browsers play natively are accepted; anything else would be a download, not a
+// video.
+var allowedVideoTypes = map[string]struct{}{
+	"video/mp4":  {},
+	"video/webm": {},
 }
 
 // Actor is the caller performing an upload.
@@ -183,23 +197,35 @@ func ValidateRequest(in UploadRequest) (UploadRequest, error) {
 		return UploadRequest{}, fmt.Errorf("%w: size must be positive", ErrInvalidInput)
 	}
 
-	limit := MaxAttachmentBytes
-	if in.Purpose.IsImage() {
-		limit = MaxImageBytes
-	}
-	if in.Size > limit {
-		return UploadRequest{}, fmt.Errorf("%w: file is too large", ErrInvalidInput)
-	}
-
 	switch {
 	case in.Purpose.IsImage():
 		if _, ok := allowedImageTypes[in.DeclaredMIME]; !ok {
 			return UploadRequest{}, fmt.Errorf("%w: unsupported image type", ErrInvalidInput)
 		}
+	case in.Purpose == PurposeContent:
+		// Article media is images or videos. PDFs and text stay attachments so a
+		// public article cannot accidentally publish a document.
+		if _, image := allowedImageTypes[in.DeclaredMIME]; image {
+			break
+		}
+		if _, video := allowedVideoTypes[in.DeclaredMIME]; !video {
+			return UploadRequest{}, fmt.Errorf("%w: unsupported content media type", ErrInvalidInput)
+		}
 	case in.Purpose == PurposeAttachment:
-		if _, ok := allowedAttachmentTypes[in.DeclaredMIME]; !ok {
+		if _, ok := allowedAttachmentTypes[in.DeclaredMIME]; ok {
+			break
+		}
+		if _, video := allowedVideoTypes[in.DeclaredMIME]; !video {
 			return UploadRequest{}, fmt.Errorf("%w: unsupported attachment type", ErrInvalidInput)
 		}
+	}
+
+	limit := int64(MaxUploadHardBytes)
+	if _, image := allowedImageTypes[in.DeclaredMIME]; image {
+		limit = MaxImageBytes
+	}
+	if in.Size > limit {
+		return UploadRequest{}, fmt.Errorf("%w: file is too large", ErrInvalidInput)
 	}
 
 	return in, nil

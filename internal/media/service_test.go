@@ -172,6 +172,33 @@ func newService(t *testing.T, repo Repository, scanner Scanner) *Service {
 	return service
 }
 
+// fakeSettings implements SettingsReader with fixed live limits.
+type fakeSettings struct {
+	upload int64
+	user   int64
+	site   int64
+}
+
+func (f fakeSettings) MediaQuotaDefaults() (int64, int64) { return f.user, f.site }
+func (f fakeSettings) MediaUploadLimitBytes() int64       { return f.upload }
+
+func TestCreateUploadEnforcesLiveUploadLimit(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Repository: newFakeRepo(),
+		Scanner:    &fakeScanner{result: ScanResult{Status: ScanClean}},
+		Settings:   fakeSettings{upload: 1000},
+		Now:        func() time.Time { return time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+
+	request := UploadRequest{FileName: "clip.mp4", DeclaredMIME: "video/mp4", Size: 1001, Purpose: PurposeContent}
+	_, err = service.CreateUpload(context.Background(), owner(), request)
+	require.ErrorIs(t, err, ErrUploadTooLarge)
+
+	request.Size = 1000
+	_, err = service.CreateUpload(context.Background(), owner(), request)
+	require.NoError(t, err)
+}
 func owner() Actor { return Actor{UserID: "u1", SiteID: "s1", Role: site.RoleEditor} }
 
 type quotaCaptureRepo struct {

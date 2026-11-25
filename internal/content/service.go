@@ -135,6 +135,18 @@ type DraftQuotaStore interface {
 	SumActiveDraftBytesByAuthor(ctx context.Context, siteID, authorID string) (int64, error)
 }
 
+// ArticleMediaQuota is the optional port that bounds the media bytes one article
+// may reference for its author.
+//
+// The limit is a storage-settings value; the usage comes from the media store.
+// Keeping it a port means content does not import media and an unwired deployment
+// simply skips the check.
+type ArticleMediaQuota interface {
+	// ArticleMediaUsage returns the bytes of media assets referenced by source and
+	// the author's live per-article budget. A zero budget means unlimited.
+	ArticleMediaUsage(ctx context.Context, siteID, userID, source string) (usedBytes, limitBytes int64, err error)
+}
+
 // RevisionLookupStore is the optional storage capability behind the version diff
 // (Beta 1.2 contract E).
 //
@@ -251,15 +263,16 @@ type ReviewNotifier interface {
 
 // Service implements the content use cases.
 type Service struct {
-	repo        Repository
-	sanitizer   Sanitizer
-	guard       ContentGuard
-	publishMode PublishModeFunc
-	draftQuota  DraftQuotaStore
-	notifier    ReviewNotifier
-	hasher      AccessPasswordHasher
-	unlocks     UnlockTokens
-	unlockGuard *unlockLimiter
+	repo         Repository
+	sanitizer    Sanitizer
+	guard        ContentGuard
+	publishMode  PublishModeFunc
+	draftQuota   DraftQuotaStore
+	articleMedia ArticleMediaQuota
+	notifier     ReviewNotifier
+	hasher       AccessPasswordHasher
+	unlocks      UnlockTokens
+	unlockGuard  *unlockLimiter
 	// The optional storage capabilities of the Beta 1.2 endpoints. They are resolved
 	// from the repository once, at construction, so a read path never type asserts per
 	// request.
@@ -286,6 +299,8 @@ type ServiceConfig struct {
 	// DraftQuota enables the per-author draft quota (V-06). When nil the quota is
 	// skipped so an unwired deployment keeps working; the server must set it.
 	DraftQuota DraftQuotaStore
+	// ArticleMediaQuota enables the per-article media budget. Nil skips the check.
+	ArticleMediaQuota ArticleMediaQuota
 	// ReviewNotifier reports publish/reject decisions to the author. Nil disables
 	// the inbox notification; the decision itself is unaffected.
 	ReviewNotifier ReviewNotifier
@@ -327,6 +342,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		guard:          cfg.ContentGuard,
 		publishMode:    cfg.PublishMode,
 		draftQuota:     cfg.DraftQuota,
+		articleMedia:   cfg.ArticleMediaQuota,
 		notifier:       cfg.ReviewNotifier,
 		hasher:         cfg.AccessPasswordHasher,
 		unlocks:        cfg.UnlockTokens,
@@ -390,6 +406,9 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 		return Content{}, err
 	}
 	if err := s.checkDraftQuota(ctx, actor, validated.SourceBody); err != nil {
+		return Content{}, err
+	}
+	if err := s.checkArticleMediaQuota(ctx, actor, validated.SourceBody); err != nil {
 		return Content{}, err
 	}
 
@@ -458,6 +477,23 @@ func (s *Service) CreateDraft(ctx context.Context, actor Actor, kind Kind, in Dr
 		return Content{}, err
 	}
 	return saved, securityErr
+}
+
+// checkArticleMediaQuota refuses a save whose body references more media bytes
+// than the author's per-article budget allows. Zero means unlimited. A nil port
+// (unwired deployment or tests) skips the check.
+func (s *Service) checkArticleMediaQuota(ctx context.Context, actor Actor, source string) error {
+	if s.articleMedia == nil {
+		return nil
+	}
+	used, limit, err := s.articleMedia.ArticleMediaUsage(ctx, actor.SiteID, actor.UserID, source)
+	if err != nil {
+		return err
+	}
+	if limit > 0 && used > limit {
+		return fmt.Errorf("%w: %d bytes referenced, limit %d", ErrArticleMediaQuotaExceeded, used, limit)
+	}
+	return nil
 }
 
 // checkDraftQuota refuses a new draft that would exceed the author's quota.
@@ -544,6 +580,13 @@ func (s *Service) UpdateDraft(ctx context.Context, actor Actor, contentID string
 		); err != nil {
 			return Content{}, err
 		}
+	}
+	if err := s.checkArticleMediaQuota(
+		ctx,
+		Actor{SiteID: item.SiteID, UserID: item.AuthorID},
+		validated.SourceBody,
+	); err != nil {
+		return Content{}, err
 	}
 
 	item.Title = validated.Title

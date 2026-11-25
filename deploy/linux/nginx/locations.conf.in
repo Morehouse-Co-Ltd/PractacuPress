@@ -8,8 +8,9 @@
 # 回环 API。不要再配置 root/try_files：否则静态站会绕过 API 内嵌产物，
 # 升级后也容易出现旧 index.html + 新 assets 的错配。
 
-# Nginx 的上限只作为第一道保护；API 按路由执行自己的 25 MiB / 512 MiB 限制。
-client_max_body_size 512m;
+# Nginx 的上限只作为第一道保护；真正的单次上传上限与按用户额度由 API 的
+# 「储存设置」执行。这里放到与 API 硬上限（1 GiB）相同的量级，避免网关先拒绝。
+client_max_body_size 1100m;
 
 # HTTP/1.1 + 空的 Connection 头让到 API 的 upstream 连接可以复用；
 # 只有 WebSocket 升级请求才切换成 upgrade。

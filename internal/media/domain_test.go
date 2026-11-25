@@ -62,13 +62,39 @@ func TestValidateRequestEnforcesSizeLimits(t *testing.T) {
 	_, err = ValidateRequest(req)
 	require.NoError(t, err, "attachments have a larger ceiling")
 
-	req.Size = MaxAttachmentBytes + 1
+	req.Size = MaxUploadHardBytes + 1
 	_, err = ValidateRequest(req)
 	require.Error(t, err)
 
 	req.Size = 0
 	_, err = ValidateRequest(req)
 	require.Error(t, err)
+}
+
+func TestValidateRequestAcceptsVideosForArticleMedia(t *testing.T) {
+	for _, mime := range []string{"video/mp4", "video/webm"} {
+		req := UploadRequest{
+			FileName:     "clip.mp4",
+			DeclaredMIME: mime,
+			Size:         MaxImageBytes + 1,
+			Purpose:      PurposeContent,
+		}
+		_, err := ValidateRequest(req)
+		require.NoError(t, err, "article media accepts %s", mime)
+
+		req.Purpose = PurposeSite
+		_, err = ValidateRequest(req)
+		require.Error(t, err, "site images must stay images")
+	}
+
+	req := UploadRequest{
+		FileName:     "clip.mov",
+		DeclaredMIME: "video/quicktime",
+		Size:         1024,
+		Purpose:      PurposeContent,
+	}
+	_, err := ValidateRequest(req)
+	require.Error(t, err, "only browser-playable containers are accepted")
 }
 
 func TestValidateRequestRejectsNullByteInName(t *testing.T) {

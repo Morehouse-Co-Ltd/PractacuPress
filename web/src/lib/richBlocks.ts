@@ -118,7 +118,13 @@ export function videoBlock({ url, title = '', poster = '', provider = '' }: Vide
   const img = cover
     ? `<img class="pp-video-poster" src="${cover}" alt="${escapeHtml(title || '视频封面')}" loading="lazy" />`
     : '';
-  const cardClass = cover ? 'pp-video' : 'pp-video pp-video-plain';
+  // The reader-side enhancer upgrades this card to <video> instead of an iframe.
+  // A class token survives the sanitizer (pp-* allow-list), unlike data attributes.
+  const uploaded =
+    /^(?:https?:\/\/[^/]+)?\/api\/v1\/media\//.test(url.trim()) ||
+    /^data:video\//.test(url.trim()) ||
+    /\.(?:mp4|webm)(?:[?#]|$)/i.test(url.trim());
+  const cardClass = `${cover ? 'pp-video' : 'pp-video pp-video-plain'}${uploaded ? ' pp-video-file' : ''}`;
   return `<a class="${cardClass}" href="${href}">\n  ${img}\n  <strong>${label}</strong>\n  <br />\n  <em>${name} · 点击播放</em>\n</a>`;
 }
 

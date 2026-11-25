@@ -16,6 +16,7 @@ import {
   MAX_ALLOCATION_ENTRIES,
   MAX_ALLOCATION_QUOTA_GB,
   MAX_CONTENT_SOURCE_CHARS,
+  MAX_MEDIA_LIMIT_MB,
   MAX_STRATEGIES,
   MAX_STRATEGY_NAME,
   STORAGE_SCOPES,
@@ -822,7 +823,7 @@ export function StoragePage() {
       <div className="admin-page-head">
         <div>
           <h1>{t('储存与媒体')}</h1>
-          <p>{t('决定上传的图片与附件写到哪里，并管理正文长度、上传提示与站点媒体额度。')}</p>
+          <p>{t('决定上传的图片与附件写到哪里，并管理正文长度、用户媒体额度与站点媒体额度。')}</p>
         </div>
         <div className="admin-page-actions">
           {statusBadge ? <Badge tone={statusBadge.tone}>{statusBadge.label}</Badge> : null}
@@ -1380,7 +1381,7 @@ export function StoragePage() {
           <div className="panel-head">
             <div>
               <h3>{t('储存设置')}</h3>
-              <p>{t('正文长度上限、上传提示与站点媒体额度；修改后随本页自动保存。')}</p>
+              <p>{t('正文长度上限、单个用户媒体额度与站点媒体额度；修改后随本页自动保存。')}</p>
             </div>
           </div>
           <div className="panel-body">
@@ -1400,14 +1401,49 @@ export function StoragePage() {
                 }
               />
               <NumberField
-                id="storage-max-upload"
-                label={t('上传体积提示')}
-                hint={t('API 默认限制 25 MiB；要传更大的文件，需要同时调整 API 与反向代理的请求体上限，而不是只改这里。')}
-                value={draft.max_upload_mb}
-                min={1}
-                max={2048}
+                id="storage-user-media-quota"
+                label={t('单个用户媒体总量上限')}
+                hint={t('0 表示不限；按 MB 计。超出后该用户的新上传会被拒绝。')}
+                value={Math.round(draft.media_user_quota_bytes / (1024 * 1024))}
+                min={0}
+                max={MAX_MEDIA_LIMIT_MB}
                 unit="MB"
-                onChange={(max_upload_mb) => setDraft({ ...draft, max_upload_mb })}
+                onChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    media_user_quota_bytes: value * 1024 * 1024,
+                  }))
+                }
+              />
+              <NumberField
+                id="storage-user-article-quota"
+                label={t('单个用户单次文章额度上限')}
+                hint={t('0 表示不限；按 MB 计。一篇文章引用的媒体总量不能超过它。')}
+                value={Math.round(draft.media_user_article_bytes / (1024 * 1024))}
+                min={0}
+                max={MAX_MEDIA_LIMIT_MB}
+                unit="MB"
+                onChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    media_user_article_bytes: value * 1024 * 1024,
+                  }))
+                }
+              />
+              <NumberField
+                id="storage-user-upload-quota"
+                label={t('单个用户单次媒体上传上限')}
+                hint={t('0 表示不限；按 MB 计。单个视频或附件超过后会被拒绝。')}
+                value={Math.round(draft.media_user_upload_bytes / (1024 * 1024))}
+                min={0}
+                max={MAX_MEDIA_LIMIT_MB}
+                unit="MB"
+                onChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    media_user_upload_bytes: value * 1024 * 1024,
+                  }))
+                }
               />
               <MediaQuotaField
                 value={site?.media_quota_bytes}
@@ -1415,13 +1451,6 @@ export function StoragePage() {
                 disabled={!site}
               />
             </div>
-            {draft.max_upload_mb > 25 ? (
-              <div className="mt-12">
-                <Callout tone="warn" icon="alert" title={t('超过 API 默认的 25 MiB 附件上限')}>
-                  {t('这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 的请求体上限，否则请求会被更早的一层拒绝。')}
-                </Callout>
-              </div>
-            ) : null}
           </div>
         </section>
 

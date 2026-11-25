@@ -44,7 +44,14 @@ export function MediaPicker({
       .listAssets()
       .then((items) => {
         if (!alive) return;
-        setAssets(items.filter((asset) => asset.scan_status === 'clean' && asset.url));
+        setAssets(
+          items.filter(
+            (asset) =>
+              asset.scan_status === 'clean' &&
+              asset.url &&
+              asset.mime_type.startsWith('image/'),
+          ),
+        );
       })
       .catch(() => {
         if (alive) setError(t('读不到媒体库，检查登录状态或后端是否在线。'));

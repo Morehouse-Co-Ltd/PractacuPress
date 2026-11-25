@@ -1297,6 +1297,11 @@ func mapError(err error) *apperr.Problem {
 	case errors.Is(err, ErrQuotaExceeded):
 		return quotaExceededProblem()
 
+	case errors.Is(err, ErrArticleMediaQuotaExceeded):
+		return apperr.New(apperr.CodeQuotaExceeded).
+			WithMessage("文章引用的媒体总量已达上限").
+			WithDetail("reason", "article_media_quota")
+
 	case errors.Is(err, safety.ErrRejected):
 		// The matched words stay server side; the client only learns that the site's
 		// content policy refused the submission.

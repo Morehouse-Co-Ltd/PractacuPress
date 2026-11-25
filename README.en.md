@@ -515,7 +515,7 @@ Admin → Login settings → Email notifications generates this `.env` block dir
 | Rate limiting | In-process fixed window, counted per replica; real DDoS/CC protection needs a reverse proxy or edge WAF |
 | Browser-side access limits | Only constrain visitors using this site's scripts; IP-level request/concurrency limits are enforced by Nginx/Cloudflare, the admin only generates snippets |
 | Domain aliases | The server resolves a single site from the Host header; alias domains need a reverse proxy to rewrite Host to the primary domain (the generated snippet includes this) |
-| S3 upload memory | SigV4 requires buffering first, capped at the per-file limit (25 MiB) |
+| S3 upload scratch space | SigV4 needs a re-readable body, so the API stages the file on disk before upload; memory no longer scales with file size, but `/tmp` (or `TMPDIR`) must fit the largest concurrent upload |
 | Email | Password reset and email verification are wired up; comment-reply and review-result notification templates are not |
 | SEO | Tags are written into `<head>` by the frontend; crawlers that do not execute JS only see the defaults from `index.html` |
 | sitemap / robots | The Go API serves `/sitemap.xml` and `/robots.txt` at the site root per Host, and the admin can download static copies; static-only hosting must still place them in the site root manually |

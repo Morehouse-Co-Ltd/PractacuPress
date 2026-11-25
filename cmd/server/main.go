@@ -283,8 +283,9 @@ func run() error {
 	// instance serves both dependencies so they cannot drift.
 	contentRepo := contentstore.New(handle.Client, handle)
 
+	mediaRepo := mediastore.New(handle.Client)
 	mediaService, err := media.NewService(media.ServiceConfig{
-		Repository: mediastore.New(handle.Client),
+		Repository: mediaRepo,
 		Scanner:    securityScanner{client: securityClient},
 		// StorageFor resolves the live runtime strategy on every byte path, so a
 		// dashboard apply takes effect for the next upload/read without a restart.
@@ -295,7 +296,10 @@ func run() error {
 			UserBytes: cfg.MediaDefaultUserQuotaBytes,
 			SiteBytes: cfg.MediaDefaultSiteQuotaBytes,
 		},
-		QuotaOverrides: mediastore.New(handle.Client),
+		QuotaOverrides: mediaRepo,
+		// Live limits from the storage settings document: a dashboard change applies
+		// to the next upload without a restart.
+		Settings: storageManager,
 	})
 	if err != nil {
 		return fmt.Errorf("build media service: %w", err)
@@ -548,7 +552,10 @@ func run() error {
 		// The same repository enforces the per-author draft quota (V-06): a free
 		// account cannot grow the database without bound by creating drafts.
 		DraftQuota: contentRepo,
-		Sanitizer:  securitySanitizer{client: securityClient},
+		// The media store plus the live storage setting bound the media bytes one
+		// article can reference per author.
+		ArticleMediaQuota: articleMediaQuota{store: mediaRepo, settings: storageManager},
+		Sanitizer:         securitySanitizer{client: securityClient},
 		// The same word list that filters comments also filters article and post
 		// submissions; content never publishes around the policy.
 		ContentGuard: safetyService,
@@ -1286,6 +1293,31 @@ func buildMailer(cfg config.Config, logger *slog.Logger) mailer.Sender {
 		"from", cfg.SMTPFrom,
 	)
 	return sender
+}
+
+// articleMediaQuota adapts the media store and the storage settings into content's
+// per-article media budget. It is deliberately fail-open only for a missing limit:
+// a real lookup error is returned to the caller so a broken store does not silently
+// disable the quota.
+type articleMediaQuota struct {
+	store    *mediastore.Store
+	settings *storageadmin.Manager
+}
+
+func (q articleMediaQuota) ArticleMediaUsage(ctx context.Context, siteID, _ string, source string) (int64, int64, error) {
+	limit := q.settings.MediaArticleLimitBytes()
+	if limit <= 0 {
+		return 0, 0, nil
+	}
+	ids := media.AssetIDsInSource(source)
+	if len(ids) == 0 {
+		return 0, limit, nil
+	}
+	used, err := q.store.SumAssetBytes(ctx, siteID, ids)
+	if err != nil {
+		return 0, limit, err
+	}
+	return used, limit, nil
 }
 
 // mediaAvatarValidator adapts media.Service to auth.AvatarValidator.

@@ -61,6 +61,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { RoleGate } from '../../components/Guards';
 import { RichTextEditor } from '../../components/RichTextEditor';
+import { ResponsiveHtml } from '../../components/ResponsiveHtml';
 import { ArticleCoverPanel } from '../../components/ArticleCoverPanel';
 import { Cover } from '../../components/Cover';
 import { useCustomization } from '../../lib/customize';
@@ -1795,10 +1796,10 @@ function EditorWorkspace() {
                       <strong>{t('实时预览')}</strong>
                       <span className="tiny faint">{t('与服务端同一套清洗规则')}</span>
                     </div>
-                    <div
+                    <ResponsiveHtml
                       className="article-body editor-preview-body"
                       // HTML / Markdown 已经过 sanitizeHtml：脚本、事件属性与危险 URL 都会被剥掉。
-                      dangerouslySetInnerHTML={{ __html: livePreview }}
+                      html={livePreview}
                     />
                   </div>
                 </div>

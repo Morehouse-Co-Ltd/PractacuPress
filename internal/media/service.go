@@ -98,6 +98,7 @@ type Service struct {
 	quotaRepo     QuotaReservationRepository
 	quota         QuotaOverrideReader
 	quotaDefaults QuotaDefaults
+	settings      SettingsReader
 	scanner       Scanner
 	storage       Storage
 	storages      map[Purpose]Storage
@@ -143,7 +144,10 @@ type ServiceConfig struct {
 	Design         DesignReferenceChecker
 	QuotaDefaults  QuotaDefaults
 	QuotaOverrides QuotaOverrideReader
-	Now            func() time.Time
+	// Settings, when set, overrides QuotaDefaults and the upload ceiling with the
+	// live storage settings on every request. Tests and CLI paths can omit it.
+	Settings SettingsReader
+	Now      func() time.Time
 	// Usage guards a delete: content that still mentions the asset keeps it alive. Nil
 	// falls back to the repository when that can answer the question, and otherwise
 	// leaves deletion unrestricted, which is the behaviour before the guard existed.
@@ -178,6 +182,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		quotaRepo:       quotaRepo,
 		quota:           cfg.QuotaOverrides,
 		quotaDefaults:   cfg.QuotaDefaults,
+		settings:        cfg.Settings,
 		scanner:         cfg.Scanner,
 		storage:         cfg.Storage,
 		storages:        storages,
@@ -226,6 +231,15 @@ func (s *Service) storageFor(purpose Purpose) Storage {
 	return s.storage
 }
 
+// uploadLimitBytes returns the live single-upload ceiling, or zero when only the
+// hard safety ceiling applies.
+func (s *Service) uploadLimitBytes() int64 {
+	if s.settings == nil {
+		return 0
+	}
+	return s.settings.MediaUploadLimitBytes()
+}
+
 // CreateUpload opens an upload session.
 //
 // The session records what the client claims; nothing about that claim is trusted
@@ -235,6 +249,9 @@ func (s *Service) CreateUpload(ctx context.Context, actor Actor, req UploadReque
 	validated, err := ValidateRequest(req)
 	if err != nil {
 		return Upload{}, err
+	}
+	if limit := s.uploadLimitBytes(); limit > 0 && validated.Size > limit {
+		return Upload{}, ErrUploadTooLarge
 	}
 
 	now := s.now()
@@ -252,6 +269,9 @@ func (s *Service) CreateUpload(ctx context.Context, actor Actor, req UploadReque
 	}
 
 	userLimit, siteLimit := s.quotaDefaults.UserBytes, s.quotaDefaults.SiteBytes
+	if s.settings != nil {
+		userLimit, siteLimit = s.settings.MediaQuotaDefaults()
+	}
 	if s.quota != nil {
 		overrides, err := s.quota.MediaQuotaOverrides(ctx, actor.SiteID, actor.UserID)
 		if err != nil {
@@ -269,6 +289,9 @@ func (s *Service) CreateUpload(ctx context.Context, actor Actor, req UploadReque
 	}
 	if userLimit == 0 && siteLimit == 0 {
 		return s.repo.InsertUpload(ctx, upload)
+	}
+	if s.quotaRepo == nil {
+		return Upload{}, ErrQuotaUnavailable
 	}
 	return s.quotaRepo.InsertUploadWithinQuota(ctx, upload, userLimit, siteLimit)
 }
@@ -303,6 +326,9 @@ func (s *Service) StoreContent(
 	}
 	if size != upload.Size {
 		return Upload{}, ErrInvalidInput
+	}
+	if limit := s.uploadLimitBytes(); limit > 0 && size > limit {
+		return Upload{}, ErrUploadTooLarge
 	}
 
 	if putErr := storage.Put(ctx, upload.StorageKey, body, upload.Size); putErr != nil {

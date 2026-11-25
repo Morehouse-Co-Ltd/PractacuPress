@@ -1,11 +1,11 @@
 package media
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -171,22 +171,36 @@ func (s *S3Storage) Put(ctx context.Context, key string, reader io.Reader, size 
 		return err
 	}
 
-	// Signature version 4 hashes the payload, which requires a re-readable body, so the
-	// bytes are staged. The bound is safe: validation already rejects anything above the
-	// attachment ceiling, so this cannot become an unbounded allocation.
-	if size <= 0 || size > MaxAttachmentBytes {
+	// Signature version 4 hashes the payload, which requires a re-readable body.
+	// Stage to a temporary file instead of RAM: videos are routinely hundreds of
+	// megabytes and buffering one would exhaust the process.
+	if size <= 0 || size > MaxUploadHardBytes {
 		return errors.New("media: object size is out of range")
 	}
 
-	buffer := make([]byte, size)
-	if _, err := io.ReadFull(reader, buffer); err != nil {
-		return fmt.Errorf("media: read upload body: %w", err)
+	temp, err := os.CreateTemp("", "practacu-upload-*")
+	if err != nil {
+		return fmt.Errorf("media: stage upload: %w", err)
+	}
+	tempName := temp.Name()
+	defer os.Remove(tempName)
+	defer temp.Close()
+
+	written, copyErr := io.Copy(temp, io.LimitReader(reader, size+1))
+	if copyErr != nil {
+		return fmt.Errorf("media: read upload body: %w", copyErr)
+	}
+	if written != size {
+		return fmt.Errorf("media: upload body has %d bytes, want %d", written, size)
+	}
+	if _, err := temp.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("media: rewind staged upload: %w", err)
 	}
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:        aws.String(s.bucket),
 		Key:           aws.String(objectKey),
-		Body:          bytes.NewReader(buffer),
+		Body:          temp,
 		ContentLength: aws.Int64(size),
 	})
 	if err != nil {

@@ -2509,8 +2509,12 @@ export interface StorageSettings {
   scopes: Record<StorageScope, string>;
   /** 每个用途的完整分配；旧配置缺省时由 `scopes` 迁移成单策略。 */
   allocations?: Record<StorageScope, StorageScopeAllocation>;
-  /** 仅前端提示：期望的单文件上限（MB）。真正的上限由 API 决定。 */
-  max_upload_mb: number;
+  /** 单个用户的媒体总量上限（字节）；0 表示不限。 */
+  media_user_quota_bytes: number;
+  /** 单个用户单次文章可引用的媒体总量（字节）；0 表示不限。 */
+  media_user_article_bytes: number;
+  /** 单个用户单次媒体上传上限（字节）；0 表示不限。 */
+  media_user_upload_bytes: number;
   /** 正文输入与发布的 Unicode 字符上限，由 API 实时执行。 */
   max_content_chars: number;
 }
@@ -2568,6 +2572,12 @@ export interface StorageStatus {
   updated_at?: string | null;
   /** 正文 Unicode 字符上限；旧后端可能不返回。 */
   max_content_chars?: number;
+  /** 单个用户媒体总量上限（字节）；0 表示不限；旧后端可能不返回。 */
+  media_user_quota_bytes?: number;
+  /** 单个用户单次文章媒体额度上限（字节）；0 表示不限。 */
+  media_user_article_bytes?: number;
+  /** 单个用户单次媒体上传上限（字节）；0 表示不限。 */
+  media_user_upload_bytes?: number;
   /** 被最多用途使用的那套策略 id（部署片段里的全局策略）。 */
   global_strategy_id: string;
   strategies: StorageRuntimeStrategy[];
@@ -2600,6 +2610,9 @@ export interface StorageApplyStrategy {
  */
 export interface StorageApplyRequest {
   max_content_chars: number;
+  media_user_quota_bytes: number;
+  media_user_article_bytes: number;
+  media_user_upload_bytes: number;
   global_strategy_id: string;
   strategies: StorageApplyStrategy[];
   scopes: Record<string, string>;

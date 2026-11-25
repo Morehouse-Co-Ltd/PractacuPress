@@ -70,7 +70,9 @@ function multiStrategySettings(): StorageSettings {
         overflow: 'stop',
       },
     },
-    max_upload_mb: 99,
+    media_user_quota_bytes: 99,
+    media_user_article_bytes: 0,
+    media_user_upload_bytes: 0,
     max_content_chars: 1_000_000,
   };
 }
@@ -156,11 +158,14 @@ describe('storageApplyPayload', () => {
     expect(cloud.s3_endpoint).toBe('https://cos.example.com');
     expect(cloud.s3_access_key).toBe('AKIDEXAMPLE');
 
-    // 页面提示字段不上线：上传上限与公开访问地址都不发给服务端。
+    // 公开访问地址只是页面提示，不提交；三项用户媒体额度必须随请求提交。
     const json = JSON.stringify(payload);
     expect(json).not.toContain('max_upload_mb');
     expect(json).not.toContain('cdn.example.com');
     expect(json).not.toContain('s3_public_base_url');
+    expect(payload.media_user_quota_bytes).toBe(99);
+    expect(payload.media_user_article_bytes).toBe(0);
+    expect(payload.media_user_upload_bytes).toBe(0);
   });
 
   it('derives the primary scope from the allocation order, not the stale scopes field', () => {
@@ -181,10 +186,9 @@ describe('storageApplySignature', () => {
       first,
     );
 
-    // 只改上传提示与公开访问地址：不影响「写到哪里」。
+    // 只改公开访问地址：不影响「写到哪里」。
     const hintsOnly: StorageSettings = {
       ...settings,
-      max_upload_mb: 2048,
       strategies: settings.strategies.map((strategy) => ({
         ...strategy,
         s3_public_base_url: 'https://cdn2.example.com/media',
@@ -226,10 +230,13 @@ describe('storageApplySignature', () => {
     expect(storageApplySignature(overflowChanged)).not.toBe(base);
   });
 
-  it('changes when the content length ceiling changes', () => {
+  it('changes when the content length or media limits change', () => {
     const settings = multiStrategySettings();
     const current = storageApplySignature(settings);
     expect(storageApplySignature({ ...settings, max_content_chars: 300_000 })).not.toBe(current);
+    expect(storageApplySignature({ ...settings, media_user_quota_bytes: 1_000 })).not.toBe(current);
+    expect(storageApplySignature({ ...settings, media_user_upload_bytes: 1_000 })).not.toBe(current);
+    expect(storageApplySignature({ ...settings, media_user_article_bytes: 1_000 })).not.toBe(current);
   });
 
   it('changes when the target or credentials change, but never contains the secret', () => {

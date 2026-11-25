@@ -33,6 +33,8 @@ var allowedUploadMIME = map[string]struct{}{
 	"image/gif":       {},
 	"application/pdf": {},
 	"text/plain":      {},
+	"video/mp4":       {},
+	"video/webm":      {},
 }
 
 // signatureLen is the length of the complete leading signature for each
@@ -53,6 +55,10 @@ func signatureLen(mime string) int {
 		return 12
 	case "application/pdf":
 		return 5
+	case "video/mp4":
+		return 8
+	case "video/webm":
+		return 4
 	default:
 		return 0
 	}
@@ -74,6 +80,11 @@ func hasSignature(mime string, head []byte) bool {
 			string(head[8:12]) == "WEBP"
 	case "application/pdf":
 		return bytes.HasPrefix(head, []byte("%PDF-"))
+	case "video/mp4":
+		// ISO base media files start with a box whose type is "ftyp" at offset 4.
+		return len(head) >= 8 && string(head[4:8]) == "ftyp"
+	case "video/webm":
+		return bytes.HasPrefix(head, []byte{0x1a, 0x45, 0xdf, 0xa3})
 	default:
 		return false
 	}
@@ -127,7 +138,7 @@ func isASCIIWhitespace(b byte) bool {
 func InspectUpload(declaredMIME string, size int64, head []byte) (UploadVerdict, error) {
 	mime := strings.ToLower(strings.TrimSpace(declaredMIME))
 
-	if size <= 0 || size > MaxUploadBytes {
+	if size <= 0 {
 		return rejectedVerdict("size_out_of_range"), nil
 	}
 	if _, allowed := allowedUploadMIME[mime]; !allowed {
@@ -158,7 +169,9 @@ func cleanVerdict() UploadVerdict {
 // inspectBinary inspects a binary upload: no markup markers, a head long enough
 // for the complete signature, and the signature itself.
 func inspectBinary(mime string, head []byte) UploadVerdict {
-	if looksLikeMarkup(head) {
+	// Video containers are binary by definition; a random "<script" byte sequence
+	// inside one is not markup, so only the signature decides there.
+	if !strings.HasPrefix(mime, "video/") && looksLikeMarkup(head) {
 		return rejectedVerdict("dangerous_content")
 	}
 	if len(head) < signatureLen(mime) {

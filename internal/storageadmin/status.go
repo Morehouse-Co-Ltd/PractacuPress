@@ -47,15 +47,18 @@ type EffectiveStorage struct {
 
 // Status is the GET/PUT response. It is safe to serve to site administrators.
 type Status struct {
-	Live             bool                        `json:"live"`
-	Source           string                      `json:"source"`
-	UpdatedAt        *time.Time                  `json:"updated_at"`
-	MaxContentChars  int                         `json:"max_content_chars"`
-	GlobalStrategyID string                      `json:"global_strategy_id"`
-	Strategies       []StrategyStatus            `json:"strategies"`
-	Scopes           map[string]string           `json:"scopes"`
-	Allocations      map[string]AllocationStatus `json:"allocations"`
-	Effective        []EffectiveStorage          `json:"effective"`
+	Live                  bool                        `json:"live"`
+	Source                string                      `json:"source"`
+	UpdatedAt             *time.Time                  `json:"updated_at"`
+	MaxContentChars       int                         `json:"max_content_chars"`
+	MediaUserQuotaBytes   int64                       `json:"media_user_quota_bytes"`
+	MediaUserUploadBytes  int64                       `json:"media_user_upload_bytes"`
+	MediaUserArticleBytes int64                       `json:"media_user_article_bytes"`
+	GlobalStrategyID      string                      `json:"global_strategy_id"`
+	Strategies            []StrategyStatus            `json:"strategies"`
+	Scopes                map[string]string           `json:"scopes"`
+	Allocations           map[string]AllocationStatus `json:"allocations"`
+	Effective             []EffectiveStorage          `json:"effective"`
 }
 
 // MediaRoot is one backup root. It mirrors backup.MediaRoot without importing the

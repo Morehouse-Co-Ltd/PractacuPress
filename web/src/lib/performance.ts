@@ -21,8 +21,9 @@ export const DEFAULT_PERFORMANCE: PerformanceSettings = {
   gzip: true,
   static_cache_days: 365,
   keepalive_timeout: 65,
-  // 略高于 API 的 25 MiB 单文件上限，避免网关先一步拒绝正常上传。
-  client_max_body_size_mb: 32,
+  // 与 API 的 1 GiB 硬上限同量级；实际的单次上限由「储存设置」按用户执行，
+  // 网关不能比它更早拒绝正常视频上传。
+  client_max_body_size_mb: 1100,
   proxy_read_timeout: 60,
   // 与 internal 现有的超时保持一致。
   api_read_timeout: 30,

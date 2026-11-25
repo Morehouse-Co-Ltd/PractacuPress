@@ -59,6 +59,11 @@ export const MAX_ALLOCATION_QUOTA_GB = 1_000_000;
 /** 正文长度上限；储存策略可以调低，不能超过服务端的绝对上限。 */
 export const MAX_CONTENT_SOURCE_CHARS = 1_000_000;
 
+/** 媒体额度输入的最大值（MB）：1 TiB，保证换算成字节后仍是安全整数。 */
+export const MAX_MEDIA_LIMIT_MB = 1_048_576;
+
+const BYTES_PER_MB = 1024 * 1024;
+
 /** 旧配置缺省时应显示的默认容量上限。 */
 const DEFAULT_ALLOCATION_QUOTA_GB = 0;
 
@@ -158,7 +163,9 @@ export function defaultStorage(): StorageSettings {
       avatar: emptyAllocation(strategy.id),
       attachment: emptyAllocation(strategy.id),
     },
-    max_upload_mb: 25,
+    media_user_quota_bytes: 512 * BYTES_PER_MB,
+    media_user_article_bytes: 0,
+    media_user_upload_bytes: 0,
     max_content_chars: MAX_CONTENT_SOURCE_CHARS,
   };
 }
@@ -528,7 +535,9 @@ function migrateLegacy(source: Record<string, unknown>): StorageSettings {
     strategies: settled,
     scopes: scopeIdsFromAllocations(allocations),
     allocations,
-    max_upload_mb: 25,
+    media_user_quota_bytes: 512 * BYTES_PER_MB,
+    media_user_article_bytes: 0,
+    media_user_upload_bytes: 0,
     max_content_chars: MAX_CONTENT_SOURCE_CHARS,
   };
 }
@@ -570,7 +579,7 @@ function buildAllocations(
  * 把任意来源（旧配置、导入 JSON、手写对象）收敛成合法的储存设置。
  *
  * 同时接受两种形状：
- * - 新结构：`{ strategies, scopes, allocations?, max_upload_mb }`；
+ * - 新结构：`{ strategies, scopes, allocations?, media_user_* }`；
  * - 旧结构：`{ driver, local_dir, s3_*, scopes[scope].driver }`，逐项迁移。
  *
  * `allocations` 里的多策略顺序与容量上限会被保留；缺少该字段时按 `scopes`
@@ -583,12 +592,29 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
     | undefined;
   if (!source) return fallback;
 
-  const max_upload_mb = settingInt(source.max_upload_mb, fallback.max_upload_mb, 1, 2048);
   const max_content_chars = settingInt(
     source.max_content_chars,
     fallback.max_content_chars,
     1,
     MAX_CONTENT_SOURCE_CHARS,
+  );
+  const media_user_quota_bytes = settingInt(
+    source.media_user_quota_bytes,
+    fallback.media_user_quota_bytes,
+    0,
+    MAX_MEDIA_LIMIT_MB * BYTES_PER_MB,
+  );
+  const media_user_article_bytes = settingInt(
+    source.media_user_article_bytes,
+    fallback.media_user_article_bytes,
+    0,
+    MAX_MEDIA_LIMIT_MB * BYTES_PER_MB,
+  );
+  const media_user_upload_bytes = settingInt(
+    source.media_user_upload_bytes,
+    fallback.media_user_upload_bytes,
+    0,
+    MAX_MEDIA_LIMIT_MB * BYTES_PER_MB,
   );
 
   if (Array.isArray(source.strategies)) {
@@ -600,7 +626,15 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
       strategies.push(normalizeStrategy(entry, sanitizeId(entry.id, strategies.length)));
     }
     const settled = settleStrategies(strategies);
-    if (!settled.length) return { ...fallback, max_upload_mb, max_content_chars };
+    if (!settled.length) {
+      return {
+        ...fallback,
+        media_user_quota_bytes,
+        media_user_article_bytes,
+        media_user_upload_bytes,
+        max_content_chars,
+      };
+    }
     const scopes = fallbackScopeIds(
       (source.scopes && typeof source.scopes === 'object'
         ? source.scopes
@@ -612,14 +646,22 @@ export function normalizeStorage(raw: Partial<StorageSettings> | undefined): Sto
       strategies: settled,
       scopes: scopeIdsFromAllocations(allocations),
       allocations,
-      max_upload_mb,
+      media_user_quota_bytes,
+      media_user_article_bytes,
+      media_user_upload_bytes,
       max_content_chars,
     };
   }
 
   // 没有 strategies 数组：一律按旧结构迁移（空对象迁移结果就等于默认值）。
   const migrated = migrateLegacy(source);
-  return { ...migrated, max_upload_mb, max_content_chars };
+  return {
+    ...migrated,
+    media_user_quota_bytes,
+    media_user_article_bytes,
+    media_user_upload_bytes,
+    max_content_chars,
+  };
 }
 
 export function readStorage(config: Pick<WebConfig, 'storage'>): StorageSettings {
@@ -859,7 +901,7 @@ function allocationPayload(allocation: StorageScopeAllocation): StorageScopeAllo
  * - `scopes` 取每个用途分配顺序的第一套（服务端主策略）；
  * - `allocations` 四个用途全带上：`mode`、有序 `entries`（`strategy_id` +
  *   `quota_gb`）与 `overflow` 由服务端在写入时执行，配额不再只是页面的计划；
- * - `max_upload_mb` 与 `s3_public_base_url` 只是页面提示，不提交。
+ * - `s3_public_base_url` 只是页面提示，不提交。
  */
 export function storageApplyPayload(
   settings: StorageSettings,
@@ -898,6 +940,9 @@ export function storageApplyPayload(
       attachment: allocationPayload(allocations.attachment),
     },
     max_content_chars: normalized.max_content_chars,
+    media_user_quota_bytes: normalized.media_user_quota_bytes,
+    media_user_article_bytes: normalized.media_user_article_bytes,
+    media_user_upload_bytes: normalized.media_user_upload_bytes,
   };
 }
 
@@ -909,8 +954,8 @@ export function storageApplyPayload(
  * 相同的设置永远得到相同的签名。**不含任何密钥**：Secret Key 只存在于组件状态；
  * Access Key 的值会进签名（它不是密钥，本来就保存在本地配置里）。改名、改目录、
  * 改桶、改 endpoint / 区域、改用途指向、改配额 / 模式 / 顺序 / overflow 都会让
- * 签名变化；`max_content_chars` 会进签名，因为它影响服务端校验。`max_upload_mb`
- * 与 `s3_public_base_url` 只是页面提示，不进签名。
+ * 签名变化；`max_content_chars` 与三项用户媒体额度会进签名，因为它们影响服务端
+ * 校验与配额执行。`s3_public_base_url` 只是页面提示，不进签名。
  */
 export function storageApplySignature(settings: StorageSettings): string {
   const normalized = normalizeStorage(settings);
@@ -936,6 +981,9 @@ export function storageApplySignature(settings: StorageSettings): string {
       allocations[scope].overflow,
     ]),
     max_content_chars: normalized.max_content_chars,
+    media_user_quota_bytes: normalized.media_user_quota_bytes,
+    media_user_article_bytes: normalized.media_user_article_bytes,
+    media_user_upload_bytes: normalized.media_user_upload_bytes,
   });
 }
 
@@ -994,7 +1042,9 @@ export function storageSettingsFromStatus(
     strategies,
     scopes,
     allocations,
-    max_upload_mb: local.max_upload_mb,
+    media_user_quota_bytes: status.media_user_quota_bytes ?? local.media_user_quota_bytes,
+    media_user_article_bytes: status.media_user_article_bytes ?? local.media_user_article_bytes,
+    media_user_upload_bytes: status.media_user_upload_bytes ?? local.media_user_upload_bytes,
     max_content_chars: status.max_content_chars ?? local.max_content_chars,
   });
 }

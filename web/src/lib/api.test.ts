@@ -438,6 +438,9 @@ describe('HttpBackend runtime storage', () => {
   it('applies storage with the documented payload', async () => {
     const request: StorageApplyRequest = {
       max_content_chars: 1_000_000,
+      media_user_quota_bytes: 512 * 1024 * 1024,
+      media_user_article_bytes: 0,
+      media_user_upload_bytes: 0,
       global_strategy_id: 'cos',
       strategies: [
         {

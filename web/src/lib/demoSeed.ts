@@ -658,7 +658,7 @@ export function createSeed(options: SeedOptions): DemoState {
 
 这样做的好处是，未通过检查的文件不会出现在任何页面上。代价是上传会多一次往返。
 
-允许的类型：PNG、JPEG、WebP、GIF、PDF、纯文本。单个文件上限 25 MiB。
+允许的类型：PNG、JPEG、WebP、GIF、PDF、纯文本、MP4、WebM。单次上传上限与用户额度由「储存设置」决定。
 
 如果你遇到“安全检查不可用”的提示，请稍后重试。内容会保留，只是暂时不能发布。`,
     }),

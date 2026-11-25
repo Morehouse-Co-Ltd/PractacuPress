@@ -18,7 +18,7 @@ import {
   videoBlock,
   warningBlock,
 } from '../lib/richBlocks';
-import { Badge, Button, Callout, Field, Input, Modal, Select, Textarea } from './ui';
+import { Badge, Button, Callout, Field, Input, Modal, Progress, Select, Textarea } from './ui';
 import { Icon } from './Icon';
 import type { EditorCommands, EditorDialogKind } from './RichTextEditor';
 import type { DiagramSpec } from '../lib/diagramSpec';
@@ -829,6 +829,10 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
   const [error, setError] = useState('');
   const [fileRef, setFileRef] = useState<HTMLInputElement | null>(null);
 
+  // This picker inserts an image URL into an image block, so videos stay out of it;
+  // videos are inserted from the video dialog instead.
+  const imageAssets = (assets.data ?? []).filter((asset: Asset) => asset.mime_type.startsWith('image/'));
+
   const upload = async (file: File) => {
     setError('');
     setProgress(0);
@@ -851,7 +855,7 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
         </Callout>
       ) : null}
       <div className="media-grid">
-        {(assets.data ?? []).map((asset: Asset) => (
+        {imageAssets.map((asset: Asset) => (
           <button
             key={asset.id}
             type="button"
@@ -863,7 +867,7 @@ function MediaPicker({ onPick }: { onPick: (url: string) => void }) {
             <span>{asset.file_name ?? asset.storage_key}</span>
           </button>
         ))}
-        {(assets.data ?? []).length === 0 && !assets.loading ? (
+        {imageAssets.length === 0 && !assets.loading ? (
           <p className="tiny faint">{t('还没有上传过素材。')}</p>
         ) : null}
       </div>
@@ -1042,10 +1046,15 @@ function VideoDialog({
   onInsert: (snippet: string) => void;
 }) {
   const t = useT();
+  const backend = useBackend();
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [poster, setPoster] = useState('');
   const [provider, setProvider] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -1053,15 +1062,42 @@ function VideoDialog({
       setTitle('');
       setPoster('');
       setProvider('');
+      setUploading(false);
+      setProgress(0);
+      setUploadError('');
     }
   }, [open]);
+
+  const uploadVideo = async (file: File) => {
+    setUploadError('');
+    setUploading(true);
+    setProgress(0);
+    try {
+      const asset = await backend.upload(file, 'content', setProgress);
+      const src = asset.url ?? `/api/v1/media/${asset.id}`;
+      setUrl(src);
+      setProvider(t('站内视频'));
+      if (!title.trim()) setTitle(asset.file_name ?? '');
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : t('上传失败。'));
+    } finally {
+      setUploading(false);
+      setProgress(0);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const canInsert =
+    /^https?:\/\/.+/.test(url.trim()) ||
+    /^\/api\/v1\/media\//.test(url.trim()) ||
+    /^data:video\//.test(url.trim());
 
   return (
     <Modal
       open={open}
       title={t('插入视频')}
       description={t(
-        '视频以封面卡片呈现，点击到原站播放。正文不允许 iframe，这是有意的安全取舍。',
+        'YouTube 与 Bilibili 会以内嵌播放器显示；上传到本站的视频直接播放。其他平台保留为封面卡片。',
       )}
       onClose={onClose}
       footer={
@@ -1070,7 +1106,7 @@ function VideoDialog({
             {t('取消')}
           </Button>
           <Button
-            disabled={!/^https?:\/\/.+/.test(url.trim())}
+            disabled={!canInsert}
             onClick={() => onInsert(videoBlock({ url: url.trim(), title, poster, provider }))}
           >
             {t('插入视频')}
@@ -1080,9 +1116,40 @@ function VideoDialog({
     >
       <div className="form-stack">
         <Field
+          label={t('上传本地视频')}
+          hint={t('MP4 / WebM；单次上限与用户额度由「储存设置」决定。')}
+        >
+          <div className="row gap-8" style={{ alignItems: 'center' }}>
+            <input
+              ref={fileRef}
+              type="file"
+              hidden
+              accept="video/mp4,video/webm"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void uploadVideo(file);
+              }}
+            />
+            <Button
+              variant="secondary"
+              icon="upload"
+              loading={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              {t('选择视频文件')}
+            </Button>
+            {uploading ? (
+              <div style={{ flex: 1 }}>
+                <Progress value={progress} />
+              </div>
+            ) : null}
+          </div>
+          {uploadError ? <p className="small" style={{ color: 'var(--danger)' }}>{uploadError}</p> : null}
+        </Field>
+        <Field
           label={t('视频地址')}
           htmlFor="rich-video-url"
-          hint={t('YouTube / Bilibili / Vimeo 或任意页面。')}
+          hint={t('YouTube / Bilibili 链接，或上传后填入的站内视频地址。')}
         >
           <Input
             id="rich-video-url"

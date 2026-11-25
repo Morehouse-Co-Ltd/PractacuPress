@@ -22,7 +22,16 @@ import {
 import { Icon } from '../../components/Icon';
 import { useToast } from '../../lib/toast';
 
-const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain'];
+const ALLOWED = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'video/mp4',
+  'video/webm',
+];
 
 /** MIME 短标签：两种语言下写法相同，只有 `text/plain` 需要过文案表。 */
 const MIME_LABEL: Record<string, string> = {
@@ -32,7 +41,18 @@ const MIME_LABEL: Record<string, string> = {
   'image/gif': 'GIF',
   'application/pdf': 'PDF',
   'image/svg+xml': 'SVG',
+  'video/mp4': 'MP4',
+  'video/webm': 'WebM',
 };
+
+type MediaKind = 'all' | 'image' | 'video' | 'document';
+
+/** 类型筛选：视频单独一类，文档是既不是图片也不是视频的附件。 */
+function mediaKindOf(asset: Asset): Exclude<MediaKind, 'all'> {
+  if (asset.mime_type.startsWith('image/')) return 'image';
+  if (asset.mime_type.startsWith('video/')) return 'video';
+  return 'document';
+}
 
 /**
  * 素材的展示名。
@@ -60,8 +80,9 @@ function markdownAlt(asset: Asset): string {
  */
 function MediaThumb({ asset, src }: { asset: Asset; src: string }) {
   const { src: resolved, failed } = useMediaSrc(src);
-  if (failed) {
-    return <Icon name={asset.mime_type === 'application/pdf' ? 'file' : 'code'} size={26} />;
+  const kind = mediaKindOf(asset);
+  if (failed || kind !== 'image') {
+    return <Icon name={kind === 'video' ? 'video' : kind === 'document' ? 'file' : 'code'} size={26} />;
   }
   return resolved ? (
     <img src={resolved} alt={assetName(asset)} loading="lazy" />
@@ -85,6 +106,17 @@ function MediaPreviewBody({ asset, src }: { asset: Asset; src: string }) {
     );
   }
   if (!resolved) return <Skeleton lines={3} />;
+  if (asset.mime_type.startsWith('video/')) {
+    return (
+      <video
+        src={resolved}
+        controls
+        playsInline
+        preload="metadata"
+        style={{ display: 'block', maxWidth: '100%', height: 'auto', margin: '0 auto', borderRadius: 10 }}
+      />
+    );
+  }
   return (
     <img
       src={resolved}
@@ -110,6 +142,7 @@ export function MediaPage() {
   const [purpose, setPurpose] = useState<'content' | 'avatar' | 'attachment'>('content');
   /** 服务端列表一次取 100 条，状态筛选在浏览器内完成，不再打接口。 */
   const [scan, setScan] = useState<'all' | ScanStatus>('all');
+  const [kind, setKind] = useState<MediaKind>('all');
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
@@ -151,9 +184,16 @@ export function MediaPage() {
       case 'site':
         return t('站点素材');
       default:
-        return t('正文图片');
+        return t('正文媒体');
     }
   };
+
+  const kindFilters: Array<{ key: MediaKind; label: string }> = [
+    { key: 'all', label: t('全部类型') },
+    { key: 'image', label: t('图片') },
+    { key: 'video', label: t('视频') },
+    { key: 'document', label: t('文档') },
+  ];
 
   const scanFilters: Array<{ key: 'all' | ScanStatus; label: string }> = [
     { key: 'all', label: t('全部') },
@@ -169,11 +209,13 @@ export function MediaPage() {
     return items;
   }, [backend]);
 
-  const visible = scan === 'all' ? assets : assets.filter((asset) => asset.scan_status === scan);
+  const visible = assets.filter(
+    (asset) =>
+      (scan === 'all' || asset.scan_status === scan) &&
+      (kind === 'all' || mediaKindOf(asset) === kind),
+  );
 
-  // 单文件上限是接口层的硬限制，与站点额度是两件事：额度是站点累计可用的总量
-  // （在「储存与媒体 → 储存设置」里配置，null 表示跟随部署默认，0 表示无限）。
-  const fileLimit = demo ? 2 * 1024 * 1024 : 25 * 1024 * 1024;
+  // 单次上传上限由「储存设置」里的按用户额度在服务端执行；这里不再硬编码。
   const siteQuota = (() => {
     const raw = site?.media_quota_bytes;
     if (raw === null || raw === undefined) return null;
@@ -198,14 +240,10 @@ export function MediaPage() {
     setError('');
     if (!ALLOWED.includes(file.type)) {
       setError(
-        t('不支持的类型：{type}。允许 PNG、JPEG、WebP、GIF、PDF 与纯文本。', {
+        t('不支持的类型：{type}。允许 PNG、JPEG、WebP、GIF、PDF、纯文本、MP4 与 WebM。', {
           type: file.type || t('未知'),
         }),
       );
-      return;
-    }
-    if (file.size > fileLimit) {
-      setError(t('文件超过上限（{limit}）。', { limit: formatBytes(fileLimit) }));
       return;
     }
     setBusy(true);
@@ -331,7 +369,7 @@ export function MediaPage() {
             style={{ width: 140 }}
             aria-label={t('用途')}
           >
-            <option value="content">{t('正文图片')}</option>
+            <option value="content">{t('正文媒体')}</option>
             <option value="avatar">{t('头像')}</option>
             <option value="attachment">{t('附件')}</option>
           </Select>
@@ -370,7 +408,7 @@ export function MediaPage() {
         <h2 style={{ fontSize: 22 }}>{t('媒体资源')}</h2>
         <span className="tiny faint">
           {t('{count} 个', { count: visible.length })}
-          {scan === 'all' ? '' : ` · ${t('共 {total} 个', { total: assets.length })}`}
+          {scan === 'all' && kind === 'all' ? '' : ` · ${t('共 {total} 个', { total: assets.length })}`}
           {demo ? ` · ${t('演示数据')}` : ''}
         </span>
       </div>
@@ -383,6 +421,21 @@ export function MediaPage() {
               type="button"
               className={`pill${scan === entry.key ? ' is-on' : ''}`}
               onClick={() => setScan(entry.key)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {assets.length > 0 ? (
+        <div className="row gap-6 mt-8" role="group" aria-label={t('按类型筛选')}>
+          {kindFilters.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              className={`pill${kind === entry.key ? ' is-on' : ''}`}
+              onClick={() => setKind(entry.key)}
             >
               {entry.label}
             </button>
@@ -418,7 +471,14 @@ export function MediaPage() {
             title={t('没有符合筛选条件的媒体')}
             body={t('换个状态看看，或者回到全部。')}
             action={
-              <Button variant="secondary" size="sm" onClick={() => setScan('all')}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setScan('all');
+                  setKind('all');
+                }}
+              >
                 {t('查看全部')}
               </Button>
             }
@@ -428,11 +488,11 @@ export function MediaPage() {
         <div className="media-grid mt-20">
           {visible.map((asset) => {
             const src = srcOf(asset);
-            const isImage = asset.mime_type.startsWith('image/');
+            const playable = asset.mime_type.startsWith('image/') || asset.mime_type.startsWith('video/');
             return (
               <div className="media-card" key={asset.id}>
                 <div className="media-thumb">
-                  {isImage ? (
+                  {playable ? (
                     <button
                       type="button"
                       onClick={() => setPreview(asset)}
@@ -454,7 +514,10 @@ export function MediaPage() {
                       <MediaThumb asset={asset} src={src} />
                     </button>
                   ) : (
-                    <Icon name={asset.mime_type === 'application/pdf' ? 'file' : 'code'} size={26} />
+                    <Icon
+                      name={asset.mime_type.startsWith('video/') ? 'video' : asset.mime_type === 'application/pdf' ? 'file' : 'code'}
+                      size={26}
+                    />
                   )}
                 </div>
                 <div className="media-meta">
@@ -575,8 +638,8 @@ export function MediaPage() {
                 <span className="mini-value">{quotaLabel}</span>
               </div>
               <div className="mini-row">
-                <span className="mini-label">{t('单文件上限')}</span>
-                <span className="mini-value">{formatBytes(fileLimit)}</span>
+                <span className="mini-label">{t('单次上传上限')}</span>
+                <span className="mini-value">{t('见储存设置')}</span>
               </div>
               <div className="mini-row">
                 <span className="mini-label">{t('安全检查')}</span>
@@ -585,7 +648,7 @@ export function MediaPage() {
             </div>
             <p className="tiny faint mt-12">
               {demo
-                ? t('演示模式把文件读成 Data URL 存在浏览器里，所以上限收窄到 2 MB。')
+                ? t('演示模式把文件读成 Data URL 存在浏览器里，刷新页面后会丢失。')
                 : t('上传完成后需要等检查通过，才能被文章或头像引用。')}
             </p>
           </div>

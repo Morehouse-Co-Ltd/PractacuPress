@@ -28,7 +28,7 @@ function cachedSettings(): StorageSettings {
     scopes: { content: 'cos', site: 'cos', avatar: 'local', attachment: 'cos' },
     // 旧配置没有 allocations：这里模拟真正的旧对象，避免默认分配盖掉 scopes。
     allocations: undefined,
-    max_upload_mb: 99,
+    media_user_quota_bytes: 99,
   };
 }
 
@@ -117,7 +117,7 @@ describe('storageSettingsFromStatus', () => {
       { strategy_id: 'local', quota_gb: 0 },
     ]);
     expect(settings.allocations?.site.overflow).toBe('stop');
-    expect(settings.max_upload_mb).toBe(99);
+    expect(settings.media_user_quota_bytes).toBe(99);
   });
 
   it('没有服务端策略时退回本机设置', () => {

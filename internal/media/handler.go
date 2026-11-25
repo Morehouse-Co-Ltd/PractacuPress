@@ -513,6 +513,9 @@ func mapError(err error) *apperr.Problem {
 		return nil
 	case errors.Is(err, ErrInvalidInput):
 		return apperr.Validation("invalid upload")
+	case errors.Is(err, ErrUploadTooLarge):
+		return apperr.Validation("upload exceeds the configured single-upload limit").
+			WithDetail("reason", "upload_too_large")
 	case errors.Is(err, ErrNotFound):
 		return apperr.NotFound("upload")
 	case errors.Is(err, ErrPermissionDenied):

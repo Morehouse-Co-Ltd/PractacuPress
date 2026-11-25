@@ -73,7 +73,9 @@ describe('readStorage / defaultStorage', () => {
     expect(storage.strategies[0].name).toBe('本地储存');
     expect(storage.strategies[0].driver).toBe('local');
     expect(storage.strategies[0].local_dir).toBe('./data/media');
-    expect(storage.max_upload_mb).toBe(25);
+    expect(storage.media_user_quota_bytes).toBe(512 * 1024 * 1024);
+expect(storage.media_user_article_bytes).toBe(0);
+expect(storage.media_user_upload_bytes).toBe(0);
     expect(STORAGE_SCOPES).toEqual(['content', 'site', 'avatar', 'attachment']);
     for (const scope of STORAGE_SCOPES) {
       expect(storage.scopes[scope]).toBe('local');
@@ -104,10 +106,12 @@ describe('normalizeStorage for the strategy model', () => {
         },
       ],
       scopes: { content: 'cos', site: 'cos', avatar: 'cos', attachment: 'cos' },
-      max_upload_mb: 0,
+      media_user_quota_bytes: 0,
+      media_user_article_bytes: 0,
+      media_user_upload_bytes: 0,
     } as never);
 
-    expect(storage.max_upload_mb).toBe(1);
+    expect(storage.media_user_quota_bytes).toBe(0);
     expect(storage.strategies).toHaveLength(2);
     const [local, cloud] = storage.strategies;
     expect(local.id).toBe('local');
@@ -182,7 +186,7 @@ describe('normalizeStorage for the strategy model', () => {
     const once = normalizeStorage({
       strategies: [localStrategy('local', '本地储存'), cloudStrategy('cos', 'COS', 'b')],
       scopes: { content: 'cos' },
-      max_upload_mb: 40,
+      media_user_quota_bytes: 40 * 1024 * 1024,
     } as never);
     expect(normalizeStorage(once)).toEqual(once);
   });
@@ -344,7 +348,9 @@ describe('legacy migration', () => {
       s3_prefix: '/sites/main/',
       s3_public_base_url: 'https://cdn.example.com/media/',
       s3_access_key: ' AKIAEXAMPLE ',
-      max_upload_mb: 0,
+      media_user_quota_bytes: 0,
+      media_user_article_bytes: 0,
+      media_user_upload_bytes: 0,
       scopes: {
         content: { driver: 'local', local_dir: '/srv/content/', s3_bucket: '', s3_prefix: '' },
         site: { driver: 's3', local_dir: '', s3_bucket: '/site-bucket/', s3_prefix: '/media/' },
@@ -353,7 +359,7 @@ describe('legacy migration', () => {
       },
     } as never);
 
-    expect(storage.max_upload_mb).toBe(1);
+    expect(storage.media_user_quota_bytes).toBe(0);
     expect(storage.strategies.map((strategy) => strategy.id)).toEqual([
       'cloud',
       'scope-content',
@@ -432,7 +438,9 @@ describe('strategy helpers', () => {
       {
         strategies: [localStrategy('local', '本地储存'), cloudStrategy('cos', 'COS', 'b')],
         scopes: { content: 'cos', site: 'cos', avatar: 'cos', attachment: 'cos' },
-        max_upload_mb: 25,
+        media_user_quota_bytes: 512 * 1024 * 1024,
+        media_user_article_bytes: 0,
+        media_user_upload_bytes: 0,
         max_content_chars: 1_000_000,
       },
       'cos',
@@ -466,7 +474,9 @@ describe('strategy helpers', () => {
     const tie: StorageSettings = {
       strategies,
       scopes: { content: 'cos', site: 'cos', avatar: 'local', attachment: 'local' },
-      max_upload_mb: 25,
+      media_user_quota_bytes: 512 * 1024 * 1024,
+      media_user_article_bytes: 0,
+      media_user_upload_bytes: 0,
       max_content_chars: 1_000_000,
     };
     expect(globalStrategyOf(tie).id).toBe('local');
@@ -474,7 +484,9 @@ describe('strategy helpers', () => {
     const majority: StorageSettings = {
       strategies,
       scopes: { content: 'cos', site: 'cos', avatar: 'cos', attachment: 'local' },
-      max_upload_mb: 25,
+      media_user_quota_bytes: 512 * 1024 * 1024,
+      media_user_article_bytes: 0,
+      media_user_upload_bytes: 0,
       max_content_chars: 1_000_000,
     };
     expect(globalStrategyOf(majority).id).toBe('cos');

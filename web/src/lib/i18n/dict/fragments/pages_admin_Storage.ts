@@ -5,10 +5,10 @@ const fragment: Dictionary = {
   // ---- 页头与通用 ----
   '储存与媒体': 'Storage and media',
   '储存设置': 'Storage settings',
-  '决定上传的图片与附件写到哪里，并管理正文长度、上传提示与站点媒体额度。':
-    'Decide where uploaded images and attachments are written, and manage the content length limit, upload hint, and site media quota.',
-  '正文长度上限、上传提示与站点媒体额度；修改后随本页自动保存。':
-    'Content length limit, upload hint, and site media quota; changes are saved automatically with this page.',
+  '决定上传的图片与附件写到哪里，并管理正文长度、用户媒体额度与站点媒体额度。':
+    'Decide where uploaded images and attachments are written, and manage the content length limit, per-user media limits, and site media quota.',
+  '正文长度上限、单个用户媒体额度与站点媒体额度；修改后随本页自动保存。':
+    'Content length limit, per-user media limits, and site media quota; changes are saved automatically with this page.',
   '每套策略就是一个存储目标；下面为每个用途选择使用哪一套，也可以按顺序分配多套并设置容量上限。':
     'Each strategy is a storage target; below, choose which one each scope uses, or assign several in order with capacity caps.',
   '各用途使用哪套策略': 'Which strategy each scope uses',
@@ -79,12 +79,15 @@ const fragment: Dictionary = {
     'Attachments and private data uploaded by users, which usually need authentication to reach.',
 
   // ---- 储存设置 ----
-  '上传体积提示': 'Upload size hint',
-  'API 默认限制 25 MiB；要传更大的文件，需要同时调整 API 与反向代理的请求体上限，而不是只改这里。':
-    'The API defaults to a 25 MiB limit; to upload larger files, raise the request body limit on both the API and the reverse proxy rather than only changing this value.',
-  '超过 API 默认的 25 MiB 附件上限': 'Above the API default of 25 MiB per attachment',
-  '这个值只影响页面提示。真正上传大文件前，需要按服务器规格调整 API 的请求体上限，否则请求会被更早的一层拒绝。':
-    'This value only affects the page hint. Before uploading large files for real, raise the API request body limit to match the server, otherwise the request is rejected by an earlier layer.',
+  '单个用户媒体总量上限': 'Per-user total media limit',
+  '单个用户单次文章额度上限': 'Per-user per-article media limit',
+  '单个用户单次媒体上传上限': 'Per-user single-upload limit',
+  '0 表示不限；按 MB 计。超出后该用户的新上传会被拒绝。':
+    '0 means unlimited; the unit is MB. New uploads from the user are refused once the total is exceeded.',
+  '0 表示不限；按 MB 计。一篇文章引用的媒体总量不能超过它。':
+    '0 means unlimited; the unit is MB. The media referenced by one article cannot exceed it.',
+  '0 表示不限；按 MB 计。单个视频或附件超过后会被拒绝。':
+    '0 means unlimited; the unit is MB. A single video or attachment above it is refused.',
 
   // ---- 部署片段 ----
   '部署片段': 'Deployment snippet',

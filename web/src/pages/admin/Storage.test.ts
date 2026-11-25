@@ -233,12 +233,15 @@ describe('储存与媒体页', () => {
     expect(headings()).not.toContain('用途分配');
     expect(headings()).not.toContain('当前生效与运行状态');
 
-    // 储存设置：正文长度、上传提示、站点媒体额度都在同一块里。
+    // 储存设置：正文长度、三项用户媒体额度与站点媒体额度都在同一块里。
     expect(container.textContent).toContain('正文长度上限');
-    expect(container.textContent).toContain('上传体积提示');
+    expect(container.textContent).toContain('单个用户媒体总量上限');
+    expect(container.textContent).toContain('单个用户单次文章额度上限');
+    expect(container.textContent).toContain('单个用户单次媒体上传上限');
     expect(container.textContent).toContain('本站媒体额度（MB）');
     expect(container.querySelector('#storage-max-content-chars')).not.toBeNull();
-    expect(container.querySelector('#storage-max-upload')).not.toBeNull();
+    expect(container.querySelector('#storage-user-media-quota')).not.toBeNull();
+    expect(container.querySelector('#storage-max-upload')).toBeNull();
 
     // 四个用途卡片都还在。
     expect(container.querySelectorAll('.storage-scope')).toHaveLength(4);

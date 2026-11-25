@@ -42,6 +42,51 @@ func (f *fakeQuota) SumActiveDraftBytesByAuthor(_ context.Context, siteID, autho
 	return f.bytes, nil
 }
 
+// fakeArticleMedia implements ArticleMediaQuota without touching the media store.
+type fakeArticleMedia struct {
+	used  int64
+	limit int64
+}
+
+func (f fakeArticleMedia) ArticleMediaUsage(context.Context, string, string, string) (int64, int64, error) {
+	return f.used, f.limit, nil
+}
+
+func TestCreateDraftRejectsOverArticleMediaQuota(t *testing.T) {
+	repo := newFakeRepo()
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Sanitizer:  okSanitizer(),
+		PublishMode: func(context.Context, string) (site.PublishMode, error) {
+			return site.PublishModeOpen, nil
+		},
+		ArticleMediaQuota: fakeArticleMedia{used: 101, limit: 100},
+		Now:               func() time.Time { return time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateDraft(context.Background(), actor("author", site.RoleMember), KindArticle, sampleDraft())
+	require.ErrorIs(t, err, ErrArticleMediaQuotaExceeded)
+	require.Empty(t, repo.items, "a rejected draft must not be stored")
+}
+
+func TestCreateDraftAllowsUnderArticleMediaQuota(t *testing.T) {
+	repo := newFakeRepo()
+	service, err := NewService(ServiceConfig{
+		Repository: repo,
+		Sanitizer:  okSanitizer(),
+		PublishMode: func(context.Context, string) (site.PublishMode, error) {
+			return site.PublishModeOpen, nil
+		},
+		ArticleMediaQuota: fakeArticleMedia{used: 100, limit: 100},
+		Now:               func() time.Time { return time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateDraft(context.Background(), actor("author", site.RoleMember), KindArticle, sampleDraft())
+	require.NoError(t, err)
+}
+
 func newQuotaService(t *testing.T, repo Repository, quota DraftQuotaStore) *Service {
 	t.Helper()
 	service, err := NewService(ServiceConfig{

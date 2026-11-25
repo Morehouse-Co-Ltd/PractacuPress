@@ -13,7 +13,7 @@ import (
 	"github.com/practacu/practacu-press/internal/platform/config"
 )
 
-func readSettingsFile(path string) (Settings, bool, error) {
+func readSettingsFile(path string, defaults Settings) (Settings, bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -33,6 +33,17 @@ func readSettingsFile(path string) (Settings, bool, error) {
 	}
 	if _, exists := fields["max_content_chars"]; !exists {
 		settings.MaxContentChars = config.DefaultMaxContentSourceChars
+	}
+	// Documents written before the per-user media limits existed inherit the
+	// deployment defaults instead of silently becoming unlimited.
+	if _, exists := fields["media_user_quota_bytes"]; !exists {
+		settings.MediaUserQuotaBytes = defaults.MediaUserQuotaBytes
+	}
+	if _, exists := fields["media_user_upload_bytes"]; !exists {
+		settings.MediaUserUploadBytes = defaults.MediaUserUploadBytes
+	}
+	if _, exists := fields["media_user_article_bytes"]; !exists {
+		settings.MediaUserArticleBytes = defaults.MediaUserArticleBytes
 	}
 	if err := validateSettings(settings); err != nil {
 		return Settings{}, false, fmt.Errorf("validate %s: %w", path, err)

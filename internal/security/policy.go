@@ -36,5 +36,6 @@ const MaxSourceChars = 1_000_000
 // limit is larger than the API's source-body limit.
 const MaxSanitizedInputChars = 8_000_000
 
-// MaxUploadBytes is the maximum accepted upload size in bytes.
-const MaxUploadBytes int64 = 25 * 1024 * 1024
+// Upload size is a business policy (storage settings), not a security rule, so this
+// package no longer carries a default ceiling. The media layer enforces the live
+// per-member limit and its hard safety ceiling.

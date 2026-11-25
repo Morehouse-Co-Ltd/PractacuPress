@@ -224,6 +224,9 @@ var (
 	// ErrQuotaExceeded means the author already has as many active drafts, or as many
 	// bytes of active draft source, as the account quota allows (V-06).
 	ErrQuotaExceeded = errors.New("content: draft quota exceeded")
+	// ErrArticleMediaQuotaExceeded means the body references more media bytes than
+	// the author's per-article budget allows.
+	ErrArticleMediaQuotaExceeded = errors.New("content: article media quota exceeded")
 	// ErrConflict means the stored item changed after it was read, so the write was
 	// refused instead of silently overwriting a newer revision.
 	ErrConflict = errors.New("content: concurrent modification")

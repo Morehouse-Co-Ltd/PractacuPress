@@ -124,7 +124,7 @@ func NewManager(cfg Config) (*Manager, error) {
 	settings := envSettings(cfg.Env)
 	source := SourceEnv
 	if dataDir != "" {
-		saved, ok, err := readSettingsFile(filepath.Join(dataDir, SettingsFilename))
+		saved, ok, err := readSettingsFile(filepath.Join(dataDir, SettingsFilename), settings)
 		if err != nil {
 			return nil, err
 		}
@@ -331,14 +331,17 @@ func (m *Manager) Status() Status {
 	m.mu.RUnlock()
 
 	status := Status{
-		Live:             true,
-		Source:           source,
-		MaxContentChars:  settings.MaxContentChars,
-		GlobalStrategyID: settings.GlobalStrategyID,
-		Strategies:       make([]StrategyStatus, 0, len(settings.Strategies)),
-		Scopes:           make(map[string]string, len(settings.Scopes)),
-		Allocations:      make(map[string]AllocationStatus, len(settings.Allocations)),
-		Effective:        make([]EffectiveStorage, 0, 1+len(config.StorageScopeNames())),
+		Live:                  true,
+		Source:                source,
+		MaxContentChars:       settings.MaxContentChars,
+		MediaUserQuotaBytes:   settings.MediaUserQuotaBytes,
+		MediaUserUploadBytes:  settings.MediaUserUploadBytes,
+		MediaUserArticleBytes: settings.MediaUserArticleBytes,
+		GlobalStrategyID:      settings.GlobalStrategyID,
+		Strategies:            make([]StrategyStatus, 0, len(settings.Strategies)),
+		Scopes:                make(map[string]string, len(settings.Scopes)),
+		Allocations:           make(map[string]AllocationStatus, len(settings.Allocations)),
+		Effective:             make([]EffectiveStorage, 0, 1+len(config.StorageScopeNames())),
 	}
 	if !settings.UpdatedAt.IsZero() {
 		updated := settings.UpdatedAt
@@ -382,6 +385,31 @@ func (m *Manager) MaxContentChars() int {
 		return m.settings.MaxContentChars
 	}
 	return config.DefaultMaxContentSourceChars
+}
+
+// MediaQuotaDefaults returns the live per-user and per-site media budgets. The
+// per-user value is edited on the storage page; the site value stays deployment
+// wide and is only overridden by the site's own setting.
+func (m *Manager) MediaQuotaDefaults() (userBytes, siteBytes int64) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.settings.MediaUserQuotaBytes, m.env.MediaDefaultSiteQuotaBytes
+}
+
+// MediaUploadLimitBytes is the live single-upload ceiling for a member. Zero means
+// no configured limit; the media service still applies its hard safety ceiling.
+func (m *Manager) MediaUploadLimitBytes() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.settings.MediaUserUploadBytes
+}
+
+// MediaArticleLimitBytes is the live per-article media budget for a member. Zero
+// means unlimited.
+func (m *Manager) MediaArticleLimitBytes() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.settings.MediaUserArticleBytes
 }
 
 func (m *Manager) allocationStatus(allocation Allocation, routing *routingStorage) AllocationStatus {

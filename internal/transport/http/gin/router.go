@@ -65,11 +65,12 @@ func New(deps Dependencies) *gin.Engine {
 	if deps.Config.MaxRequestBodyBytes > 0 {
 		r.Use(middleware.BodyLimit(
 			deps.Config.MaxRequestBodyBytes,
-			// The upload endpoint is the one route that legitimately carries megabytes:
-			// its ceiling is the media module's attachment limit plus multipart framing.
+			// The upload endpoint is the one route that legitimately carries large
+			// bodies. The hard safety ceiling lives in the media module; the live
+			// per-member limit is enforced there against the upload session.
 			middleware.BodyLimitRule{
 				Prefix: "/api/v1/media/uploads/",
-				Limit:  media.MaxAttachmentBytes + (1 << 20),
+				Limit:  media.MaxUploadHardBytes + (1 << 20),
 			},
 			// A whole-site import is a zip package, not a JSON body. It has its own
 			// documented ceiling instead of sharing the ordinary request limit.

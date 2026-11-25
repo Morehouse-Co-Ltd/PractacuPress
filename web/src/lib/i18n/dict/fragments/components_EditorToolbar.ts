@@ -116,10 +116,16 @@ const fragment: Dictionary = {
 
   // ---- 视频弹窗 ----
   插入视频: 'Insert video',
-  '视频以封面卡片呈现，点击到原站播放。正文不允许 iframe，这是有意的安全取舍。':
-    'Videos appear as a cover card that opens the original site for playback. iframes are not allowed in the body — an intentional security trade-off.',
+  'YouTube 与 Bilibili 会以内嵌播放器显示；上传到本站的视频直接播放。其他平台保留为封面卡片。':
+    'YouTube and Bilibili links play in an inline player; videos uploaded here play directly. Other platforms stay as a cover card.',
+  上传本地视频: 'Upload a video',
+  'MP4 / WebM；单次上限与用户额度由「储存设置」决定。':
+    'MP4 / WebM; the single-upload limit and per-user quota come from Storage settings.',
+  选择视频文件: 'Choose a video file',
+  站内视频: 'Uploaded video',
   视频地址: 'Video URL',
-  'YouTube / Bilibili / Vimeo 或任意页面。': 'YouTube / Bilibili / Vimeo or any page.',
+  'YouTube / Bilibili 链接，或上传后填入的站内视频地址。':
+    'A YouTube / Bilibili link, or the uploaded video URL filled in above.',
   'YouTube 会自动推导。': 'YouTube is detected automatically.',
   '平台名称（可选）': 'Platform name (optional)',
 

@@ -92,10 +92,21 @@ func TestUploadAcceptsTextWhoseHeadCutAMultibyteCharacter(t *testing.T) {
 	}
 }
 
-func TestUploadRejectsOversizedAndEmpty(t *testing.T) {
-	requireDecision(t, "image/png", MaxUploadBytes+1, pngMagic, ScanRejected, "size_out_of_range")
+func TestUploadRejectsEmpty(t *testing.T) {
 	requireDecision(t, "image/png", 0, pngMagic, ScanRejected, "size_out_of_range")
 	requireDecision(t, "image/png", -1, pngMagic, ScanRejected, "size_out_of_range")
+}
+
+// TestUploadAcceptsVideoContainers covers the containers article media now
+// accepts. Size is a storage-settings policy, not a security verdict, so a large
+// video is clean here as long as its signature matches.
+func TestUploadAcceptsVideoContainers(t *testing.T) {
+	mp4 := []byte("\x00\x00\x00\x18ftypisom")
+	webm := []byte{0x1a, 0x45, 0xdf, 0xa3, 0x93, 0x42, 0x82, 0x88}
+	requireDecision(t, "video/mp4", 1<<30, mp4, ScanClean, "ok")
+	requireDecision(t, "video/webm", 1<<30, webm, ScanClean, "ok")
+	requireDecision(t, "video/mp4", 1024, []byte("not-an-mp4"), ScanRejected, "magic_mismatch")
+	requireDecision(t, "video/quicktime", 1024, mp4, ScanRejected, "mime_not_allowed")
 }
 
 func TestUploadWithoutASampleAsksAHuman(t *testing.T) {
