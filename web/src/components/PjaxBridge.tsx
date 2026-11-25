@@ -8,9 +8,15 @@ import { resolvePjaxTarget } from '../lib/pjax';
  *
  * React Router already swaps pages without a reload, but raw anchors rendered
  * from Markdown, custom pages, themes and plugins still trigger a full document
- * navigation. One capture-phase listener sends those same-origin page links
+ * navigation. One bubble-phase listener sends those same-origin page links
  * through the router instead, with a thin progress line and the existing View
  * Transition fade.
+ *
+ * The listener must run after React Router's own handlers: router links already
+ * prevent the default click and navigate. Intercepting them in the capture phase
+ * would wrap every admin sidebar click in a whole-page View Transition, which
+ * reads as a flicker. Bubble phase plus the defaultPrevented check leaves those
+ * links to the router and only takes over anchors nothing else handled.
  */
 export function PjaxBridge() {
   const navigate = useNavigate();
@@ -59,9 +65,9 @@ export function PjaxBridge() {
       navigateWithTransition(() => navigate(next));
     };
 
-    document.addEventListener('click', onClick, true);
+    document.addEventListener('click', onClick);
     return () => {
-      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('click', onClick);
       window.clearTimeout(resetTimer.current);
     };
   }, [navigate]);
