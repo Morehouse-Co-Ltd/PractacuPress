@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/practacu/practacu-press/internal/packages/contracts/openapi"
+	"github.com/practacu/practacu-press/internal/version"
 )
 
 // TestJSONMatchesTheEmbeddedContract keeps the runtime document and the checked-in
@@ -32,7 +34,7 @@ func TestJSONMatchesTheEmbeddedContract(t *testing.T) {
 
 	require.Equal(t, "3.1.0", spec.OpenAPI)
 	require.NotEmpty(t, spec.Info.Title)
-	require.NotEmpty(t, spec.Info.Version)
+	require.Equal(t, version.Version, spec.Info.Version)
 	require.NotEmpty(t, spec.Servers)
 	require.Equal(t, "/api/v1", spec.Servers[0].URL)
 
@@ -42,6 +44,18 @@ func TestJSONMatchesTheEmbeddedContract(t *testing.T) {
 	require.Contains(t, spec.Paths, "/articles")
 	require.Contains(t, spec.Paths, "/sites/{siteID}/settings")
 	require.NotEmpty(t, spec.Paths["/articles"]["get"])
+}
+
+// TestYAMLInfoVersionMatchesVersion keeps the checked-in YAML aligned even
+// though JSON() patches the value at runtime for release builds.
+func TestYAMLInfoVersionMatchesVersion(t *testing.T) {
+	var spec struct {
+		Info struct {
+			Version string `yaml:"version"`
+		} `yaml:"info"`
+	}
+	require.NoError(t, yaml.Unmarshal(openapi.YAML(), &spec))
+	require.Equal(t, version.Version, spec.Info.Version)
 }
 
 // TestYAMLReturnsACopy protects the shared embedded bytes from callers that write

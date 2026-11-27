@@ -253,14 +253,6 @@ var ginParam = regexp.MustCompile(`:([A-Za-z_][A-Za-z0-9_]*)`)
 func normalizeGinPath(path string) string {
 	return ginParam.ReplaceAllString(path, "{$1}")
 }
-func formatKeys(routes map[routeKey]struct{}) []string {
-	out := make([]string, 0, len(routes))
-	for key := range routes {
-		out = append(out, key.Method+" "+key.Path)
-	}
-	sort.Strings(out)
-	return out
-}
 
 // operationalRoutes are served for humans and crawlers rather than being part of
 // the JSON API contract. The contract documents the API under /api/v1; the embedded

@@ -86,6 +86,31 @@ const RAW_BUILTIN_THEMES: BuiltinThemeDefinition[] = [
     },
   },
   {
+    id: 'contemplation',
+    name: t('沉思'),
+    note: t('暖纸与朱砂 · 年轻的中文编辑排版；大字、留白与无边框内容流。'),
+    preset: 'contemplation',
+    variant: 'classic',
+    style: {
+      heading_font: 'sans',
+      body_size: 18,
+      content_width: 760,
+      radius: 2,
+    },
+    preview: {
+      brand: 'PRACTACU PRESS',
+      nav: [t('文章'), t('专题'), t('关于')],
+      kicker: t('沉思 · 暖纸与朱砂'),
+      title: t('让版面退后，让表达靠前'),
+      subtitle: t('暖纸白、炭黑与朱砂；更大的中文标题、更松的留白，去掉卡片与描边。'),
+      blocks: [
+        { type: 'media', weight: 2 },
+        { type: 'text' },
+        { type: 'quote', text: t('版面的克制，是为了让文字拥有自己的声音。') },
+      ],
+    },
+  },
+  {
     id: 'night',
     name: t('夜航'),
     note: t('冷石墨与电光蓝 · 深色杂志布局；切到浅色会得到同一套设计的冷白重配。'),

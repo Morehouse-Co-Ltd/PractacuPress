@@ -335,7 +335,3 @@ func HashIP(address string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(address)))
 	return hex.EncodeToString(sum[:])
 }
-
-// tokenHashOf is HashToken for a token that may already be empty; an empty token
-// hashes to a value that never matches a stored row, which is the safe direction.
-func tokenHashOf(token string) string { return HashToken(strings.TrimSpace(token)) }

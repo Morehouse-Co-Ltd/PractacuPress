@@ -2,7 +2,6 @@ package newsletter_test
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"strings"
 	"testing"
@@ -470,5 +469,3 @@ func itoa(value int) string {
 	}
 	return string(digits)
 }
-
-var errTestDigest = errors.New("digest failed")

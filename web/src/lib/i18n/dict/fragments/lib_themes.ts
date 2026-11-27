@@ -19,6 +19,11 @@ const fragment: Dictionary = {
   原版: 'Default',
   '纸白浅色 · 经典单栏，适合安静的长文阅读。':
     'Paper white · classic single column, made for quiet long-form reading.',
+  沉思: 'Contemplation',
+  '暖纸与朱砂，年轻的中文编辑排版；大字、留白与无边框内容流。':
+    'Warm paper and cinnabar · young Chinese editorial typography with large type, open space and a borderless content flow.',
+  '暖纸与朱砂 · 年轻的中文编辑排版；大字、留白与无边框内容流。':
+    'Warm paper and cinnabar · young Chinese editorial typography with large type, open space and a borderless content flow.',
   夜航: 'Night flight',
   白昼: 'Daylight',
   '暖黑暗色 · 双栏杂志布局，适合社区与图片较多的站点。':
@@ -40,6 +45,12 @@ const fragment: Dictionary = {
     'Long reads, essays and features in a quiet, restrained reading layout.',
   '版面安静下来，文字才有回声。': 'When the page quiets down, the words begin to echo.',
   开始阅读: 'Start reading',
+  '沉思 · 暖纸与朱砂': 'Contemplation · warm paper and cinnabar',
+  '让版面退后，让表达靠前': 'Let the layout recede; let expression come forward',
+  '暖纸白、炭黑与朱砂；更大的中文标题、更松的留白，去掉卡片与描边。':
+    'Warm paper, charcoal and cinnabar; larger Chinese headlines, looser whitespace, no cards or outlines.',
+  '版面的克制，是为了让文字拥有自己的声音。':
+    'The restraint of the page exists so the words can have their own voice.',
   '夜航 · 冷石墨双栏': 'Night flight · cold graphite, two columns',
   在冷石墨上读长夜: 'Read through the night on cold graphite',
   '电光蓝强调与杂志网格，适合图片、专题与社区。':

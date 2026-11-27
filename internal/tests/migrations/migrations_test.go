@@ -45,13 +45,6 @@ func (d dialect) quote(identifier string) string {
 	}
 }
 
-func (d dialect) placeholder(index int) string {
-	if d.name == "postgres" {
-		return fmt.Sprintf("$%d", index)
-	}
-	return "?"
-}
-
 var dialects = []dialect{
 	{name: "sqlite", driver: "sqlite"},
 	{name: "mysql", driver: "mysql", env: "PP_TEST_MYSQL_DSN"},

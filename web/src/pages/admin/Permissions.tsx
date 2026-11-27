@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CapabilityId, PermissionGroupConfig, Role } from '../../types';
-import { useTitle } from '../../lib/hooks';
+import { useTitle, useMediaQuery } from '../../lib/hooks';
 import { usePermissions } from '../../lib/usePermissions';
 import {
   CAPABILITY_DEFS,
@@ -59,6 +59,129 @@ function upsertGroup(
     : [...groups, group];
 }
 
+const COMPACT_MATRIX = '(max-width: 1080px)';
+
+interface GroupNameProps {
+  label: string;
+  editing: boolean;
+  editingName: string;
+  busy: boolean;
+  canRename: boolean;
+  onStart: () => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  onNameChange: (value: string) => void;
+}
+
+/** 组名 + 原地重命名，矩阵表头和窄屏卡片共用一套交互。 */
+function GroupName({
+  label,
+  editing,
+  editingName,
+  busy,
+  canRename,
+  onStart,
+  onCommit,
+  onCancel,
+  onNameChange,
+}: GroupNameProps) {
+  const t = useT();
+  if (editing) {
+    return (
+      <div className="perm-rename">
+        <Input
+          value={editingName}
+          maxLength={60}
+          autoFocus
+          aria-label={t('重命名 {group}', { group: label })}
+          placeholder={label}
+          onChange={(event) => onNameChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              onCommit();
+            }
+            if (event.key === 'Escape') onCancel();
+          }}
+        />
+        <div className="perm-rename-actions">
+          <button
+            type="button"
+            className="link-btn"
+            aria-label={t('保存名称')}
+            disabled={busy}
+            onClick={onCommit}
+          >
+            <Icon name="check" size={12} />
+          </button>
+          <button type="button" className="link-btn" aria-label={t('取消重命名')} onClick={onCancel}>
+            <Icon name="x" size={12} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="perm-group-name"
+      title={t('重命名 {group}', { group: label })}
+      aria-busy={busy || undefined}
+      disabled={!canRename || busy}
+      onClick={onStart}
+    >
+      <span>{label}</span>
+      {busy ? (
+        <span className="spinner spinner-sm" aria-hidden="true" />
+      ) : canRename ? (
+        <Icon name="edit" size={12} />
+      ) : null}
+    </button>
+  );
+}
+
+function GroupRole({ item }: { item: PermissionGroupConfig }) {
+  const t = useT();
+  return (
+    <span className="perm-group-role">
+      {item.builtin
+        ? item.base_role
+          ? ROLE_LABEL[item.base_role]
+          : t('无账户')
+        : t('自定义 · {role}', { role: ROLE_LABEL[item.base_role ?? 'member'] })}
+    </span>
+  );
+}
+
+function PermToggle({
+  on,
+  disabled,
+  label,
+  title,
+  onClick,
+}: {
+  on: boolean;
+  disabled: boolean;
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      title={title}
+      className={cx('perm-cell', on && 'is-on')}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon name={on ? 'check' : 'minus'} size={12} />
+    </button>
+  );
+}
+
 export function PermissionsPage() {
   const t = useT();
   const { config, me, refreshPermissionGroups } = useAuth();
@@ -76,11 +199,14 @@ export function PermissionsPage() {
   const [creating, setCreating] = useState(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const compactMatrix = useMediaQuery(COMPACT_MATRIX);
   useTitle(t('用户组'));
 
   const kind = siteKindOf(config);
   const byKey = useMemo(() => new Map(draft.map((item) => [item.key, item])), [draft]);
   const current = byKey.get(group);
+  const currentKey = current?.key ?? group;
+  const currentLabel = groupConfigLabel(current ?? draft[0]);
 
   // The server is the source of truth: when the context refreshes (first load or a
   // save from another tab), mirror it without remounting the page.
@@ -309,158 +435,208 @@ export function PermissionsPage() {
         </Callout>
       )}
 
-      <div className="panel mt-20">
-        <div className="panel-head">
-          <div>
+      <div className="panel mt-20 perm-panel">
+        <div className="panel-head perm-panel-head">
+          <div className="perm-panel-title">
             <h3>{t('能力矩阵')}</h3>
-            <p>{t('点按单元格切换。当前账户落在「{group}」组。', { group: groupConfigLabel(current ?? draft[0]) })}</p>
+            <p>{t('点按单元格切换。当前账户落在「{group}」组。', { group: currentLabel })}</p>
           </div>
           <Badge tone="accent">{personal ? t('个人博客固定全开') : t('改动立即生效')}</Badge>
         </div>
-        <div className="table-wrap">
-          <table className="table perm-table">
-            <thead>
-              <tr>
-                <th style={{ minWidth: 220 }}>{t('能力')}</th>
-                {draft.map((item) => {
-                  const label = groupConfigLabel(item);
-                  const busy = !!saving[item.key];
-                  return (
-                    <th key={item.key} style={{ textAlign: 'center', minWidth: 116 }}>
-                      {editingKey === item.key ? (
-                        <div className="perm-rename">
-                          <Input
-                            value={editingName}
-                            maxLength={60}
-                            autoFocus
-                            aria-label={t('重命名 {group}', { group: label })}
-                            placeholder={label}
-                            onChange={(event) => setEditingName(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                void commitRename(item);
-                              }
-                              if (event.key === 'Escape') setEditingKey(null);
-                            }}
-                          />
-                          <div className="perm-rename-actions">
-                            <button
-                              type="button"
-                              className="link-btn"
-                              aria-label={t('保存名称')}
-                              disabled={busy}
-                              onClick={() => void commitRename(item)}
-                            >
-                              <Icon name="check" size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              className="link-btn"
-                              aria-label={t('取消重命名')}
-                              onClick={() => setEditingKey(null)}
-                            >
-                              <Icon name="x" size={12} />
-                            </button>
+
+        {compactMatrix ? (
+          <div className="perm-cards">
+            {draft.map((item) => {
+              const label = groupConfigLabel(item);
+              const busy = !!saving[item.key];
+              const isCurrent = item.key === currentKey;
+              return (
+                <article
+                  key={item.key}
+                  className={cx('perm-card', isCurrent && 'is-current')}
+                  aria-label={label}
+                >
+                  <header className="perm-card-head">
+                    <div className="perm-card-title">
+                      <GroupName
+                        label={label}
+                        editing={editingKey === item.key}
+                        editingName={editingName}
+                        busy={busy}
+                        canRename={!personal}
+                        onStart={() => startRename(item)}
+                        onCommit={() => void commitRename(item)}
+                        onCancel={() => setEditingKey(null)}
+                        onNameChange={setEditingName}
+                      />
+                      <GroupRole item={item} />
+                    </div>
+                    {busy ? (
+                      <span className="spinner spinner-sm" aria-hidden="true" />
+                    ) : isCurrent ? (
+                      <span className="perm-current-mark" aria-hidden="true" />
+                    ) : null}
+                  </header>
+                  <div className="perm-card-body">
+                    {CAPABILITY_DEFS.map((cap) => {
+                      const on = item.capabilities[cap.id];
+                      const reason = locked(item, cap.id);
+                      return (
+                        <div className="perm-card-row" key={cap.id}>
+                          <div className="perm-card-copy">
+                            <span className="cell-title">{cap.label}</span>
+                            <span className={cx('perm-card-hint', reason && 'is-locked')}>
+                              {reason || cap.hint}
+                            </span>
                           </div>
+                          <PermToggle
+                            on={on}
+                            disabled={!!reason || personal || busy}
+                            label={`${label} · ${cap.label}`}
+                            title={
+                              reason ||
+                              (on
+                                ? t('关闭 {group}的「{capability}」', {
+                                    group: label,
+                                    capability: cap.label,
+                                  })
+                                : t('开启 {group}的「{capability}」', {
+                                    group: label,
+                                    capability: cap.label,
+                                  }))
+                            }
+                            onClick={() => toggle(item, cap.id)}
+                          />
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="perm-group-name"
-                          title={t('重命名 {group}', { group: label })}
-                          disabled={personal}
-                          onClick={() => startRename(item)}
+                      );
+                    })}
+                    <div className="perm-card-row perm-card-admin">
+                      <div className="perm-card-copy">
+                        <span className="cell-title">{t('进入管理后台')}</span>
+                        <span className={cx('perm-card-hint', adminLocked(item) && 'is-locked')}>
+                          {adminLocked(item) ||
+                            t('关闭后该组只能在站点前台活动；开启后仍需至少一项后台能力。')}
+                        </span>
+                      </div>
+                      <PermToggle
+                        on={item.admin_access}
+                        disabled={!!adminLocked(item) || personal || busy}
+                        label={t('{group} 进入管理后台', { group: label })}
+                        title={adminLocked(item) || t('切换后台入口')}
+                        onClick={() => toggleAdmin(item)}
+                      />
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="table-wrap perm-scroll">
+            <table className="table perm-table">
+              <thead>
+                <tr>
+                  <th scope="col" className="perm-capability-col" style={{ minWidth: 220 }}>
+                    {t('能力')}
+                  </th>
+                  {draft.map((item) => {
+                    const label = groupConfigLabel(item);
+                    const isCurrent = item.key === currentKey;
+                    return (
+                      <th
+                        key={item.key}
+                        scope="col"
+                        className={cx('perm-col', isCurrent && 'is-current')}
+                        style={{ textAlign: 'center', minWidth: 116 }}
+                      >
+                        <GroupName
+                          label={label}
+                          editing={editingKey === item.key}
+                          editingName={editingName}
+                          busy={!!saving[item.key]}
+                          canRename={!personal}
+                          onStart={() => startRename(item)}
+                          onCommit={() => void commitRename(item)}
+                          onCancel={() => setEditingKey(null)}
+                          onNameChange={setEditingName}
+                        />
+                        <GroupRole item={item} />
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {CAPABILITY_DEFS.map((cap) => (
+                  <tr key={cap.id}>
+                    <td>
+                      <span className="cell-title">{cap.label}</span>
+                      <p className="tiny faint">
+                        {cap.hint}
+                      </p>
+                    </td>
+                    {draft.map((item) => {
+                      const on = item.capabilities[cap.id];
+                      const reason = locked(item, cap.id);
+                      return (
+                        <td
+                          key={item.key}
+                          className={cx('perm-col-cell', item.key === currentKey && 'is-current')}
+                          style={{ textAlign: 'center' }}
                         >
-                          <span>{label}</span>
-                          <Icon name={busy ? 'refresh' : 'edit'} size={12} />
-                        </button>
-                      )}
-                      <span className="tiny faint" style={{ display: 'block', marginTop: 2 }}>
-                        {item.builtin
-                          ? item.base_role
-                            ? ROLE_LABEL[item.base_role]
-                            : t('无账户')
-                          : t('自定义 · {role}', { role: ROLE_LABEL[item.base_role ?? 'member'] })}
-                      </span>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {CAPABILITY_DEFS.map((cap) => (
-                <tr key={cap.id}>
+                          <PermToggle
+                            on={on}
+                            disabled={!!reason || personal || !!saving[item.key]}
+                            label={`${groupConfigLabel(item)} · ${cap.label}`}
+                            title={
+                              reason ||
+                              (on
+                                ? t('关闭 {group}的「{capability}」', {
+                                    group: groupConfigLabel(item),
+                                    capability: cap.label,
+                                  })
+                                : t('开启 {group}的「{capability}」', {
+                                    group: groupConfigLabel(item),
+                                    capability: cap.label,
+                                  }))
+                            }
+                            onClick={() => toggle(item, cap.id)}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                <tr>
                   <td>
-                    <span className="cell-title">{cap.label}</span>
-                    <p className="tiny faint" style={{ marginTop: 2 }}>
-                      {cap.hint}
+                    <span className="cell-title">{t('进入管理后台')}</span>
+                    <p className="tiny faint">
+                      {t('关闭后该组只能在站点前台活动；开启后仍需至少一项后台能力。')}
                     </p>
                   </td>
                   {draft.map((item) => {
-                    const on = item.capabilities[cap.id];
-                    const reason = locked(item, cap.id);
+                    const reason = adminLocked(item);
                     return (
-                      <td key={item.key} style={{ textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={on}
-                          aria-label={`${groupConfigLabel(item)} · ${cap.label}`}
-                          title={
-                            reason ||
-                            (on
-                              ? t('关闭 {group}的「{capability}」', {
-                                  group: groupConfigLabel(item),
-                                  capability: cap.label,
-                                })
-                              : t('开启 {group}的「{capability}」', {
-                                  group: groupConfigLabel(item),
-                                  capability: cap.label,
-                                }))
-                          }
-                          className={cx('perm-cell', on && 'is-on')}
+                      <td
+                        key={item.key}
+                        className={cx('perm-col-cell', item.key === currentKey && 'is-current')}
+                        style={{ textAlign: 'center' }}
+                      >
+                        <PermToggle
+                          on={item.admin_access}
                           disabled={!!reason || personal || !!saving[item.key]}
-                          onClick={() => toggle(item, cap.id)}
-                        >
-                          <Icon name={on ? 'check' : 'minus'} size={12} />
-                        </button>
+                          label={t('{group} 进入管理后台', { group: groupConfigLabel(item) })}
+                          title={reason || t('切换后台入口')}
+                          onClick={() => toggleAdmin(item)}
+                        />
                       </td>
                     );
                   })}
                 </tr>
-              ))}
-              <tr>
-                <td>
-                  <span className="cell-title">{t('进入管理后台')}</span>
-                  <p className="tiny faint" style={{ marginTop: 2 }}>
-                    {t('关闭后该组只能在站点前台活动；开启后仍需至少一项后台能力。')}
-                  </p>
-                </td>
-                {draft.map((item) => {
-                  const on = item.admin_access;
-                  const reason = adminLocked(item);
-                  return (
-                    <td key={item.key} style={{ textAlign: 'center' }}>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={on}
-                        aria-label={t('{group} 进入管理后台', { group: groupConfigLabel(item) })}
-                        title={reason || t('切换后台入口')}
-                        className={cx('perm-cell', on && 'is-on')}
-                        disabled={!!reason || personal || !!saving[item.key]}
-                        onClick={() => toggleAdmin(item)}
-                      >
-                        <Icon name={on ? 'check' : 'minus'} size={12} />
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="dash-grid mt-20">

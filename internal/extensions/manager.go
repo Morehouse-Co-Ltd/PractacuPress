@@ -311,11 +311,13 @@ func (m *Manager) SetEnabled(id string, enabled bool) (Extension, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	status, ok := m.host.Get(id)
-	if !ok {
+	if _, ok := m.host.Get(id); !ok {
 		return Extension{}, fmt.Errorf("%w: %s", ErrExtensionNotFound, id)
 	}
-	var err error
+	var (
+		status plugins.Status
+		err    error
+	)
 	if enabled {
 		status, err = m.host.Enable(id)
 	} else {

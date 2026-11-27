@@ -115,8 +115,9 @@ func (s *Service) Delete(ctx context.Context, actor Actor, siteID, termID string
 }
 
 // authorizeWrite is the single write permission rule: the caller must be
-// authenticated, act on its own site, and hold at least site administrator authority.
-// A platform administrator outranks site administrator and therefore passes.
+// authenticated, act on its own site, and hold the manage_site capability the
+// route guard enforces. A matrix that revoked it is denied; a group the operator
+// granted it to is allowed, so the dashboard and the server cannot disagree.
 func authorizeWrite(actor Actor, siteID string) error {
 	if actor.UserID == "" || actor.SiteID == "" {
 		return ErrPermissionDenied
@@ -124,7 +125,7 @@ func authorizeWrite(actor Actor, siteID string) error {
 	if actor.SiteID != siteID {
 		return ErrCrossSite
 	}
-	if !actor.Role.AtLeast(site.RoleSiteAdmin) {
+	if !site.CanWithMatrix(actor.Role, actor.Permissions, site.CapabilityManageSite) {
 		return ErrPermissionDenied
 	}
 	return nil

@@ -1,11 +1,11 @@
 # Practacu Press 前端
 
 React 19 + Vite + TypeScript 单页应用，严格按
-[`internal/packages/contracts/openapi/openapi.yaml`](../internal/packages/contracts/openapi/openapi.yaml)（v0.1.0）
-和设计文档第 7、11 章实现。包含**站点前台**、**管理后台**和**首次打开安装引导**。
+[`internal/packages/contracts/openapi/openapi.yaml`](../internal/packages/contracts/openapi/openapi.yaml)
+和设计文档第 7、11 章实现。版本号统一来自仓库根目录的 `VERSION`。包含**站点前台**、**管理后台**和**首次打开安装引导**。
 
-内置 **3 套大主题**（原版：纸白单栏 / 白昼：白底日报 / 夜航：暖黑暗色双栏）与 **8 套配色预设**
-（纸白、暖砂、雾蓝、灰绿、陶土、白昼、夜航、夜航·浅色），以及
+内置 **2 套大主题**（原版：纸白浅色单栏 / 夜航：冷石墨深色双栏）与 **7 套配色预设**
+（纸白、暖砂、雾蓝、灰绿、陶土、夜航、白昼），以及
 **无代码页面编排**（区块组件库 + 首页 / 页面编排 + 思维链逻辑 + 页面模板），全部零新增依赖。
 
 > 设计稿原计划由外部团队实现前端；此目录是按该契约落地的前端，仅依赖公开 REST 接口。
@@ -51,7 +51,7 @@ npm run dev -- --port 5173  # 80 被占用时换一个端口
 ### Windows 便携包（一键打包）
 
 ```powershell
-# 在仓库根目录双击 打包.bat，或者：
+# 在仓库根目录双击 scripts\打包.bat，或者：
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
@@ -172,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 - 开关与参数写入本地安装配置的 `auth` 字段；填入完整必填项后，`/login` 才会显示对应入口。
 - 密钥输入框只用于生成 `.env` 片段，**不会写入 localStorage**；页面会明确提示这一点。
 - 演示模式下可以走完整流程：手机验证码固定为 `246810`，OAuth 点击「模拟授权并继续」会以站点管理员身份进入。
-- 契约 v0.1.0 没有短信或 OAuth 端点。连接真实后端时，需要服务端实现页面上列出的端点；
+- 当前契约没有短信或 OAuth 端点。连接真实后端时，需要服务端实现页面上列出的端点；
   在此之前，真实模式只会显示端点说明与配置复制，不会伪造登录成功。
 
 ### 外观、页面与扩展（本地 CMS 层）
@@ -472,7 +472,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 
 ## 契约对齐与仍有边界
 
-前端按 `internal/packages/contracts/openapi/openapi.yaml`（v0.1.0，当前 83 条路径 / 100 个操作）实现。
+前端按 `internal/packages/contracts/openapi/openapi.yaml`（当前 155 条路径 / 186 个操作）实现。
 下面按“已实现（不再是缺口）”“仅演示模式 / 前端本地策略”“已知限制”三档记录；判断以代码与契约为准，
 不把演示效果写成服务端能力。
 

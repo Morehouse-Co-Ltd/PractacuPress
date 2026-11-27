@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_THEME, normalizeThemeSettings, themeCss } from './theme';
+import { DEFAULT_THEME, normalizeThemeSettings, presetTokens, themeCss } from './theme';
 import { readCustomization } from './customize';
 import {
   BUILTIN_THEMES,
@@ -68,16 +68,32 @@ describe('theme soften effects', () => {
 describe('built-in big themes', () => {
   it('bundles palette and layout variant together', () => {
     const original = builtinThemeBundle('default');
+    const contemplation = builtinThemeBundle('contemplation');
     const night = builtinThemeBundle('night');
     expect(original?.name).toBe('原版');
     expect(original?.variant).toBe('classic');
     expect(builtinThemeBundle('daylight')).toBeNull();
+    expect(contemplation?.name).toBe('沉思');
+    expect(contemplation?.variant).toBe('classic');
+    expect(contemplation?.theme.preset).toBe('contemplation');
+    expect(contemplation?.theme.mode).toBe('light');
+    expect(contemplation?.theme.heading_font).toBe('sans');
+    expect(contemplation?.theme.body_size).toBe(18);
     expect(night?.name).toBe('夜航');
     expect(night?.variant).toBe('bento');
     expect(night?.theme.mode).toBe('dark');
     expect(variantLabel('bento')).toBe('双栏');
     expect(variantLabel('daylight')).toBe('卡片');
-    expect(BUILTIN_THEMES).toHaveLength(2);
+    expect(BUILTIN_THEMES).toHaveLength(3);
+  });
+
+  it('keeps both light and dark tokens for contemplation', () => {
+    const light = presetTokens('contemplation', 'light');
+    const dark = presetTokens('contemplation', 'dark');
+    expect(light?.background).toBe('#f7f2e8');
+    expect(dark?.background).toBe('#14110e');
+    expect(light?.ink).not.toBe(dark?.ink);
+    expect(light?.accent).not.toBe(dark?.accent);
   });
 
   it('matches only the full bundle, not just a colour', () => {

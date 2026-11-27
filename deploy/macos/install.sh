@@ -5,7 +5,7 @@
 #   sudo ./install.sh
 #   sudo ./install.sh --no-nginx
 #
-# Installs the prebuilt binaries and frontend under /usr/local/practacu-press,
+# Installs the single prebuilt binary (frontend embedded) under /usr/local/practacu-press,
 # creates a launchd daemon for the API and (when
 # Homebrew Nginx is already installed) renders a same-origin site on
 # 127.0.0.1:8080. The first-run wizard must be completed from this machine.

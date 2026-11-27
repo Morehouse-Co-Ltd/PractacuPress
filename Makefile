@@ -7,11 +7,23 @@ PKG := ./...
 
 .PHONY: build test vet generate migrate tidy smoke \
 	web-install web-typecheck web-build web-test web-dev web-start web-package package package-linux \
+	version version-check set-version \
 	embed-web \
-	migrations-test config-test verify verify-go verify-web verify-migrations verify-config ci
+	migrations-test config-test verify verify-go verify-web verify-migrations verify-config verify-version ci
 
 build:
 	$(GO) build $(PKG)
+
+version:
+	node scripts/version.mjs show
+
+version-check:
+	node scripts/version.mjs check
+
+# make set-version V=1.2.0-beta1
+set-version:
+	@test -n "$(V)" || (echo "usage: make set-version V=1.2.0-beta1" >&2; exit 2)
+	node scripts/version.mjs set "$(V)"
 
 test:
 	$(GO) test $(PKG)
@@ -23,7 +35,7 @@ generate:
 	$(GO) generate ./internal/ent/...
 
 migrate:
-	$(GO) run ./cmd/migrate
+	$(GO) run ./cmd/server migrate
 
 tidy:
 	$(GO) mod tidy
@@ -76,18 +88,21 @@ verify-go:
 	$(GO) test -count=1 ./...
 
 verify-web: web-install web-typecheck web-build web-test
-	node --test scripts/release-version.test.mjs
+	node --test scripts/release-version.test.mjs scripts/version.test.mjs
 
 verify-migrations: migrations-test
 	@mkdir -p .tmp/verify
-	$(GO) run ./cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
-	$(GO) run ./cmd/migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
+	$(GO) run ./cmd/server migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
+	$(GO) run ./cmd/server migrate -driver sqlite -dsn "file:./.tmp/verify/make.db?_pragma=foreign_keys(1)"
 
 verify-config: config-test
 	@command -v docker >/dev/null 2>&1 && docker compose -f docker-compose.yml config -q \
 		|| echo "docker not available: compose config skipped (static checks above still ran)"
 
-verify: verify-go verify-web verify-migrations verify-config
+verify-version:
+	node scripts/version.mjs check
+
+verify: verify-version verify-go verify-web verify-migrations verify-config
 	@echo "verify: all local gates passed"
 
 ci: verify

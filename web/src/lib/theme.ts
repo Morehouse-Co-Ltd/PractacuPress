@@ -75,6 +75,45 @@ const NIGHT_LIGHT: ThemeTokenSet = {
   prose: '#333944',
 };
 
+/**
+ * 沉思（浅色）：暖纸白、炭黑与朱砂。
+ *
+ * 2026-11 修订：从“旧刊物”的墨蓝与发丝框，转向更年轻的中文编辑排版。
+ * 大面积留白、加大的中文标题、单点朱砂强调色；结构靠留白与字号分层，
+ * 不再用卡片、描边和横线把内容围起来。
+ */
+const CONTEMPLATION_LIGHT: ThemeTokenSet = {
+  background: '#f7f2e8',
+  ink: '#1c1915',
+  accent: '#c64732',
+  bg_subtle: '#efe7d9',
+  bg_sunken: '#e5dac8',
+  ink_soft: '#443d35',
+  muted: '#7a7064',
+  faint: '#a89d8d',
+  line: '#e6dbc9',
+  line_strong: '#d4c5af',
+  accent_soft: '#f7e2da',
+  accent_ink: '#fff8f0',
+  prose: '#27211b',
+};
+
+const CONTEMPLATION_DARK: ThemeTokenSet = {
+  background: '#14110e',
+  ink: '#f4eddf',
+  accent: '#f08063',
+  bg_subtle: '#1e1914',
+  bg_sunken: '#27211b',
+  ink_soft: '#d9cfbe',
+  muted: '#ab9f8d',
+  faint: '#75695c',
+  line: '#332b23',
+  line_strong: '#453a2e',
+  accent_soft: '#f080631f',
+  accent_ink: '#1a0d08',
+  prose: '#e0d5c4',
+};
+
 /** 白昼：已合并进夜航的冷白重配，旧配置读取时由 customize.ts 折算。 */
 const RAW_THEME_PRESETS: ThemePreset[] = [
   {
@@ -264,6 +303,14 @@ const RAW_THEME_PRESETS: ThemePreset[] = [
     mode: 'dark',
     light: NIGHT_LIGHT,
     dark: NIGHT_DARK,
+  },
+  {
+    id: 'contemplation',
+    name: t('沉思'),
+    note: t('暖纸与朱砂，年轻的中文编辑排版；大字、留白与无边框内容流。'),
+    mode: 'light',
+    light: CONTEMPLATION_LIGHT,
+    dark: CONTEMPLATION_DARK,
   },
   {
     id: 'dawn',

@@ -104,6 +104,55 @@ func TestOpenSQLiteAndCreateSchema(t *testing.T) {
 	require.False(t, read.CreatedAt.IsZero())
 }
 
+// TestOpenSQLiteCreatesMissingFileAndParent proves the desktop first start does
+// not need a separate seed command: opening a SQLite DSN creates the data
+// directory and the database file, and reports that it did so.
+func TestOpenSQLiteCreatesMissingFileAndParent(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "data", "nested", "first.db")
+
+	handle, err := Open(ctx, "sqlite", SQLiteDSN(path))
+	require.NoError(t, err)
+	require.True(t, handle.CreatedFile())
+	require.DirExists(t, filepath.Dir(path))
+	require.FileExists(t, path)
+	require.NoError(t, handle.Ping(ctx))
+	require.NoError(t, handle.Client.Schema.Create(ctx))
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+}
+
+func TestOpenSQLiteReusesExistingFile(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "existing.db")
+
+	first, err := Open(ctx, "sqlite", SQLiteDSN(path))
+	require.NoError(t, err)
+	require.True(t, first.CreatedFile())
+	require.NoError(t, first.Close())
+
+	second, err := Open(ctx, "sqlite", SQLiteDSN(path))
+	require.NoError(t, err)
+	require.False(t, second.CreatedFile(), "a restart must not report a first start")
+	t.Cleanup(func() { require.NoError(t, second.Close()) })
+}
+
+func TestOpenSQLiteLeavesMemoryDatabaseAlone(t *testing.T) {
+	ctx := context.Background()
+	handle, err := Open(ctx, "sqlite", SQLiteDSN(":memory:"))
+	require.NoError(t, err)
+	require.False(t, handle.CreatedFile())
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+}
+
+func TestOpenSQLiteDoesNotCreateAReadOnlyTarget(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "missing.db")
+
+	_, err := Open(ctx, "sqlite", "file:"+path+"?mode=ro")
+	require.Error(t, err, "read-only means the file must already exist")
+	require.NoFileExists(t, path, "a read-only DSN must not be replaced with an empty database")
+}
+
 func TestConfigurePoolOverridesMaxOpen(t *testing.T) {
 	ctx := context.Background()
 	handle, err := Open(ctx, "sqlite", SQLiteDSN(filepath.Join(t.TempDir(), "pool.db")))

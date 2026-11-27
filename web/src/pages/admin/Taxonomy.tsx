@@ -166,7 +166,7 @@ export function TaxonomyPage() {
   };
 
   return (
-    <RoleGate capability="write_content" need={t('写稿')}>
+    <RoleGate capability="manage_site" need={t('管理站点')}>
       <div className="admin-page-head">
         <div>
           <h1>{t('分类与标签')}</h1>

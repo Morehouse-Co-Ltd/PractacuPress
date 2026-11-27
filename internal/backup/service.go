@@ -205,9 +205,10 @@ func requirePlatformAdmin(actor Actor) error {
 	return nil
 }
 
-// requireSiteAdmin guards a site's own export/import.
+// requireSiteAdmin guards a site's own export/import with the same manage_site
+// capability the route guard uses, honouring an operator-edited matrix.
 func requireSiteAdmin(actor Actor, siteID string) error {
-	if actor.SiteID != siteID || !actor.Role.AtLeast(site.RoleSiteAdmin) {
+	if actor.SiteID != siteID || !site.CanWithMatrix(actor.Role, actor.Permissions, site.CapabilityManageSite) {
 		return fmt.Errorf("%w: site administrator required", ErrPermissionDenied)
 	}
 	return nil

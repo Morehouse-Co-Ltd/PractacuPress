@@ -1,12 +1,26 @@
+# Practacu Press image. Build from the repository root:
+#   docker build -f Dockerfile .
+#
+# The runtime is Alpine and the binary is fully static: SQLite uses
+# modernc.org/sqlite (pure Go), so CGO can stay disabled and no glibc is needed.
+# One executable carries the server and the operator commands, so
+# `docker compose exec practacu-press migrate` (and backup / media-gc /
+# searchindex / seed) run the same file without a second image or a second binary.
+#
+# The frontend is part of the application image: Go's //go:embed cannot read outside its
+# package, so the build stage first produces web/dist and copies it into
+# internal/web/dist before compiling. One container now serves both the
+# SPA and the application, with no separate Nginx container in the default stack.
 FROM --platform=$BUILDPLATFORM node:22.22.3-bookworm-slim AS web
 
 WORKDIR /web
+COPY VERSION /VERSION
 COPY web ./
 
-ARG VERSION=development
-ENV VERSION=$VERSION
-RUN npm ci --no-audit --no-fund \
- && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION||'development';j.version=v.replace(/^v/i,'');j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
+ARG VERSION=
+RUN export VERSION="${VERSION:-$(cat /VERSION)}" \
+ && npm ci --no-audit --no-fund \
+ && node -e "const fs=require('fs');const f='public/version.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));const v=process.env.VERSION.replace(/^v/i,'');if(!/^\d+\.\d+\.\d+(?:-beta\d*)?$/i.test(v))throw new Error('bad VERSION '+v);j.version=v;j.style=/-beta/i.test(v)?'beta':'stable';fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');" \
  && npm run build \
  && test -f dist/index.html
 
@@ -19,6 +33,7 @@ WORKDIR /src
 # buildx; a plain `docker build` leaves them at the build platform defaults.
 ARG TARGETOS=linux
 ARG TARGETARCH
+ARG VERSION=
 ENV GOOS=$TARGETOS \
     GOARCH=$TARGETARCH
 
@@ -29,6 +44,7 @@ ENV CGO_ENABLED=0 \
     GOFLAGS=-mod=readonly
 
 # Dependency layer: only the module files, so a source edit does not re-download.
+COPY VERSION /src/VERSION
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
@@ -41,12 +57,14 @@ COPY --from=web /web/dist ./internal/web/dist
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/practacu-press ./cmd/server \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/migrate ./cmd/migrate \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/seed ./cmd/seed \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/backup ./cmd/backup \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/media-gc ./cmd/media-gc \
- && go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/searchindex ./cmd/searchindex
+    export VERSION="${VERSION:-$(cat /src/VERSION)}" \
+ && VERSION="$(printf '%s' "$VERSION" | sed 's/^[vV]//')" \
+ && go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -X github.com/practacu/practacu-press/internal/version.Version=${VERSION}" \
+      -o /out/practacu-press ./cmd/server
+
+# The final image is one binary: the SPA is embedded, and migrate / seed / backup /
+# media-gc / searchindex are subcommands of that same file.
 
 # Stay on the stable Alpine branch and pull only the patched musl from edge:
 # Alpine 3.24 still ships musl 1.2.6-r3 (CVE-2026-107891), while 1.2.6-r6 is
@@ -89,7 +107,7 @@ STOPSIGNAL SIGTERM
 
 # wget is BusyBox's, already present in the base image.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=25s --retries=5 \
-    CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/api/healthz || exit 1
 
 # Subcommands are available for `docker compose exec practacu-press <command>`.
 CMD ["practacu-press"]

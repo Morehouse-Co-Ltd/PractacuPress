@@ -7,20 +7,20 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 
 | 编号 | 问题 | 本仓库的处置 |
 | --- | --- | --- |
-| V-17 | `docker-compose.yml` 默认是开发形态 | 单份 compose 通过 `--env-file .env.prod` 切换 production 语义、持久私钥与 Secure Cookie；宿主机 TLS 反代模板为 `deploy/production/nginx.conf` |
-| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头，宿主机 TLS 模板再补 HSTS |
+| V-17 | `docker-compose.yml` 默认是开发形态 | 单份 compose 通过 `--env-file .env.prod` 切换 production 语义、持久私钥与 Secure Cookie；TLS 终止由宿主机反代负责，API 自身下发安全响应头 |
+| V-05 | 静态站没有 CSP/XFO/Referrer-Policy/Permissions-Policy/HSTS | API 中间件对每个响应加安全头，宿主机 TLS 反代再补 HSTS |
 
 > **验证状态**：默认 API 镜像（内嵌前端与安全检查）已在本机 Docker 中实际构建并起栈验证
 > （API healthy，`/api/healthz`、`/api/readyz`、`/api/v1/setup/status`、RSS/Atom/sitemap/robots、
 > 首个管理员注册、登录、媒体上传与整库备份均跑通），`docker compose config` 通过。
-> 宿主机 TLS 反代模板仍建议按 §7 在预发环境走一遍证书与 HSTS 检查。
+> 宿主机 TLS 反代仍建议按 §7 在预发环境走一遍证书与 HSTS 检查。
 
 ---
 
 ## 1. 目标架构
 
 ```
-浏览器 ──443/TLS──▶ 宿主机 Nginx（deploy/production/nginx.conf）
+浏览器 ──443/TLS──▶ 宿主机 TLS 终止（运维提供的 Nginx / Caddy / 云负载均衡）
                           │  proxy_pass http://127.0.0.1:8080
                           ▼
                  compose api 容器（Go API + go:embed 内嵌前端，SQLite /data/practacu.db）
@@ -39,8 +39,8 @@ production 语义、Secure Cookie、TLS 终止、安全响应头，以及首次�
 
 - Linux 服务器，Docker Engine + Docker Compose v2（`docker compose version`）。
 - 一个已把 A/AAAA 记录指向服务器的域名（示例用 `press.example.com`）。
-- 宿主机 Nginx（≥ 1.25.1，或把模板里的 `http2 on;` 改成 `listen 443 ssl http2;`）
-  与 certbot（或其他 ACME 客户端）。
+- 宿主机 Nginx（≥ 1.25.1；更老的版本用 `listen 443 ssl http2;` 而不是 `http2 on;`）
+  或 Caddy / 云负载均衡，以及 certbot（或其他 ACME 客户端）。
 
 ## 3. 首次安装（两阶段，顺序不能反）
 
@@ -85,8 +85,22 @@ curl -fsS -H 'Host: press.example.com' http://127.0.0.1:8080/api/v1/setup/status
 ### 阶段 B：切到生产 profile
 
 ```bash
-# 1) 环境文件（含签名私钥，权限收紧）
-cp deploy/production/env.prod.example .env.prod
+# 1) 在仓库根目录创建环境文件（含签名私钥，权限收紧）
+cat > .env.prod <<'EOF'
+APP_ENV=production
+PP_DESKTOP=false
+PP_FIRST_ADMIN_TRUST_PROXY=0
+COOKIE_SECURE=true
+
+# §4 / §4.1 生成后填入，三把密钥都必填
+AUTH_JWT_ED25519_PRIVATE_KEY=
+FIELD_ENCRYPTION_KEY=
+BACKUP_ENCRYPTION_KEY=
+BACKUP_ENCRYPTION=on
+
+PUBLIC_BASE_URL=https://press.example.com
+RATE_LIMIT_PER_MINUTE=240
+EOF
 chmod 600 .env.prod
 # 按 §4 生成 AUTH_JWT_ED25519_PRIVATE_KEY 填进去，并把 PUBLIC_BASE_URL 改成 https 域名
 # PUBLIC_BASE_URL 必须是浏览器实际访问的地址；桌面 / localhost 的 http 部署写成
@@ -107,13 +121,18 @@ docker compose --env-file .env.prod logs -f api
 ### 阶段 C：宿主机 TLS 反代
 
 ```bash
-# 1) 安装模板并改域名/证书路径
-sudo cp deploy/production/nginx.conf /etc/nginx/conf.d/practacu-press.conf
-sudo sed -i 's/press\.example\.com/你的域名/g' /etc/nginx/conf.d/practacu-press.conf
+# 1) 在你的 TLS 终止层把 / 与 /api/ 都反代到 127.0.0.1:8080：
+#    - /api/v1/ws 必须放行 Upgrade / Connection，且关闭响应缓冲
+#    - 传递 Host、X-Real-IP、X-Forwarded-For 与 X-Forwarded-Proto
+#    - API 已下发 CSP、X-Frame-Options、Referrer-Policy、Permissions-Policy 与 nosniff，
+#      边缘不要用 proxy_hide_header 删除它们；只在 TLS 层追加 HSTS
+#    - 显式拒绝控制面：location = /__pp { return 404; } 与 location /__pp/ { return 404; }
 
-# 2) 申请证书（模板已给 HTTP-01 挑战留出 /.well-known/acme-challenge/）
-sudo certbot certonly --webroot -w /var/www/certbot -d 你的域名
+# 2) 申请证书（Nginx + certbot 示例；其他终止方式按各自文档）
 sudo mkdir -p /var/www/certbot
+sudo certbot certonly --webroot -w /var/www/certbot -d 你的域名
+# 并在 80 端口的 server 块保留：
+#   location /.well-known/acme-challenge/ { root /var/www/certbot; }
 
 # 3) 语法检查后重载
 sudo nginx -t && sudo systemctl reload nginx
@@ -200,9 +219,8 @@ openssl rand -base64 32   # BACKUP_ENCRYPTION_KEY
 | 文件 | 作用 |
 | --- | --- |
 | `docker-compose.yml` | 基础栈：api（内嵌前端与安全检查）、内部网络、命名卷、健康检查（开发引导形态） |
-| `.env.prod` | 生产变量：`APP_ENV=production`、`PP_DESKTOP=false`、持久 JWT 私钥、`COOKIE_SECURE=true`、`PP_FIRST_ADMIN_TRUST_PROXY=0` |
-| `deploy/production/env.prod.example` | `.env.prod` 模板（私钥、PUBLIC_BASE_URL、限流、可选 SMTP） |
-| `deploy/production/nginx.conf` | 宿主机 TLS 终止模板：HSTS、CSP/XFO/Referrer/Permissions/nosniff、`/__pp/` 404、`server_tokens off`、真实 IP 覆盖 |
+| `.env.prod` | 生产变量：`APP_ENV=production`、`PP_DESKTOP=false`、持久 JWT 私钥、`COOKIE_SECURE=true`、`PP_FIRST_ADMIN_TRUST_PROXY=0`；按阶段 B 在仓库根目录创建，不要提交 |
+| 宿主机 TLS 反代 | 由运维提供（Nginx / Caddy / 云负载均衡）：TLS 终止、HSTS、`/__pp/` 404、真实 IP 与 WebSocket 升级 |
 
 ## 6. 备份与恢复
 
@@ -300,16 +318,15 @@ docker compose --env-file .env.prod logs -f api
 
 ## 10. 未验证项与已知限制
 
-- **宿主机 TLS 反代未实跑**：API 容器栈已实际构建并启动验证；`deploy/production/nginx.conf` 只做了语法与逐行核对，证书路径、HSTS 与真实客户端 IP 请在预发环境验证。
+- **宿主机 TLS 反代未实跑**：API 容器栈已实际构建并启动验证；仓库不再提供反代示例配置，证书路径、HSTS、真实客户端 IP 与 WebSocket 升级请在预发环境验证。
 - **Docker 单主机首管理员**：端口映射会隐藏客户端地址，默认 compose 用
   `PP_FIRST_ADMIN_TRUST_PROXY=1` 放宽首个管理员判定（只检查 Host 回环）。这个开关
   只在 `api` 端口绑定 `127.0.0.1` 时安全；完成安装后可设为 `0`，生产 `.env.prod` 已显式
   关闭。不要把未完成安装的实例暴露到公网。
-- **Nginx 版本**：模板使用 `http2 on;`（nginx ≥ 1.25.1）；容器镜像固定
-  `nginx:1.29.8-alpine`。升级镜像时保留 ≥ 1.27.3，`proxy_pass` 的动态上游解析
-  （`server api:8080 resolve`）依赖该版本。
-- **HSTS 不可逆**：确认全站 HTTPS 长期可用后再考虑 `preload`；模板只给一年、
-  不含 `preload`。
+- **反代版本**：若用 Nginx，启用 HTTP/2 需要 ≥ 1.25.1（旧版用 `listen 443 ssl http2;`）；
+  仓库只发布 API 镜像，不锁定宿主机反代的版本。
+- **HSTS 不可逆**：确认全站 HTTPS 长期可用后再考虑 `preload`；建议先从一年、
+  不含 `preload` 开始。
 - **限流**：应用内是进程内固定窗口，多副本各自计数；公网部署建议在宿主机 Nginx
   再加 `limit_req` / 边缘 WAF。
 - **本 profile 未改变应用代码**：内容安全、媒体授权等产品级问题见

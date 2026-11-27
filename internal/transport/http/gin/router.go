@@ -114,25 +114,24 @@ func New(deps Dependencies) *gin.Engine {
 		panic(fmt.Sprintf("ginrouter: %v", err))
 	}
 
-	r.GET("/api/healthz", healthz)
-	r.GET("/api/readyz", readyz(deps.Readiness))
-	// Compatibility aliases for installs and reverse proxies created before the
-	// /api namespace was unified. New probes should use the /api paths.
-	r.GET("/healthz", healthz)
-	r.GET("/readyz", readyz(deps.Readiness))
-	// Mounted on the engine rather than the versioned group on purpose: the group
+	// Every backend endpoint lives under /api. One group owns the prefix so a new
+	// route cannot accidentally escape it; the SPA, crawler files and feeds stay on
+	// the document root because that is where browsers and crawlers look for them.
+	api := r.Group("/api")
+	api.GET("/healthz", healthz)
+	api.GET("/readyz", readyz(deps.Readiness))
+	// Mounted before the versioned group's site resolver on purpose: the group
 	// rejects a request before any handler when no site resolves, and "no site" is
-	// exactly what this endpoint has to report. The full path stays under /api/v1
-	// so clients and the contract see one prefix.
-	r.GET("/api/v1/setup/status", setupStatus(deps.Install, deps.Config.PublicBaseURL, trusted))
+	// exactly what this endpoint has to report.
+	api.GET("/v1/setup/status", setupStatus(deps.Install, deps.Config.PublicBaseURL, trusted))
 
 	// The contract and its reference page are host independent, so they sit outside
 	// the site-resolving group. The document is embedded in the binary; the page is
 	// self hosted so it works on an offline desktop install and under the strict CSP.
-	r.GET("/api/v1/openapi.json", openAPIDocument(deps.Plugins))
-	r.GET("/api/v1/docs", apiReferencePage)
-	r.GET("/api/v1/docs/app.css", apiReferenceAsset("app.css", "text/css; charset=utf-8"))
-	r.GET("/api/v1/docs/app.js", apiReferenceAsset("app.js", "text/javascript; charset=utf-8"))
+	api.GET("/v1/openapi.json", openAPIDocument(deps.Plugins))
+	api.GET("/v1/docs", apiReferencePage)
+	api.GET("/v1/docs/app.css", apiReferenceAsset("app.css", "text/css; charset=utf-8"))
+	api.GET("/v1/docs/app.js", apiReferenceAsset("app.js", "text/javascript; charset=utf-8"))
 
 	// Crawler files and feeds live at the site root, but the content behind them is per
 	// site: the same route serves a different sitemap, robots.txt and feed on every
@@ -176,7 +175,7 @@ func New(deps Dependencies) *gin.Engine {
 		r.GET("/tag/:slug/atom.xml", siteChain(feedFile(deps.Feed, trusted, feed.FormatAtom, feed.ScopeTag))...)
 	}
 
-	v1 := r.Group("/api/v1")
+	v1 := api.Group("/v1")
 	if resolveSite != nil {
 		v1.Use(resolveSite)
 	}

@@ -6,7 +6,7 @@ export const SITE_KIND_LABEL = labelMap<SiteKind>({
   community: '社区站点',
 });
 
-/** 站点形态存在本地安装配置里：契约 v0.1.0 的 Site 没有对应字段。 */
+/** 站点形态存在本地安装配置里：当前契约的 Site 没有对应字段。 */
 export function siteKindOf(config: Pick<WebConfig, 'site_kind'>): SiteKind {
   return config.site_kind === 'personal' ? 'personal' : 'community';
 }

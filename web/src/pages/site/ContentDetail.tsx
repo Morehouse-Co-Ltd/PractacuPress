@@ -36,7 +36,7 @@ import { coverImageStyle, useCoverHidden, visibleCoverFor } from '../../lib/cove
 import { useTaxonomy } from '../../lib/useTaxonomy';
 import { usePermissions } from '../../lib/usePermissions';
 import { copyText } from '../../lib/clipboard';
-import { ArticleToc, FloatingToc, useArticleDiagrams, useArticleToc, useCodeCopy } from '../../components/ArticleTools';
+import { ArticleBreadcrumb, ArticleToc, FloatingToc, useArticleDiagrams, useArticleToc, useCodeCopy } from '../../components/ArticleTools';
 import { ReadingToolbar } from '../../components/ReadingToolbar';
 import { ResponsiveHtml } from '../../components/ResponsiveHtml';
 import { CaptchaField, useCaptchaStatus } from '../../components/Captcha';
@@ -221,6 +221,9 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
   const { id = '' } = useParams();
   const { me, site } = useAuth();
   const { customization } = useCustomization();
+  // 沉思主题的阅读版式只在这里加开关，其他主题仍走原有文章页。
+  const contemplation =
+    customization.active_theme === 'contemplation' || customization.theme.preset === 'contemplation';
   // 文章页附加区块：在正文与评论区之间渲染，由「页面编排 → 文章页」维护。
   const articleLayout = customization.article ?? { blocks: [] };
   // 编排里放了「文章内容」占位符时，整份编排挪到正文的位置，由占位符渲染正文；
@@ -304,6 +307,36 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       delete root.dataset.articleHero;
     };
   }, [coverHidden, item]);
+
+  // 沉思主题的阅读页：向下读时收起页头，向上翻时立刻放出来；离开页面就清掉标记。
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!contemplation) {
+      delete root.dataset.ctReadHeader;
+      return;
+    }
+    let lastY = window.scrollY;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const y = window.scrollY;
+      const delta = y - lastY;
+      if (y < 80 || delta < -8) root.dataset.ctReadHeader = 'shown';
+      else if (y > 240 && delta > 10) root.dataset.ctReadHeader = 'hidden';
+      lastY = y;
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(update);
+    };
+    root.dataset.ctReadHeader = 'shown';
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+      delete root.dataset.ctReadHeader;
+    };
+  }, [contemplation]);
   // 内容级 SEO 覆盖（Beta 1.2）：交给 lib/seo.ts 合并，字段缺省时自动回退站点级配置。
   // 只挑这几个字段而不是整份 item：useSeo 内部会用 JSON.stringify 比较输入，
   // 把 rendered_html 也塞进去会让每次渲染都白序列化一份正文。
@@ -803,6 +836,23 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
       </div>
     ) : null;
 
+  const firstTag = item.tags?.[0];
+  const firstTagTerm = firstTag
+    ? taxonomy.tags.find((entry) => entry.name === firstTag)
+    : undefined;
+  const breadcrumb = [
+    { label: t('首页'), href: '/' },
+    articleCategory
+      ? { label: articleCategory.name, href: `/category/${encodeURIComponent(articleCategory.slug)}` }
+      : firstTag
+        ? { label: firstTag, href: `/tag/${encodeURIComponent(firstTagTerm?.slug ?? firstTag)}` }
+        : {
+            label: KIND_LABEL[kind],
+            href: kind === 'article' ? '/articles' : '/posts',
+          },
+    { label: item.title },
+  ];
+
   return (
     <>
       {extensions.reading_progress && progress > 0.01 ? (
@@ -829,6 +879,7 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
               {isUnpublished ? <StatusBadge status={item.status} /> : null}
             </div>
             <div className="article-hero-text">
+              {contemplation ? <ArticleBreadcrumb items={breadcrumb} /> : null}
               <div className="article-hero-kicker">
                 <span>{KIND_LABEL[kind]}</span>
                 <span className="dot" />
@@ -849,13 +900,14 @@ export function ContentDetailPage({ kind }: { kind: ContentKind }) {
         ) : null}
         <div className="shell">
           <div className="article-layout">
-            {extensions.toc ? <FloatingToc items={toc} /> : null}
+            {extensions.toc ? <FloatingToc items={toc} contemplation={contemplation} /> : null}
           <article className={`article${coverHidden ? '' : ' article--hero'}`}>
             {coverHidden ? (
               <div className="article-head">
                 <Link to={kind === 'article' ? '/articles' : '/posts'} className="back-link">
                   <Icon name="arrow-left" size={13} /> {t('返回{kind}列表', { kind: KIND_LABEL[kind] })}
                 </Link>
+                {contemplation ? <ArticleBreadcrumb items={breadcrumb} /> : null}
                 <div className="article-kicker">
                   <span>{KIND_LABEL[kind]}</span>
                   <span className="dot" />

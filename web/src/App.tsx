@@ -117,7 +117,7 @@ export default function App() {
    * O-1 匿名访客引导状态。
    *
    * 没有本地安装配置时先探测服务端（`/api/v1/setup/status`）：已安装且已有管理员
-   * 就用服务端站点设计直接渲染站点，只有未安装 / 无管理员才进入 7 步安装引导。
+   * 就用服务端站点设计直接渲染站点，只有未安装 / 无管理员才进入 8 步安装引导。
    * 探测期间渲染加载页，避免已装站点对新访客闪一下安装引导。
    */
   const [visitorBoot, setVisitorBoot] = useState<'probing' | 'done'>(() =>

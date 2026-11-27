@@ -16,6 +16,7 @@ import './styles/adminTheme.css';
 import './styles/daylightTheme.css';
 import './styles/siteRefresh.css';
 import './styles/writeDesk.css';
+import './styles/contemplationTheme.css';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('缺少 #root 挂载点');
@@ -44,6 +45,7 @@ async function boot() {
     applySoftenAttributes(customization.theme);
     applyMotionPreference(readPerformance(bootConfig!));
     document.documentElement.dataset.variant = customization.layout.variant;
+    document.documentElement.dataset.preset = customization.theme.preset;
   }
 
   root.render(

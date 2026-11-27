@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { syncEmbeddedWeb } from './lib/embed-web.mjs';
+import { goVersionLdflags, normalizeVersion, readProjectVersion } from './lib/project-version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'release');
@@ -28,7 +29,12 @@ const option = (name, fallback = '') => {
 const ARCH = option('--arch', process.arch === 'arm64' ? 'arm64' : 'amd64');
 const SKIP_WEB = flag('--skip-web');
 const OUT_DIR = path.resolve(option('--out', DEFAULT_OUT));
-const RELEASE_VERSION = option('--version', '').replace(/^v/i, '');
+let RELEASE_VERSION;
+try {
+  RELEASE_VERSION = normalizeVersion(option('--version') || readProjectVersion(ROOT)).version;
+} catch (err) {
+  fail(`unsupported --version ${option('--version')}: ${err.message}`);
+}
 const ARCH_LABEL = ARCH === 'arm64' ? 'arm64' : 'x86_64';
 const PACKAGE_NAME = `PractacuPress-macOS-${ARCH_LABEL}`;
 const STAGE_ROOT = path.join(ROOT, '.tmp', 'macospkg');
@@ -37,9 +43,6 @@ const TARBALL = path.join(OUT_DIR, `${PACKAGE_NAME}.tar.gz`);
 const SHA_FILE = `${TARBALL}.sha256`;
 
 if (!['amd64', 'arm64'].includes(ARCH)) fail(`unsupported --arch ${ARCH}`);
-if (RELEASE_VERSION && !/^\d+\.\d+\.\d+(?:-beta(?:\.?\d+)?)?$/i.test(RELEASE_VERSION)) {
-  fail(`unsupported --version ${RELEASE_VERSION}`);
-}
 if (process.platform !== 'darwin') fail('macOS 包必须在 macOS 上构建');
 
 function log(message) { console.log(`==> ${message}`); }
@@ -82,7 +85,6 @@ function goCommand() {
 }
 
 function stampWebVersion(dir) {
-  if (!RELEASE_VERSION) return;
   const file = path.join(dir, 'version.json');
   const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   fs.writeFileSync(file, `${JSON.stringify({
@@ -113,21 +115,15 @@ function main() {
   fs.mkdirSync(binDir, { recursive: true });
   syncEmbeddedWeb({ root: ROOT, dist: path.join(ROOT, 'web', 'dist') });
   const go = goCommand();
-  const targets = [
-    { pkg: './cmd/server', name: 'practacu-press' },
-    { pkg: './cmd/migrate', name: 'practacu-migrate' },
-    { pkg: './cmd/seed', name: 'practacu-seed' },
-    { pkg: './cmd/backup', name: 'practacu-backup' },
-    { pkg: './cmd/media-gc', name: 'practacu-media-gc' },
-    { pkg: './cmd/searchindex', name: 'practacu-searchindex' },
-  ];
-  for (const target of targets) {
-    const out = path.join(binDir, target.name);
-    run(go, ['build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', out, target.pkg], {
-      env: { GOOS: 'darwin', GOARCH: ARCH, CGO_ENABLED: '0' },
-    });
-  }
-  fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE_VERSION || 'development'}\n`, 'utf8');
+  // One executable: the SPA is embedded and the maintenance commands are
+  // subcommands, so migrate / seed / backup / media-gc / searchindex never
+  // ship as separate files.
+  run(
+    go,
+    ['build', '-trimpath', '-buildvcs=false', '-ldflags', goVersionLdflags(RELEASE_VERSION), '-o', path.join(binDir, 'practacu-press'), './cmd/server'],
+    { env: { GOOS: 'darwin', GOARCH: ARCH, CGO_ENABLED: '0' } },
+  );
+  fs.writeFileSync(path.join(PACKAGE, 'VERSION'), `${RELEASE_VERSION}\n`, 'utf8');
   fs.writeFileSync(path.join(PACKAGE, 'ARCH'), `${ARCH}\n`, 'utf8');
 
   // Normalise the text files the installer reads over SSH/scp.

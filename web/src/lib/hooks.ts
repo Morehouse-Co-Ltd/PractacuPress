@@ -75,6 +75,29 @@ export function useTitle(title: string) {
   }, [title]);
 }
 
+/**
+ * 订阅一个媒体查询。用于需要换一套 DOM 而不只是换样式的窄屏布局：
+ * 隐藏桌面表格、渲染按组卡片，避免两套可交互控件同时留在无障碍树里。
+ */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [query]);
+
+  return matches;
+}
+
 export function useScrollProgress() {
   const [progress, setProgress] = useState(0);
   useEffect(() => {

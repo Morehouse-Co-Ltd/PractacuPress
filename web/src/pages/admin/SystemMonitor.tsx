@@ -208,7 +208,7 @@ export function SystemMonitorPage() {
         {head}
         <Callout tone="info" icon="database" title={t('演示模式没有服务器指标')}>
           {t(
-            '演示数据只存在浏览器里，没有可采样的服务端；连接真实后端（启动.bat 或部署实例）后，这里会显示本机进程与磁盘占用。',
+            '演示数据只存在浏览器里，没有可采样的服务端；连接真实后端（scripts/启动.bat 或部署实例）后，这里会显示本机进程与磁盘占用。',
           )}
         </Callout>
       </>

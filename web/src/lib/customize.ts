@@ -88,7 +88,7 @@ import { runThemeTransition } from './themeTransition';
 /**
  * 站点外观、页面与扩展。
  *
- * 这些是纯前端能力：契约 v0.1.0 没有主题、页面或插件端点，所以配置保存在
+ * 这些是纯前端能力：当前契约没有主题、页面或插件端点，所以配置保存在
  * `pp.web.config.v1` 的 `customization` 字段里。外观页与主题工坊提供导出 / 导入，
  * 用于在浏览器之间迁移；真实后端接入后应改为服务端存储。
  */
@@ -1719,12 +1719,12 @@ export function createCustomizationWithPages(): SiteCustomization {
 }
 
 /**
- * 安装完成后的默认大主题：夜航。
+ * 安装完成后的默认主题：原版。
  *
- * 2026-11 起安装向导不再让用户挑主题，新站点统一以「夜航」交付（深色 + 双栏）。
- * 站长之后仍可在后台「主题设置」里换成原版或自定义主题。
+ * 新站点从「原版」的纸白单栏开始，保持第一次启动时的默认观感；
+ * 站长之后仍可在后台「主题设置」里换成沉思、夜航或自定义主题。
  */
-export const INSTALL_DEFAULT_THEME_ID = 'night';
+export const INSTALL_DEFAULT_THEME_ID = 'default';
 
 /** 首次安装完成时写进站点设计的完整配置：默认大主题 + 安装时选择的语言与正文字号。 */
 export function installCustomization(language: Locale, bodySize?: number): SiteCustomization {

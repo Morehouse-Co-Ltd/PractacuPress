@@ -25,6 +25,25 @@ func openDesktopDB(t *testing.T) *db.DB {
 	return handle
 }
 
+func TestBootstrapDesktopInitialisesFromMissingDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "nested", "data", "desktop.db")
+
+	handle, err := db.Open(ctx, "sqlite", db.SQLiteDSN(path))
+	require.NoError(t, err)
+	require.True(t, handle.CreatedFile())
+	require.FileExists(t, path)
+	t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+	siteID, err := bootstrapDesktop(ctx, handle, silentLogger())
+	require.NoError(t, err)
+	require.NotEmpty(t, siteID)
+
+	count, err := handle.Client.Site.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
 func TestBootstrapDesktopCreatesOneSiteAndReusesIt(t *testing.T) {
 	ctx := context.Background()
 	handle := openDesktopDB(t)

@@ -312,9 +312,9 @@ export function AdminShell() {
       ? ([{ to: '/admin/content', label: t('内容库'), icon: 'file' }] as NavItem[])
       : []),
     ...(can('manage_site') ? ([{ to: '/admin/pages', label: t('页面'), icon: 'layers' }] as NavItem[]) : []),
-    ...(can('write_content') || can('moderate_content')
-      ? ([{ to: '/admin/taxonomy', label: t('分类与标签'), icon: 'tag' }] as NavItem[])
-      : []),
+    // 分类与标签是站点结构，服务端按 manage_site 授权（taxonomy 写接口要求站点管理员），
+    // 所以入口也按同一能力显示，避免编辑点进去后每次保存都收到 403。
+    ...(can('manage_site') ? ([{ to: '/admin/taxonomy', label: t('分类与标签'), icon: 'tag' }] as NavItem[]) : []),
     // 个人博客没有别人投稿的审核流程；只要还能管理评论，入口仍然保留。
     ...(can('moderate_content') || can('moderate_comment')
       ? ([

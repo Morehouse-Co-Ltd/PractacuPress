@@ -21,7 +21,7 @@ const fragment: Dictionary = {
   '服务器指标包含主机名、路径与进程信息，只对平台管理员开放。':
     'Server metrics include the hostname, filesystem paths and process names, so only platform administrators can read them.',
   '演示模式没有服务器指标': 'Demo mode has no server metrics',
-  '演示数据只存在浏览器里，没有可采样的服务端；连接真实后端（启动.bat 或部署实例）后，这里会显示本机进程与磁盘占用。':
+  '演示数据只存在浏览器里，没有可采样的服务端；连接真实后端（scripts/启动.bat 或部署实例）后，这里会显示本机进程与磁盘占用。':
     'Demo data lives only in the browser, so there is no server to sample. Connect a real backend (a local app or a deployed instance) and this page will show local processes and disk usage.',
   '正在读取服务器指标': 'Reading server metrics',
   '无法读取服务器指标': 'Could not read server metrics',

@@ -11,6 +11,7 @@ const fragment: Dictionary = {
   夜航: 'Night flight',
   白昼: 'Daylight',
   '夜航 · 浅色': 'Night flight · Light',
+  沉思: 'Contemplation',
 
   // ---- 主题预设：说明 ----
   '白底墨字，克制的绿。原版主题。': 'Ink on white with a restrained green. The original theme.',
@@ -28,6 +29,8 @@ const fragment: Dictionary = {
     'Dark magazine style: warm black ground, lavender accent, cover images organising the content.',
   '冷石墨与电光蓝：深色为主、浅色为同一套设计的明亮重配。':
     'Cold graphite and electric blue: dark by default, with a bright light-mode remix of the same design.',
+  '石白纸面与青灰强调，留白多，适合长文和笔记；深色是同一套版面的夜读配色。':
+    'Stone-white paper and slate accents with generous whitespace for long reads and notes; dark mode is the same layout tuned for night reading.',
   '夜航的浅色重配：冷白纸与电光蓝，结构不变。':
     'Night flight in light mode: cold white paper and electric blue, same structure.',
 

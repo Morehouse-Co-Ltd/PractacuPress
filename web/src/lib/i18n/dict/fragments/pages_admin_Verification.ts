@@ -14,8 +14,8 @@ const fragment: Dictionary = {
   '用 CAPTCHA 保护登录、注册与评论；密钥只用于生成服务端环境变量，不写入浏览器配置。':
     'Protect sign-in, sign-up, and comments with a CAPTCHA; keys are only used to generate server environment variables and are never written to browser configuration.',
   '前端只负责显示组件': 'The front end only renders the widget',
-  '契约 v0.1.0 没有验证端点：本页保存的是站点侧配置意图。接入真实后端时，需要服务端提供':
-    'Contract v0.1.0 has no verification endpoint, so this page stores the site-side configuration intent. With a real backend, the server must provide',
+  '当前契约没有验证端点：本页保存的是站点侧配置意图。接入真实后端时，需要服务端提供':
+    'The current contract has no verification endpoint, so this page stores the site-side configuration intent. With a real backend, the server must provide',
   '校验 token，并在登录 / 注册 / 评论接口上强制校验。':
     'to validate tokens, and enforce validation on the sign-in / sign-up / comment endpoints.',
 
@@ -97,7 +97,6 @@ const fragment: Dictionary = {
   '站点级开关': 'Site-level switch',
   '前端可见': 'Visible in the browser',
   '登录 / 注册 / 评论': 'Sign-in / sign-up / comments',
-  '契约 v0.1.0': 'Contract v0.1.0',
   // ---- 真实服务端状态 ----
   '用 CAPTCHA 保护登录、注册、找回密码与评论；密钥只保存在服务端环境变量。':
     'Protect sign-in, sign-up, password reset, and comments with a CAPTCHA; the secret lives only in the server environment.',

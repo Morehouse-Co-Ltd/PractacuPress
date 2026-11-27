@@ -73,7 +73,7 @@ running API; the checks above stay network-free.
 
 What one run covers, in order:
 
-1. the seven-step install wizard (live mode, first admin, site rules) and a real
+1. the eight-step install wizard (live mode, first admin, site rules) and a real
    logout → password login round trip;
 2. creating a draft, saving it twice, publishing, and saving a post-publish
    revision (version history grows, status stays `published`);
@@ -158,10 +158,12 @@ required CI: it needs Chrome, while `ci.yml` stays fast. It uploads `.tmp/e2e/ar
 
 | Command | What it runs |
 | --- | --- |
-| `bash scripts/ci/verify.sh all` | Go build/vet/test, web typecheck/build/vitest, SQLite migration round trip + `cmd/migrate` idempotency, workflow/Compose validation |
+| `bash scripts/ci/verify.sh all` | Go build/vet/test, web typecheck/build/vitest, SQLite migration round trip + `practacu-press migrate` idempotency, workflow/Compose validation |
 | `powershell -ExecutionPolicy Bypass -File scripts\verify.ps1 -Task all` | the same on Windows |
 | `make verify` | the same on Linux/macOS through the Makefile |
 | `go test ./internal/tests/...` | only the checks in this directory |
 
 MySQL/PostgreSQL round trips are included automatically when
 `PP_TEST_MYSQL_DSN` / `PP_TEST_POSTGRES_DSN` are exported.
+
+

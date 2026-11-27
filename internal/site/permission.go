@@ -58,6 +58,20 @@ func (set PermissionSet) Allows(capability Capability) bool {
 	return set[capability]
 }
 
+// CanWithMatrix reports whether a role plus an optional permission matrix grants
+// capability.
+//
+// Modules that carry only a user id, a site id and a role (analytics, taxonomy,
+// safety, backups) use this instead of comparing roles: a nil matrix falls back to
+// the role defaults, and a present matrix is authoritative, so a custom or built-in
+// group that the operator edited is honoured exactly like Member.Allows.
+func CanWithMatrix(role Role, permissions PermissionSet, capability Capability) bool {
+	if permissions == nil {
+		return DefaultCapabilities(role).Allows(capability)
+	}
+	return permissions.Allows(capability)
+}
+
 // HasAnyAdminCapability reports whether the set contains at least one dashboard
 // capability. "Enter the dashboard" only means something when there is something
 // to open.

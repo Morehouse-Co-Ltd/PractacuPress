@@ -4,15 +4,16 @@ import type { SiteUpdateManifest } from '../types';
 /**
  * 当前前端构建版本。
  *
- * 唯一来源是仓库里的版本清单 `web/public/version.json`（构建后就是站点的
- * `/version.json`），打包时由 Vite 内联；`package.json` 的 version 必须与它一致，
- * 由 `appVersion.test.ts` 把关，避免“站点更新”页显示的版本和实际发布版本漂移。
+ * 唯一来源是仓库根目录的 `VERSION`：`scripts/version.mjs` 把它写入
+ * `web/public/version.json`（构建后就是站点的 `/version.json`），打包时由 Vite
+ * 内联；`package.json` 的 version 必须与它一致，由 `appVersion.test.ts` 把关，
+ * 避免“站点更新”页显示的版本和实际发布版本漂移。
  */
 const raw = typeof manifest.version === 'string' ? manifest.version.trim() : '';
 
 export const APP_VERSION = raw || '0.0.0';
 
-/** 带 v 前缀的展示形式，例如 v0.1.0。 */
+/** 带 v 前缀的展示形式，例如 v1.2.3。 */
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 
 /**

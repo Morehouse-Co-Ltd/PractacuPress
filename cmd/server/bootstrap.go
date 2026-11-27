@@ -15,10 +15,10 @@ import (
 
 // Desktop install defaults.
 //
-// The desktop install ships an empty SQLite file, so the very first start has to produce a
-// database the setup wizard can talk to: tables first, then exactly one site. The
-// wizard updates that site instead of creating one, which is what keeps the desktop
-// path zero configuration.
+// The desktop install starts with a missing or empty SQLite file, so the very first
+// start has to produce a database the setup wizard can talk to: tables first, then
+// exactly one site. The wizard updates that site instead of creating one, which is
+// what keeps the desktop path zero configuration.
 const (
 	desktopSiteSlug = "main"
 	desktopSiteName = "Practacu Press"

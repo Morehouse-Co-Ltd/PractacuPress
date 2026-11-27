@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Practacu Press API
-  version: 0.1.0
+  version: 0.1.2-beta
   description: |
     Multi-site community CMS API.
 
@@ -14,7 +14,7 @@ info:
     - Every error is `application/problem+json` with a stable `code`.
 servers:
   - url: /api/v1
-    description: Versioned API root. Health probes use /api/healthz and /api/readyz; crawler files and feeds stay at the site root.
+    description: Every HTTP API lives under /api; versioned resources use /api/v1. Health probes use /api/healthz and /api/readyz; crawler files and feeds stay at the site root.
 security:
   - bearerAuth: []
 tags:
@@ -81,34 +81,6 @@ paths:
                 required: [status]
                 properties:
                   status: { type: string, const: unready }
-
-  /healthz:
-    get:
-      tags: [system]
-      deprecated: true
-      summary: Legacy liveness alias
-      description: Compatibility alias for /api/healthz. New probes should use the /api path.
-      security: []
-      servers:
-        - url: /
-      responses:
-        '200':
-          description: Process is alive
-
-  /readyz:
-    get:
-      tags: [system]
-      deprecated: true
-      summary: Legacy readiness alias
-      description: Compatibility alias for /api/readyz. New probes should use the /api path.
-      security: []
-      servers:
-        - url: /
-      responses:
-        '200':
-          description: Ready to serve traffic
-        '503':
-          description: A dependency is unavailable
 
   /openapi.json:
     get:

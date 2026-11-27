@@ -104,25 +104,6 @@ func (c *localCanvas) circle(cx, cy, radius float64, col color.RGBA) {
 	}
 }
 
-// ring strokes a circle outline of the given width.
-func (c *localCanvas) ring(cx, cy, radius, width float64, col color.RGBA) {
-	scale := float64(localSupersample)
-	centerX, centerY := cx*scale, cy*scale
-	outer := (radius + width/2) * scale
-	inner := (radius - width/2) * scale
-	outer2, inner2 := outer*outer, inner*inner
-	for y := int(math.Floor(centerY - outer)); y <= int(math.Ceil(centerY+outer)); y++ {
-		for x := int(math.Floor(centerX - outer)); x <= int(math.Ceil(centerX+outer)); x++ {
-			dx := float64(x) + 0.5 - centerX
-			dy := float64(y) + 0.5 - centerY
-			d2 := dx*dx + dy*dy
-			if d2 <= outer2 && d2 >= inner2 {
-				c.blendPixel(x, y, col)
-			}
-		}
-	}
-}
-
 // rect fills an axis-aligned rectangle.
 func (c *localCanvas) rect(x0, y0, x1, y1 float64, col color.RGBA) {
 	scale := float64(localSupersample)

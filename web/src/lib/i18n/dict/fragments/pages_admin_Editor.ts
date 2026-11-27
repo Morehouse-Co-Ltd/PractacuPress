@@ -2,8 +2,6 @@ import type { Dictionary } from '../../plural';
 
 /** 来源：`web/src/pages/admin/Editor.tsx` */
 const fragment: Dictionary = {
-  'v0.1.0 契约没有提供读取源文的端点，服务端只返回了清洗后的 HTML。为避免用空白覆盖原文，':
-    'The v0.1.0 contract has no endpoint for reading the source text, so the server only returns sanitized HTML. To avoid overwriting the original with a blank body,',
   写稿: 'write drafts',
   '新建{kind}': 'New {kind}',
   编辑稿件: 'Edit draft',

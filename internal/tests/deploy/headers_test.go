@@ -42,8 +42,8 @@ func repoRoot(t *testing.T) string {
 }
 
 // TestTemplatesAllowTheEditorsOwnFrames checks every Content-Security-Policy the
-// deployment ships: both nginx templates and the API middleware that serves the
-// embedded SPA.
+// deployment ships: the installation Nginx template and the API middleware that
+// serves the embedded SPA.
 func TestTemplatesAllowTheEditorsOwnFrames(t *testing.T) {
 	root := repoRoot(t)
 	apiPolicy, err := apiCSP(filepath.Join(root, "internal", "transport", "http", "gin", "middleware", "security_headers.go"))
@@ -51,7 +51,6 @@ func TestTemplatesAllowTheEditorsOwnFrames(t *testing.T) {
 		t.Fatalf("read API policy: %v", err)
 	}
 	templates := []string{
-		filepath.Join(root, "deploy", "production", "nginx.conf"),
 		filepath.Join(root, "deploy", "linux", "nginx", "locations.conf.in"),
 	}
 

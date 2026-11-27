@@ -285,3 +285,19 @@ func TestSavePermissionGroupAuditsTheRename(t *testing.T) {
 	require.Equal(t, string(RoleSiteAdmin), audit.Detail["base_role"])
 	require.Equal(t, true, audit.Detail["builtin"])
 }
+
+// TestCanWithMatrixFallsBackAndHonoursTheMatrix pins the rule the capability based
+// modules (analytics, taxonomy, safety, backups) share: no matrix means the role
+// defaults apply, and a matrix the operator edited wins over the role.
+func TestCanWithMatrixFallsBackAndHonoursTheMatrix(t *testing.T) {
+	require.True(t, CanWithMatrix(RoleSiteAdmin, nil, CapabilityViewLog))
+	require.False(t, CanWithMatrix(RoleEditor, nil, CapabilityViewLog))
+
+	moderatorWithLog := PermissionSet{CapabilityViewLog: true}
+	require.True(t, CanWithMatrix(RoleEditor, moderatorWithLog, CapabilityViewLog))
+	require.False(t, CanWithMatrix(RoleEditor, moderatorWithLog, CapabilityManageSite))
+
+	adminWithoutSite := PermissionSet{CapabilityViewLog: true, CapabilityWriteContent: true}
+	require.False(t, CanWithMatrix(RoleSiteAdmin, adminWithoutSite, CapabilityManageSite))
+	require.True(t, CanWithMatrix(RoleSiteAdmin, adminWithoutSite, CapabilityViewLog))
+}

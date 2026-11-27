@@ -38,3 +38,5 @@ Practacu Press · Windows 便携版
 技术说明
   · 单个 Go 二进制同时提供前端、/api、/api/healthz 与 /api/readyz。
   · SQLite 使用纯 Go 驱动，不需要安装 Node.js、数据库或额外服务。
+  · migrate / seed / backup / media-gc / searchindex 是同一个程序的子命令，
+    例如 PractacuPress.exe migrate --driver sqlite --dsn "file:./data/practacu.db"。

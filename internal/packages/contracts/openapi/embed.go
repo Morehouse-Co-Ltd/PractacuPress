@@ -14,6 +14,8 @@ import (
 	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/practacu/practacu-press/internal/version"
 )
 
 //go:embed openapi.yaml
@@ -34,6 +36,15 @@ var jsonDocument = sync.OnceValues(func() ([]byte, error) {
 	var spec any
 	if err := yaml.Unmarshal(document, &spec); err != nil {
 		return nil, fmt.Errorf("openapi: decode embedded contract: %w", err)
+	}
+
+	// The source YAML carries the same VERSION value, but a release build can
+	// override the Go constant with -ldflags. Patching the runtime document keeps
+	// the served contract version aligned with the binary even then.
+	if root, ok := spec.(map[string]any); ok {
+		if info, ok := root["info"].(map[string]any); ok {
+			info["version"] = version.Version
+		}
 	}
 
 	encoded, err := json.Marshal(spec)

@@ -82,6 +82,9 @@ type Actor struct {
 	UserID string
 	SiteID string
 	Role   site.Role
+	// Permissions is the caller's permission matrix. Nil means the role defaults
+	// apply (tests and callers that do not carry a membership).
+	Permissions site.PermissionSet
 }
 
 // Term is one category or tag.
